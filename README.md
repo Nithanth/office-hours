@@ -47,6 +47,10 @@ If you want to run `app.py` directly without Docker (e.g., for very quick UI tes
    python app.py
    ```
 
+## Demo
+
+![Lux Scholar Demo](static/images/LuxScholarMVPDemo.gif)
+
 ## Project Structure
 
 * `app.py`: Main FastHTML application, routing.
