@@ -13,8 +13,6 @@ redis
 # API Clients & HTTP
 httpx
 exa-py
-modal
-requests # Retained from previous version, ensure it's needed or remove later
 openai
 anthropic
 together
