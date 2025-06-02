@@ -1,2 +1,2 @@
-# lux_scholar
+# Lux Scholar
 Lux internal research paper tool
