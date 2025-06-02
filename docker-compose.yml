@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}" # Use PORT from .env, default to 8000 for both host and container
+    volumes:
+      - .:/app # Mount current directory to /app in container for live updates
+    env_file:
+      - .env # Load environment variables from .env file
+    depends_on:
+      - redis
+    environment:
+      - PYTHONUNBUFFERED=1 # For seeing logs immediately
+
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:

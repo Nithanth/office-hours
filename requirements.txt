@@ -1,0 +1,30 @@
+# Core Web Framework & Server
+python-fasthtml
+uvicorn[standard]
+fastapi # Added for direct FastAPI imports
+# jinja2==3.1.6 # For HTML templating - REMOVED
+
+# Environment & Configuration
+python-dotenv
+
+# Caching & Job Management
+redis
+
+# API Clients & HTTP
+httpx
+exa-py
+modal
+requests # Retained from previous version, ensure it's needed or remove later
+openai
+anthropic
+together
+google-generativeai
+tenacity
+#logging
+loguru
+# Data Validation & Modeling
+pydantic
+
+# Testing
+pytest
+pytest-asyncio
