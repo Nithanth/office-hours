@@ -16,10 +16,9 @@ exa-py
 openai
 anthropic
 together
-google-generativeai
+google-genai
 tenacity
 #logging
 loguru
 # Data Validation & Modeling
 pydantic
-
