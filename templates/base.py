@@ -1,5 +1,20 @@
-from fasthtml.common import *
-from fasthtml.fastapp import FastHTML # Required for Script, Link etc if not in common
+from typing import Any
+
+from fasthtml.common import (
+    H1,
+    Body,
+    Div,
+    Footer,
+    Head,
+    Header,
+    Html,
+    Link,
+    Main,
+    Meta,
+    P,
+    Script,
+    Title,
+)
 
 # Define Cdn if not already part of your FastHTML/PyHTML common imports
 # Some versions of FastHTML might have this or similar utilities built-in.
@@ -16,7 +31,8 @@ from fasthtml.fastapp import FastHTML # Required for Script, Link etc if not in 
 # Example: Tailwind via CDN (can be useful for rapid prototyping)
 # tailwind_script = Script(src="https://cdn.tailwindcss.com")
 
-def base_layout(title_text: str, *content):
+
+def base_layout(title_text: str, *content: Any) -> Html:
     """A basic HTML layout component."""
     return Html(
         Head(
@@ -27,16 +43,16 @@ def base_layout(title_text: str, *content):
             # tailwind_script, # Uncomment if you want to use Tailwind CSS via CDN
             # htmx_script, # FastHTML usually includes HTMX, uncomment if needed explicitly
         ),
-        Body(cl="bg-gray-100"), # Example Tailwind class, won't apply without Tailwind
+        Body(cl="bg-gray-100"),  # Example Tailwind class, won't apply without Tailwind
         Body(
-            Header(H1(title_text), cl="bg-slate-700 text-white p-4 text-center"), # Example styling
+            Header(H1(title_text), cl="bg-slate-700 text-white p-4 text-center"),  # Example styling
             Main(
-                Div(*content, cl="container mx-auto p-4"), # Basic container class from styles.css
+                Div(*content, cl="container mx-auto p-4"),  # Basic container class from styles.css
             ),
             Footer(
                 P("© 2024 Research Paper Analysis Tool. All rights reserved."),
-                cl="text-center text-sm text-gray-500 py-4"
+                cl="text-center text-sm text-gray-500 py-4",
             ),
-            Script(src="/static/js/app.js") # Load custom JS
-        )
+            Script(src="/static/js/app.js"),  # Load custom JS
+        ),
     )

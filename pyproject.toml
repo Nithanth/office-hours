@@ -1,0 +1,63 @@
+[tool.ruff]
+# Assume Python 3.10, align with your .env if different
+# target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# E = pycodestyle errors
+# F = pyflakes
+# W = pycodestyle warnings
+# I = isort (import sorting)
+# UP = pyupgrade (modernize Python syntax)
+# B = flake8-bugbear (finds potential bugs)
+# SIM = flake8-simplify (simplifies code)
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+ignore = [
+    "E501", # Line too long, handled by formatter if you use one like Black, or by ruff format
+]
+
+# Exclude common directories
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "migrations" # Often auto-generated and less strict
+]
+
+[tool.ruff.format]
+# If you want Ruff to also format your code (like Black)
+# quote-style = "double"
+# indent-style = "space"
+# skip-magic-trailing-comma = false
+# line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10" # Or your project's Python version
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+# You might want to add specific paths to check, or it will check all by default
+# files = ["app.py", "services/", "models/", "pages/", "config.py"]
+
+# Per-module settings if needed, e.g., for libraries without stubs
+# [[tool.mypy.overrides]]
+# module = "some_untyped_library.*"
+# ignore_missing_imports = true

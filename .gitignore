@@ -6,6 +6,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Tool-specific caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # Virtual environments
 venv/
 env/
@@ -51,7 +56,6 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
-.pytest_cache/
 nosetests.xml
 coverage.xml
 *.cover

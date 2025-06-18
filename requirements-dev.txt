@@ -1,0 +1,10 @@
+-r requirements.txt  # Includes all runtime dependencies
+
+# Development Tools (Linters, Type Checkers)
+ruff
+mypy
+
+# Add other dev tools here later, e.g.:
+# pytest
+# pytest-cov
+# pre-commit

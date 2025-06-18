@@ -1,27 +1,31 @@
 import asyncio
+import html
 import logging
-from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
-from services.llm_client import LLMService, LLMProviderName, get_llm_service
-from services.exa_client import ExaClient
-from models.paper import Paper
+from typing import Optional, Union
+
 from config import config
+from models.paper import Paper
+from services.exa_client import ExaClient
+from services.llm_client import LLMProviderName, LLMService
+from utils.prompt_templates import (
+    get_query_resolution_prompts,
+    get_topic_analysis_prompts,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class ReportGenerator:
     # Average characters per token, can be adjusted based on observations
     AVG_CHARS_PER_TOKEN: int = 4
     # Estimated token overhead for the static parts of the prompt template (instructions, boilerplate, etc.)
-    PROMPT_TEMPLATE_BASE_OVERHEAD_TOKENS: int = 350 # Increased slightly for robust estimation
+    PROMPT_TEMPLATE_BASE_OVERHEAD_TOKENS: int = 350
     # Additional safety buffer in token calculations
-    SAFETY_MARGIN_TOKENS: int = 150 # Increased slightly
+    SAFETY_MARGIN_TOKENS: int = 150  # Increased slightly
 
-    # These should ideally match or be derived from config.py if defined there
-    # For simplicity here, using the structure from your previous attempt.
-    # Ensure these are consistent with your config.py
-    QUALITATIVE_LENGTH_GUIDANCE: Dict[str, str] = config.QUALITATIVE_LENGTH_GUIDANCE
-    SUMMARY_OUTPUT_TOKEN_TARGETS: Dict[str, Dict[str, int]] = config.SUMMARY_OUTPUT_TOKEN_TARGETS
+    QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = config.QUALITATIVE_LENGTH_GUIDANCE
+    SUMMARY_OUTPUT_TOKEN_TARGETS: dict[str, dict[str, int]] = config.SUMMARY_OUTPUT_TOKEN_TARGETS
 
     AUDIENCE_PROMPT_MAP = {
         "technical": {
@@ -52,40 +56,50 @@ class ReportGenerator:
         self.selected_model_provider = selected_model_provider
         self.selected_model_input_token_limit = selected_model_input_token_limit
 
-    def _get_output_token_target(self, audience_type: str, summary_size_key: str, is_topic_summary: bool) -> int:
+    def _get_output_token_target(
+        self, audience_type: str, summary_size_key: str, is_topic_summary: bool
+    ) -> int:
         """Helper to get the target output token count for a summary."""
         if is_topic_summary:
             # Topic summaries might have different sizing logic or use a different part of the config
             # For now, let's assume they might also use SUMMARY_OUTPUT_TOKEN_TARGETS
             # Adjust if topic summary targets are defined differently
             return self.SUMMARY_OUTPUT_TOKEN_TARGETS.get(audience_type, {}).get(
-                summary_size_key, self.SUMMARY_OUTPUT_TOKEN_TARGETS.get("technical", {}).get("L", 800)
+                summary_size_key,
+                self.SUMMARY_OUTPUT_TOKEN_TARGETS.get("technical", {}).get("L", 800),
             )
         else:
             return self.SUMMARY_OUTPUT_TOKEN_TARGETS.get(audience_type, {}).get(
-                summary_size_key, self.SUMMARY_OUTPUT_TOKEN_TARGETS.get("technical", {}).get("M", 500)
+                summary_size_key,
+                self.SUMMARY_OUTPUT_TOKEN_TARGETS.get("technical", {}).get("M", 500),
             )
 
     def _estimate_prompt_overhead(self, audience_type: str, is_topic_summary: bool) -> int:
         """Estimates the token overhead for the prompt template."""
-        active_prompts = self.AUDIENCE_PROMPT_MAP.get(audience_type, self.AUDIENCE_PROMPT_MAP["technical"])
+        active_prompts = self.AUDIENCE_PROMPT_MAP.get(
+            audience_type, self.AUDIENCE_PROMPT_MAP["technical"]
+        )
         prompt_template = active_prompts["topic"] if is_topic_summary else active_prompts["paper"]
-        
+
         # Estimate based on base overhead + length of the specific template being used
         # This is a rough estimate; more sophisticated token counting could be used if needed.
         template_specific_tokens = len(prompt_template) // self.AVG_CHARS_PER_TOKEN
         return self.PROMPT_TEMPLATE_BASE_OVERHEAD_TOKENS + template_specific_tokens
 
-    def _get_max_content_snippet_chars(self, audience_type: str, summary_size_key: str, is_topic_summary: bool = False) -> int:
+    def _get_max_content_snippet_chars(
+        self, audience_type: str, summary_size_key: str, is_topic_summary: bool = False
+    ) -> int:
         """Calculates the maximum characters allowed for a content snippet based on model limits."""
-        output_token_target = self._get_output_token_target(audience_type, summary_size_key, is_topic_summary)
+        output_token_target = self._get_output_token_target(
+            audience_type, summary_size_key, is_topic_summary
+        )
         prompt_overhead = self._estimate_prompt_overhead(audience_type, is_topic_summary)
 
         # Available tokens for the snippet itself
         available_for_snippet_tokens = (
-            self.selected_model_input_token_limit 
-            - prompt_overhead 
-            - output_token_target 
+            self.selected_model_input_token_limit
+            - prompt_overhead
+            - output_token_target
             - self.SAFETY_MARGIN_TOKENS
         )
 
@@ -97,7 +111,7 @@ class ReportGenerator:
                 f"Defaulting to a small snippet size (1000 chars)."
             )
             # Fallback to a very small size if calculations lead to zero or negative tokens
-            return 1000 
+            return 1000
 
         max_chars = available_for_snippet_tokens * self.AVG_CHARS_PER_TOKEN
         logger.info(
@@ -105,196 +119,496 @@ class ReportGenerator:
             f"Model Limit: {self.selected_model_input_token_limit}, Prompt Overhead: {prompt_overhead}, "
             f"Output Target: {output_token_target}"
         )
+
+        # Apply the absolute cap from config
+        absolute_max_cap = config.PAPER_MAX_CONTENT_SNIPPET_CHARS
+        if max_chars > absolute_max_cap:
+            logger.warning(
+                f"Calculated max_chars ({max_chars}) exceeds absolute cap ({absolute_max_cap}). "
+                f"Using cap value instead."
+            )
+            max_chars = absolute_max_cap
+
         return max_chars
 
+    def _get_formatted_date_str(self, date_input: Optional[str]) -> str:
+        if not date_input:  # Handles None or empty string
+            return "N/A"
+        # Assuming date_input is a string 'YYYY-MM-DD'
+        try:
+            # Using '%Y-%m-%d' for output to match original apparent intent.
+            return datetime.strptime(date_input, "%Y-%m-%d").strftime("%Y-%m-%d")
+        except ValueError:
+            # If parsing fails (e.g. already formatted, or different format), return the original string.
+            # Or, could return "N/A" here too if preferred.
+            return date_input
+
     async def _generate_single_summary(
-        self, 
-        prompt: str, 
-        max_tokens: int, 
-        semaphore: Optional[asyncio.Semaphore] = None
+        self,
+        prompt: str,
+        max_tokens: int,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        system_prompt: Optional[str] = None,
     ) -> str:
         if semaphore:
             async with semaphore:
                 try:
-                    response = await self.llm_service.generate_completion(
+                    result = await self.llm_service.generate_completion_safe(
                         provider_name=self.selected_model_provider,
                         model_name=self.selected_model_api_id,
                         prompt=prompt,
                         max_tokens=max_tokens,
+                        system_prompt=system_prompt,
                     )
-                    return response
+                    if not result["ok"]:
+                        logger.error(f"LLM generation failed: {result['content']}")
+                    return result["content"]
                 except Exception as e:
-                    logger.error(f"Error generating summary with {self.selected_model_provider.value}/{self.selected_model_api_id} under semaphore: {e}", exc_info=True)
+                    logger.error(
+                        f"Error generating summary with {self.selected_model_provider}/{self.selected_model_api_id} under semaphore: {e}",
+                        exc_info=True,
+                    )
                     return f"Error: Could not generate summary. Details: {e}"
         else:
             try:
-                response = await self.llm_service.generate_completion(
+                result = await self.llm_service.generate_completion_safe(
                     provider_name=self.selected_model_provider,
                     model_name=self.selected_model_api_id,
                     prompt=prompt,
                     max_tokens=max_tokens,
+                    system_prompt=system_prompt,
                 )
-                return response
+                if not result["ok"]:
+                    logger.error(f"LLM generation failed: {result['content']}")
+                return result["content"]
             except Exception as e:
-                logger.error(f"Error generating summary with {self.selected_model_provider.value}/{self.selected_model_api_id}: {e}", exc_info=True)
+                logger.error(
+                    f"Error generating summary with {self.selected_model_provider}/{self.selected_model_api_id}: {e}",
+                    exc_info=True,
+                )
                 return f"Error: Could not generate summary. Details: {e}"
 
     async def generate_report_html(
         self,
         query_or_url: str,
-        papers_to_summarize: List[Paper],
+        papers_to_summarize: list[Paper],
         audience_type: str = "technical",
         summary_size: str = "M",
-        is_url_input: bool = False, # Retained for logic, but might be derivable from exa_client interaction if needed
+        is_url_input: bool = False,
+        main_input_paper: Optional[Paper] = None,
+        selected_similar_papers_data: Optional[list[Paper]] = None,
+        papers_for_topic_report: Optional[list[Paper]] = None,
     ) -> str:
+        _selected_similar_papers = (
+            selected_similar_papers_data if selected_similar_papers_data is not None else []
+        )
+        _papers_for_topic_report = (
+            papers_for_topic_report if papers_for_topic_report is not None else []
+        )
+
+        if is_url_input:
+            if main_input_paper is None and not _selected_similar_papers and papers_to_summarize:
+                _selected_similar_papers = papers_to_summarize
+        elif papers_for_topic_report is None and papers_to_summarize:
+            _papers_for_topic_report = papers_to_summarize
+
         return await self._generate_report_html_async(
-            query_or_url, papers_to_summarize, audience_type, summary_size, is_url_input
+            original_query=query_or_url,
+            audience_type=audience_type,
+            summary_size=summary_size,
+            is_url_input=is_url_input,
+            main_input_paper=main_input_paper,
+            similar_papers_data=_selected_similar_papers,
+            papers_for_topic_report=_papers_for_topic_report,
         )
 
     async def _generate_report_html_async(
         self,
-        query_or_url: str,
-        papers_to_summarize: List[Paper],
+        original_query: str,
         audience_type: str,
         summary_size: str,
         is_url_input: bool,
+        main_input_paper: Optional[Paper] = None,
+        similar_papers_data: Optional[list[Paper]] = None,
+        papers_for_topic_report: Optional[list[Paper]] = None,
     ) -> str:
-        logger.info(f"ReportGenerator: Starting async report generation. Input: '{query_or_url}', Is URL: {is_url_input}, Audience: {audience_type}, Size: {summary_size}, Papers: {len(papers_to_summarize)}")
+        similar_papers_data = similar_papers_data if similar_papers_data is not None else []
+        papers_for_topic_report = (
+            papers_for_topic_report if papers_for_topic_report is not None else []
+        )
+        logger.info(
+            f"ReportGenerator: Starting async report generation. Input: '{html.escape(original_query)}', Is URL: {is_url_input}, "
+            f"Audience: {audience_type}, Size Key: {summary_size}, "
+            f"Main Paper: {'Provided' if main_input_paper else 'None'}, "
+            f"Similar Selected: {len(similar_papers_data)}, Topic Papers: {len(papers_for_topic_report)}"
+        )
         report_parts = []
 
-        active_prompts = self.AUDIENCE_PROMPT_MAP.get(audience_type, self.AUDIENCE_PROMPT_MAP["technical"])
-        active_topic_prompt_template = active_prompts["topic"]
+        active_prompts = self.AUDIENCE_PROMPT_MAP.get(
+            audience_type, self.AUDIENCE_PROMPT_MAP["technical"]
+        )
         active_paper_prompt_template = active_prompts["paper"]
 
         user_summary_size_key = summary_size.upper()
         if user_summary_size_key not in self.QUALITATIVE_LENGTH_GUIDANCE:
-            logger.warning(f"Invalid summary_size '{summary_size}', defaulting to 'M'.")
+            logger.warning(
+                f"Invalid summary_size_key '{user_summary_size_key}', defaulting to 'M'."
+            )
             user_summary_size_key = "M"
 
-        topic_size_map = {'S': 'M', 'M': 'L', 'L': 'XL', 'XL': 'XL'}
-        actual_topic_summary_size_key = topic_size_map.get(user_summary_size_key, 'L')
-        
+        topic_size_map = {"S": "M", "M": "L", "L": "XL", "XL": "XL"}
+        actual_topic_summary_size_key = topic_size_map.get(user_summary_size_key, "L")
+
         topic_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_summary_size_key]
         paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE[user_summary_size_key]
 
-        paper_max_content_snippet_chars = self._get_max_content_snippet_chars(audience_type, user_summary_size_key, is_topic_summary=False)
+        paper_max_content_snippet_chars = self._get_max_content_snippet_chars(
+            audience_type, user_summary_size_key, is_topic_summary=False
+        )
+        topic_max_content_snippet_chars = self._get_max_content_snippet_chars(
+            audience_type, actual_topic_summary_size_key, is_topic_summary=True
+        )
 
         paper_summary_semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_PAPER_SUMMARIES)
 
         report_parts.append("<h1>Research Report</h1>")
-        # report_parts.append(f"<p><em>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>") # Removed as per user request
-        # report_parts.append(f"<p><em>Audience: {audience_type.title()}, Summary Size: {user_summary_size_key.upper()}</em></p>") # Removed as per user request
-        # report_parts.append(f"<p><em>Summary Size: {user_summary_size_key.upper()}</em></p>") # Also removing this line
 
         if is_url_input:
-            report_parts.append(f"<h2>Summaries of Research Papers Similar to: <a href='{query_or_url}' target='_blank'>{query_or_url}</a></h2>")
-            # For URL input, we directly summarize similar papers. No topic/main paper summary.
-            report_section_title = "Individual Summaries of Similar Papers"
-            logger.info(f"ReportGenerator: URL input. Query/URL: '{query_or_url}'. Summarizing {len(papers_to_summarize)} similar papers.")
-        else:
-            # Topic/Query Input Workflow
-            report_parts.append(f"<h2>Topic Overview: {query_or_url}</h2>")
-            topic_max_tokens = self._get_output_token_target(audience_type, actual_topic_summary_size_key, is_topic_summary=True)
-            topic_prompt = active_topic_prompt_template.format(
-                query_text=query_or_url,
-                target_audience=audience_type,
-                overall_instructions=topic_length_guidance
+            escaped_original_query = html.escape(original_query)
+            report_parts.append(
+                f"<h2>Analysis based on Input URL: <a href='{escaped_original_query}' target='_blank' rel='noopener noreferrer'>{escaped_original_query}</a></h2>"
             )
-            logger.info(f"ReportGenerator: Generating TOPIC summary for query '{query_or_url}'. Max Tokens: {topic_max_tokens}.")
-            topic_summary = await self._generate_single_summary(topic_prompt, topic_max_tokens)
-            report_parts.append(self._text_to_html_paragraphs(topic_summary))
-            report_parts.append("<hr>")
-            report_section_title = "Supporting Research Papers"
-            logger.info(f"ReportGenerator: Topic/Query input. Query: '{query_or_url}'. Summarizing {len(papers_to_summarize)} supporting papers.")
 
-        if papers_to_summarize:
-            report_parts.append(f"<h2>{report_section_title}</h2>")
-            paper_max_tokens_individual = self._get_output_token_target(audience_type, user_summary_size_key, is_topic_summary=False)
-            summary_tasks = []
-            for paper in papers_to_summarize:
-                full_text_snippet = paper.content if paper.content else (paper.abstract if paper.abstract else "Content not available.")
-                
-                if len(full_text_snippet) > paper_max_content_snippet_chars:
-                    full_text_snippet = full_text_snippet[:paper_max_content_snippet_chars] + "... (content truncated)"
-                    logger.info(f"Truncated content for paper '{paper.title}' to {paper_max_content_snippet_chars} chars.")
-                
-                paper_authors_str = ", ".join(paper.authors) if paper.authors else "N/A"
-                paper_pub_date_str = self._format_date(paper.published_date) if paper.published_date else "Unknown"
-
-                paper_prompt = active_paper_prompt_template.format(
-                    paper_title=paper.title or "N/A",
-                    paper_authors=paper_authors_str,
-                    paper_publication_date=paper_pub_date_str,
-                    paper_content_snippet=full_text_snippet,
-                    target_audience=audience_type,
-                    overall_instructions=paper_length_guidance
+            if not main_input_paper and not similar_papers_data:
+                report_parts.append(
+                    "<p>No specific papers were selected or provided for summary based on the input URL.</p>"
                 )
-                summary_tasks.append(self._generate_single_summary(
-                    paper_prompt, paper_max_tokens_individual, paper_summary_semaphore
-                ))
-            
-            paper_summaries_results = await asyncio.gather(*summary_tasks)
-
-            for i, paper in enumerate(papers_to_summarize):
-                title = paper.title or 'Untitled Paper'
-                link_content = f"<a href='{paper.url}' target='_blank'>{title}</a>" if paper.url else title
-                report_parts.append(f"<h3>{i+1}. {link_content}</h3>")
-                
-                if paper.authors:
-                    report_parts.append(f"<p><em>Authors: {', '.join(paper.authors)}</em></p>")
-                if paper.published_date:
-                     report_parts.append(f"<p><em>Published: {self._format_date(paper.published_date)}</em></p>")
-                
-                summary_text = paper_summaries_results[i]
-                report_parts.append(f"<h4>Key Insights and Analysis:</h4>")
-                report_parts.append(self._text_to_html_paragraphs(summary_text))
-                report_parts.append("<br>")
-        else:
-            if is_url_input:
-                report_parts.append("<p>No similar papers were found or provided for summarization.</p>")
             else:
-                report_parts.append("<p>No supporting papers were found or provided for summarization.</p>")
+                if main_input_paper:
+                    report_parts.append("<h3>Summary of Input Paper</h3>")
+                    authors_display_main = "N/A"
+                    if main_input_paper.authors:
+                        if len(main_input_paper.authors) > config.MAX_AUTHORS_DISPLAY:
+                            authors_display_main = f"{html.escape(', '.join(main_input_paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
+                        else:
+                            authors_display_main = html.escape(", ".join(main_input_paper.authors))
 
-        return "\n".join(report_parts)
+                    main_paper_snippet = (main_input_paper.text_content or "")[
+                        :paper_max_content_snippet_chars
+                    ]
+                    main_paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
+                        user_summary_size_key, "a detailed summary"
+                    )
+                    main_paper_prompt = active_paper_prompt_template.format(
+                        paper_title=html.escape(main_input_paper.title or "N/A"),
+                        paper_authors=authors_display_main,  # Already escaped
+                        paper_publication_date=self._get_formatted_date_str(
+                            main_input_paper.published_date
+                        ),
+                        paper_content_snippet=main_paper_snippet,  # Snippet itself is not directly in HTML here, but part of prompt
+                        overall_instructions=main_paper_length_guidance,
+                        target_audience=audience_type,
+                    )
+                    output_token_target_main = self._get_output_token_target(
+                        audience_type, user_summary_size_key, is_topic_summary=False
+                    )
+                    summary = await self._generate_single_summary(
+                        main_paper_prompt, output_token_target_main
+                    )
+                    report_parts.append(
+                        f"<div><h4><a href='{html.escape(str(main_input_paper.url) if main_input_paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(main_input_paper.title or 'N/A')}</a></h4>"
+                    )
+                    report_parts.append(
+                        f"<p><em>Authors: {authors_display_main}</em></p>"
+                    )  # authors_display_main is already escaped
+                    report_parts.append(
+                        f"<p><em>Published: {html.escape(self._get_formatted_date_str(main_input_paper.published_date))}</em></p>"
+                    )
+                    report_parts.append(self._text_to_html_paragraphs(summary))
+                    report_parts.append("</div>")
+
+                if similar_papers_data:
+                    report_parts.append("<h3>Summaries of Similar Papers</h3>")
+                    summary_tasks = []
+                    for paper in similar_papers_data:
+                        authors_display_similar = "N/A"
+                        if paper.authors:
+                            if len(paper.authors) > config.MAX_AUTHORS_DISPLAY:
+                                authors_display_similar = f"{html.escape(', '.join(paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
+                            else:
+                                authors_display_similar = html.escape(", ".join(paper.authors))
+
+                        similar_paper_snippet = (paper.text_content or "")[
+                            :paper_max_content_snippet_chars
+                        ]
+                        similar_paper_prompt = active_paper_prompt_template.format(
+                            paper_title=html.escape(paper.title or "N/A"),
+                            paper_authors=authors_display_similar,  # Already escaped
+                            paper_publication_date=self._get_formatted_date_str(
+                                paper.published_date
+                            ),
+                            paper_content_snippet=similar_paper_snippet,
+                            overall_instructions=paper_length_guidance,
+                            target_audience=audience_type,
+                        )
+                        output_token_target_paper = self._get_output_token_target(
+                            audience_type, user_summary_size_key, is_topic_summary=False
+                        )
+                        summary_tasks.append(
+                            self._generate_single_summary(
+                                similar_paper_prompt,
+                                output_token_target_paper,
+                                semaphore=paper_summary_semaphore,
+                            )
+                        )
+
+                    paper_summaries_results = await asyncio.gather(
+                        *summary_tasks, return_exceptions=True
+                    )
+                    for _i, (paper, result) in enumerate(
+                        zip(similar_papers_data, paper_summaries_results)
+                    ):
+                        authors_display_similar_final = "N/A"
+                        if paper.authors:
+                            if len(paper.authors) > config.MAX_AUTHORS_DISPLAY:
+                                authors_display_similar_final = f"{html.escape(', '.join(paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
+                            else:
+                                authors_display_similar_final = html.escape(
+                                    ", ".join(paper.authors)
+                                )
+
+                        report_parts.append(
+                            f"<div><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'N/A')}</a></h4>"
+                        )
+                        report_parts.append(
+                            f"<p><em>Authors: {authors_display_similar_final}</em></p>"
+                        )  # authors_display_similar_final is already escaped
+                        report_parts.append(
+                            f"<p><em>Published: {html.escape(self._get_formatted_date_str(paper.published_date))}</em></p>"
+                        )
+                        # Handle potential exception from asyncio.gather
+                        if isinstance(result, Exception):
+                            logger.error(
+                                f"Error generating summary for similar paper {paper.id or 'N/A'}: {result}",
+                                exc_info=result,
+                            )
+                            report_parts.append(
+                                "<p><em>Summary could not be generated for this paper due to an error.</em></p>"
+                            )
+                        elif isinstance(result, str):
+                            report_parts.append(self._text_to_html_paragraphs(result))
+                        else:
+                            # Should not happen if _generate_single_summary returns str or raises
+                            logger.warning(
+                                f"Unexpected result type for similar paper {paper.id or 'N/A'} summary: {type(result)}"
+                            )
+                            report_parts.append(
+                                "<p><em>An unexpected error occurred while formatting the summary.</em></p>"
+                            )
+                        report_parts.append("</div>")
+
+        # Topic-based report generation
+        if papers_for_topic_report:
+            report_parts.append(f"<h3>Topic Analysis: {html.escape(original_query)}</h3>")
+
+            # Consolidate content from all papers for topic analysis
+            consolidated_content_for_topic = ""
+            for paper in papers_for_topic_report:
+                title_str = html.escape(paper.title or "N/A")
+                authors_list = paper.authors if paper.authors else []
+                authors_str = ""
+                if authors_list:
+                    # Use existing MAX_AUTHORS_DISPLAY
+                    if len(authors_list) > config.MAX_AUTHORS_DISPLAY:
+                        authors_str = f"{html.escape(', '.join(authors_list[: config.MAX_AUTHORS_DISPLAY]))}, et al."
+                    else:
+                        authors_str = html.escape(", ".join(authors_list))
+                else:
+                    authors_str = "N/A"
+
+                date_str = html.escape(self._get_formatted_date_str(paper.published_date))
+                snippet = (paper.text_content or "")[:topic_max_content_snippet_chars]
+                consolidated_content_for_topic += (
+                    f"Title: {title_str}\n"
+                    f"Authors: {authors_str}\n"
+                    f"Publication Date: {date_str}\n"
+                    f"Content Snippet: {html.escape(snippet)}\n\n---\n\n"
+                )
+
+            if not consolidated_content_for_topic.strip():
+                report_parts.append(
+                    "<p>No papers were found or selected for this topic to generate a report.</p>"
+                )
+            else:
+                system_prompt_topic, user_prompt_topic = get_topic_analysis_prompts(
+                    topic=original_query,
+                    num_papers_to_synthesize=len(papers_for_topic_report)
+                    if papers_for_topic_report
+                    else 1,
+                    target_audience=audience_type,
+                    context_snippets=consolidated_content_for_topic,  # Use the combined_snippets here
+                    overall_instructions=topic_length_guidance,
+                )
+                output_token_target_topic = self._get_output_token_target(
+                    audience_type, actual_topic_summary_size_key, is_topic_summary=True
+                )
+                topic_summary = await self._generate_single_summary(
+                    prompt=user_prompt_topic,
+                    max_tokens=output_token_target_topic,
+                    system_prompt=system_prompt_topic,
+                )
+                report_parts.append("<h3>Overall Topic Summary</h3>")
+                report_parts.append(
+                    f"<div class='topic-summary'><p>{self._text_to_html_paragraphs(topic_summary)}</p></div>"
+                )
+
+                report_parts.append("<h3>Individual Paper Summaries</h3>")
+                summary_tasks = []
+                for paper in papers_for_topic_report:
+                    authors_display_topic = "N/A"
+                    if paper.authors:
+                        if len(paper.authors) > config.MAX_AUTHORS_DISPLAY:
+                            authors_display_topic = f"{html.escape(', '.join(paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
+                        else:
+                            authors_display_topic = html.escape(", ".join(paper.authors))
+
+                    paper_snippet_topic = (paper.text_content or "")[
+                        :paper_max_content_snippet_chars
+                    ]
+                    paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
+                        user_summary_size_key, "a detailed summary"
+                    )
+                    paper_prompt = active_paper_prompt_template.format(
+                        paper_title=html.escape(paper.title or "N/A"),
+                        paper_authors=authors_display_topic,  # Already escaped
+                        paper_publication_date=self._get_formatted_date_str(paper.published_date),
+                        paper_content_snippet=paper_snippet_topic,
+                        overall_instructions=paper_length_guidance,
+                        target_audience=audience_type,
+                    )
+                    output_token_target_paper = self._get_output_token_target(
+                        audience_type, user_summary_size_key, is_topic_summary=False
+                    )
+                    summary_tasks.append(
+                        self._generate_single_summary(
+                            paper_prompt,
+                            output_token_target_paper,
+                            semaphore=paper_summary_semaphore,
+                        )
+                    )
+
+                paper_summaries_results = await asyncio.gather(
+                    *summary_tasks, return_exceptions=True
+                )
+                for i, result in enumerate(paper_summaries_results):
+                    paper = papers_for_topic_report[i]
+                    report_parts.append(
+                        f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
+                    )
+                    if isinstance(result, Exception):
+                        logger.error(
+                            f"Error summarizing paper {paper.id}: {result}", exc_info=result
+                        )
+                        report_parts.append(
+                            "<p><em>Error generating summary for this paper.</em></p>"
+                        )
+                    # Handle potential exception from asyncio.gather
+                    elif isinstance(result, str):
+                        report_parts.append(f"<p>{self._text_to_html_paragraphs(result)}</p>")
+                    else:
+                        # Should not happen if _generate_single_summary returns str or raises
+                        logger.warning(
+                            f"Unexpected result type for topic paper {paper.id or 'N/A'} summary: {type(result)}"
+                        )
+                        report_parts.append(
+                            "<p><em>An unexpected error occurred while formatting the summary for this paper.</em></p>"
+                        )
+                    report_parts.append("</div>")
+
+        report_body = "".join(report_parts)
+
+        # Action buttons for user convenience
+        buttons_html = (
+            "<div class='report-actions' style='margin-bottom:1em;'>"
+            "<button onclick=\"navigator.clipboard.writeText(document.getElementById('lux-report').innerText);alert('Copied to clipboard!');\">Copy&nbsp;Text</button>"
+            "&nbsp;"
+            "<button onclick=\"(function(){const el=document.getElementById('lux-report');const blob=new Blob([el.outerHTML],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lux_report.html';a.click();URL.revokeObjectURL(a.href);})();\">Download&nbsp;HTML</button>"
+            "</div>"
+        )
+
+        # Wrap report content for easy DOM selection
+        wrapped_report = f"<div id='lux-report'>{report_body}</div>"
+
+        return buttons_html + wrapped_report
+
+    async def generate_direct_query_answer(
+        self,
+        query: str,
+        audience_type: str = "technical",
+        num_supporting_papers: int = 3,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Answer a direct research question without collecting papers first.
+
+        This lightweight path is useful when the user asks an explicit question
+        rather than requesting a topic landscape or paper summaries.
+        """
+        # Build prompts
+        system_prompt, user_prompt = get_query_resolution_prompts(
+            query=query,
+            num_supporting_papers=num_supporting_papers,
+            target_audience=audience_type,
+        )
+
+        # Default max_tokens if not specified: leave ~1k tokens headroom vs model limit
+        if max_tokens is None:
+            max_tokens = min(2048, self.selected_model_input_token_limit // 2)
+
+        result = await self.llm_service.generate_completion_safe(
+            provider_name=self.selected_model_provider,
+            model_name=self.selected_model_api_id,
+            prompt=user_prompt,
+            max_tokens=max_tokens,
+            system_prompt=system_prompt,
+        )
+
+        if not result["ok"]:
+            logger.error("Direct query generation failed: %s", result["content"])
+            answer_html = f"<p><strong>Error:</strong> {html.escape(result['content'])}</p>"
+        else:
+            # Simple HTML wrapping; caller can embed further.
+            escaped = html.escape(result["content"])
+            answer_html = f"<div class='direct-query-answer'><pre>{escaped}</pre></div>"
+
+        return answer_html
 
     def _text_to_html_paragraphs(self, text: str) -> str:
         if not text or not text.strip():
             return "<p><em>Summary could not be generated or is empty.</em></p>"
-        
-        # Replace single newlines that are not preceded/followed by another newline with a space (to join sentences)
-        # Then split by double newlines (or more) to identify paragraphs
-        processed_text = text.strip()
-        # Heuristic: if a line is short and doesn't end with punctuation, it might be part of a list item or broken sentence.
-        # This is tricky. For now, let's assume LLM provides reasonably paragraphed text or text where \n is a paragraph break.
-        
-        paragraphs = [p.strip() for p in processed_text.split('\n') if p.strip()] # Simpler split by any newline
-        
-        # Filter out any "empty" paragraphs again after stripping
+
+        escaped_text = html.escape(text)  # <--- Escape the full text first
+        paragraphs = [p.strip() for p in escaped_text.split("\n") if p.strip()]
         html_paragraphs = [f"<p>{p}</p>" for p in paragraphs if p]
-        if not html_paragraphs: # If all paragraphs were empty after stripping
-             return "<p><em>Summary content appears to be empty after formatting.</em></p>"
+        if not html_paragraphs:
+            return "<p><em>Summary content appears to be empty after formatting.</em></p>"
         return "\n".join(html_paragraphs)
-    
+
     def _format_date(self, date_str: Optional[Union[str, datetime]]) -> Optional[str]:
         if not date_str:
             return None
         if isinstance(date_str, datetime):
             return date_str.strftime("%B %d, %Y")
         try:
-            # Try parsing ISO format first (common from APIs)
-            if 'T' in date_str:
-                dt_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-            # Try parsing YYYY-MM-DD
-            elif len(date_str) == 10 and date_str.count('-') == 2:
-                dt_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            # Try parsing Month Day, Year (if it's already in that format)
-            else:
+            # Using '%Y-%m-%d' for output to match original apparent intent.
+            return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
+        except ValueError:
+            try:
+                dt_obj = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                return dt_obj.strftime("%B %d, %Y")
+            except ValueError:
                 try:
                     dt_obj = datetime.strptime(date_str, "%B %d, %Y")
-                except ValueError: # Fallback for other unhandled string formats
+                    return dt_obj.strftime("%B %d, %Y")
+                except ValueError:
                     logger.warning(f"Unrecognized date string format: {date_str}. Returning as is.")
                     return date_str
-            return dt_obj.strftime("%B %d, %Y")
-        except ValueError:
-            logger.warning(f"Could not parse date string: {date_str}. Returning as is.")
-            return date_str

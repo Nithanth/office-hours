@@ -1,9 +1,17 @@
-from exa_py import Exa
-from typing import List, Dict, Any, Optional
-import sys
+import logging
 import os
 import re
-import logging
+import sys
+from datetime import datetime
+from typing import Any, Optional
+
+from exa_py import Exa
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -11,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Attempt relative import for normal package use (e.g., when app.py imports this)
 try:
     from ..config import config
-    from ..models.paper import Paper # Import Paper model
+    from ..models.paper import Paper  # Import Paper model
 except ImportError:
     # Fallback for direct script execution (e.g., python -m services.exa_client)
     # This adds the project root (lux_scholar) to sys.path
@@ -20,7 +28,39 @@ except ImportError:
         sys.path.append(PROJECT_ROOT)
     # Now that PROJECT_ROOT is in sys.path, we can do direct imports
     from config import config
-    from models.paper import Paper # Import Paper model
+    from models.paper import Paper  # Import Paper model
+
+
+# --- Custom Exa Client Exceptions ---
+class ExaClientError(Exception):
+    """Base exception for ExaClient errors."""
+
+    pass
+
+
+class ExaAPIError(ExaClientError):
+    """Raised for general Exa API errors."""
+
+    pass
+
+
+class ExaRateLimitError(ExaAPIError):
+    """Raised for Exa API rate limit errors."""
+
+    pass
+
+
+class ExaAuthenticationError(ExaClientError):
+    """Raised for Exa API authentication errors."""
+
+    pass
+
+
+class ExaInvalidRequestError(ExaClientError):
+    """Raised for invalid requests to the Exa API."""
+
+    pass
+
 
 class ExaClient:
     def __init__(self, api_key: str):
@@ -28,191 +68,599 @@ class ExaClient:
             raise ValueError("Exa API key is required.")
         self.client = Exa(api_key=api_key)
 
+    # Public cap on number of papers returned per search to keep UI manageable
+    MAX_RETURNED_PAPERS: int = 8
+
+    # --- Helper functions -------------------------------------------------
+
+    @staticmethod
+    def _extract_arxiv_id(url_or_text: str | None) -> Optional[str]:
+        """Extracts the bare arXiv identifier (e.g. '2006.09661') from a URL or text.
+
+        Handles common variants such as:
+        - https://arxiv.org/abs/2006.09661v1
+        - https://arxiv.org/pdf/2006.09661.pdf
+        - arXiv:2006.09661v2
+        Returns None if no arXiv ID is found.
+        """
+        if not url_or_text:
+            return None
+        txt = str(url_or_text).strip()
+        # Quick path – look for the 4-digit year style IDs first.
+        # Regex roughly matches: YYMM.number[version]
+        # Older formats with categories are ignored for now.
+        match = re.search(r"(?P<id>\d{4}\.\d{4,5})(v\d+)?", txt)
+        if match:
+            return match.group("id")
+        return None
+
+    @staticmethod
+    def _canonical_arxiv_abs_url(arxiv_id: str) -> str:
+        """Returns the canonical arxiv.org/abs/ URL for a given arXiv id."""
+        return f"https://arxiv.org/abs/{arxiv_id}"
+
+    @staticmethod
+    def _is_valid_paper(paper: Paper | None) -> bool:
+        """Return True if the paper has minimally acceptable metadata.
+
+        Currently we require:
+        1. Title present and not the placeholder "No Title Provided".
+        2. Title is at least 8 characters (heuristic to filter out junk like "N/A").
+        3. URL present.
+        4. At least one author or some text content.
+        Additional criteria can be added later (e.g., authors populated).
+        """
+        if paper is None:
+            return False
+        title_clean = (paper.title or "").strip()
+        if not title_clean or title_clean == "No Title Provided":
+            return False
+        if len(title_clean) < 8:
+            return False
+        # Blacklist certain keywords that indicate non-paper pages
+        blacklist = ["recaptcha", "captcha", "not found", "404", "error"]
+        lc_title = title_clean.lower()
+        if any(bad in lc_title for bad in blacklist):
+            return False
+        if not paper.url:
+            return False
+        # Require some substantive metadata: at least one author or sufficient text content
+        return bool(
+            (paper.authors and len(paper.authors) > 0)
+            or (paper.text_content and len(paper.text_content) >= 100)
+        )
+
+    # ---------------------------------------------------------------------
+
+    def _create_paper_from_exa_result(
+        self, result: Any, source_description: str
+    ) -> Optional[Paper]:
+        """Helper function to create a Paper object from an Exa result."""
+        try:
+            # --- DEBUG: Print the raw result object and its attributes ---
+            logger.debug(
+                f"--- Raw Exa Result (ID: {result.id or result.url}) for {source_description} ---"
+            )
+            # try:
+            #     logger.debug(f"All attributes: {dir(result)}")
+            #     if hasattr(result, 'author'): logger.debug(f"Raw author (singular): {result.author}")
+            #     else: logger.debug("Raw author (singular): Not found")
+            #     if hasattr(result, 'text'): logger.debug(f"Raw text (snippet): {result.text[:200]}...")
+            #     else: logger.debug("Raw text: Not found")
+            #     if hasattr(result, 'published_date'): logger.debug(f"Raw published_date: {result.published_date}")
+            #     else: logger.debug("Raw published_date: Not found")
+            # except Exception as e_print:
+            #     logger.warning(f"Error logging result attributes: {e_print}")
+            # logger.debug("--------------------------------------------------")
+            # --- END DEBUG ---
+
+            authors_list = []
+            if hasattr(result, "author") and result.author:
+                raw_author = str(result.author)
+                # Skip if looks like submission metadata instead of authors
+                if not raw_author.lower().startswith("[submitted"):
+                    authors_list = (
+                        [name.strip() for name in raw_author.split(",") if name.strip()]
+                        if "," in raw_author
+                        else [raw_author]
+                    )
+
+            text_content = None
+            if hasattr(result, "text") and result.text:
+                text_content = result.text
+
+            paper_data = {
+                "id": result.id if result.id else result.url,
+                "title": result.title if result.title else "No Title Provided",
+                "url": result.url,
+                "authors": authors_list,
+                "text_content": text_content,
+                "published_date": result.published_date if result.published_date else None,
+                "score": result.score if hasattr(result, "score") else None,
+                "source": source_description,
+            }
+            return Paper(**paper_data)
+        except Exception as pydantic_error:
+            logger.error(
+                f"Error creating Paper object for result {result.id or result.url} from {source_description}: {pydantic_error}"
+            )
+            logger.error(f"Problematic data for Paper creation: {paper_data}")
+            return None
+
+    @retry(
+        stop=stop_after_attempt(config.EXA_MAX_RETRIES),
+        wait=wait_exponential(
+            multiplier=1, min=config.EXA_RETRY_MIN_WAIT, max=config.EXA_RETRY_MAX_WAIT
+        ),
+        retry=retry_if_exception_type((ExaAPIError, ExaRateLimitError)),
+        retry_error_callback=lambda retry_state: [],
+    )
     def search_papers(
         self,
         query: str,
-        num_results: int = 10,
-        type: str = "auto", # 'neural' for semantic search, 'keyword' for traditional, "auto" for best
-        use_autoprompt: bool = True, # Let Exa optimize the query
-        category: str = "research_paper", # Focus on research papers
-        start_published_date: Optional[str] = None, # Filter by start date
-        end_published_date: Optional[str] = None, # Filter by end date
-        include_domains: Optional[List[str]] = None, # Filter by domain
-        exclude_domains: Optional[List[str]] = None, # Exclude domains
-        include_text_list: Optional[List[str]] = None, # Include text list
-        exclude_text_list: Optional[List[str]] = None, # Exclude text list
-    ) -> List[Paper]: # Changed return type to List[Paper] and added new parameters
+        num_results: int = 8,
+        *,
+        start_published_date: str | None = None,
+        end_published_date: str | None = None,
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
+        include_text_list: list[str] | None = None,
+        exclude_text_list: list[str] | None = None,
+        authors: list[str] | None = None,
+        category: str = "research_paper",
+        use_autoprompt: bool = True,
+    ) -> list[Paper]:
         """
         Searches for research papers using the Exa API and returns them as Paper objects.
 
         Args:
             query: The search query string (e.g., a research topic).
-            num_results: The desired number of search results.
-            type: The type of search ('neural' or 'keyword' or 'auto').
-            use_autoprompt: Whether to let Exa optimize the query.
+            num_results: The desired number of search results (will be capped at MAX_RETURNED_PAPERS).
+            start_published_date: Optional start date for filtering results.
+            end_published_date: Optional end date for filtering results.
+            include_domains: Optional list of domains to include in results.
+            exclude_domains: Optional list of domains to exclude from results.
+            include_text_list: Optional list of text to include in results.
+            exclude_text_list: Optional list of text to exclude from results.
+            authors: Optional list of authors to filter results by.
             category: The category of content to search for.
+            use_autoprompt: Whether to let Exa optimize the query.
 
         Returns:
             A list of Paper Pydantic model instances.
         """
-        papers: List[Paper] = []
+        # Enforce upper bound for UI sanity.
+        desired_count = min(num_results, self.MAX_RETURNED_PAPERS)
+
+        # Heuristic: request more than needed to allow for filtering. 3× desired but max 20.
+        request_count = min(desired_count * 3, 20)
+
+        # Prepare date cutoff for local filtering (Exa may ignore it).
+        cutoff_dt: datetime | None = None
+        apply_filters = os.getenv("EXA_NO_FILTERS", "0") != "1"
+        if apply_filters and start_published_date:
+            try:
+                cutoff_dt = datetime.fromisoformat(start_published_date.replace("Z", "+00:00"))
+            except ValueError:
+                # Fallback parse without time info
+                try:
+                    cutoff_dt = datetime.strptime(start_published_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    logger.warning(
+                        "search_papers: could not parse start_published_date '%s'",
+                        start_published_date,
+                    )
+                    cutoff_dt = None
+
+        papers: list[Paper] = []
         try:
+            # Build optional filter kwargs
+            exa_kwargs: dict[str, Any] = {
+                "num_results": request_count,
+                "use_autoprompt": use_autoprompt,
+                "type": "neural",  # Always use Exa's neural ranking for best semantic relevance.
+                "category": category,
+                "text": True,
+            }
+
+            if start_published_date:
+                exa_kwargs["start_published_date"] = start_published_date
+            if end_published_date:
+                exa_kwargs["end_published_date"] = end_published_date
+            if include_domains:
+                exa_kwargs["include_domains"] = include_domains
+            if exclude_domains:
+                exa_kwargs["exclude_domains"] = exclude_domains
+            if include_text_list:
+                exa_kwargs["include_text_list"] = include_text_list
+            if exclude_text_list:
+                exa_kwargs["exclude_text_list"] = exclude_text_list
+
+            # If author filters specified, weave them into the query string
+            query_to_send = query
+            if authors:
+                cleaned_authors: list[str] = [a.strip() for a in authors if a.strip()]
+                if cleaned_authors:
+                    author_fragments = " ".join([f'author:"{a}"' for a in cleaned_authors])
+                    query_to_send = f"{query} {author_fragments}"
+
             # Use search_and_contents to get results and their full text in one call
             search_response = self.client.search_and_contents(
-                query,
-                num_results=num_results,
-                use_autoprompt=use_autoprompt,
-                type=type, # Default is 'neural' in Exa API, here we match previous behavior
-                category=category, # Re-enable category filtering
-                text=True # Request full text content
+                query_to_send,
+                **exa_kwargs,
             )
-            
+
+            # --- DEBUG: Log all raw Exa results before client-side filtering ---
+            if logger.isEnabledFor(logging.DEBUG):
+                try:
+                    logger.debug(
+                        "Raw Exa results (pre-filter): [%s]",
+                        ", ".join(
+                            [
+                                f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
+                                for r in search_response.results
+                            ]
+                        ),
+                    )
+                except Exception:
+                    # Ensure logging issues never break search flow
+                    logger.exception("Failed to log raw Exa results")
+
             # The structure of search_response.results from search_and_contents might be directly usable.
             # Each item in search_response.results should now have a .text field with the full content.
             # It should also hopefully have .author, .id, .title, .url, .published_date.
-            
+
             for result in search_response.results:
-                # --- DEBUG: Print the raw result object and its attributes ---
-                print(f"--- Raw Exa Result (ID: {result.id or result.url}) from search_and_contents ---")
-                try:
-                    print(f"All attributes: {dir(result)}")
-                    if hasattr(result, 'author'): print(f"Raw author (singular): {result.author}")
-                    else: print("Raw author (singular): Not found")
-                    if hasattr(result, 'text'): print(f"Raw text (for abstract, should be full content): {result.text[:200]}...") # Print snippet
-                    else: print("Raw text (for abstract): Not found")
-                    if hasattr(result, 'published_date'): print(f"Raw published_date: {result.published_date}")
-                    else: print("Raw published_date: Not found")
-                except Exception as e_print:
-                    print(f"Error printing result attributes: {e_print}")
-                print("--------------------------------------------------")
-                # --- END DEBUG ---
+                paper = self._create_paper_from_exa_result(result, "Exa (search_and_contents)")
+                if apply_filters:
+                    if paper is None or not self._is_valid_paper(paper):
+                        continue
+                    # Local date cutoff check
+                    if cutoff_dt and paper.published_date:
+                        try:
+                            paper_dt = (
+                                paper.published_date
+                                if isinstance(paper.published_date, datetime)
+                                else datetime.fromisoformat(
+                                    str(paper.published_date).replace("Z", "+00:00")
+                                )
+                            )
+                            if paper_dt < cutoff_dt:
+                                continue
+                        except Exception:
+                            # If date unparseable, drop
+                            continue
+                else:
+                    # Even when not applying filters, skip if Paper creation failed
+                    if paper is None:
+                        continue
+                papers.append(paper)
 
-                authors_list = []
-                if hasattr(result, 'author') and result.author:
-                    authors_list = [name.strip() for name in result.author.split(',') if name.strip()] if ',' in result.author else [result.author]
-                
-                abstract_content = None
-                if hasattr(result, 'text') and result.text:
-                    abstract_content = result.text # This should now be the full text content
-
-                paper_data = {
-                    "id": result.id if result.id else result.url, 
-                    "title": result.title if result.title else "No Title Provided",
-                    "url": result.url,
-                    "authors": authors_list if authors_list else [],
-                    "abstract": abstract_content,
-                    "published_date": result.published_date if result.published_date else None,
-                    "score": result.score if hasattr(result, 'score') else None, # Populate score
-                    "source": "Exa (search_and_contents)" # Updated source
-                }
-                try:
-                    papers.append(Paper(**paper_data))
-                except Exception as pydantic_error: # Catch Pydantic validation errors for individual papers
-                    print(f"Error creating Paper object for result {result.id or result.url}: {pydantic_error}")
-                    print(f"Problematic data: {paper_data}")
-            
+            # Ensure we return the top-k highest-score papers after filtering
+            if len(papers) > desired_count:
+                papers_sorted = sorted(
+                    papers,
+                    key=lambda p: (p.score if p.score is not None else 0.0),
+                    reverse=True,
+                )
+                return papers_sorted[:desired_count]
             return papers
         except Exception as e:
-            print(f"Error during Exa API search or paper model creation: {e}") 
-            return [] # Return empty list on error
+            logger.error(f"Error during Exa API search or paper model creation: {e}", exc_info=True)
+            # Raise wrapped error to trigger tenacity retry; after retries are exhausted,
+            # retry_error_callback will convert this into a safe empty list, preserving
+            # previous non-breaking behaviour.
+            raise ExaAPIError(str(e)) from e
 
     def is_url(self, text: str) -> bool:
         """
-        Check if the given text is a URL.
-        
+        Check if the given text is a URL, with a preference for academic-like URLs.
+
         Args:
             text: The text to check.
-            
+
         Returns:
-            True if the text appears to be a URL, False otherwise.
+            True if the text appears to be a plausible paper URL, False otherwise.
         """
-        # Simple URL detection - checks for common URL patterns
+        # Stricter: requires http/https, and either a known academic domain
+        # or a path with at least one segment for general domains.
         url_pattern = re.compile(
-            r'^(https?:\/\/)?' # http:// or https:// (optional)
-            r'([\da-z\.-]+)\.([a-z\.]{2,6})' # domain
-            r'([\/\w \.-]*)*\/?$', # path (optional)
-            re.IGNORECASE
+            r"^(https?:\/\/)"  # Must have http:// or https://
+            r"("
+            r"([a-zA-Z0-9-]+\.)*(arxiv\.org|biorxiv\.org|medrxiv\.org|doi\.org|acm\.org|ieee\.org|springer\.com|elsevier\.com|wiley\.com|nature\.com|sciencemag\.org|pubmed\.ncbi\.nlm\.nih\.gov|ssrn\.com|semanticscholar\.org|researchgate\.net)"  # Known scholarly domains
+            r"(\/[\S]*)?"  # Optional path for these domains
+            r"|"
+            r"([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,6}"  # General domain
+            r"(\/([\w\.-]+)){1,}\/?"  # Must have at least one path segment for general domains
+            r"([?#]\S*)?"  # Optional query or fragment
+            r")$",
+            re.IGNORECASE,
         )
         return bool(url_pattern.match(text.strip()))
-    
+
+    @retry(
+        stop=stop_after_attempt(config.EXA_MAX_RETRIES),
+        wait=wait_exponential(
+            multiplier=1, min=config.EXA_RETRY_MIN_WAIT, max=config.EXA_RETRY_MAX_WAIT
+        ),
+        retry=retry_if_exception_type((ExaAPIError, ExaRateLimitError)),
+        retry_error_callback=lambda rs: [],
+    )
     def find_similar_papers(
         self,
         paper_url: str,
         num_results: int = 5,
         category: str = "research_paper",
-    ) -> List[Paper]:
+        *,
+        start_published_date: str | None = None,
+    ) -> list[Paper]:
         """
         Find papers similar to the one at the given URL using Exa's find_similar_and_contents endpoint.
-        
+
         Args:
             paper_url: URL of the paper to find similar papers for.
             num_results: Number of similar papers to return.
             category: The category of content to search for.
-            
+
         Returns:
             A list of Paper objects representing similar papers.
         """
-        papers: List[Paper] = []
+        desired_count = min(num_results, self.MAX_RETURNED_PAPERS)
+        request_count = min(desired_count * 3, 20)
+
+        # Note: Similar endpoint doesn't accept date filters, but we apply locally
+        cutoff_dt: datetime | None = None
+        apply_filters = os.getenv("EXA_NO_FILTERS", "0") != "1"
+        if apply_filters and start_published_date:
+            try:
+                cutoff_dt = datetime.fromisoformat(start_published_date.replace("Z", "+00:00"))
+            except ValueError:
+                try:
+                    cutoff_dt = datetime.strptime(start_published_date[:10], "%Y-%m-%d")
+                except ValueError:
+                    logger.warning(
+                        "find_similar_papers: could not parse start_published_date '%s'",
+                        start_published_date,
+                    )
+                    cutoff_dt = None
+
+        papers: list[Paper] = []
         try:
             # Use find_similar_and_contents to get similar papers and their content
             similar_response = self.client.find_similar_and_contents(
-                paper_url,
-                num_results=num_results,
-                category=category,
-                text=True  # Request full text content
+                paper_url, num_results=request_count, category=category, text=True
             )
-            
+
+            # --- DEBUG: Log raw similar results before filtering ---
+            if logger.isEnabledFor(logging.DEBUG):
+                try:
+                    logger.debug(
+                        "Raw Exa similar results (pre-filter): [%s]",
+                        ", ".join(
+                            [
+                                f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
+                                for r in similar_response.results
+                            ]
+                        ),
+                    )
+                except Exception:
+                    logger.exception("Failed to log raw Exa similar results")
+
             # Process the response similar to search_papers
             for result in similar_response.results:
-                authors_list = []
-                if hasattr(result, 'author') and result.author:
-                    authors_list = [name.strip() for name in result.author.split(',') if name.strip()] if ',' in result.author else [result.author]
-                
-                abstract_content = None
-                if hasattr(result, 'text') and result.text:
-                    abstract_content = result.text
-                
-                paper_data = {
-                    "id": result.id if result.id else result.url,
-                    "title": result.title if result.title else "No Title Provided",
-                    "url": result.url,
-                    "authors": authors_list if authors_list else [],
-                    "abstract": abstract_content,
-                    "published_date": result.published_date if result.published_date else None,
-                    "score": result.score if hasattr(result, 'score') else None,
-                    "source": "Exa (similar papers)"
-                }
-                try:
-                    papers.append(Paper(**paper_data))
-                except Exception as pydantic_error:
-                    print(f"Error creating Paper object for similar result {result.id or result.url}: {pydantic_error}")
-                    print(f"Problematic data: {paper_data}")
-            
+                paper = self._create_paper_from_exa_result(result, "Exa (similar papers)")
+                if apply_filters:
+                    if paper is None or not self._is_valid_paper(paper):
+                        continue
+                    if cutoff_dt and paper.published_date:
+                        try:
+                            paper_dt = (
+                                paper.published_date
+                                if isinstance(paper.published_date, datetime)
+                                else datetime.fromisoformat(
+                                    str(paper.published_date).replace("Z", "+00:00")
+                                )
+                            )
+                            if paper_dt < cutoff_dt:
+                                continue
+                        except Exception:
+                            continue
+                else:
+                    if paper is None:
+                        continue
+                papers.append(paper)
+
+            # Keep the k highest-score similar papers
+            if len(papers) > desired_count:
+                papers_sorted = sorted(
+                    papers,
+                    key=lambda p: (p.score if p.score is not None else 0.0),
+                    reverse=True,
+                )
+                return papers_sorted[:desired_count]
             return papers
         except Exception as e:
-            print(f"Error during Exa API similar papers search: {e}")
-            return []  # Return empty list on error
+            logger.error(f"Error during Exa API similar papers search: {e}", exc_info=True)
+            raise ExaAPIError(str(e)) from e
+
+    def get_paper_details_and_similar_from_url(
+        self,
+        paper_url: str,
+        num_similar_results: int = 5,
+        category: str = "research_paper",
+    ) -> dict[str, Any]:
+        """
+        Fetches details for a given paper URL and finds similar papers.
+
+        Args:
+            paper_url: URL of the main paper to fetch and find similars for.
+            num_similar_results: Number of similar papers to return.
+            category: The category of content for similar papers search.
+
+        Returns:
+            A dictionary with 'main_paper' (Paper object or None) and
+            'similar_papers' (List of Paper objects).
+        """
+        main_paper_object: Optional[Paper] = None
+        similar_papers_list: list[Paper] = []
+
+        # 1. Fetch content for the main paper_url
+        try:
+            logger.info(f"Fetching content for main URL: {paper_url}")
+            contents_response = self.client.get_contents([paper_url], text=True)
+            if contents_response.results and len(contents_response.results) > 0:
+                main_paper_result = contents_response.results[0]
+                main_paper_object = self._create_paper_from_exa_result(
+                    main_paper_result, f"Exa (get_contents: {paper_url})"
+                )
+            else:
+                logger.warning(f"No content returned by Exa's get_contents for URL: {paper_url}")
+
+            # Enrich main paper with search metadata if important fields are missing
+            if main_paper_object and (
+                (not main_paper_object.title or main_paper_object.title == "No Title Provided")
+                or not main_paper_object.authors
+                or not main_paper_object.published_date
+            ):
+                # 1) Try canonical arXiv abs URL if applicable
+                arxiv_id = self._extract_arxiv_id(paper_url)
+                if arxiv_id:
+                    canonical_url = self._canonical_arxiv_abs_url(arxiv_id)
+                    if canonical_url != paper_url:
+                        try:
+                            logger.info(
+                                f"Attempting enrichment via canonical arXiv URL: {canonical_url}"
+                            )
+                            canonical_resp = self.client.get_contents([canonical_url], text=True)
+                            if canonical_resp.results:
+                                enriched_res = canonical_resp.results[0]
+                                enriched_paper = self._create_paper_from_exa_result(
+                                    enriched_res, f"Exa (get_contents: {canonical_url})"
+                                )
+                                if enriched_paper:
+                                    if (
+                                        enriched_paper.title
+                                        and enriched_paper.title != "No Title Provided"
+                                    ):
+                                        main_paper_object.title = enriched_paper.title
+                                    if enriched_paper.authors:
+                                        main_paper_object.authors = enriched_paper.authors
+                                    if enriched_paper.published_date:
+                                        main_paper_object.published_date = (
+                                            enriched_paper.published_date
+                                        )
+                        except Exception as e_canonical:
+                            logger.warning(
+                                f"Canonical arXiv enrichment failed: {e_canonical}", exc_info=True
+                            )
+                # 2) Final fallback – keyword search using bare arXiv id (if available) or original URL
+                if arxiv_id is None:  # Only run keyword search for non-arXiv URLs
+                    try:
+                        search_query = paper_url
+                        logger.info(
+                            "Enriching main paper metadata via keyword search (non-arXiv URL): %s",
+                            search_query,
+                        )
+                        enrich_results = self.search_papers(
+                            query=search_query,
+                            num_results=1,
+                            use_autoprompt=False,
+                        )
+                        if enrich_results:
+                            enriched = enrich_results[0]
+                            if enriched.title and enriched.title != "No Title Provided":
+                                main_paper_object.title = enriched.title
+                            if enriched.authors:
+                                main_paper_object.authors = enriched.authors
+                            if enriched.published_date:
+                                main_paper_object.published_date = enriched.published_date
+                            if enriched.text_content:
+                                main_paper_object.text_content = enriched.text_content
+                            if enriched.score is not None:
+                                main_paper_object.score = enriched.score
+                    except Exception as e_enrich:
+                        logger.warning(
+                            "Could not enrich main paper metadata via keyword search: %s", e_enrich
+                        )
+        except Exception as e:
+            logger.error(
+                f"Error fetching content for main URL {paper_url} with Exa: {e}", exc_info=True
+            )
+            # main_paper_object remains None
+
+        # 2. Find similar papers to the paper_url
+        try:
+            logger.info(f"Finding similar papers for URL: {paper_url}")
+            similar_response = self.client.find_similar_and_contents(
+                paper_url, num_results=num_similar_results, category=category, text=True
+            )
+            for result in similar_response.results:
+                paper = self._create_paper_from_exa_result(result, f"Exa (similar to: {paper_url})")
+                if self._is_valid_paper(paper):
+                    similar_papers_list.append(paper)
+        except Exception as e:
+            logger.error(
+                f"Error finding similar papers for URL {paper_url} with Exa: {e}", exc_info=True
+            )
+            # similar_papers_list remains empty or partially filled
+
+        return {"main_paper": main_paper_object, "similar_papers": similar_papers_list}
+
 
 # Example Usage (for direct testing of this module):
 if __name__ == "__main__":
+    # Configure basic logging for script execution
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
     if not config.EXA_API_KEY:
-        print("EXA_API_KEY not found in environment. Please set it in your .env file.")
+        logger.error("EXA_API_KEY not found in environment. Please set it in your .env file.")
     else:
-        print(f"Using EXA_API_KEY: {config.EXA_API_KEY[:5]}...")
-        exa_search_client = ExaClient(api_key=config.EXA_API_KEY)
-        
-        test_query = "AI applications in renewable energy forecasting"
-        print(f"\nSearching for: '{test_query}'")
-        found_papers = exa_search_client.search_papers(test_query, num_results=3)
-        
-        if found_papers:
-            print(f"\nFound {len(found_papers)} papers (as Paper objects):")
-            for i, paper_obj in enumerate(found_papers):
-                print(f"  {i+1}. Title: {paper_obj.title}")
-                print(f"     URL: {paper_obj.url}")
-                print(f"     ID: {paper_obj.id}")
-                print(f"     Source: {paper_obj.source}")
-                # print(f"     Abstract: {paper_obj.abstract[:100]}..." if paper_obj.abstract else "N/A")
-                print("---")
+        logger.info(f"Using EXA_API_KEY: {config.EXA_API_KEY[:5]}...")
+        client = ExaClient(api_key=config.EXA_API_KEY)
+
+        # Test search_papers
+        test_query = "applications of AI in drug discovery"
+        logger.info(f"\n--- Searching for: '{test_query}' ---")
+        search_results = client.search_papers(test_query, num_results=2)
+        if search_results:
+            for paper in search_results:
+                logger.info(f"  Title: {paper.title}")
+                logger.info(f"  URL: {paper.url}")
+                logger.info(f"  Authors: {paper.authors}")
+                logger.info(f"  Published: {paper.published_date}")
+                logger.info(
+                    f"  Abstract snippet: {paper.abstract[:200] if paper.abstract else 'N/A'}..."
+                )
+                logger.info("  ----")
         else:
-            print("No papers found or an error occurred.")
+            logger.info("No search results found.")
+
+        # Test find_similar_papers (using a known URL, replace if needed)
+        # Ensure the URL is one that is likely to have similar papers and content
+        # For example, a well-known arXiv paper URL
+        # test_url_for_similar = "https://arxiv.org/abs/1706.03762" # Attention is All You Need
+        # Using a more recent example that might be in Exa's index with content
+        test_url_for_similar = "https://arxiv.org/abs/2307.09288"  # Llama 2 paper, adjust if needed
+        logger.info(f"\n--- Finding similar papers to: '{test_url_for_similar}' ---")
+        similar_papers_results = client.find_similar_papers(test_url_for_similar, num_results=2)
+        if similar_papers_results:
+            for paper in similar_papers_results:
+                logger.info(f"  Title: {paper.title}")
+                logger.info(f"  URL: {paper.url}")
+                logger.info(f"  Authors: {paper.authors}")
+                logger.info(f"  Published: {paper.published_date}")
+                logger.info(
+                    f"  Content snippet: {paper.abstract[:200] if paper.abstract else 'N/A'}..."
+                )  # Assuming abstract now holds full content
+                logger.info("  ----")
+        else:
+            logger.info("No similar papers found or error in fetching.")
+
+        # Test is_url
+        test_url = "https://example.com/path/to/page"
+        test_query_text = "this is a normal query"
+        logger.info("\n--- URL Check ---")
+        logger.info(f"Is '{test_url}' a URL? {client.is_url(test_url)}")
+        logger.info(f"Is '{test_query_text}' a URL? {client.is_url(test_query_text)}")
