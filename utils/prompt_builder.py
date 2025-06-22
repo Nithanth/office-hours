@@ -9,9 +9,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from models.paper import Paper
+from utils.prompt_templates import (
+    AUDIENCE_PROMPT_MAP,
+    RESEARCH_ASSISTANT_PROMPT,
+)
+
 __all__ = [
     "Block",
     "PromptBuilder",
+    "get_query_resolution_prompts",
 ]
 
 
@@ -58,3 +65,53 @@ class PromptBuilder:
         for blk in self.blocks[1:]:
             rendered.append(blk.sep + blk.render())
         return "".join(rendered).strip()
+
+
+def get_query_resolution_prompts(
+    user_question: str,
+    supporting_papers: list[Paper],
+    audience_type: str,
+    max_content_chars: int,
+) -> tuple[str, str]:
+    """Builds the system and user prompts for the direct query resolution feature."""
+
+    # Prepare the supporting evidence string
+    evidence_str = ""
+    if supporting_papers:
+        evidence_items = []
+        for paper in supporting_papers:
+            # Ensure content is not None before slicing
+            content_snippet = (
+                (paper.text_content[:max_content_chars] + "...")
+                if paper.text_content
+                else "Content not available."
+            )
+            evidence_items.append(
+                f"[Source ID: {paper.id}]\nTitle: {paper.title}\nContent: {content_snippet}"
+            )
+        evidence_str = "\n\n".join(evidence_items)
+    else:
+        evidence_str = "No supporting papers provided."
+
+    # Use the new research assistant prompt
+    system_prompt = RESEARCH_ASSISTANT_PROMPT["system"]
+    user_prompt = RESEARCH_ASSISTANT_PROMPT["user"].format(
+        user_question=user_question, supporting_evidence=evidence_str
+    )
+
+    # Append audience-specific instructions to the system prompt
+    audience_instructions = AUDIENCE_PROMPT_MAP.get(audience_type, {}).get("system_suffix", "")
+    if audience_instructions:
+        system_prompt = f"{system_prompt}\n\n{audience_instructions}"
+
+    return system_prompt, user_prompt
+
+
+def get_paper_deep_dive_prompts(
+    paper: Paper, audience_type: str, max_content_chars: int
+) -> tuple[str, str]:
+    """Placeholder for future deep-dive prompt builder.
+
+    Currently unused. Raises NotImplementedError to catch accidental calls.
+    """
+    raise NotImplementedError("get_paper_deep_dive_prompts is not implemented yet.")

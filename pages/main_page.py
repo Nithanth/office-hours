@@ -359,6 +359,38 @@ def report_loading_indicator_component() -> Div:
     )
 
 
+def render_report(
+    title: str, main_summary: str, paper_summaries: list[str], papers: list[Paper]
+) -> str:
+    """Builds the final HTML for the report."""
+    paper_list_html = ""
+    # Ensure we only iterate as many times as we have summaries or papers
+    num_items = min(len(paper_summaries), len(papers))
+
+    for i in range(num_items):
+        paper = papers[i]
+        summary = paper_summaries[i]
+        paper_list_html += f"""\
+        <div class="paper-summary-item mt-4 pt-4 border-t border-gray-700">
+            <h4 class="text-lg font-semibold text-blue-300">{paper.title}</h4>
+            <p class="text-gray-400 text-sm">Source: <a href="{paper.url}" target="_blank" class="hover:underline">{paper.url}</a></p>
+            <p class="mt-2">{summary}</p>
+        </div>"""
+
+    return f"""\
+    <div id="report-content" class="mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50">
+        <h2 class="text-2xl font-bold mb-4 text-gray-100">{title}</h2>
+        <div class="main-summary mb-6">
+            <h3 class="text-xl font-semibold text-gray-200 mb-2">Overall Analysis</h3>
+            <p>{main_summary}</p>
+        </div>
+        <div class="paper-summaries">
+            <h3 class="text-xl font-semibold text-gray-200 mb-2">Key Paper Summaries</h3>
+            {paper_list_html}
+        </div>
+    </div>"""
+
+
 def home_page(page_data: SharedPageData) -> Div:
     """Main page layout with search form and results area."""
     indicator_css = """

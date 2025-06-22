@@ -1,5 +1,7 @@
 from typing import Any, Optional
 
+from config import config
+
 # Use built-in types for List and Tuple as per Ruff UP006/UP035
 
 # --- Default System Prompts ---
@@ -158,6 +160,56 @@ def get_query_resolution_prompts(
     )
     user_prompt = "\n".join(user_prompt_parts)
     return system_prompt, user_prompt
+
+
+# Prompt for answering a direct user query, optionally with supporting context
+# from a few papers.
+DIRECT_QUERY_USER_PROMPT = """
+User Question: {user_question}
+
+Supporting Evidence:
+{supporting_evidence}
+
+Please provide a direct answer to the user's question based on the evidence provided.
+"""
+
+# New, more detailed prompt for the 'Direct Query' feature to act as a research assistant
+RESEARCH_ASSISTANT_PROMPT = {
+    "system": """
+        You are an expert research assistant. Your goal is to provide a direct, concise, and well-supported answer to the user's question.
+        - Synthesize information from the provided paper snippets to formulate your answer.
+        - When you use information from a paper, you MUST cite it using its source ID, like this: [Source ID].
+        - If the provided papers do not contain the answer, state that the information is not available in the provided context.
+        - Do not make up information. Base your answer strictly on the evidence provided.
+        - Present the final answer in clear, well-structured markdown.
+    """,
+    "user": """Please answer the following research question:
+
+Question: "{user_question}"
+
+Here are the supporting paper snippets to use as evidence:
+
+{supporting_evidence}
+""",
+}
+
+AUDIENCE_PROMPT_MAP = {
+    "technical": {
+        "topic": config.TOPIC_SUMMARY_PROMPT_TEMPLATE_TECHNICAL,
+        "paper": config.PAPER_SUMMARY_PROMPT_TEMPLATE_TECHNICAL,
+        "system_suffix": "Maintain a formal, technical tone suitable for researchers and domain experts. Use precise terminology.",
+    },
+    "semi_technical": {
+        "topic": config.TOPIC_SUMMARY_PROMPT_SEMI_TECH,
+        "paper": config.PAPER_SUMMARY_PROMPT_SEMI_TECH,
+        "system_suffix": "Explain concepts clearly for an audience with some technical background, like an engineer or product manager. Avoid overly dense jargon but do not oversimplify.",
+    },
+    "non_technical": {
+        "topic": config.TOPIC_SUMMARY_PROMPT_NON_TECH,
+        "paper": config.PAPER_SUMMARY_PROMPT_NON_TECH,
+        "system_suffix": "Describe the key takeaways and impact in simple, accessible language for a general audience, like an investor or journalist. Focus on the 'so what' rather than technical details.",
+    },
+}
 
 
 # --- Example Usage (for testing) ---

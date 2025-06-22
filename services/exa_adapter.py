@@ -56,10 +56,11 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
     def search_and_contents(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 – SDK types
         """Wrapper for :py:meth:`exa_py.Exa.search_and_contents`.
 
-        Parameters are accepted in *snake_case* and converted to the SDK’s
-        *camelCase* expectations.
+        Parameters are accepted in *snake_case* and passed directly to the SDK.
         """
 
+        # Exa SDK expects snake_case parameter names. Passing kwargs directly
+        # avoids validation errors such as "Invalid option: 'numResults'".
         params = kwargs
         logger.debug("ExaAdapter.search_and_contents %s – params=%s", query, params)
         return self._sync.search_and_contents(query, **params)
@@ -84,6 +85,9 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         """Convert *snake_case* keys in *kwargs* to *camelCase*.
 
         Example: ``start_published_date`` → ``startPublishedDate``.
+
+        .. deprecated:: 0.0.0
+            This method is no longer used and will be removed in a future version.
         """
 
         transformed: dict[str, Any] = {}

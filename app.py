@@ -45,6 +45,16 @@ current_direct_query_task: asyncio.Task | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Application lifecycle hook to initialize services.
+
+    Initializes the LLM Service and Exa Client instances.
+
+    Args:
+        app: The FastAPI application instance.
+
+    Yields:
+        None
+    """
     global llm_service_instance
     global exa_client_instance
     logger.info("Application startup: Initializing LLM Service and Exa Client...")
@@ -91,7 +101,15 @@ app = FastAPI(lifespan=lifespan)
 def _search_papers_in_thread(
     search_method: Callable[..., list[Paper]], **kwargs: Any
 ) -> list[Paper]:
-    """Helper to execute blocking Exa requests in a thread."""
+    """Helper to execute blocking Exa requests in a thread.
+
+    Args:
+        search_method: The Exa search method to call.
+        **kwargs: Keyword arguments for the search method.
+
+    Returns:
+        A list of Paper instances.
+    """
     return cast(list[Paper], search_method(**kwargs))
 
 
@@ -100,10 +118,16 @@ def _search_papers_in_thread(
 
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request, search_query: Optional[str] = None) -> HTMLResponse:
-    """
-    Handles GET requests to the root URL.
+    """Handles GET requests to the root URL.
+
     Optionally performs an initial search if 'search_query' is provided.
-    Renders the main home page.
+
+    Args:
+        request: The incoming FastAPI request.
+        search_query: The search query or URL from the request.
+
+    Returns:
+        An HTMLResponse containing the rendered home page.
     """
     logger.info(
         "get_home: Request received",
@@ -155,6 +179,9 @@ async def shuffle_random_paper() -> HTMLResponse:
     """Return a new random wild-card paper from the cached pool.
 
     The response swaps the existing `#wild-card-item` list element via HTMX.
+
+    Returns:
+        An HTMLResponse with the new wild-card paper.
     """
     if exa_client_instance is None:
         return HTMLResponse(
@@ -175,7 +202,11 @@ async def shuffle_random_paper() -> HTMLResponse:
 
 @app.post("/shuffle_all", response_class=HTMLResponse)
 async def shuffle_all_papers() -> HTMLResponse:
-    """Shuffles all but the last (wild-card) paper in the current list."""
+    """Shuffles all but the last (wild-card) paper in the current list.
+
+    Returns:
+        An HTMLResponse with the shuffled papers.
+    """
     if exa_client_instance is None:
         return HTMLResponse("<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>")
     client = cast(ExaClient, exa_client_instance)
@@ -217,7 +248,11 @@ async def shuffle_all_papers() -> HTMLResponse:
 
 @app.post("/reset_results", response_class=HTMLResponse)
 async def reset_papers() -> HTMLResponse:
-    """Resets the paper list to the original top-k + wild-card order."""
+    """Resets the paper list to the original top-k + wild-card order.
+
+    Returns:
+        An HTMLResponse with the reset papers.
+    """
     if exa_client_instance is None:
         return HTMLResponse("<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>")
     client = cast(ExaClient, exa_client_instance)
@@ -259,7 +294,11 @@ async def reset_papers() -> HTMLResponse:
 # --- Health-check Endpoint ---
 @app.get("/healthz")
 async def healthz() -> dict[str, bool]:
-    """Simple liveness probe for deployment platforms."""
+    """Simple liveness probe for deployment platforms.
+
+    Returns:
+        A dictionary with a single key 'ok' set to True.
+    """
     return {"ok": True}
 
 
@@ -272,10 +311,20 @@ async def handle_search(
     mode: Optional[str] = Form("auto"),  # 'auto' (default), 'direct'
     domain_filter: Optional[str] = Form(None),  # New optional domain filter from UI
 ) -> HTMLResponse:
-    """
-    Handles POST requests from the search form (HTMX).
+    """Handles POST requests from the search form (HTMX).
+
     Performs a search using the Exa API based on form parameters.
-    Returns an HTML fragment of the search results.
+
+    Args:
+        request: The incoming FastAPI request.
+        search_query: The search query or URL from the form.
+        start_published_date: The start date for filtering papers.
+        num_results: The number of results to return.
+        mode: The search mode ('auto' or 'direct').
+        domain_filter: The domain filter for the search.
+
+    Returns:
+        An HTMLResponse containing the search results or an error message.
     """
     global current_direct_query_task  # Allow modification of the global variable
 
@@ -399,10 +448,16 @@ async def handle_search(
                 },
             )
 
+            # Build optional kwargs (domain filter reuse)
+            url_search_kwargs = {}
+            if domain_filter and domain_filter.lower() not in {"any", "all"}:
+                url_search_kwargs["include_domains"] = [domain_filter]
+
             # Fetch input paper + similar papers and cache
             exa_results = cast(ExaClient, exa_client_instance).url_search_and_cache(
                 paper_url=input_query_stripped,
                 k=num_results if num_results is not None else config.config.DEFAULT_PAPER_COUNT,
+                **url_search_kwargs,
             )
             logger.info(
                 "handle_search: url_search_and_cache successful",
@@ -488,12 +543,17 @@ async def handle_search(
             #     if authors_list:
             #         search_params["authors"] = authors_list
 
+            search_kwargs = {}
+            if domain_filter and domain_filter.lower() not in {"any", "all"}:
+                search_kwargs["include_domains"] = [domain_filter]
+
             # For non-URL searches, papers_data is a flat list.
             # render_search_results expects 'papers_list' for this case.
             # Assign method to a variable after assertion to help Mypy
             exa_results = cast(ExaClient, exa_client_instance).search_and_cache(
                 query=input_query_stripped,
                 k=num_results if num_results is not None else config.config.DEFAULT_PAPER_COUNT,
+                **search_kwargs,
             )
             logger.info(
                 "handle_search: Exa search_and_cache successful",
@@ -531,10 +591,18 @@ async def show_report_config(
     selected_papers_json: Optional[list[str]] = Form(None),  # noqa: B008
     is_url_input_source: Optional[str] = Form(None),  # Added to receive the flag
 ) -> HTMLResponse:
-    """
-    Handles POST requests to show the report configuration form.
+    """Handles POST requests to show the report configuration form.
+
     This endpoint is triggered when the user clicks 'Configure Report'.
-    It receives the selected papers and other context to build the config form.
+
+    Args:
+        request: The incoming FastAPI request.
+        original_search_query_for_report: The initial search query or URL.
+        selected_papers_json: A JSON string of selected paper IDs.
+        is_url_input_source: A flag indicating if the original query was a URL.
+
+    Returns:
+        An HTMLResponse with the report configuration form or an error message.
     """
     is_url = is_url_input_source == "true"  # Convert to boolean
     num_papers_received = len(selected_papers_json) if selected_papers_json else 0
@@ -633,9 +701,21 @@ async def generate_report(
     selected_model_key: str = Form(...),
     is_url_input: bool = Form(False),  # Changed to bool, FastAPI handles conversion
 ) -> HTMLResponse:
-    """
-    Handles POST requests to generate the actual report.
+    """Handles POST requests to generate the actual report.
+
     Uses the application-scoped LLMService instance.
+
+    Args:
+        request: The incoming FastAPI request.
+        original_query_for_report: The initial search query or URL.
+        selected_papers_json: A JSON string of selected paper IDs.
+        audience_type: The target audience for the report.
+        summary_size: The desired size of the summary.
+        selected_model_key: The selected model key.
+        is_url_input: A flag indicating if the original query was a URL.
+
+    Returns:
+        An HTMLResponse with the generated report or an error message.
     """
     num_papers_received = len(selected_papers_json) if selected_papers_json else 0
     log_params = {

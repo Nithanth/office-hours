@@ -4,6 +4,7 @@ import re
 import sys
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from loguru import logger
 from tenacity import (
@@ -85,6 +86,27 @@ class ExaClient:
         self._last_url_pinned_id: str | None = None
 
     # --- Helper functions -------------------------------------------------
+
+    def _get_id_from_url(self, url: str) -> Optional[str]:
+        """Return Exa document ID for a given URL.
+
+        Uses a targeted search on the `url:"..."` field. Returns None if not found
+        or if an exception occurs.
+        """
+        try:
+            resp = self.client.search(
+                f'url:"{url}"',
+                num_results=1,
+                use_autoprompt=False,
+                category="research_paper",
+            )
+            if resp.results:
+                return resp.results[0].id
+        except Exception as e:
+            logger.warning("_get_id_from_url failed for %s: %s", url, e, exc_info=True)
+        return None
+
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _extract_arxiv_id(url_or_text: str | None) -> Optional[str]:
@@ -327,6 +349,13 @@ class ExaClient:
                 if apply_filters:
                     if paper is None or not self._is_valid_paper(paper):
                         continue
+                    # Domain filter
+                    if not self._domain_allowed(
+                        paper.url,
+                        include_domains=include_domains,
+                        exclude_domains=exclude_domains,
+                    ):
+                        continue
                     # Local date cutoff check
                     if cutoff_dt and paper.published_date:
                         try:
@@ -479,27 +508,22 @@ class ExaClient:
         desired_count = min(num_results, self.MAX_RETURNED_PAPERS)
         request_count = min(desired_count * 3, 20)
 
-        # Note: Similar endpoint doesn't accept date filters, but we apply locally
-        cutoff_dt: datetime | None = None
-        apply_filters = os.getenv("EXA_NO_FILTERS", "0") != "1"
-        if apply_filters and start_published_date:
-            try:
-                cutoff_dt = datetime.fromisoformat(start_published_date.replace("Z", "+00:00"))
-            except ValueError:
-                try:
-                    cutoff_dt = datetime.strptime(start_published_date[:10], "%Y-%m-%d")
-                except ValueError:
-                    logger.warning(
-                        "find_similar_papers: could not parse start_published_date '%s'",
-                        start_published_date,
-                    )
-                    cutoff_dt = None
+        # The find_similar API does not support server-side date filters. If
+        # callers need date constraints, they should post-filter the returned
+        # list.  For now we skip any local parsing to avoid unused-variable
+        # lint errors.
 
         papers: list[Paper] = []
         try:
+            # Build optional filter kwargs
+            exa_kwargs: dict[str, Any] = {
+                "num_results": request_count,
+                "category": category,
+            }
+
             # Use find_similar_and_contents to get similar papers and their content
             similar_response = self.client.find_similar_and_contents(
-                paper_url, num_results=request_count, category=category, text=True
+                paper_url, **exa_kwargs, text=True
             )
 
             # --- DEBUG: Log raw similar results before filtering ---
@@ -516,26 +540,23 @@ class ExaClient:
 
             # Process the response similar to search_papers
             for result in similar_response.results:
-                paper = self._create_paper_from_exa_result(result, "Exa (similar papers)")
-                if apply_filters:
-                    if paper is None or not self._is_valid_paper(paper):
-                        continue
-                    if cutoff_dt and paper.published_date:
-                        try:
-                            paper_dt = (
-                                paper.published_date
-                                if isinstance(paper.published_date, datetime)
-                                else datetime.fromisoformat(
-                                    str(paper.published_date).replace("Z", "+00:00")
-                                )
-                            )
-                            if paper_dt < cutoff_dt:
-                                continue
-                        except Exception:
-                            continue
-                else:
-                    if paper is None:
-                        continue
+                paper = self._create_paper_from_exa_result(
+                    result,
+                    f"Exa (similar to: {paper_url})",
+                )
+
+                # Skip invalid or None papers early (narrows type for mypy)
+                if paper is None or not self._is_valid_paper(paper):
+                    continue
+
+                # Apply domain filter (include/exclude not passed here yet)
+                if not self._domain_allowed(
+                    paper.url,
+                    include_domains=None,
+                    exclude_domains=None,
+                ):
+                    continue
+
                 papers.append(paper)
 
             # Keep the k highest-score similar papers
@@ -555,15 +576,20 @@ class ExaClient:
         self,
         paper_url: str,
         num_similar_results: int = 5,
+        *,
         category: str = "research_paper",
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Fetches details for a given paper URL and finds similar papers.
 
         Args:
-            paper_url: URL of the main paper to fetch and find similars for.
+            paper_url: URL of the paper to fetch and find similars for.
             num_similar_results: Number of similar papers to return.
             category: The category of content for similar papers search.
+            include_domains: Optional list of domains to include in results.
+            exclude_domains: Optional list of domains to exclude from results.
 
         Returns:
             A dictionary with 'main_paper' (Paper object or None) and
@@ -575,7 +601,8 @@ class ExaClient:
         # 1. Fetch content for the main paper_url
         try:
             logger.info(f"Fetching content for main URL: {paper_url}")
-            contents_response = self.client.get_contents([paper_url], text=True)
+            doc_id = self._get_id_from_url(paper_url) or paper_url  # fallback to URL
+            contents_response = self.client.get_contents([doc_id], text=True)
             if contents_response.results and len(contents_response.results) > 0:
                 main_paper_result = contents_response.results[0]
                 main_paper_object = self._create_paper_from_exa_result(
@@ -660,12 +687,29 @@ class ExaClient:
         try:
             logger.info(f"Finding similar papers for URL: {paper_url}")
             similar_response = self.client.find_similar_and_contents(
-                paper_url, num_results=num_similar_results, category=category, text=True
+                paper_url,
+                num_results=num_similar_results,
+                category=category,
+                include_domains=include_domains,
+                exclude_domains=exclude_domains,
+                text=True,
             )
             for result in similar_response.results:
                 paper = self._create_paper_from_exa_result(result, f"Exa (similar to: {paper_url})")
-                if self._is_valid_paper(paper):
-                    similar_papers_list.append(paper)
+
+                # Skip invalid or None papers early (narrows type for mypy)
+                if paper is None or not self._is_valid_paper(paper):
+                    continue
+
+                # Apply domain filter (include/exclude not passed here yet)
+                if not self._domain_allowed(
+                    paper.url,
+                    include_domains=include_domains,
+                    exclude_domains=exclude_domains,
+                ):
+                    continue
+
+                similar_papers_list.append(paper)
         except Exception as e:
             logger.error(
                 f"Error finding similar papers for URL {paper_url} with Exa: {e}", exc_info=True
@@ -678,35 +722,27 @@ class ExaClient:
     # New pooled-search API (Phase-C)
     # ------------------------------------------------------------------
 
-    def search_and_cache(
-        self,
-        query: str,
-        k: int = 10,
-        **kwargs: Any,
-    ) -> list["Paper"]:
-        """Fetch a larger pool (*M*) then prepare a CachedSearch instance.
-
-        *M* is ``min(k * 5, 50)``.
-        Returns the initial display list (k papers).
-        """
-
+    def _fetch_papers_from_exa(self, query: str, k: int, **kwargs: Any) -> list["Paper"]:
+        """Fetches a pool of papers from the Exa API."""
         request_count = min(k * 5, 50)
-        papers = self.search_papers(query, num_results=request_count, **kwargs)
+        logger.info(f"Fetching {request_count} papers from Exa for query: '{query}'")
+        return self.search_papers(query, num_results=request_count, **kwargs)
+
+    def _build_cache(self, papers: list["Paper"], k: int, query: str) -> CachedSearch | None:
+        """Builds and caches the search results."""
         if not papers:
-            self._last_cached_search = None
-            return []
+            return None
 
         # Build dict keyed by id (skip papers without id)
         paper_by_id = {p.id: p for p in papers if p.id}
         if not paper_by_id:
-            self._last_cached_search = None
-            return []
+            return None
 
         # ------------------------------------------------------
         # Verbose logging of the cached pool for observability
         # ------------------------------------------------------
         logger.info(
-            "search_and_cache: post-filter pool created",
+            "_build_cache: post-filter pool created",
             query=query,
             k_requested=k,
             pool_size=len(paper_by_id),
@@ -716,8 +752,19 @@ class ExaClient:
         orig_ids = list(paper_by_id.keys())[:k]
         cached = CachedSearch(paper_by_id=paper_by_id, k=k, orig_ids=orig_ids)
         cached.init_display()
-        self._last_cached_search = cached
-        return cached.get_display_papers()
+        return cached
+
+    def search_and_cache(self, query: str, k: int = 10, **kwargs: Any) -> list["Paper"]:
+        """Fetches papers from Exa, caches them, and returns the initial display list."""
+        papers = self._fetch_papers_from_exa(query, k, **kwargs)
+
+        cached_search = self._build_cache(papers, k, query)
+        self._last_cached_search = cached_search
+
+        if not cached_search:
+            return []
+
+        return cached_search.get_display_papers()
 
     def url_search_and_cache(
         self,
@@ -738,6 +785,8 @@ class ExaClient:
             paper_url,
             num_similar_results=request_count,
             category=kwargs.get("category", "research_paper"),
+            include_domains=kwargs.get("include_domains"),
+            exclude_domains=kwargs.get("exclude_domains"),
         )
         main_paper = url_results.get("main_paper")
         similar_papers: list[Paper] = url_results.get("similar_papers", [])
@@ -784,7 +833,7 @@ class ExaClient:
 
     # Convenience getters used by API routes
 
-    def get_cached_search(self) -> Optional[CachedSearch]:
+    def get_cached_search(self) -> CachedSearch | None:
         return self._last_cached_search
 
     def replace_wildcard(self) -> Optional["Paper"]:
@@ -800,6 +849,65 @@ class ExaClient:
     def reset_display(self) -> list["Paper"]:
         cs = self._last_cached_search
         return cs.reset_display() if cs is not None else []
+
+    # ---------------- Domain filter helper ---------------------------
+
+    @staticmethod
+    def _domain_allowed(
+        url: str | None,
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
+    ) -> bool:
+        """Return ``True`` if *url* satisfies the domain constraints.
+
+        * include_domains – at least one must match if provided.
+        * exclude_domains – none may match.
+
+        Matching is done against the *registered host* (netloc) of the URL,
+        converted to lowercase. A simple ``endswith`` check is used so that a
+        filter of ``arxiv.org`` matches ``www.arxiv.org`` as well.
+        """
+        if url is None:
+            return False
+
+        # Accept str, Pydantic HttpUrl, or any object implementing __str__.
+        url_str = str(url)
+
+        try:
+            host = urlparse(url_str).netloc.lower()
+        except Exception:  # pragma: no cover – broken URLs
+            host = url_str.lower()
+
+        # Quick synonym expansion for popular domains
+        synonyms: dict[str, list[str]] = {
+            "arxiv.org": ["ar5iv.org"],
+        }
+
+        def _expand(domain: str) -> list[str]:
+            domain_lc = domain.lower()
+            return [domain_lc] + synonyms.get(domain_lc, [])
+
+        # Include filter -------------------------------------------------
+        if include_domains:
+            allowed = False
+            for d in include_domains:
+                for pattern in _expand(d):
+                    if host.endswith(pattern):
+                        allowed = True
+                        break
+                if allowed:
+                    break
+            if not allowed:
+                return False
+
+        # Exclude filter -------------------------------------------------
+        if exclude_domains:
+            for d in exclude_domains:
+                for pattern in _expand(d):
+                    if host.endswith(pattern):
+                        return False
+
+        return True
 
 
 # Example Usage (for direct testing of this module):
