@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional, cast
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
+from fasthtml.components import LI, UL, Div  # For dynamic list rendering (need LI for messages)
 from loguru import logger
 
 import config
@@ -22,6 +23,7 @@ from pages.main_page import (
 from services.exa_client import ExaClient
 from services.llm_client import LLMConfigurationError, LLMService
 from services.report_generator import ReportGenerator
+from utils.search_utils import clean_query
 
 # --- Configure Loguru Logger ---
 logger.remove()  # Remove default handler
@@ -89,8 +91,7 @@ app = FastAPI(lifespan=lifespan)
 def _search_papers_in_thread(
     search_method: Callable[..., list[Paper]], **kwargs: Any
 ) -> list[Paper]:
-    """Helper function to call a search method with kwargs, for asyncio.to_thread."""
-    # Cast is needed here because mypy can't fully infer the return type of a generic Callable with **kwargs
+    """Helper to execute blocking Exa requests in a thread."""
     return cast(list[Paper], search_method(**kwargs))
 
 
@@ -145,6 +146,116 @@ async def get_home(request: Request, search_query: Optional[str] = None) -> HTML
     return HTMLResponse(content=component_html)
 
 
+# --- Shuffle random paper Endpoint ---
+from pages.main_page import _render_paper_item  # noqa: E402 – import after app init
+
+
+@app.post("/shuffle", response_class=HTMLResponse)
+async def shuffle_random_paper() -> HTMLResponse:
+    """Return a new random wild-card paper from the cached pool.
+
+    The response swaps the existing `#wild-card-item` list element via HTMX.
+    """
+    if exa_client_instance is None:
+        return HTMLResponse(
+            content="<li id='wild-card-item'>Server starting…</li>",
+            headers={"HX-Reswap": "outerHTML"},
+        )
+
+    paper = cast(ExaClient, exa_client_instance).replace_wildcard()
+    if paper is None:
+        return HTMLResponse(
+            content="<li id='wild-card-item'>No more random papers available. Run a new search.</li>",
+            headers={"HX-Reswap": "outerHTML"},
+        )
+
+    rendered = str(Div(_render_paper_item(paper, wildcard=True)))
+    return HTMLResponse(content=rendered)
+
+
+@app.post("/shuffle_all", response_class=HTMLResponse)
+async def shuffle_all_papers() -> HTMLResponse:
+    """Shuffles all but the last (wild-card) paper in the current list."""
+    if exa_client_instance is None:
+        return HTMLResponse("<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>")
+    client = cast(ExaClient, exa_client_instance)
+
+    papers = client.shuffle_k()
+    if not papers:
+        return HTMLResponse(
+            content=str(
+                Div(
+                    UL(
+                        LI(
+                            "Cache was cleared (likely due to app reload). Please search again before shuffling.",
+                            style="color: orange;",
+                        ),
+                        id="papers-list",
+                    )
+                )
+            )
+        )
+
+    # Determine pinned id from cached search (if any)
+    cached = client.get_cached_search()
+    pinned_id = cached.pinned_id if cached is not None else None
+
+    ul_items = []
+    for idx, pap in enumerate(papers):
+        ul_items.append(
+            _render_paper_item(
+                pap,
+                is_main_paper=(pinned_id is not None and pap.id == pinned_id),
+                wildcard=(idx == len(papers) - 1),
+            )
+        )
+    ul_html = str(
+        Div(UL(*ul_items, id="papers-list", style="list-style-type: none; padding-left: 0;"))
+    )
+    return HTMLResponse(content=ul_html)
+
+
+@app.post("/reset_results", response_class=HTMLResponse)
+async def reset_papers() -> HTMLResponse:
+    """Resets the paper list to the original top-k + wild-card order."""
+    if exa_client_instance is None:
+        return HTMLResponse("<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>")
+    client = cast(ExaClient, exa_client_instance)
+
+    core_list = client.reset_display()
+    if not core_list:
+        return HTMLResponse(
+            content=str(
+                Div(
+                    UL(
+                        LI(
+                            "Cache was cleared (likely due to app reload). Please search again before resetting.",
+                            style="color: orange;",
+                        ),
+                        id="papers-list",
+                    )
+                )
+            )
+        )
+
+    cached = client.get_cached_search()
+    pinned_id = cached.pinned_id if cached is not None else None
+
+    ul_items = []
+    for idx, pap in enumerate(core_list):
+        ul_items.append(
+            _render_paper_item(
+                pap,
+                is_main_paper=(pinned_id is not None and pap.id == pinned_id),
+                wildcard=(idx == len(core_list) - 1),
+            )
+        )
+    ul_html = str(
+        Div(UL(*ul_items, id="papers-list", style="list-style-type: none; padding-left: 0;"))
+    )
+    return HTMLResponse(content=ul_html)
+
+
 # --- Health-check Endpoint ---
 @app.get("/healthz")
 async def healthz() -> dict[str, bool]:
@@ -159,6 +270,7 @@ async def handle_search(
     start_published_date: Optional[str] = Form(None),
     num_results: Optional[int] = Form(config.config.DEFAULT_PAPER_COUNT),
     mode: Optional[str] = Form("auto"),  # 'auto' (default), 'direct'
+    domain_filter: Optional[str] = Form(None),  # New optional domain filter from UI
 ) -> HTMLResponse:
     """
     Handles POST requests from the search form (HTMX).
@@ -176,6 +288,7 @@ async def handle_search(
             "start_published_date": start_published_date,
             "num_results": num_results,
             "mode": mode,
+            "domain_filter": domain_filter,
         },
     )
     # logger.info(f"Received search query: '{search_query}', date filter: {start_published_date}, num_results: {num_results}") # Old log
@@ -191,7 +304,7 @@ async def handle_search(
             headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
         )
 
-    input_query_stripped = search_query.strip()
+    input_query_stripped = clean_query(search_query.strip())
 
     # --- Task Cancellation Logic ---
     if mode != "direct":  # A "Search Papers" or URL search request
@@ -274,49 +387,36 @@ async def handle_search(
         results_html_fragment: str = ""
 
         if exa_client_instance.is_url(input_query_stripped):
-            is_url_search_flag = True  # Explicitly true for URL searches
+            is_url_search_flag = True  # URL input
             logger.info(
-                "handle_search: URL detected, fetching main paper details and similar papers",
+                "handle_search: URL detected, using unified url_search_and_cache",
                 input_type="url",
                 params={
                     "paper_url": input_query_stripped,
-                    "num_similar_results": num_results
+                    "num_results": num_results
                     if num_results is not None
-                    else config.config.DEFAULT_SIMILAR_PAPER_COUNT,
-                    "category": "research_paper",
+                    else config.config.DEFAULT_PAPER_COUNT,
                 },
             )
 
-            url_search_results_dict = await asyncio.to_thread(
-                exa_client_instance.get_paper_details_and_similar_from_url,
+            # Fetch input paper + similar papers and cache
+            exa_results = cast(ExaClient, exa_client_instance).url_search_and_cache(
                 paper_url=input_query_stripped,
-                num_similar_results=num_results
-                if num_results is not None
-                else config.config.DEFAULT_SIMILAR_PAPER_COUNT,
-                category="research_paper",
+                k=num_results if num_results is not None else config.config.DEFAULT_PAPER_COUNT,
             )
-
-            main_paper_from_url = url_search_results_dict.get("main_paper")
-            similar_papers_list = url_search_results_dict.get("similar_papers", [])
-
             logger.info(
-                "handle_search: Exa get_paper_details_and_similar_from_url successful",
+                "handle_search: url_search_and_cache successful",
                 input_type="url",
                 url=input_query_stripped,
-                main_paper_found=bool(main_paper_from_url),
-                similar_papers_found=len(similar_papers_list),
+                papers_found=len(exa_results),
             )
 
-            # We now pass main_paper and similar_papers separately to render_search_results
-            # render_search_results will need to be adapted to handle these.
             results_component = render_search_results(
-                main_paper=main_paper_from_url,  # Could be None
-                similar_papers=similar_papers_list,  # Could be empty list
+                papers_list=exa_results,
                 is_url_search=is_url_search_flag,
-                original_query=input_query_stripped,  # Pass the original URL query
+                original_query=input_query_stripped,
             )
             results_html_fragment = str(results_component)
-
         else:  # This is a topic/keyword search
             is_url_search_flag = False
             logger.info(
@@ -357,7 +457,7 @@ async def handle_search(
                     if parsed_dt is None:
                         raise ValueError("Unrecognized date format")
 
-                    # Convert to ISO date string expected by Exa (YYYY-MM-DDT00:00:00Z)
+                    # Use full ISO date with Z to satisfy Exa filtering
                     iso_date = parsed_dt.strftime("%Y-%m-%dT00:00:00Z")
                     search_params["start_published_date"] = iso_date
                     logger.info(
@@ -391,19 +491,19 @@ async def handle_search(
             # For non-URL searches, papers_data is a flat list.
             # render_search_results expects 'papers_list' for this case.
             # Assign method to a variable after assertion to help Mypy
-            search_papers_method = exa_client_instance.search_papers
-            papers_list_data = await asyncio.to_thread(
-                _search_papers_in_thread, search_papers_method, **search_params
+            exa_results = cast(ExaClient, exa_client_instance).search_and_cache(
+                query=input_query_stripped,
+                k=num_results if num_results is not None else config.config.DEFAULT_PAPER_COUNT,
             )
             logger.info(
-                "handle_search: Exa search_papers successful",
+                "handle_search: Exa search_and_cache successful",
                 input_type="query",
                 query=input_query_stripped,
-                papers_found=len(papers_list_data),
+                papers_found=len(exa_results),
             )
 
             results_component = render_search_results(
-                papers_list=papers_list_data,
+                papers_list=exa_results,
                 is_url_search=is_url_search_flag,
                 original_query=input_query_stripped,  # Pass the original query text
             )
@@ -617,8 +717,7 @@ async def generate_report(
             params=log_params,
         )
         error_html = render_error_message(
-            "No papers were provided for report generation. Please select at least one paper.",
-            context="no_papers_for_report",
+            "No papers were selected to generate a report.", context="no_papers_for_report"
         ).render()
         return HTMLResponse(
             content=error_html,

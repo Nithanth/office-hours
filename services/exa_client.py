@@ -1,11 +1,11 @@
-import logging
 import os
+import random
 import re
 import sys
 from datetime import datetime
 from typing import Any, Optional
 
-from exa_py import Exa
+from loguru import logger
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -13,8 +13,11 @@ from tenacity import (
     wait_exponential,
 )
 
+from services.cached_search import CachedSearch
+
+from .exa_adapter import ExaAdapter
+
 # Initialize logger
-logger = logging.getLogger(__name__)
 
 # Attempt relative import for normal package use (e.g., when app.py imports this)
 try:
@@ -63,13 +66,23 @@ class ExaInvalidRequestError(ExaClientError):
 
 
 class ExaClient:
+    MAX_RETURNED_PAPERS: int = 50  # Allow a larger internal fetch pool (UI still displays ≤10)
+
     def __init__(self, api_key: str):
         if not api_key:
             raise ValueError("Exa API key is required.")
-        self.client = Exa(api_key=api_key)
+        # Raw SDK client kept for legacy uses but prefer adapter
+        self.adapter = ExaAdapter(api_key=api_key)
+        self.client = self.adapter.sync_client
+        # Legacy caches (still used elsewhere)
+        self._last_random_pool: list[Paper] = []
+        self._last_top_k: list[Paper] = []
+        self._last_display: list[Paper] = []
+        self._last_random_paper: Optional[Paper] = None
 
-    # Public cap on number of papers returned per search to keep UI manageable
-    MAX_RETURNED_PAPERS: int = 8
+        # New pooled search cache
+        self._last_cached_search: Optional[CachedSearch] = None
+        self._last_url_pinned_id: str | None = None
 
     # --- Helper functions -------------------------------------------------
 
@@ -168,6 +181,9 @@ class ExaClient:
             text_content = None
             if hasattr(result, "text") and result.text:
                 text_content = result.text
+            elif hasattr(result, "summary") and result.summary:
+                # Fallback to Exa's auto-summary if full text not returned
+                text_content = result.summary
 
             paper_data = {
                 "id": result.id if result.id else result.url,
@@ -260,7 +276,6 @@ class ExaClient:
                 "use_autoprompt": use_autoprompt,
                 "type": "neural",  # Always use Exa's neural ranking for best semantic relevance.
                 "category": category,
-                "text": True,
             }
 
             if start_published_date:
@@ -285,26 +300,23 @@ class ExaClient:
                     query_to_send = f"{query} {author_fragments}"
 
             # Use search_and_contents to get results and their full text in one call
-            search_response = self.client.search_and_contents(
+            search_response = self.adapter.search_and_contents(
                 query_to_send,
                 **exa_kwargs,
             )
 
             # --- DEBUG: Log all raw Exa results before client-side filtering ---
-            if logger.isEnabledFor(logging.DEBUG):
-                try:
-                    logger.debug(
-                        "Raw Exa results (pre-filter): [%s]",
-                        ", ".join(
-                            [
-                                f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
-                                for r in search_response.results
-                            ]
-                        ),
-                    )
-                except Exception:
-                    # Ensure logging issues never break search flow
-                    logger.exception("Failed to log raw Exa results")
+            try:
+                logger.debug(
+                    "Raw Exa results (pre-filter): [{}]",
+                    ", ".join(
+                        f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
+                        for r in search_response.results
+                    ),
+                )
+            except Exception:
+                # Ensure logging issues never break search flow
+                logger.exception("Failed to log raw Exa results")
 
             # The structure of search_response.results from search_and_contents might be directly usable.
             # Each item in search_response.results should now have a .text field with the full content.
@@ -336,21 +348,80 @@ class ExaClient:
                         continue
                 papers.append(paper)
 
-            # Ensure we return the top-k highest-score papers after filtering
-            if len(papers) > desired_count:
+            # Ensure we return exactly desired_count papers while injecting a serendipity pick.
+            if len(papers) >= desired_count:
                 papers_sorted = sorted(
                     papers,
                     key=lambda p: (p.score if p.score is not None else 0.0),
                     reverse=True,
                 )
-                return papers_sorted[:desired_count]
-            return papers
+                self._last_top_k = papers_sorted[:desired_count]
+                main_results = papers_sorted[: max(desired_count - 1, 0)]
+                random_pool = papers_sorted[desired_count - 1 :]
+
+                selected_random: list[Paper] = []
+                if random_pool:
+                    random_paper = random.choice(random_pool)
+                    selected_random.append(random_paper)
+                    # Cache pool for potential future shuffle requests
+                    self._last_random_pool = random_pool
+                    self._last_random_paper = random_paper
+
+                final_results = (main_results + selected_random)[:desired_count]
+                # Cache display list for reset/shuffle-all endpoints
+                self._last_display = final_results
+                return final_results
+            # Fallback – not enough papers to build a pool
+            return papers[:desired_count]
         except Exception as e:
             logger.error(f"Error during Exa API search or paper model creation: {e}", exc_info=True)
             # Raise wrapped error to trigger tenacity retry; after retries are exhausted,
             # retry_error_callback will convert this into a safe empty list, preserving
             # previous non-breaking behaviour.
             raise ExaAPIError(str(e)) from e
+
+        # ------------------------------------------------------------------
+
+    # Cache access helpers
+    # ------------------------------------------------------------------
+
+    def get_last_top_k(self) -> list["Paper"]:
+        """Return the most recent top-k list (original order)."""
+        return list(self._last_top_k)
+
+    def get_last_display_list(self) -> list["Paper"]:
+        """Return the list that was actually sent to the frontend (top-k + wildcard)."""
+        return list(self._last_display)
+
+    def get_last_random_paper(self) -> Optional["Paper"]:
+        """Return the last random (wild-card) paper that was injected, if any."""
+        return self._last_random_paper
+
+    def get_last_full_pool(self) -> list["Paper"]:
+        """Return the full pool of cached papers from the last search.
+
+        Combines the original top-k list and the tail pool used for wild-card picks.
+        Safe to call even if no search has been run (returns empty list).
+        """
+        return list(self._last_top_k) + list(self._last_random_pool)
+
+    # ------------------------------------------------------------------
+    # Serendipity helpers
+    # ------------------------------------------------------------------
+
+    def get_random_from_last_pool(self) -> Optional["Paper"]:
+        """Return a random paper from the most recent search’s tail pool.
+
+        Returns ``None`` if no pool is cached (e.g. before first search or if the
+        previous search returned too few papers).
+        """
+        if not self._last_random_pool:
+            return None
+        return random.choice(self._last_random_pool)
+
+    # ------------------------------------------------------------------
+    # Utility helpers
+    # ------------------------------------------------------------------
 
     def is_url(self, text: str) -> bool:
         """
@@ -432,19 +503,16 @@ class ExaClient:
             )
 
             # --- DEBUG: Log raw similar results before filtering ---
-            if logger.isEnabledFor(logging.DEBUG):
-                try:
-                    logger.debug(
-                        "Raw Exa similar results (pre-filter): [%s]",
-                        ", ".join(
-                            [
-                                f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
-                                for r in similar_response.results
-                            ]
-                        ),
-                    )
-                except Exception:
-                    logger.exception("Failed to log raw Exa similar results")
+            try:
+                logger.debug(
+                    "Raw Exa similar results (pre-filter): [{}]",
+                    ", ".join(
+                        f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
+                        for r in similar_response.results
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to log raw Exa similar results")
 
             # Process the response similar to search_papers
             for result in similar_response.results:
@@ -606,12 +674,140 @@ class ExaClient:
 
         return {"main_paper": main_paper_object, "similar_papers": similar_papers_list}
 
+    # ------------------------------------------------------------------
+    # New pooled-search API (Phase-C)
+    # ------------------------------------------------------------------
+
+    def search_and_cache(
+        self,
+        query: str,
+        k: int = 10,
+        **kwargs: Any,
+    ) -> list["Paper"]:
+        """Fetch a larger pool (*M*) then prepare a CachedSearch instance.
+
+        *M* is ``min(k * 5, 50)``.
+        Returns the initial display list (k papers).
+        """
+
+        request_count = min(k * 5, 50)
+        papers = self.search_papers(query, num_results=request_count, **kwargs)
+        if not papers:
+            self._last_cached_search = None
+            return []
+
+        # Build dict keyed by id (skip papers without id)
+        paper_by_id = {p.id: p for p in papers if p.id}
+        if not paper_by_id:
+            self._last_cached_search = None
+            return []
+
+        # ------------------------------------------------------
+        # Verbose logging of the cached pool for observability
+        # ------------------------------------------------------
+        logger.info(
+            "search_and_cache: post-filter pool created",
+            query=query,
+            k_requested=k,
+            pool_size=len(paper_by_id),
+            ids=list(paper_by_id.keys()),
+        )
+
+        orig_ids = list(paper_by_id.keys())[:k]
+        cached = CachedSearch(paper_by_id=paper_by_id, k=k, orig_ids=orig_ids)
+        cached.init_display()
+        self._last_cached_search = cached
+        return cached.get_display_papers()
+
+    def url_search_and_cache(
+        self,
+        paper_url: str,
+        *,
+        k: int = 8,
+        **kwargs: Any,
+    ) -> list[Paper]:
+        """Fetch *paper_url* and up to *k* similar papers, then cache.
+
+        The input paper is treated as *pinned* and will always occupy
+        position 0 in UI lists.  Shuffle / wildcard act on the remaining
+        slots.
+        """
+        # Fetch details and similar papers (larger pool for caching)
+        request_count = min(k * 5, 50)
+        url_results = self.get_paper_details_and_similar_from_url(
+            paper_url,
+            num_similar_results=request_count,
+            category=kwargs.get("category", "research_paper"),
+        )
+        main_paper = url_results.get("main_paper")
+        similar_papers: list[Paper] = url_results.get("similar_papers", [])
+
+        if not main_paper:
+            # Fallback: if main paper failed, we just behave like a normal search on similars
+            papers_pool = similar_papers
+            pinned_id: str | None = None
+        else:
+            papers_pool = [main_paper] + similar_papers
+            pinned_id = main_paper.id if main_paper.id else None
+
+        # Build dict keyed by id (skip items without id)
+        paper_by_id = {p.id: p for p in papers_pool if p.id}
+        if not paper_by_id:
+            self._last_cached_search = None
+            return []
+
+        # Make sure pinned id is in dict
+        if pinned_id and pinned_id not in paper_by_id and main_paper and main_paper.id:
+            paper_by_id[main_paper.id] = main_paper
+
+        # orig_ids: input paper first (if any) then top-k similar order
+        orig_ids: list[str] = []
+        if pinned_id:
+            orig_ids.append(pinned_id)
+        # Append other ids in their existing order, excluding pinned and ensuring max pool size
+        for p in papers_pool:
+            if p.id and p.id != pinned_id:
+                orig_ids.append(p.id)
+        # Ensure k length
+        orig_ids = orig_ids[:k]
+
+        cached = CachedSearch(
+            paper_by_id=paper_by_id,
+            k=k,
+            orig_ids=orig_ids,
+            pinned_id=pinned_id,
+        )
+        cached.init_display()
+        self._last_cached_search = cached
+        self._last_url_pinned_id = pinned_id
+        return cached.get_display_papers()
+
+    # Convenience getters used by API routes
+
+    def get_cached_search(self) -> Optional[CachedSearch]:
+        return self._last_cached_search
+
+    def replace_wildcard(self) -> Optional["Paper"]:
+        cs = self._last_cached_search
+        if cs is None:
+            return None
+        return cs.replace_wildcard()
+
+    def shuffle_k(self) -> list["Paper"]:
+        cs = self._last_cached_search
+        return cs.shuffle_k() if cs is not None else []
+
+    def reset_display(self) -> list["Paper"]:
+        cs = self._last_cached_search
+        return cs.reset_display() if cs is not None else []
+
 
 # Example Usage (for direct testing of this module):
 if __name__ == "__main__":
     # Configure basic logging for script execution
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    logger.remove(0)  # Remove default handler
+    logger.add(
+        sys.stderr, level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     if not config.EXA_API_KEY:

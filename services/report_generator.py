@@ -274,10 +274,19 @@ class ReportGenerator:
         report_parts.append("<h1>Research Report</h1>")
 
         if is_url_input:
-            escaped_original_query = html.escape(original_query)
-            report_parts.append(
-                f"<h2>Analysis based on Input URL: <a href='{escaped_original_query}' target='_blank' rel='noopener noreferrer'>{escaped_original_query}</a></h2>"
-            )
+            # Use the input paper's title when available for a more meaningful heading
+            if main_input_paper and (main_input_paper.title or ""):  # title may be empty
+                escaped_title = html.escape(main_input_paper.title or "Untitled Paper")
+                escaped_url = html.escape(original_query)
+                report_parts.append(f"<h2>{escaped_title}</h2>")
+                report_parts.append(
+                    f"<p><a href='{escaped_url}' target='_blank' rel='noopener noreferrer'>{escaped_url}</a></p>"
+                )
+            else:
+                escaped_original_query = html.escape(original_query)
+                report_parts.append(
+                    f"<h2>Analysis of <a href='{escaped_original_query}' target='_blank' rel='noopener noreferrer'>{escaped_original_query}</a></h2>"
+                )
 
             if not main_input_paper and not similar_papers_data:
                 report_parts.append(
@@ -286,27 +295,15 @@ class ReportGenerator:
             else:
                 if main_input_paper:
                     report_parts.append("<h3>Summary of Input Paper</h3>")
-                    authors_display_main = "N/A"
-                    if main_input_paper.authors:
-                        if len(main_input_paper.authors) > config.MAX_AUTHORS_DISPLAY:
-                            authors_display_main = f"{html.escape(', '.join(main_input_paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
-                        else:
-                            authors_display_main = html.escape(", ".join(main_input_paper.authors))
-
                     main_paper_snippet = (main_input_paper.text_content or "")[
                         :paper_max_content_snippet_chars
                     ]
-                    main_paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
-                        user_summary_size_key, "a detailed summary"
-                    )
                     main_paper_prompt = active_paper_prompt_template.format(
                         paper_title=html.escape(main_input_paper.title or "N/A"),
-                        paper_authors=authors_display_main,  # Already escaped
-                        paper_publication_date=self._get_formatted_date_str(
-                            main_input_paper.published_date
-                        ),
+                        paper_authors="",
+                        paper_publication_date="",
                         paper_content_snippet=main_paper_snippet,  # Snippet itself is not directly in HTML here, but part of prompt
-                        overall_instructions=main_paper_length_guidance,
+                        overall_instructions=paper_length_guidance,
                         target_audience=audience_type,
                     )
                     output_token_target_main = self._get_output_token_target(
@@ -318,12 +315,6 @@ class ReportGenerator:
                     report_parts.append(
                         f"<div><h4><a href='{html.escape(str(main_input_paper.url) if main_input_paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(main_input_paper.title or 'N/A')}</a></h4>"
                     )
-                    report_parts.append(
-                        f"<p><em>Authors: {authors_display_main}</em></p>"
-                    )  # authors_display_main is already escaped
-                    report_parts.append(
-                        f"<p><em>Published: {html.escape(self._get_formatted_date_str(main_input_paper.published_date))}</em></p>"
-                    )
                     report_parts.append(self._text_to_html_paragraphs(summary))
                     report_parts.append("</div>")
 
@@ -331,22 +322,13 @@ class ReportGenerator:
                     report_parts.append("<h3>Summaries of Similar Papers</h3>")
                     summary_tasks = []
                     for paper in similar_papers_data:
-                        authors_display_similar = "N/A"
-                        if paper.authors:
-                            if len(paper.authors) > config.MAX_AUTHORS_DISPLAY:
-                                authors_display_similar = f"{html.escape(', '.join(paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
-                            else:
-                                authors_display_similar = html.escape(", ".join(paper.authors))
-
                         similar_paper_snippet = (paper.text_content or "")[
                             :paper_max_content_snippet_chars
                         ]
                         similar_paper_prompt = active_paper_prompt_template.format(
                             paper_title=html.escape(paper.title or "N/A"),
-                            paper_authors=authors_display_similar,  # Already escaped
-                            paper_publication_date=self._get_formatted_date_str(
-                                paper.published_date
-                            ),
+                            paper_authors="",
+                            paper_publication_date="",
                             paper_content_snippet=similar_paper_snippet,
                             overall_instructions=paper_length_guidance,
                             target_audience=audience_type,
@@ -368,23 +350,8 @@ class ReportGenerator:
                     for _i, (paper, result) in enumerate(
                         zip(similar_papers_data, paper_summaries_results)
                     ):
-                        authors_display_similar_final = "N/A"
-                        if paper.authors:
-                            if len(paper.authors) > config.MAX_AUTHORS_DISPLAY:
-                                authors_display_similar_final = f"{html.escape(', '.join(paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
-                            else:
-                                authors_display_similar_final = html.escape(
-                                    ", ".join(paper.authors)
-                                )
-
                         report_parts.append(
                             f"<div><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'N/A')}</a></h4>"
-                        )
-                        report_parts.append(
-                            f"<p><em>Authors: {authors_display_similar_final}</em></p>"
-                        )  # authors_display_similar_final is already escaped
-                        report_parts.append(
-                            f"<p><em>Published: {html.escape(self._get_formatted_date_str(paper.published_date))}</em></p>"
                         )
                         # Handle potential exception from asyncio.gather
                         if isinstance(result, Exception):
@@ -465,13 +432,6 @@ class ReportGenerator:
                 report_parts.append("<h3>Individual Paper Summaries</h3>")
                 summary_tasks = []
                 for paper in papers_for_topic_report:
-                    authors_display_topic = "N/A"
-                    if paper.authors:
-                        if len(paper.authors) > config.MAX_AUTHORS_DISPLAY:
-                            authors_display_topic = f"{html.escape(', '.join(paper.authors[: config.MAX_AUTHORS_DISPLAY]))}, et al."
-                        else:
-                            authors_display_topic = html.escape(", ".join(paper.authors))
-
                     paper_snippet_topic = (paper.text_content or "")[
                         :paper_max_content_snippet_chars
                     ]
@@ -480,8 +440,8 @@ class ReportGenerator:
                     )
                     paper_prompt = active_paper_prompt_template.format(
                         paper_title=html.escape(paper.title or "N/A"),
-                        paper_authors=authors_display_topic,  # Already escaped
-                        paper_publication_date=self._get_formatted_date_str(paper.published_date),
+                        paper_authors="",
+                        paper_publication_date="",
                         paper_content_snippet=paper_snippet_topic,
                         overall_instructions=paper_length_guidance,
                         target_audience=audience_type,

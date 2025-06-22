@@ -17,6 +17,7 @@ from fasthtml.components import (
     Footer,
     Head,
     Label,
+    Link,
     Option,
     P,
     Script,
@@ -136,7 +137,7 @@ def render_report_config_form(
     )
 
 
-def _render_paper_item(paper: Paper, is_main_paper: bool = False) -> LI:
+def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool = False) -> LI:
     """Helper function to render a single paper item for the search results list."""
     formatted_date = "Unknown date"
     if paper.published_date:
@@ -192,7 +193,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False) -> LI:
             value=paper_json_str,
         )
         selection_label = Span(
-            "(Input paper – always included)", style="font-size: 0.9em; margin-left: 6px;"
+            "📌 pinned", style="font-size: 0.85em; margin-left: 6px; color:#555;"
         )
     else:
         selection_input = INPUT(
@@ -203,6 +204,11 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False) -> LI:
             style="margin-right: 5px;",
         )
         selection_label = Span()
+
+    li_attrs = {"style": item_style}
+    if wildcard:
+        li_attrs["id"] = "wild-card-item"
+        li_attrs["class"] = "wildcard-paper"
 
     return LI(
         Div(
@@ -217,16 +223,14 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False) -> LI:
             # ID hidden by default; uncomment for debug
             # P(f"ID: {paper.id[:20]}..." if paper.id else "No ID"),
             selection_label,
-            style=item_style,
-        )
+        ),
+        **li_attrs,
     )
 
 
 def render_search_results(
     original_query: str,
     is_url_search: bool,
-    main_paper: Optional[Paper] = None,
-    similar_papers: Optional[list[Paper]] = None,
     papers_list: Optional[list[Paper]] = None,
 ) -> Div:
     # Out-of-band clears so a new search hides any old report UI instantly
@@ -254,91 +258,60 @@ def render_search_results(
         ),
     ]
 
-    if is_url_search:
-        if main_paper:
-            results_content.append(H2("Input Paper Details"))
-            results_content.append(
-                UL(
-                    _render_paper_item(main_paper, is_main_paper=True),
-                    style="list-style-type: none; padding-left: 0;",
-                )
+    # Unified list display for both query and URL searches
+    if papers_list:
+        list_items = [
+            _render_paper_item(
+                p,
+                is_main_paper=(is_url_search and i == 0),
+                wildcard=(i == len(papers_list) - 1),
             )
-            has_results = True
-        else:
-            results_content.append(P("Could not retrieve details for the input URL."))
-
-        # Helper to normalize arXiv URLs to bare id (e.g., 2006.09661)
-        def _arxiv_id_from_url(u: str | None) -> str | None:
-            if not u:
-                return None
-            u_str = str(u)
-            if "arxiv.org" not in u_str:
-                return None
-            # Strip scheme and domain
-            parts = u_str.split("arxiv.org/")[-1]
-            parts = parts.replace("pdf/", "").replace("abs/", "")
-            parts = parts.replace(".pdf", "")
-            # Remove version suffix like v1
-            parts = parts.split("v")[0]
-            return parts.strip("/")
-
-        if similar_papers and main_paper:
-            # Cast to str to satisfy MyPy since .url may be Pydantic HttpUrl
-            main_id = _arxiv_id_from_url(str(main_paper.url) if main_paper.url else None)
-            cleaned_similar: list[Paper] = []
-            enriched_main: Paper | None = None
-            for p in similar_papers:
-                # Ensure p.url is cast to str for type checking
-                candidate_id = _arxiv_id_from_url(str(p.url) if p.url else None)
-                if p.url == main_paper.url or (main_id and candidate_id == main_id):
-                    # Potential duplicate with richer metadata
-                    enriched_main = p
-                    continue
-                cleaned_similar.append(p)
-
-            # If main_paper lacks a real title or authors, replace with enriched version
-            if enriched_main and (
-                (not main_paper.title or main_paper.title == "No Title Provided")
-                or not main_paper.authors
-                or not main_paper.published_date
-            ):
-                if not main_paper.title or main_paper.title == "No Title Provided":
-                    main_paper.title = enriched_main.title
-                if (not main_paper.authors) and enriched_main.authors:
-                    main_paper.authors = enriched_main.authors
-                if (not main_paper.published_date) and enriched_main.published_date:
-                    main_paper.published_date = enriched_main.published_date
-
-            similar_papers = cleaned_similar
-
-        if similar_papers:
-            results_content.append(H2("Similar Papers Found"))
-            similar_list_items = [_render_paper_item(p) for p in similar_papers]
-            results_content.append(
-                UL(*similar_list_items, style="list-style-type: none; padding-left: 0;")
+            for i, p in enumerate(papers_list)
+        ]
+        # Main list that HTMX endpoints will target
+        results_content.append(
+            UL(
+                *list_items,
+                id="papers-list",
+                style="list-style-type: none; padding-left: 0;",
             )
-            has_results = True
-        elif main_paper:
-            results_content.append(P("No similar papers found for the input URL."))
+        )
 
-        if not main_paper and not similar_papers:
-            results_content.append(P("No papers found for the input URL or any similar ones."))
-
-    else:  # General topic search
-        if papers_list:
-            results_content.append(H2("Retrieved Papers"))
-            general_list_items = [_render_paper_item(p) for p in papers_list]
-            results_content.append(
-                UL(*general_list_items, style="list-style-type: none; padding-left: 0;")
+        # Shuffle / wildcard / reset controls (work for both URL & query searches)
+        results_content.append(
+            Div(
+                BUTTON(
+                    "🎲 Shuffle random pick",
+                    id="shuffle-btn",
+                    hx_post="/shuffle",
+                    hx_target="#wild-card-item",
+                    hx_swap="outerHTML",
+                ),
+                BUTTON(
+                    "🔀 Shuffle all",
+                    id="shuffle-all-btn",
+                    hx_post="/shuffle_all",
+                    hx_target="#papers-list",
+                    hx_swap="outerHTML",
+                    style="margin-left:0.5rem;",
+                ),
+                BUTTON(
+                    "↩️ Reset order",
+                    id="reset-btn",
+                    hx_post="/reset_results",
+                    hx_target="#papers-list",
+                    hx_swap="outerHTML",
+                    style="margin-left:0.5rem;",
+                ),
+                style="margin-top:10px;",
             )
-            has_results = True
-        else:
-            results_content.append(P("No papers found for your query."))
+        )
+        has_results = True
+    else:
+        results_content.append(P("No papers found for the given search."))
 
-    if not has_results and not results_content:
-        # If truly no results from any category for a URL search, or no results for topic.
-        # The specific messages above handle most cases. This is a fallback.
-        results_content.append(P("No information to display for your query."))
+    if not has_results:
+        results_content.append(P("No search results to display."))
 
     # Add Configure Report button only if there are selectable papers
     if has_results:
@@ -416,6 +389,19 @@ def home_page(page_data: SharedPageData) -> Div:
         Head(
             Title(page_data.title),
             Script(src="https://unpkg.com/htmx.org@1.9.10"),
+            # Flatpickr date picker CSS & JS (cross-browser calendar support)
+            Link(
+                rel="stylesheet",
+                href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
+            ),
+            Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
+            Script(
+                "document.addEventListener('DOMContentLoaded', function() {\n"
+                "  if (window.flatpickr) {\n"
+                "    flatpickr('#start_published_date', {dateFormat: 'Y-m-d'});\n"
+                "  }\n"
+                "});"
+            ),
             Style(indicator_css),
             # Minimal dark-mode CSS (keeps retro look)
             Style(
@@ -430,7 +416,7 @@ def home_page(page_data: SharedPageData) -> Div:
         Body(
             Div(
                 BUTTON(
-                    "Toggle Dark Mode",
+                    "🌓 Dark Mode",
                     type="button",
                     onclick="document.body.classList.toggle('lux-dark')",
                 ),
@@ -452,6 +438,34 @@ def home_page(page_data: SharedPageData) -> Div:
                 Br(),
                 # Author input removed per new requirements
                 Br(),
+                Label("Published After:", for_="start_published_date"),
+                INPUT(
+                    type="date",
+                    id="start_published_date",
+                    name="start_published_date",
+                    placeholder="YYYY-MM-DD",
+                ),
+                Br(),
+                Label("Source Domain:", for_="domain_filter"),
+                Select(
+                    Option("Any", value="any"),
+                    Option("arxiv.org", value="arxiv.org"),
+                    Option("openreview.net", value="openreview.net"),
+                    Option("aclweb.org", value="aclweb.org"),
+                    id="domain_filter",
+                    name="domain_filter",
+                ),
+                Br(),
+                Label("Number of Results:", for_="num_results"),
+                INPUT(
+                    type="number",
+                    id="num_results",
+                    name="num_results",
+                    min="1",
+                    max="10",
+                    value=str(config.config.DEFAULT_PAPER_COUNT),
+                ),
+                Br(),
                 # Buttons choose workflow
                 BUTTON(
                     "Search Papers",
@@ -467,19 +481,6 @@ def home_page(page_data: SharedPageData) -> Div:
                     value="direct",
                     onclick="document.getElementById('lux-loading-text').textContent='Consulting LLM...'",
                     style="margin-left:0.5rem;",
-                ),
-                Br(),
-                Label("Published After:", for_="start_published_date"),
-                INPUT(type="date", id="start_published_date", name="start_published_date"),
-                Br(),
-                Label("Number of Results:", for_="num_results"),
-                INPUT(
-                    type="number",
-                    id="num_results",
-                    name="num_results",
-                    min="1",
-                    max=str(config.config.MAX_PAPERS_PER_SEARCH),
-                    value=str(config.config.DEFAULT_PAPER_COUNT),
                 ),
                 Br(),
                 hx_post="/search",

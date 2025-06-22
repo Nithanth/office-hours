@@ -12,7 +12,7 @@ redis
 
 # API Clients & HTTP
 httpx
-exa-py
+exa_py>=0.2.0
 openai
 anthropic
 together
