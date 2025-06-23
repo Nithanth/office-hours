@@ -136,6 +136,7 @@ def render_report_config_form(
             hx_target="#report-display-area",
             hx_swap="innerHTML",
             hx_indicator="#report-loading-indicator",
+            hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
         ),
     )
 
@@ -181,14 +182,12 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
 
     paper_json_str = paper.model_dump_json()
 
-    authors_display = "N/A"
+    authors_display = "Author(s): N/A"
     if paper.authors:
         if len(paper.authors) > config.config.MAX_AUTHORS_DISPLAY:  # Using config.config
-            authors_display = (
-                f"{', '.join(paper.authors[: config.config.MAX_AUTHORS_DISPLAY])}, et al."
-            )
+            authors_display = f"Author(s): {', '.join(paper.authors[: config.config.MAX_AUTHORS_DISPLAY])}, et al."
         else:
-            authors_display = ", ".join(paper.authors)
+            authors_display = f"Author(s): {', '.join(paper.authors)}"
 
     # Basic styling for the paper item
     item_style = "margin-bottom: 1em; padding: 0.5em; border: 1px solid #ccc;"
@@ -463,6 +462,7 @@ def home_page(page_data: SharedPageData) -> Div:
             Script(src="/static/js/app.js"),  # External JS handles dark-mode toggle
         ),
         Body(
+            Div("█▓▒░ Lux Scholar ░▒▓█", cls="top-bar"),
             Div(
                 BUTTON("🌙 Dark Mode", id="lux-dark-toggle", type="button"),
                 style="text-align:right; margin-bottom:0.5rem;",

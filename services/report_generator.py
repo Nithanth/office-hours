@@ -11,6 +11,7 @@ from services.exa_client import ExaClient
 from services.llm_client import LLMProviderName, LLMService
 from utils.prompt_templates import (
     AUDIENCE_PROMPT_MAP,
+    DEFAULT_SYSTEM_PROMPT,  # local import to avoid cyclical issues
     get_topic_analysis_prompts,
 )
 
@@ -521,7 +522,7 @@ function fallbackCopy(text) {
 
         # Action buttons (appear before report content)
         buttons_html = (
-            "<div class='report-actions' style='margin-bottom:1em;'>"
+            "<div class='report-actions' style='margin:1em 0;'>"
             "<button type='button' onclick='copyReportText()'>Copy&nbsp;Text</button>"
             "</div>"
         )
@@ -576,9 +577,15 @@ function fallbackCopy(text) {
         rather than requesting a topic landscape or paper summaries.
         """
         # Build a simple direct-answer prompt (no enforced structure)
-        system_prompt = "DEFAULT_SYSTEM_PROMPT"
+        # Use the shared default prompt then tailor it.
+
         audience_cfg = AUDIENCE_PROMPT_MAP.get(audience_type, AUDIENCE_PROMPT_MAP["technical"])
-        system_prompt += " " + audience_cfg["system_suffix"]
+        system_prompt = (
+            DEFAULT_SYSTEM_PROMPT
+            + " "
+            + audience_cfg["system_suffix"]
+            + " Respond with a direct answer in plain paragraphs. Do NOT output section headings, bullet points, or numbered lists."
+        )
 
         user_prompt = (
             "You are answering a direct research question for a user. "
@@ -604,7 +611,7 @@ function fallbackCopy(text) {
             answer_html = f"<p><strong>Error:</strong> {html.escape(result['content'])}</p>"
         else:
             # Clean common markdown markup (bullets, *italic*, **bold**)
-            cleaned_text = result["content"]
+            cleaned_text = result["content"].strip()  # <--- Strip whitespace from result
             # Remove leading bullet markers ('* ' or '- ' or numbered lists like '1. ')
             cleaned_text = re.sub(r"^\s*([*\-]|\d+\.)\s+", "", cleaned_text, flags=re.MULTILINE)
             # Strip emphasis markers while keeping the text
@@ -658,7 +665,7 @@ function fallbackCopy(text) {
 </script>
 """
             buttons_html = (
-                "<div class='answer-actions' style='margin-bottom:1em;'>"
+                "<div class='answer-actions' style='margin:1em 0;'>"
                 "<button type='button' onclick='copyAnswerText()'>Copy&nbsp;Text</button>"
                 "</div>"
             )
