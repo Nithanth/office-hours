@@ -59,14 +59,14 @@ footer {
 /* -------------------------------------------------- */
 
 body.lux-dark {
-    background-color: #000; /* original dark back */
+    background-color: #121212; /* matte near-black */
     color: var(--lux-red);
 }
 
 /* Apply same dark background to main content containers */
 body.lux-dark header,
 body.lux-dark .container {
-    background-color: #000;
+    background-color: #121212;
 }
 
 body.lux-dark a,

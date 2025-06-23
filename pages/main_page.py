@@ -462,14 +462,14 @@ def home_page(page_data: SharedPageData) -> Div:
                     id="search_query",
                     name="search_query",
                     required=True,
-                    placeholder="e.g., 'transformer architecture overview', or paste an arXiv URL",
+                    placeholder="e.g., 'transformer architecture overview', or 'https://www.arxiv.org/pdf/2506.08388'",
                     value=page_data.current_query or "",
                     style="width:40rem;max-width:90%;",
                 ),
                 Br(),
                 # Author input removed per new requirements
                 Br(),
-                Label("Published After:", for_="start_published_date"),
+                Label("Published After: ", for_="start_published_date"),
                 INPUT(
                     type="date",
                     id="start_published_date",
@@ -477,7 +477,7 @@ def home_page(page_data: SharedPageData) -> Div:
                     placeholder="YYYY-MM-DD",
                 ),
                 Br(),
-                Label("Source Domain:", for_="domain_filter"),
+                Label("Source Domain: ", for_="domain_filter"),
                 Select(
                     Option("Any", value="any"),
                     Option("arxiv.org", value="arxiv.org"),
@@ -487,7 +487,7 @@ def home_page(page_data: SharedPageData) -> Div:
                     name="domain_filter",
                 ),
                 Br(),
-                Label("Number of Results:", for_="num_results"),
+                Label("Number of Results: ", for_="num_results"),
                 INPUT(
                     type="number",
                     id="num_results",
