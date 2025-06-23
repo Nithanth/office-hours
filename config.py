@@ -71,6 +71,7 @@ class Config:
 
     # Application Settings
     APP_TITLE: str = "Lux Scholar"
+    VERSION: str = "0.0.1"
     YEAR: int = 2025  # Added for copyright year
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     HOST: str = os.getenv("HOST", "0.0.0.0")

@@ -2,7 +2,7 @@ import os
 import random
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -207,13 +207,32 @@ class ExaClient:
                 # Fallback to Exa's auto-summary if full text not returned
                 text_content = result.summary
 
+            published_date_str = getattr(result, "published_date", None)
+            paper_published_date: datetime | None = None
+            if published_date_str:
+                try:
+                    # Handle dates like '2023-11-20' or full ISO '2023-11-20T15:35:56Z'
+                    if "T" in published_date_str:
+                        dt_obj = datetime.fromisoformat(published_date_str.replace("Z", "+00:00"))
+                    else:
+                        dt_obj = datetime.strptime(published_date_str, "%Y-%m-%d")
+
+                    # Ensure it's timezone-aware (assume UTC if not specified)
+                    if dt_obj.tzinfo is None:
+                        paper_published_date = dt_obj.replace(tzinfo=timezone.utc)
+                    else:
+                        paper_published_date = dt_obj
+
+                except (ValueError, TypeError):
+                    paper_published_date = None
+
             paper_data = {
                 "id": result.id if result.id else result.url,
                 "title": result.title if result.title else "No Title Provided",
                 "url": result.url,
                 "authors": authors_list,
                 "text_content": text_content,
-                "published_date": result.published_date if result.published_date else None,
+                "published_date": paper_published_date,
                 "score": result.score if hasattr(result, "score") else None,
                 "source": source_description,
             }
@@ -238,7 +257,7 @@ class ExaClient:
         query: str,
         num_results: int = 8,
         *,
-        start_published_date: str | None = None,
+        start_published_date: datetime | None = None,
         end_published_date: str | None = None,
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
@@ -274,21 +293,8 @@ class ExaClient:
         request_count = min(desired_count * 3, 20)
 
         # Prepare date cutoff for local filtering (Exa may ignore it).
-        cutoff_dt: datetime | None = None
+        cutoff_dt: datetime | None = start_published_date
         apply_filters = os.getenv("EXA_NO_FILTERS", "0") != "1"
-        if apply_filters and start_published_date:
-            try:
-                cutoff_dt = datetime.fromisoformat(start_published_date.replace("Z", "+00:00"))
-            except ValueError:
-                # Fallback parse without time info
-                try:
-                    cutoff_dt = datetime.strptime(start_published_date[:10], "%Y-%m-%d")
-                except ValueError:
-                    logger.warning(
-                        "search_papers: could not parse start_published_date '%s'",
-                        start_published_date,
-                    )
-                    cutoff_dt = None
 
         papers: list[Paper] = []
         try:
@@ -301,7 +307,7 @@ class ExaClient:
             }
 
             if start_published_date:
-                exa_kwargs["start_published_date"] = start_published_date
+                exa_kwargs["start_published_date"] = start_published_date.strftime("%Y-%m-%d")
             if end_published_date:
                 exa_kwargs["end_published_date"] = end_published_date
             if include_domains:
@@ -359,17 +365,11 @@ class ExaClient:
                     # Local date cutoff check
                     if cutoff_dt and paper.published_date:
                         try:
-                            paper_dt = (
-                                paper.published_date
-                                if isinstance(paper.published_date, datetime)
-                                else datetime.fromisoformat(
-                                    str(paper.published_date).replace("Z", "+00:00")
-                                )
-                            )
-                            if paper_dt < cutoff_dt:
+                            # paper.published_date is now guaranteed to be tz-aware from _create_paper_from_exa_result
+                            if paper.published_date < cutoff_dt:
                                 continue
                         except Exception:
-                            # If date unparseable, drop
+                            # If date unparseable or other error, drop
                             continue
                 else:
                     # Even when not applying filters, skip if Paper creation failed
@@ -492,7 +492,9 @@ class ExaClient:
         num_results: int = 5,
         category: str = "research_paper",
         *,
-        start_published_date: str | None = None,
+        start_published_date: datetime | None = None,
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
     ) -> list[Paper]:
         """
         Find papers similar to the one at the given URL using Exa's find_similar_and_contents endpoint.
@@ -501,6 +503,9 @@ class ExaClient:
             paper_url: URL of the paper to find similar papers for.
             num_results: Number of similar papers to return.
             category: The category of content to search for.
+            start_published_date: Optional start date for filtering results.
+            include_domains: Optional list of domains to include in results.
+            exclude_domains: Optional list of domains to exclude from results.
 
         Returns:
             A list of Paper objects representing similar papers.
@@ -521,9 +526,18 @@ class ExaClient:
                 "category": category,
             }
 
+            if start_published_date:
+                exa_kwargs["start_published_date"] = start_published_date.strftime("%Y-%m-%d")
+            if include_domains:
+                exa_kwargs["include_domains"] = include_domains
+            if exclude_domains:
+                exa_kwargs["exclude_domains"] = exclude_domains
+
             # Use find_similar_and_contents to get similar papers and their content
             similar_response = self.client.find_similar_and_contents(
-                paper_url, **exa_kwargs, text=True
+                paper_url,
+                **exa_kwargs,
+                text=True,
             )
 
             # --- DEBUG: Log raw similar results before filtering ---
@@ -552,8 +566,15 @@ class ExaClient:
                 # Apply domain filter (include/exclude not passed here yet)
                 if not self._domain_allowed(
                     paper.url,
-                    include_domains=None,
-                    exclude_domains=None,
+                    include_domains=include_domains,
+                    exclude_domains=exclude_domains,
+                ):
+                    continue
+
+                if (
+                    start_published_date
+                    and paper.published_date
+                    and paper.published_date < start_published_date
                 ):
                     continue
 
@@ -578,6 +599,7 @@ class ExaClient:
         num_similar_results: int = 5,
         *,
         category: str = "research_paper",
+        start_published_date: datetime | None = None,
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -588,6 +610,7 @@ class ExaClient:
             paper_url: URL of the paper to fetch and find similars for.
             num_similar_results: Number of similar papers to return.
             category: The category of content for similar papers search.
+            start_published_date: Optional start date for filtering results.
             include_domains: Optional list of domains to include in results.
             exclude_domains: Optional list of domains to exclude from results.
 
@@ -685,31 +708,16 @@ class ExaClient:
 
         # 2. Find similar papers to the paper_url
         try:
-            logger.info(f"Finding similar papers for URL: {paper_url}")
-            similar_response = self.client.find_similar_and_contents(
+            logger.info("Finding similar papers for URL: %s", paper_url)
+
+            similar_papers_list = self.find_similar_papers(
                 paper_url,
                 num_results=num_similar_results,
                 category=category,
+                start_published_date=start_published_date,
                 include_domains=include_domains,
                 exclude_domains=exclude_domains,
-                text=True,
             )
-            for result in similar_response.results:
-                paper = self._create_paper_from_exa_result(result, f"Exa (similar to: {paper_url})")
-
-                # Skip invalid or None papers early (narrows type for mypy)
-                if paper is None or not self._is_valid_paper(paper):
-                    continue
-
-                # Apply domain filter (include/exclude not passed here yet)
-                if not self._domain_allowed(
-                    paper.url,
-                    include_domains=include_domains,
-                    exclude_domains=exclude_domains,
-                ):
-                    continue
-
-                similar_papers_list.append(paper)
         except Exception as e:
             logger.error(
                 f"Error finding similar papers for URL {paper_url} with Exa: {e}", exc_info=True
@@ -785,6 +793,7 @@ class ExaClient:
             paper_url,
             num_similar_results=request_count,
             category=kwargs.get("category", "research_paper"),
+            start_published_date=kwargs.get("start_published_date"),
             include_domains=kwargs.get("include_domains"),
             exclude_domains=kwargs.get("exclude_domains"),
         )

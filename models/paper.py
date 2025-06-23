@@ -6,6 +6,7 @@ It's used to structure and validate data related to research papers
 retrieved from various sources or created within the application.
 """
 
+from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -28,9 +29,9 @@ class Paper(BaseModel):
         default=None,
         description="The main textual content of the paper (e.g., abstract or full text retrieved from the source like Exa's 'text' field).",
     )
-    published_date: Optional[str] = Field(
+    published_date: Optional[datetime | str] = Field(
         default=None,
-        description="The publication date as a string. Consider parsing to datetime.date if consistency is assured.",
+        description="Publication date (datetime or ISO string). Pydantic will coerce ISO strings to datetime objects; strings are retained for backward compatibility.",
     )
     score: Optional[float] = Field(
         default=None, description="Relevance score from the search provider."
@@ -67,7 +68,7 @@ if __name__ == "__main__":
         "url": "https://example.com/paper123",
         "authors": ["Author A", "Author B"],
         "text_content": "This is the main text content of the paper, which could be an abstract or the full text.",
-        "published_date": "2023-01-15",
+        "published_date": "2023-01-15T14:30:00",
         "score": 0.95,
         "source": "Exa Search",
     }

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Optional
 
 # Ensure all FastHTML components used by your page and sub-components are imported
@@ -16,6 +17,7 @@ from fasthtml.components import (
     Div,
     Footer,
     Head,
+    I,
     Label,
     Link,
     Option,
@@ -142,9 +144,16 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
     formatted_date = "Unknown date"
     if paper.published_date:
         try:
-            date_parts = paper.published_date.split("-")
+            # Normalise to string first for parsing convenience
+            date_iso = (
+                paper.published_date.isoformat()
+                if isinstance(paper.published_date, datetime)
+                else str(paper.published_date)
+            )
+            date_parts = date_iso.split("-")
             if len(date_parts) >= 3:
-                year, month, day = date_parts[0], date_parts[1], date_parts[2].split("T")[0]
+                year, month, day_part = date_parts[0], date_parts[1], date_parts[2]
+                day = day_part.split("T")[0]  # Remove any time component
                 months = [
                     "January",
                     "February",
@@ -159,15 +168,15 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                     "November",
                     "December",
                 ]
-                try:
-                    month_name = months[int(month) - 1]
-                    formatted_date = f"{month_name} {int(day)}, {year}"
-                except (ValueError, IndexError):
-                    formatted_date = paper.published_date
+                month_idx = int(month) - 1
+                if 0 <= month_idx < len(months):
+                    formatted_date = f"{months[month_idx]} {int(day)}, {year}"
+                else:
+                    formatted_date = date_iso
             else:
-                formatted_date = paper.published_date
+                formatted_date = date_iso
         except Exception:
-            formatted_date = paper.published_date
+            formatted_date = str(paper.published_date)
 
     paper_json_str = paper.model_dump_json()
 
@@ -372,20 +381,20 @@ def render_report(
         summary = paper_summaries[i]
         paper_list_html += f"""\
         <div class="paper-summary-item mt-4 pt-4 border-t border-gray-700">
-            <h4 class="text-lg font-semibold text-blue-300">{paper.title}</h4>
-            <p class="text-gray-400 text-sm">Source: <a href="{paper.url}" target="_blank" class="hover:underline">{paper.url}</a></p>
+            <h4 class="text-lg font-semibold">{paper.title}</h4>
+            <p class="text-sm">Source: <a href="{paper.url}" target="_blank" class="hover:underline">{paper.url}</a></p>
             <p class="mt-2">{summary}</p>
         </div>"""
 
     return f"""\
     <div id="report-content" class="mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50">
-        <h2 class="text-2xl font-bold mb-4 text-gray-100">{title}</h2>
+        <h2 class="text-2xl font-bold mb-4">{title}</h2>
         <div class="main-summary mb-6">
-            <h3 class="text-xl font-semibold text-gray-200 mb-2">Overall Analysis</h3>
+            <h3 class="text-xl font-semibold mb-2">Overall Analysis</h3>
             <p>{main_summary}</p>
         </div>
         <div class="paper-summaries">
-            <h3 class="text-xl font-semibold text-gray-200 mb-2">Key Paper Summaries</h3>
+            <h3 class="text-xl font-semibold mb-2">Key Paper Summaries</h3>
             {paper_list_html}
         </div>
     </div>"""
@@ -415,9 +424,9 @@ def home_page(page_data: SharedPageData) -> Div:
             papers_list=page_data.search_results,
         )
     else:  # No search performed yet, or search_results is None
-        results_display_content = P("Search results will appear here.")
+        results_display_content = P(I("Search results will appear here."))
 
-    return Div(  # This is the main Div wrapper for the entire page content
+    return Div(  # Main page content wrapper
         Head(
             Title(page_data.title),
             Script(src="https://unpkg.com/htmx.org@1.9.10"),
@@ -435,29 +444,19 @@ def home_page(page_data: SharedPageData) -> Div:
                 "});"
             ),
             Style(indicator_css),
-            # Minimal dark-mode CSS (keeps retro look)
-            Style(
-                """
-                body.lux-dark { background-color:#1a1a1a; color:#e4e4e4; }
-                body.lux-dark a { color:#a8cfff; }
-                .lux-dark input, .lux-dark select, .lux-dark textarea { background:#292929; color:#e4e4e4; border-color:#666; }
-                .lux-dark button { background:#333; color:#e4e4e4; border-color:#888; }
-                """,
-            ),
+            Link(rel="stylesheet", href="/static/css/styles.css"),
+            # Re-add small script to handle manual dark-mode toggle without inline style overrides
+            Script(src="/static/js/app.js"),  # External JS handles dark-mode toggle
         ),
         Body(
             Div(
-                BUTTON(
-                    "🌓 Dark Mode",
-                    type="button",
-                    onclick="document.body.classList.toggle('lux-dark')",
-                ),
+                BUTTON("🌙 Dark Mode", id="lux-dark-toggle", type="button"),
                 style="text-align:right; margin-bottom:0.5rem;",
             ),
             H1(page_data.title),
-            P("Enter a research topic or query."),
+            P("Enter a research topic, query, or paper link:"),
             FORM(  # Search Form
-                Label("Query:", for_="search_query"),
+                Label(for_="search_query"),
                 INPUT(
                     type="search",
                     id="search_query",
@@ -539,7 +538,7 @@ def home_page(page_data: SharedPageData) -> Div:
                 id="results-and-report-form",  # ID for this form container
             ),
             Footer(
-                P(f"  {config.config.YEAR} {config.config.APP_TITLE}."),
+                P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
                 style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ccc;",
             ),
         ),

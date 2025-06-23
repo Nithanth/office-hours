@@ -115,16 +115,16 @@ class ReportGenerator:
 
         return max_chars
 
-    def _get_formatted_date_str(self, date_input: Optional[str]) -> str:
+    def _get_formatted_date_str(self, date_input: Optional[Union[str, datetime]]) -> str:
         if not date_input:  # Handles None or empty string
             return "N/A"
-        # Assuming date_input is a string 'YYYY-MM-DD'
+        # If a datetime comes in, format directly
+        if isinstance(date_input, datetime):
+            return date_input.strftime("%Y-%m-%d")
+        # Otherwise attempt to parse the string safely
         try:
-            # Using '%Y-%m-%d' for output to match original apparent intent.
             return datetime.strptime(date_input, "%Y-%m-%d").strftime("%Y-%m-%d")
         except ValueError:
-            # If parsing fails (e.g. already formatted, or different format), return the original string.
-            # Or, could return "N/A" here too if preferred.
             return date_input
 
     async def _generate_single_summary(
@@ -470,6 +470,9 @@ class ReportGenerator:
 
         report_body = "".join(report_parts)
 
+        # Dynamically generate the title based on the report content
+        title = await self._generate_report_title(report_body, self.selected_model_api_id)
+
         # --- Copy-text utility only (works even on non-secure origins) -----------
         script_html = """
 <script>
@@ -516,18 +519,46 @@ function fallbackCopy(text) {
 </script>
 """
 
+        # Header with dynamic title
+        header_html = f"<h2 style='margin-top:0'>{html.escape(title)}</h2>"
+
         # Action buttons for user convenience
         buttons_html = (
             "<div class='report-actions' style='margin-bottom:1em;'>"
-            "<button onclick='copyReportText()'>Copy&nbsp;Text</button>"
+            "<button type='button' onclick='copyReportText()'>Copy&nbsp;Text</button>"
             "</div>"
         )
 
         # Wrap report content for easy DOM selection
         wrapped_report = f"<div id='lux-report'>{report_body}</div>"
 
-        # Combine script, buttons, and report for the final output
-        return script_html + buttons_html + wrapped_report
+        # Combine script, header, buttons, and report for the final output
+        return script_html + header_html + buttons_html + wrapped_report
+
+    async def _generate_report_title(self, report_content: str, model_key: str) -> str:
+        """Generates a concise, intelligent title for the report content."""
+        if not report_content.strip():
+            return "Consolidated Research Report"
+
+        prompt = (
+            f"Based on the following research summary, please generate a concise and informative title. "
+            f"The title should be no more than 10 words and capture the main theme of the text.\n\n"
+            f"SUMMARY:\n{report_content[:2000]}...\n\nTITLE:"
+        )
+
+        result = await self.llm_service.generate_completion_safe(
+            provider_name=self.selected_model_provider,
+            model_name=self.selected_model_api_id,
+            prompt=prompt,
+            max_tokens=30,
+            temperature=0.4,
+        )
+        if not result["ok"]:
+            logger.warning("Dynamic title generation failed: %s", result["content"])
+            raise RuntimeError(result["content"])
+
+        # Clean up the title
+        return result["content"].strip().replace('"', "")
 
     async def generate_direct_query_answer(
         self,
@@ -557,7 +588,7 @@ function fallbackCopy(text) {
             model_name=self.selected_model_api_id,
             prompt=user_prompt,
             max_tokens=max_tokens,
-            system_prompt=system_prompt,
+            temperature=0.4,
         )
 
         if not result["ok"]:

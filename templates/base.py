@@ -45,12 +45,12 @@ def base_layout(title_text: str, *content: Any) -> Html:
         ),
         Body(cl="bg-gray-100"),  # Example Tailwind class, won't apply without Tailwind
         Body(
-            Header(H1(title_text), cl="bg-slate-700 text-white p-4 text-center"),  # Example styling
+            Header(H1(title_text), cl="bg-slate-700 p-4 text-center"),
             Main(
                 Div(*content, cl="container mx-auto p-4"),  # Basic container class from styles.css
             ),
             Footer(
-                P("© 2024 Research Paper Analysis Tool. All rights reserved."),
+                P(" 2024 Research Paper Analysis Tool. All rights reserved."),
                 cl="text-center text-sm text-gray-500 py-4",
             ),
             Script(src="/static/js/app.js"),  # Load custom JS

@@ -1,5 +1,6 @@
 import asyncio
 import html
+import pathlib as _pathlib
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from typing import Any, Callable, Optional, cast
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fasthtml.components import LI, UL, Div  # For dynamic list rendering (need LI for messages)
 from loguru import logger
 
@@ -23,6 +25,7 @@ from pages.main_page import (
 from services.exa_client import ExaClient
 from services.llm_client import LLMConfigurationError, LLMService
 from services.report_generator import ReportGenerator
+from utils.date_utils import parse_user_date
 from utils.search_utils import clean_query
 
 # --- Configure Loguru Logger ---
@@ -94,6 +97,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
+
+# --------------------------------------------------
+# Static Files Mount (CSS, JS, images)
+# --------------------------------------------------
+
+_static_path = _pathlib.Path(__file__).parent / "static"
+if _static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_path)), name="static")
+else:
+    logger.warning("Static directory not found at %s; static assets will return 404", _static_path)
 
 # --- Helper Functions ---
 
@@ -435,29 +448,50 @@ async def handle_search(
         # papers_data: List[Paper] = [] # Will be structured differently for URL searches
         results_html_fragment: str = ""
 
+        parsed_start_date: datetime | None = None
+        if start_published_date and start_published_date.strip():
+            parsed_start_date = parse_user_date(start_published_date)
+            if not parsed_start_date:
+                logger.warning(
+                    "handle_search: Invalid start_published_date format",
+                    date_received=start_published_date,
+                )
+                error_html = render_error_message(
+                    f"Invalid date format: '{start_published_date}'. Please use YYYY-MM-DD or MM/DD/YYYY.",
+                    context="invalid_date_format",
+                ).render()
+                return HTMLResponse(
+                    content=error_html,
+                    headers={
+                        "HX-Retarget": "#search-results-container",
+                        "HX-Reswap": "innerHTML",
+                    },
+                )
+
+        # Shared keyword arguments for both search types
+        shared_kwargs: dict[str, Any] = {}
+        if parsed_start_date:
+            shared_kwargs["start_published_date"] = parsed_start_date
+        if domain_filter and domain_filter.lower() not in {"any", "all"}:
+            shared_kwargs["include_domains"] = [domain_filter]
+
+        # Determine if the query is a URL or a search term.
         if exa_client_instance.is_url(input_query_stripped):
             is_url_search_flag = True  # URL input
             logger.info(
                 "handle_search: URL detected, using unified url_search_and_cache",
                 input_type="url",
-                params={
-                    "paper_url": input_query_stripped,
-                    "num_results": num_results
-                    if num_results is not None
-                    else config.config.DEFAULT_PAPER_COUNT,
-                },
+                url=input_query_stripped,
+                k=num_results,
+                filters=shared_kwargs,
             )
 
-            # Build optional kwargs (domain filter reuse)
-            url_search_kwargs = {}
-            if domain_filter and domain_filter.lower() not in {"any", "all"}:
-                url_search_kwargs["include_domains"] = [domain_filter]
-
-            # Fetch input paper + similar papers and cache
+            # For URL searches, papers_data is a dict with 'main_paper' and 'similar_papers'.
+            # The Exa client returns a list of Paper objects directly.
             exa_results = cast(ExaClient, exa_client_instance).url_search_and_cache(
                 paper_url=input_query_stripped,
                 k=num_results if num_results is not None else config.config.DEFAULT_PAPER_COUNT,
-                **url_search_kwargs,
+                **shared_kwargs,
             )
             logger.info(
                 "handle_search: url_search_and_cache successful",
@@ -487,65 +521,12 @@ async def handle_search(
                 },
             )
 
-            search_params = {
-                "query": input_query_stripped,
-                "num_results": num_results
-                if num_results is not None
-                else config.config.DEFAULT_PAPER_COUNT,
+            # Kwargs forwarded to ExaClient.search_and_cache (excluding *query* and *k*)
+            search_kwargs: dict[str, Any] = {
                 "use_autoprompt": True,
                 "category": "research_paper",
             }
-
-            if start_published_date and start_published_date.strip():
-                try:
-                    # Accept either YYYY-MM-DD or MM/DD/YYYY from the date picker
-                    cleaned_date = start_published_date.strip()
-
-                    parsed_dt: datetime | None = None
-                    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
-                        try:
-                            parsed_dt = datetime.strptime(cleaned_date, fmt)
-                            break
-                        except ValueError:
-                            continue
-
-                    if parsed_dt is None:
-                        raise ValueError("Unrecognized date format")
-
-                    # Use full ISO date with Z to satisfy Exa filtering
-                    iso_date = parsed_dt.strftime("%Y-%m-%dT00:00:00Z")
-                    search_params["start_published_date"] = iso_date
-                    logger.info(
-                        f"handle_search: Using date filter for search: {search_params['start_published_date']}"
-                    )
-                except ValueError:
-                    logger.warning(
-                        "handle_search: Invalid start_published_date format",
-                        date_received=start_published_date,
-                        error="Ignoring date filter.",
-                    )
-                    error_html = render_error_message(
-                        f"Invalid date format: '{start_published_date}'. Please use YYYY-MM-DD or MM/DD/YYYY format.",
-                        context="invalid_date_format",
-                    ).render()
-                    return HTMLResponse(
-                        content=error_html,
-                        headers={
-                            "HX-Retarget": "#search-results-container",
-                            "HX-Reswap": "innerHTML",
-                        },
-                    )
-
-            # Author filter support removed as per requirements
-            # authors_list: list[str] | None = None
-            # if authors:
-            #     authors_list = [a.strip() for a in authors.split(",") if a.strip()]
-            #     if authors_list:
-            #         search_params["authors"] = authors_list
-
-            search_kwargs = {}
-            if domain_filter and domain_filter.lower() not in {"any", "all"}:
-                search_kwargs["include_domains"] = [domain_filter]
+            search_kwargs.update(shared_kwargs)
 
             # For non-URL searches, papers_data is a flat list.
             # render_search_results expects 'papers_list' for this case.
