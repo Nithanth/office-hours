@@ -26,6 +26,7 @@ from fasthtml.components import (
     Select,
     Span,
     Style,
+    Textarea,
     Title,
 )
 from pydantic import BaseModel
@@ -86,15 +87,15 @@ def render_report_config_form(
 
     return Div(
         H2("Configure Report Generation"),
-        P(f"Generating report for query: '{original_query}'"),
-        P(f"Based on {num_selected} selected paper(s)."),
+        P(I(f"Generating report for query: '{original_query}'")),
+        P(I(f"Based on {num_selected} selected paper(s).")),
         FORM(
             Label("Select Target Audience:", for_="audience_type"),
             Br(),
             Select(
                 Option("Highly Technical (PhD/Researcher)", value="technical"),
                 Option("Semi-technical (Lux)", value="semi_technical", selected=True),
-                Option("Non-Technical (Other VCs) ", value="non-technical"),
+                Option("Non-Technical (Other VCs)", value="non-technical"),
                 name="audience_type",
                 id="audience_type_select",
             ),
@@ -290,37 +291,40 @@ def render_search_results(
         results_content.append(
             Div(
                 BUTTON(
-                    "🎲 Shuffle random pick",
+                    "🎲 Wildcard Paper",
                     id="shuffle-btn",
                     hx_post="/shuffle",
                     hx_target="#wild-card-item",
                     hx_swap="outerHTML",
+                    onclick="document.getElementById('report-config-area').innerHTML='';document.getElementById('report-display-area').innerHTML='';",
                 ),
                 BUTTON(
-                    "🔀 Shuffle all",
+                    "🔀 Shuffle All Papers",
                     id="shuffle-all-btn",
                     hx_post="/shuffle_all",
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
                     style="margin-left:0.5rem;",
+                    onclick="document.getElementById('report-config-area').innerHTML='';document.getElementById('report-display-area').innerHTML='';",
                 ),
                 BUTTON(
-                    "↩️ Reset order",
+                    "↩️ Reset Order",
                     id="reset-btn",
                     hx_post="/reset_results",
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
                     style="margin-left:0.5rem;",
+                    onclick="document.getElementById('report-config-area').innerHTML='';document.getElementById('report-display-area').innerHTML='';",
                 ),
                 style="margin-top:10px;",
             )
         )
         has_results = True
     else:
-        results_content.append(P("No papers found for the given search."))
+        pass
 
     if not has_results:
-        results_content.append(P("No search results to display."))
+        pass
 
     # Add Configure Report button only if there are selectable papers
     if has_results:
@@ -365,6 +369,16 @@ def report_loading_indicator_component() -> Div:
         P("Writing report...", style="display:inline-block;"),
         id="report-loading-indicator",
         cls="htmx-indicator report-specific-indicator",
+    )
+
+
+def ask_loading_indicator_component() -> Div:
+    """Spinner shown while waiting for direct LLM answer."""
+    return Div(
+        Div(cls="lux-spinner"),
+        Span("Consulting Assistant...", style="display:inline-block; margin-left:4px;"),
+        id="ask-loading-indicator",
+        cls="htmx-indicator ask-llm-indicator",
     )
 
 
@@ -424,7 +438,7 @@ def home_page(page_data: SharedPageData) -> Div:
             papers_list=page_data.search_results,
         )
     else:  # No search performed yet, or search_results is None
-        results_display_content = P(I("Search results will appear here."))
+        results_display_content = ""
 
     return Div(  # Main page content wrapper
         Head(
@@ -454,7 +468,7 @@ def home_page(page_data: SharedPageData) -> Div:
                 style="text-align:right; margin-bottom:0.5rem;",
             ),
             H1(page_data.title),
-            P("Enter a research topic, query, or paper link:"),
+            P(I("Enter a research topic, query, or paper link:")),
             FORM(  # Search Form
                 Label(for_="search_query"),
                 INPUT(
@@ -497,7 +511,7 @@ def home_page(page_data: SharedPageData) -> Div:
                     value=str(config.config.DEFAULT_PAPER_COUNT),
                 ),
                 Br(),
-                # Buttons choose workflow
+                # Buttons choose workflow (paper search)
                 BUTTON(
                     "Search Papers",
                     type="submit",
@@ -505,41 +519,62 @@ def home_page(page_data: SharedPageData) -> Div:
                     value="auto",
                     onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
                 ),
-                BUTTON(
-                    "Ask LLM",
-                    type="submit",
-                    name="mode",
-                    value="direct",
-                    onclick="document.getElementById('lux-loading-text').textContent='Consulting LLM...'",
-                    style="margin-left:0.5rem;",
-                ),
                 Br(),
                 hx_post="/search",
                 hx_target="#search-results-container",  # Targets the Div below
                 hx_swap="innerHTML",
                 hx_indicator="#loading-indicator",
-                style="background:inherit;padding:0.5rem 0;border-bottom:1px solid #ccc;",
+                onsubmit="document.getElementById('report-display-area').innerHTML='';document.getElementById('report-config-area').innerHTML='';document.getElementById('ask-result-container').innerHTML='';",
+                id="paper-search-form",
+                style="background:inherit;padding:0.5rem 0;",
             ),
             loading_indicator_component(),
-            # This outer FORM for report configuration might be what you intended
+            # Results and Report Form (wraps hidden inputs etc.)
             FORM(
                 # Search results are displayed here, targeted by the search form's hx_target
                 Div(
                     results_display_content,
                     id="search-results-container",
                 ),  # Corrected: child directly passed
-                Br(),
                 # Report configuration form will be loaded here
                 Div(id="report-config-area"),
-                Br(),
                 report_loading_indicator_component(),  # For when report is generating
                 # Actual report will be displayed here
                 Div(id="report-display-area"),
-                id="results-and-report-form",  # ID for this form container
+                id="results-and-report-form",
             ),
+            # ---------------- Ask LLM block (standalone) ----------------
+            P(
+                I("Research assistant to ask quick follow-up or independent questions:"),
+                style="margin-top:-0.25rem;font-size:0.9rem;",
+                _class="ask-llm-subtitle",
+            ),
+            FORM(
+                Textarea(
+                    id="direct_question",
+                    name="question",
+                    placeholder="e.g., 'Summarize the transformer architecture'",
+                    style="width:40rem;max-width:90%;height:6rem;font-family:inherit;",
+                ),
+                Br(),
+                BUTTON(
+                    "Ask Assistant",
+                    type="submit",
+                    onclick="document.getElementById('lux-loading-text').textContent='Consulting Assistant...'",
+                ),
+                hx_post="/ask-llm",
+                hx_target="#ask-result-container",
+                hx_swap="innerHTML",
+                hx_indicator="#ask-loading-indicator",
+                onsubmit="document.getElementById('report-display-area').innerHTML='';document.getElementById('report-config-area').innerHTML='';document.getElementById('ask-result-container').innerHTML='';",
+                id="ask-assistant-form",
+                style="background:inherit;padding:0.5rem 0;",
+            ),
+            ask_loading_indicator_component(),
+            Div(id="ask-result-container"),
             Footer(
                 P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
                 style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ccc;",
             ),
-        ),
-    )
+        ),  # Close Body
+    )  # Close outer Div

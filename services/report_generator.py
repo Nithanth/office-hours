@@ -1,6 +1,7 @@
 import asyncio
 import html
 import logging
+import re
 from datetime import datetime
 from typing import Optional, Union
 
@@ -10,7 +11,6 @@ from services.exa_client import ExaClient
 from services.llm_client import LLMProviderName, LLMService
 from utils.prompt_templates import (
     AUDIENCE_PROMPT_MAP,
-    get_query_resolution_prompts,
     get_topic_analysis_prompts,
 )
 
@@ -400,13 +400,13 @@ class ReportGenerator:
                     system_prompt=system_prompt_topic,
                 )
                 if include_section_headings:
-                    report_parts.append("<h3>Overview</h3>")
+                    report_parts.append("<h3>Topic Overview</h3>")
                 report_parts.append(
                     f"<div class='topic-summary'><p>{self._text_to_html_paragraphs(topic_summary)}</p></div>"
                 )
 
                 if include_section_headings:
-                    report_parts.append("<h3>Individual Paper Summaries</h3>")
+                    report_parts.append("<h3>Paper Summaries</h3>")
                 summary_tasks = []
                 for paper in papers_for_topic_report:
                     paper_snippet_topic = (paper.text_content or "")[
@@ -575,11 +575,15 @@ function fallbackCopy(text) {
         This lightweight path is useful when the user asks an explicit question
         rather than requesting a topic landscape or paper summaries.
         """
-        # Build prompts
-        system_prompt, user_prompt = get_query_resolution_prompts(
-            query=query,
-            num_supporting_papers=num_supporting_papers,
-            target_audience=audience_type,
+        # Build a simple direct-answer prompt (no enforced structure)
+        system_prompt = "DEFAULT_SYSTEM_PROMPT"
+        audience_cfg = AUDIENCE_PROMPT_MAP.get(audience_type, AUDIENCE_PROMPT_MAP["technical"])
+        system_prompt += " " + audience_cfg["system_suffix"]
+
+        user_prompt = (
+            "You are answering a direct research question for a user. "
+            "Provide the best possible answer based solely on your existing knowledge.\n\n"
+            f"Question: {query.strip()}"
         )
 
         # Default max_tokens if not specified: leave ~1k tokens headroom vs model limit
@@ -590,17 +594,76 @@ function fallbackCopy(text) {
             provider_name=self.selected_model_provider,
             model_name=self.selected_model_api_id,
             prompt=user_prompt,
+            system_prompt=system_prompt,
             max_tokens=max_tokens,
-            temperature=0.4,
+            temperature=0.5,
         )
 
         if not result["ok"]:
             logger.error("Direct query generation failed: %s", result["content"])
             answer_html = f"<p><strong>Error:</strong> {html.escape(result['content'])}</p>"
         else:
-            # Simple HTML wrapping; caller can embed further.
-            escaped = html.escape(result["content"])
-            answer_html = f"<div class='direct-query-answer'><pre>{escaped}</pre></div>"
+            # Clean common markdown markup (bullets, *italic*, **bold**)
+            cleaned_text = result["content"]
+            # Remove leading bullet markers ('* ' or '- ' or numbered lists like '1. ')
+            cleaned_text = re.sub(r"^\s*([*\-]|\d+\.)\s+", "", cleaned_text, flags=re.MULTILINE)
+            # Strip emphasis markers while keeping the text
+            cleaned_text = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned_text)  # **bold** -> text
+            cleaned_text = re.sub(r"\*([^*]+)\*", r"\1", cleaned_text)  # *italic* -> text
+            # Also strip any remaining stray asterisks that aren't in math/code (best-effort)
+            cleaned_text = cleaned_text.replace("*", "")
+            html_body = self._text_to_html_paragraphs(cleaned_text)
+            copy_script = """
+<script>
+function copyAnswerText() {
+  try {
+    const answerEl = document.getElementById('lux-answer');
+    if (!answerEl) {
+      alert('Copy failed: Answer element not found.');
+      return;
+    }
+    const text = answerEl.innerText;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => alert('Answer text copied!'))
+        .catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  } catch (err) {
+    console.error('copyAnswerText unexpected error', err);
+    alert('Could not copy text.');
+  }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) {
+      alert('Answer text copied!');
+    } else {
+      alert('Copy failed. Select text manually.');
+    }
+  } catch (e) {
+    alert('Copy failed. Select text manually.');
+  }
+  document.body.removeChild(ta);
+}
+</script>
+"""
+            buttons_html = (
+                "<div class='answer-actions' style='margin-bottom:1em;'>"
+                "<button type='button' onclick='copyAnswerText()'>Copy&nbsp;Text</button>"
+                "</div>"
+            )
+            answer_container = f"<div id='lux-answer' class='direct-query-answer'>{html_body}</div>"
+            answer_html = copy_script + buttons_html + answer_container
 
         return answer_html
 

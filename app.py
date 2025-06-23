@@ -304,6 +304,57 @@ async def reset_papers() -> HTMLResponse:
     return HTMLResponse(content=ul_html)
 
 
+# --- Ask LLM Endpoint ---
+@app.post("/ask-llm", response_class=HTMLResponse)
+async def ask_llm(
+    request: Request,
+    question: str = Form(...),
+    audience: str = Form("technical"),
+    summary_size: str = Form("M"),
+) -> HTMLResponse:
+    """Direct question-answering using the LLM without paper search.
+
+    This wraps ReportGenerator.generate_direct_query_answer() for convenience.
+    """
+    logger.info(
+        "ask_llm: Request received",
+        endpoint="/ask-llm",
+        method="POST",
+        params={"question": question},
+    )
+
+    if llm_service_instance is None or not llm_service_instance._initialized:
+        logger.error("LLM service not initialized for /ask-llm")
+        return HTMLResponse(
+            content="<p>Server error: LLM service unavailable.</p>", status_code=500
+        )
+
+    # Use default model from config for now
+    default_model_key = config.config.DEFAULT_MODEL_KEY
+    model_info = config.config.AVAILABLE_MODELS[default_model_key]
+
+    rg = ReportGenerator(
+        llm_service=llm_service_instance,
+        exa_client=cast(ExaClient, exa_client_instance),
+        selected_model_api_id=model_info["id"],
+        selected_model_provider=model_info["provider"],
+        selected_model_input_token_limit=model_info["input_token_limit"],
+    )
+
+    try:
+        # Map summary_size to max_tokens (S≈256, M≈512, L≈1024)
+        size_map = {"S": 256, "M": 512, "L": 1024}
+        max_tokens = size_map.get(summary_size.upper(), 512)
+
+        answer_html = await rg.generate_direct_query_answer(
+            query=question.strip(), audience_type=audience, max_tokens=max_tokens
+        )
+        return HTMLResponse(content=answer_html)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("ask_llm failed", error=str(e))
+        return HTMLResponse(content=f"<p>Error: {html.escape(str(e))}</p>", status_code=500)
+
+
 # --- Health-check Endpoint ---
 @app.get("/healthz")
 async def healthz() -> dict[str, bool]:
