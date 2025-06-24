@@ -66,6 +66,25 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         return self._sync.search_and_contents(query, **params)
 
     # ------------------------------------------------------------------
+    # Answer endpoint – short answers with supporting passages
+    # ------------------------------------------------------------------
+
+    @retry(
+        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def answer(self, question: str, **kwargs: Any) -> Any:  # noqa: ANN401 – SDK types
+        """Wrapper for :py:meth:`exa_py.Exa.answer`.
+
+        Returns Exa SDK *Answer* object which contains an `answer` string and
+        supporting `results` list.
+        """
+        logger.debug("ExaAdapter.answer %s – params=%s", question, kwargs)
+        return self._sync.answer(question, **kwargs)  # type: ignore[attr-defined]
+
+    # ------------------------------------------------------------------
     # Async variant – handy for future performance improvements.
     # ------------------------------------------------------------------
 

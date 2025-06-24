@@ -6,7 +6,6 @@ from fasthtml.components import (
     BUTTON,
     EM,
     FORM,
-    H1,
     H2,
     INPUT,
     LI,
@@ -467,7 +466,7 @@ def home_page(page_data: SharedPageData) -> Div:
                 BUTTON("🌙 Dark Mode", id="lux-dark-toggle", type="button"),
                 style="text-align:right; margin-bottom:0.5rem;",
             ),
-            H1(page_data.title),
+            # H1(page_data.title),
             P(I("Enter a research topic, query, or paper link:")),
             FORM(  # Search Form
                 Label(for_="search_query"),
@@ -545,7 +544,7 @@ def home_page(page_data: SharedPageData) -> Div:
             ),
             # ---------------- Ask LLM block (standalone) ----------------
             P(
-                I("Research assistant to ask quick follow-up or independent questions:"),
+                I("Research assistant for independent or follow-up questions:"),
                 style="margin-top:-0.25rem;font-size:0.9rem;",
                 _class="ask-llm-subtitle",
             ),

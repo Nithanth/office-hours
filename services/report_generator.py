@@ -2,8 +2,9 @@ import asyncio
 import html
 import logging
 import re
+import time
 from datetime import datetime
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from config import config
 from models.paper import Paper
@@ -401,7 +402,7 @@ class ReportGenerator:
                     system_prompt=system_prompt_topic,
                 )
                 if include_section_headings:
-                    report_parts.append("<h3>Topic Overview</h3>")
+                    report_parts.append("<h3>Overview</h3>")
                 report_parts.append(
                     f"<div class='topic-summary'><p>{self._text_to_html_paragraphs(topic_summary)}</p></div>"
                 )
@@ -472,6 +473,10 @@ class ReportGenerator:
         # Dynamically generate the title based on the report content
         title = await self._generate_report_title(report_body, self.selected_model_api_id)
 
+        # Remove common artifacts from LLM-generated titles (e.g., 'TITLE:', markdown asterisks)
+        clean_title = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", title).strip()
+        clean_title = clean_title.strip('* "')
+
         # --- Copy-text utility only (works even on non-secure origins) -----------
         script_html = """
 <script>
@@ -517,8 +522,6 @@ function fallbackCopy(text) {
 }
 </script>
 """
-
-        clean_title = title.strip("* ")
 
         # Action buttons (appear before report content)
         buttons_html = (
@@ -587,16 +590,38 @@ function fallbackCopy(text) {
             + " Respond with a direct answer in plain paragraphs. Do NOT output section headings, bullet points, or numbered lists."
         )
 
+        # --------------------------------------------------------------
+        # Attempt to ground answer with Exa's /answer endpoint
+        # --------------------------------------------------------------
+        exa_answer: dict[str, Any] = {}
+        try:
+            exa_answer = self.exa_client.answer(query, top_k=num_supporting_papers)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Exa answer lookup failed: %s", exc, exc_info=True)
+
+        passages_block = ""
+        if exa_answer and exa_answer.get("passages"):
+            lines: list[str] = []
+            for idx, p in enumerate(exa_answer["passages"], 1):
+                snippet = p.get("snippet", "").replace("\n", " ").strip()
+                url = p.get("url", "")
+                lines.append(f"[{idx}] {snippet} (Source: {url})")
+            passages_block = "\n\nSOURCE PASSAGES:\n" + "\n".join(lines)
+
         user_prompt = (
             "You are answering a direct research question for a user. "
-            "Provide the best possible answer based solely on your existing knowledge.\n\n"
+            "Provide the best possible answer grounded in the provided source passages if they are relevant. "
+            "If the passages are not relevant you may rely on your own knowledge. "
+            "Answer in no more than 250 words (≈ one to two short paragraphs).\n\n"
             f"Question: {query.strip()}"
+            f"{passages_block}"
         )
 
-        # Default max_tokens if not specified: leave ~1k tokens headroom vs model limit
-        if max_tokens is None:
-            max_tokens = min(2048, self.selected_model_input_token_limit // 2)
+        # Enforce a hard upper bound so answers stay brief
+        HARD_CAP_TOKENS = 320
+        max_tokens = HARD_CAP_TOKENS if max_tokens is None else min(max_tokens, HARD_CAP_TOKENS)
 
+        start_time = time.time()
         result = await self.llm_service.generate_completion_safe(
             provider_name=self.selected_model_provider,
             model_name=self.selected_model_api_id,
@@ -605,10 +630,12 @@ function fallbackCopy(text) {
             max_tokens=max_tokens,
             temperature=0.5,
         )
+        elapsed_time = time.time() - start_time
+        logger.info(f"Direct query generation took {elapsed_time:.2f} seconds")
 
         if not result["ok"]:
             logger.error("Direct query generation failed: %s", result["content"])
-            answer_html = f"<p><strong>Error:</strong> {html.escape(result['content'])}</p>"
+            answer_html = f"<div class='error-banner'>Error: {html.escape(result['content'])}</div>"
         else:
             # Clean common markdown markup (bullets, *italic*, **bold**)
             cleaned_text = result["content"].strip()  # <--- Strip whitespace from result

@@ -352,7 +352,10 @@ async def ask_llm(
         return HTMLResponse(content=answer_html)
     except Exception as e:  # noqa: BLE001
         logger.exception("ask_llm failed", error=str(e))
-        return HTMLResponse(content=f"<p>Error: {html.escape(str(e))}</p>", status_code=500)
+        return HTMLResponse(
+            content=f"<div class='error-banner'>Error: {html.escape(str(e))}</div>",
+            status_code=500,
+        )
 
 
 # --- Health-check Endpoint ---
@@ -478,7 +481,10 @@ async def handle_search(
             return HTMLResponse(content="<p><i>LLM query cancelled.</i></p>")
         except Exception as e:
             logger.exception("Direct query failed", error=str(e))
-            return HTMLResponse(content=f"<p>Error: {e}</p>", status_code=500)
+            return HTMLResponse(
+                content=f"<div class='error-banner'>Error: {html.escape(str(e))}</div>",
+                status_code=500,
+            )
         finally:
             # If the task that ran (or was cancelled) in this handler is the current global task,
             # and it's done, clear the global reference.

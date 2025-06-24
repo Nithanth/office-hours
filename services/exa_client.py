@@ -167,6 +167,38 @@ class ExaClient:
 
     # ---------------------------------------------------------------------
 
+    def answer(self, question: str, top_k: int = 3) -> dict[str, Any]:
+        """Retrieve a short answer and supporting passages using Exa's /answer endpoint.
+
+        Returns a dict with keys:
+            - 'answer': str | None
+            - 'passages': list[dict[str, str]]  # each: {'snippet': str, 'url': str}
+        If Exa fails or no answer is found, returns an empty dict.
+        """
+        try:
+            resp = self.adapter.answer(question, num_results=top_k)
+            answer_text: str | None = getattr(resp, "answer", None)
+            passages: list[dict[str, str]] = []
+            if hasattr(resp, "results") and resp.results:
+                for res in resp.results[:top_k]:
+                    snippet = (
+                        getattr(res, "text", "").strip() or getattr(res, "snippet", "").strip()
+                    )
+                    passages.append(
+                        {
+                            "snippet": snippet[:512],
+                            "url": getattr(res, "url", "") or getattr(res, "id", ""),
+                        }
+                    )
+            return {"answer": answer_text, "passages": passages}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "ExaClient.answer failed for question '%s': %s", question, exc, exc_info=True
+            )
+            return {}
+
+    # ---------------------------------------------------------------------
+
     def _create_paper_from_exa_result(
         self, result: Any, source_description: str
     ) -> Optional[Paper]:

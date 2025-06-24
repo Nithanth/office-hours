@@ -101,3 +101,30 @@ body.lux-dark .top-bar {
     background: #1a1a1a;
     color: var(--lux-red); /* revert to red */
 }
+
+/* ---------- Utility styles added 2025-06-24 ---------- */
+button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.answer-actions,
+.report-actions {
+    margin: 1em 0;
+}
+
+.error-banner {
+    padding: 0.75em 1em;
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    margin: 1em 0;
+    font-weight: 600;
+}
+
+body.lux-dark .error-banner {
+    background: #4b1c1c;
+    color: var(--lux-red);
+    border-color: #7f1d1d;
+}
