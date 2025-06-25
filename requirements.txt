@@ -23,3 +23,5 @@ tenacity
 loguru
 # Data Validation & Modeling
 pydantic
+pdfminer.six
+readability-lxml

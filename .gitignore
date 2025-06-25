@@ -1,25 +1,13 @@
-# Environment variables
-.env
-
-# Python cache and compiled files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Tool-specific caches
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-
-# Virtual environments
-venv/
-env/
-.venv/
-ENV/
-venv.bak/
-env.bak/
+# C extensions
+*.so
 
 # Distribution / packaging
+.Python
 build/
 develop-eggs/
 dist/
@@ -40,8 +28,8 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
-#  Usually these files are written by a script, but they may be committed by
-#  accident. Tell Git to ignore them.
+#  Usually these files are written by a CI, but they should be ignored
+#  in case they are generated locally.
 *.manifest
 *.spec
 
@@ -59,8 +47,31 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-*.py,cover
 .hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -72,7 +83,22 @@ ipython_config.py
 # pyenv
 .python-version
 
-# PEP 582; __pypackages__ directory
+# pipenv
+#   According to Pipenv's documentation, it is recommended to include Pipfile.lock
+#   in version control. But in case you prefer not to, then uncomment the following
+#   line:
+#Pipfile.lock
+
+# poetry
+#   Similar to Pipenv, it is recommended to include poetry.lock in version control.
+#   This file is essential for deterministic builds.
+#poetry.lock
+
+# pdm
+#   Similar to Pipenv, it is recommended to include pdm.lock in version control.
+#pdm.lock
+
+# PEP 582; used by e.g. pdm
 __pypackages__/
 
 # Celery stuff
@@ -91,40 +117,39 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE / Editor specific files
-.vscode/
-.idea/
-*.project
-*.pydevproject
-*.settings
-*.iml
-
-# OS specific files
-.DS_Store
-Thumbs.db
-
-# Secrets & Credentials (add specific filenames if known and not in .env)
-# *.pem
-# *.key
-# credentials.json
-# google_credentials.json # If you decide to use a local file not through env vars
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
-
-# Local run files
-.pid
-.seed
-.pid.lock
-
-# Other
-.python-version
-
-# Session keys
+# secrets and credentials
+*.pem
+*.key
+credentials.json
 .sesskey
+
+# Spyder project settings
+.spyderproject
+.spyderworkspace
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ruff
+.ruff_cache/
+
+# Pyre type checker
+.pyre/
+
+# pytype static analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# tool specific
+# paper cache
+data/full_text/

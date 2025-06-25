@@ -37,6 +37,12 @@ class Paper(BaseModel):
         default=None, description="Relevance score from the search provider."
     )
 
+    # Path to cached full-text file (filled by TextExtractor when available)
+    full_text_path: Optional[str] = Field(
+        default=None,
+        description="Absolute path to cached plaintext extracted from the paper (if any).",
+    )
+
     source: str = Field(
         default="Unknown",
         description="Source of the paper data (e.g., 'Exa Search', 'Manual Entry').",

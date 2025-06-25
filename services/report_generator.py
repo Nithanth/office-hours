@@ -198,6 +198,47 @@ class ReportGenerator:
         elif papers_for_topic_report is None and papers_to_summarize:
             _papers_for_topic_report = papers_to_summarize
 
+        # ------------------------------------------------------------------
+        # Pre-fetch full text for all papers that will appear in the report
+        # ------------------------------------------------------------------
+        try:
+            from services.text_extractor import TextExtractor
+
+            extractor = TextExtractor.instance()
+            # Flatten the list of papers that need summaries
+            papers_needing_text: list[Paper] = []
+            if is_url_input:
+                if main_input_paper:
+                    papers_needing_text.append(main_input_paper)
+                papers_needing_text.extend(_selected_similar_papers)
+            else:
+                papers_needing_text.extend(_papers_for_topic_report)
+
+            # Remove dupes while preserving order
+            seen_ids: set[str] = set()
+            unique_papers: list[Paper] = []
+            for p in papers_needing_text:
+                if p.id not in seen_ids:
+                    unique_papers.append(p)
+                    seen_ids.add(p.id)
+
+            # Launch extraction tasks with concurrency guard
+            sem = asyncio.Semaphore(3)
+
+            async def _bounded_extract(url: str, pid: str) -> None:
+                async with sem:
+                    await extractor.ensure_cached(url, pid)
+
+            await asyncio.gather(*[_bounded_extract(str(p.url), p.id) for p in unique_papers])
+
+            # Attach full_text_path for later use (chat, etc.)
+            for p in unique_papers:
+                cached_path = await extractor.load_full_text(p.id)
+                if cached_path:
+                    p.full_text_path = cached_path
+        except Exception as prep_exc:  # noqa: BLE001
+            logger.warning("Pre-fetching full text failed: %s", prep_exc, exc_info=True)
+
         return await self._generate_report_html_async(
             original_query=query_or_url,
             audience_type=audience_type,

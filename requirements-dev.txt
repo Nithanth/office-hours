@@ -8,3 +8,9 @@ mypy
 # pytest
 # pytest-cov
 # pre-commit
+
+# ----------------------------
+# Testing dependencies
+# ----------------------------
+pytest
+pytest-asyncio==0.23.6
