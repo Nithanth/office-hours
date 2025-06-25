@@ -82,7 +82,7 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         supporting `results` list.
         """
         logger.debug("ExaAdapter.answer %s – params=%s", question, kwargs)
-        return self._sync.answer(question, **kwargs)  # type: ignore[attr-defined]
+        return self._sync.answer(question, **kwargs)
 
     # ------------------------------------------------------------------
     # Async variant – handy for future performance improvements.

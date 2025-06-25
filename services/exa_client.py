@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import re
@@ -838,6 +839,18 @@ class ExaClient:
             pinned_id: str | None = None
         else:
             papers_pool = [main_paper] + similar_papers
+
+            # --------------------------------------------------
+            # Kick off background full-text extraction
+            # --------------------------------------------------
+            try:
+                from services.text_extractor import TextExtractor
+
+                asyncio.create_task(
+                    TextExtractor.instance().ensure_cached(main_paper.url, main_paper.id)
+                )
+            except Exception as bg_exc:  # noqa: BLE001 – background should never break flow
+                logger.debug("TextExtractor background task failed to start: %s", bg_exc)
             pinned_id = main_paper.id if main_paper.id else None
 
         # Build dict keyed by id (skip items without id)
