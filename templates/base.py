@@ -40,6 +40,11 @@ def base_layout(title_text: str, *content: Any) -> Html:
             Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
             Title(title_text),
             Link(rel="stylesheet", href="/static/css/styles.css"),
+            Script(src="https://unpkg.com/htmx.org@1.9.10"),
+            Script(src="https://unpkg.com/htmx.org/dist/ext/sse.js"),
+            Script(src="/static/js/htmx-sse-pool.js"),
+            # For localStorage compression of chat transcripts
+            Script(src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"),
             # tailwind_script, # Uncomment if you want to use Tailwind CSS via CDN
             # htmx_script, # FastHTML usually includes HTMX, uncomment if needed explicitly
         ),

@@ -145,6 +145,7 @@ class TextExtractor:
 
         try:
             cache_path.write_text(extracted, encoding="utf-8")
+            logger.info("Full-text cached ➜ %s (%d chars)", cache_path, len(extracted))
             return str(cache_path)
         except Exception as exc:  # noqa: BLE001
             logger.error("Could not write cache file %s – %s", cache_path, exc)
@@ -164,6 +165,34 @@ class TextExtractor:
             return Path(path_str).read_text(encoding="utf-8")
         except Exception:
             return None
+
+    # ------------------------------------------------------------------
+    # Compatibility helper expected by chat_stream endpoint
+    # ------------------------------------------------------------------
+
+    async def get_paper_content_from_id(self, paper_id: str) -> str | None:  # noqa: D401
+        """Return (and ensure) cached plaintext path for *paper_id*.
+
+        The chat streaming endpoint historically expects a *paper_service*
+        with ``get_paper_content_from_id``.  For now we treat the
+        ``paper_id`` parameter as the canonical URL of the paper and simply
+        delegate to :meth:`ensure_cached`.
+
+        Args:
+            paper_id: Paper URL (e.g. https://arxiv.org/abs/1234.5678).
+
+        Returns:
+            Absolute path of the cached plaintext file, or ``None`` if the
+            extraction pipeline failed.
+        """
+
+        # Fast-path: already cached?
+        existing = await self.load_full_text(paper_id)
+        if existing:
+            return existing
+
+        # Otherwise kick off extraction (prefer Exa contents when available)
+        return await self.ensure_cached(paper_id, paper_id=paper_id)
 
     # ------------------------------------------------------------------
     # Individual extraction layers
@@ -239,10 +268,26 @@ class TextExtractor:
     # ------------------------------------------------------------------
 
     def _cache_path(self, url: str, paper_id: str | None) -> Path:
-        key = _sha256(url)
+        """Return a filesystem-safe cache path for *url* (and optional *paper_id*).
+
+        The filename embeds a SHA-256 of the URL for uniqueness but also keeps a
+        human-readable fragment based on *paper_id* when available.  Because a
+        paper_id is often the raw URL itself (containing slashes and other
+        illegal path characters), we aggressively **sanitize** it so the
+        resulting filename never creates unintended sub-directories.
+        """
+        key_hash = _sha256(url)
+
+        safe_fragment = ""
         if paper_id:
-            key = f"{paper_id}_{key}"
-        return CACHE_ROOT / f"{key}.txt"
+            # Replace all characters that are not safe for filenames with "_".
+            # This includes "/" so we don't accidentally create nested dirs.
+            safe_fragment = re.sub(r"[^A-Za-z0-9._-]", "_", paper_id)
+            # Prevent exceedingly long filenames on some filesystems
+            safe_fragment = safe_fragment[:80]
+
+        filename = f"{safe_fragment}_{key_hash}.txt" if safe_fragment else f"{key_hash}.txt"
+        return CACHE_ROOT / filename
 
     @staticmethod
     def _good_quality(text: str | None) -> bool:

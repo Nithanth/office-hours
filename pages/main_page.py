@@ -31,6 +31,7 @@ from fasthtml.components import (
 from pydantic import BaseModel
 
 import config  # Your project's config module
+from components.chat_components import ChatBubble, CitationCard
 from models.paper import Paper  # Your Paper Pydantic model
 
 
@@ -130,8 +131,9 @@ def render_report_config_form(
             Br(),
             INPUT(type="hidden", name="original_query_for_report", value=original_query),
             *hidden_paper_inputs,
-            BUTTON("Generate Report", type="submit"),
-            hx_post="/generate-report",
+            BUTTON("Generate Report", type="submit", style="margin-right:8px;"),
+            method="post",  # ensure fallback submission is POST, not GET
+            hx_post="/generate-report-incremental",
             hx_target="#report-display-area",
             hx_swap="innerHTML",
             hx_indicator="#report-loading-indicator",
@@ -213,7 +215,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
         )
         selection_label = Span()
 
-    li_attrs = {"style": item_style}
+    li_attrs = {"style": item_style, "id": f"paper-{paper.id}"}
     if wildcard:
         li_attrs["id"] = "wild-card-item"
         li_attrs["class"] = "wildcard-paper"
@@ -233,6 +235,15 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
             selection_label,
         ),
         **li_attrs,
+    )
+
+
+def render_paper_card(paper: Paper) -> Div:
+    """Return CitationCard component for hover popover."""
+    return CitationCard(
+        title=paper.title or "Untitled",
+        authors=paper.authors,
+        url=str(paper.url) if paper.url else None,
     )
 
 
@@ -294,7 +305,6 @@ def render_search_results(
                     hx_post="/shuffle",
                     hx_target="#wild-card-item",
                     hx_swap="outerHTML",
-                    onclick="document.getElementById('report-config-area').innerHTML='';document.getElementById('report-display-area').innerHTML='';",
                 ),
                 BUTTON(
                     "🔀 Shuffle All Papers",
@@ -303,7 +313,6 @@ def render_search_results(
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
                     style="margin-left:0.5rem;",
-                    onclick="document.getElementById('report-config-area').innerHTML='';document.getElementById('report-display-area').innerHTML='';",
                 ),
                 BUTTON(
                     "↩️ Reset Order",
@@ -312,7 +321,6 @@ def render_search_results(
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
                     style="margin-left:0.5rem;",
-                    onclick="document.getElementById('report-config-area').innerHTML='';document.getElementById('report-display-area').innerHTML='';",
                 ),
                 style="margin-top:10px;",
             )
@@ -396,6 +404,12 @@ def render_report(
             <h4 class="text-lg font-semibold">{paper.title}</h4>
             <p class="text-sm">Source: <a href="{paper.url}" target="_blank" class="hover:underline">{paper.url}</a></p>
             <p class="mt-2">{summary}</p>
+            <button class="ask-assistant-btn mt-2 text-sm flex items-center gap-1"
+                    hx-get="/paper-modal?paper_id={paper.id}"
+                    hx-target="#modal-container"
+                    hx-swap="innerHTML">
+                <i class="fa-solid fa-comment-dots"></i><span>Ask Assistant About This Paper</span>
+            </button>
         </div>"""
 
     return f"""\
@@ -409,11 +423,149 @@ def render_report(
             <h3 class="text-xl font-semibold mb-2">Key Paper Summaries</h3>
             {paper_list_html}
         </div>
+        <button id="copy-report-btn" class="copy-icon-btn" title="Copy text" type="button"><i class="fa-solid fa-copy"></i></button>
     </div>"""
 
 
-def home_page(page_data: SharedPageData) -> Div:
-    """Main page layout with search form and results area."""
+def chat_modal_styles() -> Style:
+    return Style("""
+        .modal {
+            display: block;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 700px;
+            border-radius: 8px;
+            position: relative;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+        .modal-close-btn {
+            border: none;
+            background: transparent;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .chat-log-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #fff;
+        }
+        .user-message, .assistant-message {
+            padding: 8px 12px;
+            border-radius: 18px;
+            margin-bottom: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+        .assistant-message {
+            background-color: #e9e9eb;
+            color: black;
+            margin-right: auto;
+        }
+        .restore-toast {
+            padding: 10px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .toast-btn {
+            margin-left: 5px;
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+    """)
+
+
+def render_chat_modal(paper: Paper, session_id: str) -> Div:
+    """Renders the chat modal for a specific paper."""
+    paper_id = paper.id
+    return Div(
+        Div(
+            # Header
+            Div(
+                H2(f"Chat: {paper.title[:60]}..."),
+                BUTTON(
+                    "×",
+                    cls="modal-close-btn",
+                    hx_on="htmx.find('#modal-container').innerHTML = ''",
+                ),
+                cls="modal-header",
+            ),
+            # Body
+            Div(
+                Div(
+                    id=f"chat-log-{paper_id}",
+                    cls="chat-log-container",
+                    hx_on=f"htmx:sseClose: saveTranscript('{session_id}', '{paper_id}', this.innerHTML)",
+                ),
+                # This container will receive the SSE connector from the POST response
+                Div(id=f"sse-connector-container-{paper_id}"),
+                FORM(
+                    Textarea(
+                        name="message",
+                        placeholder="Ask about this paper...",
+                        rows="3",
+                        style="width: 100%; border-radius: 4px; padding: 5px;",
+                    ),
+                    BUTTON("Send", type="submit", style="margin-top: 5px;"),
+                    id=f"chat-form-{paper_id}",
+                    hx_post="/chat",
+                    hx_target=f"#chat-log-{paper_id}",
+                    hx_swap="beforeend",
+                    hx_vals=f'{{"paper_id": "{paper_id}"}}',
+                    hx_on="htmx:afterRequest: this.reset()",
+                ),
+                cls="modal-body",
+            ),
+            cls="modal-content",
+        ),
+        cls="modal",
+        hx_on=f"htmx:load: initChat('{session_id}', '{paper_id}')",
+    )
+
+
+def render_chat_message(message: str, role: str) -> Div:
+    """Renders a single chat message bubble using ChatBubble component."""
+    return ChatBubble(message, role)
+
+
+def home_page(page_data: SharedPageData) -> Body:
+    """The main page layout, including search form and results area."""
     indicator_css = """
       .htmx-indicator { display: none; opacity: 0; transition: opacity 200ms ease-in; }
       .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-block; opacity: 1; }
@@ -438,10 +590,18 @@ def home_page(page_data: SharedPageData) -> Div:
     else:  # No search performed yet, or search_results is None
         results_display_content = ""
 
-    return Div(  # Main page content wrapper
+    return Body(
+        chat_modal_styles(),
         Head(
             Title(page_data.title),
+            # Font Awesome for icons (copy button etc.)
+            Link(
+                rel="stylesheet",
+                href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css",
+            ),
             Script(src="https://unpkg.com/htmx.org@1.9.10"),
+            # HTMX SSE extension for Server-Sent Events support
+            Script(src="https://unpkg.com/htmx.org/dist/ext/sse.js"),
             # Flatpickr date picker CSS & JS (cross-browser calendar support)
             Link(
                 rel="stylesheet",
@@ -458,15 +618,17 @@ def home_page(page_data: SharedPageData) -> Div:
             Style(indicator_css),
             Link(rel="stylesheet", href="/static/css/styles.css"),
             # Re-add small script to handle manual dark-mode toggle without inline style overrides
-            Script(src="/static/js/app.js"),  # External JS handles dark-mode toggle
+            Script(src="/static/js/app.js"),
+            Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),
         ),
-        Body(
-            Div("█▓▒░ Lux Scholar ░▒▓█", cls="top-bar"),
-            Div(
-                BUTTON("🌙 Dark Mode", id="lux-dark-toggle", type="button"),
-                style="text-align:right; margin-bottom:0.5rem;",
-            ),
-            # H1(page_data.title),
+        Div("█▓▒░ Lux Scholar ░▒▓█", cls="top-bar"),
+        Div(id="status-banner"),  # Placeholder for busy/alert banners
+        Div(
+            BUTTON("🌙 Dark Mode", id="lux-dark-toggle", type="button"),
+            style="text-align:right; margin-bottom:0.5rem;",
+        ),
+        # H1(page_data.title),
+        Div(
             P(I("Enter a research topic, query, or paper link:")),
             FORM(  # Search Form
                 Label(for_="search_query"),
@@ -567,13 +729,15 @@ def home_page(page_data: SharedPageData) -> Div:
                 hx_indicator="#ask-loading-indicator",
                 onsubmit="document.getElementById('report-display-area').innerHTML='';document.getElementById('report-config-area').innerHTML='';document.getElementById('ask-result-container').innerHTML='';",
                 id="ask-assistant-form",
-                style="background:inherit;padding:0.5rem 0;",
+                style="padding:0.5rem 0;",
             ),
             ask_loading_indicator_component(),
             Div(id="ask-result-container"),
-            Footer(
-                P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
-                style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ccc;",
-            ),
-        ),  # Close Body
-    )  # Close outer Div
+            Div(id="modal-container"),
+            cls="container",
+        ),
+        Footer(
+            P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
+            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ccc; text-align:center; font-size:0.8rem; color:#666;",
+        ),
+    )  # Close Body

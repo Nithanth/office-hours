@@ -3,8 +3,9 @@ import html
 import logging
 import re
 import time
+import urllib.parse
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 
 from config import config
 from models.paper import Paper
@@ -15,6 +16,7 @@ from utils.prompt_templates import (
     DEFAULT_SYSTEM_PROMPT,  # local import to avoid cyclical issues
     get_topic_analysis_prompts,
 )
+from utils.summary_cache import SummaryCache
 
 logger = logging.getLogger(__name__)
 
@@ -136,43 +138,61 @@ class ReportGenerator:
         semaphore: Optional[asyncio.Semaphore] = None,
         system_prompt: Optional[str] = None,
     ) -> str:
-        if semaphore:
-            async with semaphore:
-                try:
-                    result = await self.llm_service.generate_completion_safe(
-                        provider_name=self.selected_model_provider,
-                        model_name=self.selected_model_api_id,
-                        prompt=prompt,
-                        max_tokens=max_tokens,
-                        system_prompt=system_prompt,
-                    )
-                    if not result["ok"]:
-                        logger.error(f"LLM generation failed: {result['content']}")
-                    return result["content"]
-                except Exception as e:
-                    logger.error(
-                        f"Error generating summary with {self.selected_model_provider}/{self.selected_model_api_id} under semaphore: {e}",
-                        exc_info=True,
-                    )
-                    return f"Error: Could not generate summary. Details: {e}"
-        else:
-            try:
-                result = await self.llm_service.generate_completion_safe(
-                    provider_name=self.selected_model_provider,
-                    model_name=self.selected_model_api_id,
-                    prompt=prompt,
-                    max_tokens=max_tokens,
-                    system_prompt=system_prompt,
-                )
-                if not result["ok"]:
-                    logger.error(f"LLM generation failed: {result['content']}")
-                return result["content"]
-            except Exception as e:
-                logger.error(
-                    f"Error generating summary with {self.selected_model_provider}/{self.selected_model_api_id}: {e}",
-                    exc_info=True,
-                )
-                return f"Error: Could not generate summary. Details: {e}"
+        import time  # timing for perf logs
+
+        start_ts = time.perf_counter()
+
+        # Check cache first
+        cached = SummaryCache.get(self.selected_model_api_id, prompt, system_prompt)
+        if cached is not None:
+            dur = time.perf_counter() - start_ts
+            logger.info(
+                "Summary cache hit | provider=%s model=%s prompt_len=%d duration=%.2fs",
+                self.selected_model_provider,
+                self.selected_model_api_id,
+                len(prompt),
+                dur,
+            )
+            return cached
+
+        async def _call_llm() -> str:
+            result = await self.llm_service.generate_completion_safe(
+                provider_name=self.selected_model_provider,
+                model_name=self.selected_model_api_id,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+            )
+            if not result["ok"]:
+                logger.error(f"LLM generation failed: {result['content']}")
+            content = result["content"]
+            # Store in cache (best-effort)
+            SummaryCache.set(self.selected_model_api_id, prompt, system_prompt, content)
+            return content
+
+        try:
+            if semaphore is not None:
+                async with semaphore:
+                    content = await _call_llm()
+            else:
+                content = await _call_llm()
+
+            dur = time.perf_counter() - start_ts
+            logger.info(
+                "Summary generated | provider=%s model=%s prompt_len=%d max_out_tok=%d duration=%.2fs",
+                self.selected_model_provider,
+                self.selected_model_api_id,
+                len(prompt),
+                max_tokens,
+                dur,
+            )
+            return content
+        except Exception as e:
+            logger.error(
+                f"Error generating summary with {self.selected_model_provider}/{self.selected_model_api_id}: {e}",
+                exc_info=True,
+            )
+            return f"Error: Could not generate summary. Details: {e}"
 
     async def generate_report_html(
         self,
@@ -308,13 +328,16 @@ class ReportGenerator:
                 "<p>No specific papers were selected or provided for summary based on the input URL.</p>"
             )
 
+        # -------------------- Concurrent main + similar paper summaries --------------------
+        # Use tasks to satisfy mypy (coroutines wrapped via create_task)
+        summary_tasks: list[asyncio.Task[str]] = []
+        task_infos: list[tuple[Optional[Paper], str]] = []  # (paper_or_none, role)
+
         if main_input_paper:
             if include_section_headings:
                 report_parts.append("<h3>Summary of Input Paper</h3>")
-            main_paper_snippet = (main_input_paper.text_content or "")[
-                :paper_max_content_snippet_chars
-            ]
-            main_paper_prompt = active_paper_prompt_template.format(
+            main_snippet = (main_input_paper.text_content or "")[:paper_max_content_snippet_chars]
+            main_prompt = active_paper_prompt_template.format(
                 paper_title=html.escape(main_input_paper.title or "N/A"),
                 paper_authors=html.escape(
                     ", ".join(main_input_paper.authors) if main_input_paper.authors else "N/A"
@@ -322,35 +345,160 @@ class ReportGenerator:
                 paper_publication_date=html.escape(
                     self._get_formatted_date_str(main_input_paper.published_date)
                 ),
-                paper_content_snippet=main_paper_snippet,  # Snippet itself is not directly in HTML here, but part of prompt
+                paper_content_snippet=main_snippet,
                 overall_instructions=paper_length_guidance,
                 target_audience=audience_type,
             )
-            output_token_target_main = self._get_output_token_target(
+            main_tok_target = self._get_output_token_target(
                 audience_type, user_summary_size_key, is_topic_summary=False
             )
-            summary = await self._generate_single_summary(
-                main_paper_prompt, output_token_target_main
+            summary_tasks.append(
+                asyncio.create_task(
+                    self._generate_single_summary(
+                        main_prompt,
+                        main_tok_target,
+                        semaphore=paper_summary_semaphore,
+                    )
+                )
             )
-            report_parts.append(
-                f"<div><h4><a href='{html.escape(str(main_input_paper.url) if main_input_paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(main_input_paper.title or 'N/A')}</a></h4>"
-            )
-            report_parts.append(self._text_to_html_paragraphs(summary))
-            report_parts.append("</div>")
+            task_infos.append((main_input_paper, "main"))
 
         if similar_papers_data:
             if include_section_headings:
                 report_parts.append("<h3>Summaries of Similar Papers</h3>")
-            summary_tasks = []
             for paper in similar_papers_data:
-                similar_paper_snippet = (paper.text_content or "")[:paper_max_content_snippet_chars]
-                similar_paper_prompt = active_paper_prompt_template.format(
+                snip = (paper.text_content or "")[:paper_max_content_snippet_chars]
+                paper_prompt = active_paper_prompt_template.format(
                     paper_title=html.escape(paper.title or "N/A"),
                     paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
                     paper_publication_date=html.escape(
                         self._get_formatted_date_str(paper.published_date)
                     ),
-                    paper_content_snippet=similar_paper_snippet,
+                    paper_content_snippet=snip,
+                    overall_instructions=paper_length_guidance,
+                    target_audience=audience_type,
+                )
+                tok_target = self._get_output_token_target(
+                    audience_type, user_summary_size_key, is_topic_summary=False
+                )
+                summary_tasks.append(
+                    asyncio.create_task(
+                        self._generate_single_summary(
+                            paper_prompt,
+                            tok_target,
+                            semaphore=paper_summary_semaphore,
+                        )
+                    )
+                )
+                task_infos.append((paper, "similar"))
+
+        # Topic overview – queue BEFORE similar paper summaries so the overview appears first
+        if papers_for_topic_report:
+            consolidated_content_for_topic = ""
+            for _p in papers_for_topic_report:
+                t_title = html.escape(_p.title or "N/A")
+                a_list = _p.authors if _p.authors else []
+                a_str = (
+                    f"{html.escape(', '.join(a_list[: config.MAX_AUTHORS_DISPLAY]))}, et al."
+                    if a_list and len(a_list) > config.MAX_AUTHORS_DISPLAY
+                    else html.escape(", ".join(a_list))
+                    if a_list
+                    else "N/A"
+                )
+                d_str = html.escape(self._get_formatted_date_str(_p.published_date))
+                snip = (_p.text_content or "")[:topic_max_content_snippet_chars]
+                consolidated_content_for_topic += f"Title: {t_title}\nAuthors: {a_str}\nPublication Date: {d_str}\nContent Snippet: {html.escape(snip)}\n\n---\n\n"
+
+            if consolidated_content_for_topic.strip():
+                system_prompt_topic, user_prompt_topic = get_topic_analysis_prompts(
+                    topic=original_query,
+                    num_papers_to_synthesize=len(papers_for_topic_report),
+                    target_audience=audience_type,
+                    context_snippets=consolidated_content_for_topic,
+                    overall_instructions=topic_length_guidance,
+                )
+                tok_target_topic = self._get_output_token_target(
+                    audience_type, actual_topic_summary_size_key, is_topic_summary=True
+                )
+                summary_tasks.append(
+                    asyncio.create_task(
+                        self._generate_single_summary(
+                            user_prompt_topic,
+                            tok_target_topic,
+                            system_prompt=system_prompt_topic,
+                        )
+                    )
+                )
+                task_infos.append((None, "topic_overview"))
+
+        # Run all queued LLM calls concurrently and assemble results in original order
+        if summary_tasks:
+            summary_results = await asyncio.gather(*summary_tasks, return_exceptions=True)
+            for (paper_obj, role), result in zip(task_infos, summary_results):
+                if role == "topic_overview":
+                    if include_section_headings:
+                        report_parts.append("<h3>Overview</h3>")
+                    if isinstance(result, Exception):
+                        logger.error("Error generating topic overview: %s", result, exc_info=result)
+                        report_parts.append(
+                            "<p><em>Could not generate topic overview due to an error.</em></p>"
+                        )
+                    else:
+                        overview_text = cast(str, result)
+                        report_parts.append(
+                            f"<div class='topic-summary'>{self._text_to_html_paragraphs(overview_text)}</div>"
+                        )
+                    # After overview, maybe heading for following paper summaries
+                    if include_section_headings and similar_papers_data:
+                        report_parts.append("<h3>Summaries of Similar Papers</h3>")
+                    continue
+
+                report_parts.append(
+                    f"<div><h4><a href='{html.escape(str(paper_obj.url) if paper_obj and paper_obj.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper_obj.title or 'N/A' if paper_obj else 'N/A')}</a></h4>"
+                )
+                if isinstance(result, Exception):
+                    logger.error(
+                        "Error generating summary for paper %s: %s",
+                        paper_obj.id if paper_obj else "N/A",
+                        result,
+                        exc_info=result,
+                    )
+                    report_parts.append(
+                        "<p><em>Summary could not be generated for this paper due to an error.</em></p>"
+                    )
+                else:
+                    # At this point mypy still sees result as str | BaseException; but we already handled
+                    assert isinstance(result, str)
+                    report_parts.append(self._text_to_html_paragraphs(result))
+                paper_id_safe = paper_obj.id if paper_obj else ""
+                # Safe encode title & URL
+                title_q = urllib.parse.quote_plus(
+                    paper_obj.title if paper_obj and paper_obj.title else ""
+                )
+                url_q = urllib.parse.quote_plus(
+                    str(paper_obj.url) if paper_obj and paper_obj.url else ""
+                )
+                report_parts.append(
+                    f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper_id_safe}&title={title_q}&paper_url={url_q}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About Paper</button>"
+                )
+                report_parts.append("</div>")
+
+        # Topic-based report generation
+        if papers_for_topic_report:
+            # (Topic overview already generated above and appended via gather loop)
+            summary_tasks = []
+            for paper in papers_for_topic_report:
+                paper_snippet_topic = (paper.text_content or "")[:paper_max_content_snippet_chars]
+                paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
+                    user_summary_size_key, "a detailed summary"
+                )
+                paper_prompt = active_paper_prompt_template.format(
+                    paper_title=html.escape(paper.title or "N/A"),
+                    paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
+                    paper_publication_date=html.escape(
+                        self._get_formatted_date_str(paper.published_date)
+                    ),
+                    paper_content_snippet=paper_snippet_topic,
                     overall_instructions=paper_length_guidance,
                     target_audience=audience_type,
                 )
@@ -358,156 +506,42 @@ class ReportGenerator:
                     audience_type, user_summary_size_key, is_topic_summary=False
                 )
                 summary_tasks.append(
-                    self._generate_single_summary(
-                        similar_paper_prompt,
-                        output_token_target_paper,
-                        semaphore=paper_summary_semaphore,
-                    )
-                )
-
-            paper_summaries_results = await asyncio.gather(*summary_tasks, return_exceptions=True)
-            for _i, (paper, result) in enumerate(zip(similar_papers_data, paper_summaries_results)):
-                report_parts.append(
-                    f"<div><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'N/A')}</a></h4>"
-                )
-                # Handle potential exception from asyncio.gather
-                if isinstance(result, Exception):
-                    logger.error(
-                        f"Error generating summary for similar paper {paper.id or 'N/A'}: {result}",
-                        exc_info=result,
-                    )
-                    report_parts.append(
-                        "<p><em>Summary could not be generated for this paper due to an error.</em></p>"
-                    )
-                elif isinstance(result, str):
-                    report_parts.append(self._text_to_html_paragraphs(result))
-                else:
-                    # Should not happen if _generate_single_summary returns str or raises
-                    logger.warning(
-                        f"Unexpected result type for similar paper {paper.id or 'N/A'} summary: {type(result)}"
-                    )
-                    report_parts.append(
-                        "<p><em>An unexpected error occurred while formatting the summary.</em></p>"
-                    )
-                report_parts.append("</div>")
-
-        # Topic-based report generation
-        if papers_for_topic_report:
-            # Omit explicit 'Topic Analysis' header to keep layout minimal
-            # report_parts.append(f"<h3>Topic Analysis: {html.escape(original_query)}</h3>")
-
-            # Consolidate content from all papers for topic analysis
-            consolidated_content_for_topic = ""
-            for paper in papers_for_topic_report:
-                title_str = html.escape(paper.title or "N/A")
-                authors_list = paper.authors if paper.authors else []
-                authors_str = ""
-                if authors_list:
-                    # Use existing MAX_AUTHORS_DISPLAY
-                    if len(authors_list) > config.MAX_AUTHORS_DISPLAY:
-                        authors_str = f"{html.escape(', '.join(authors_list[: config.MAX_AUTHORS_DISPLAY]))}, et al."
-                    else:
-                        authors_str = html.escape(", ".join(authors_list))
-                else:
-                    authors_str = "N/A"
-
-                date_str = html.escape(self._get_formatted_date_str(paper.published_date))
-                snippet = (paper.text_content or "")[:topic_max_content_snippet_chars]
-                consolidated_content_for_topic += (
-                    f"Title: {title_str}\n"
-                    f"Authors: {authors_str}\n"
-                    f"Publication Date: {date_str}\n"
-                    f"Content Snippet: {html.escape(snippet)}\n\n---\n\n"
-                )
-
-            if not consolidated_content_for_topic.strip():
-                report_parts.append(
-                    "<p>No papers were found or selected for this topic to generate a report.</p>"
-                )
-            else:
-                system_prompt_topic, user_prompt_topic = get_topic_analysis_prompts(
-                    topic=original_query,
-                    num_papers_to_synthesize=len(papers_for_topic_report)
-                    if papers_for_topic_report
-                    else 1,
-                    target_audience=audience_type,
-                    context_snippets=consolidated_content_for_topic,  # Use the combined_snippets here
-                    overall_instructions=topic_length_guidance,
-                )
-                output_token_target_topic = self._get_output_token_target(
-                    audience_type, actual_topic_summary_size_key, is_topic_summary=True
-                )
-                topic_summary = await self._generate_single_summary(
-                    prompt=user_prompt_topic,
-                    max_tokens=output_token_target_topic,
-                    system_prompt=system_prompt_topic,
-                )
-                if include_section_headings:
-                    report_parts.append("<h3>Overview</h3>")
-                report_parts.append(
-                    f"<div class='topic-summary'><p>{self._text_to_html_paragraphs(topic_summary)}</p></div>"
-                )
-
-                if include_section_headings:
-                    report_parts.append("<h3>Paper Summaries</h3>")
-                summary_tasks = []
-                for paper in papers_for_topic_report:
-                    paper_snippet_topic = (paper.text_content or "")[
-                        :paper_max_content_snippet_chars
-                    ]
-                    paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
-                        user_summary_size_key, "a detailed summary"
-                    )
-                    paper_prompt = active_paper_prompt_template.format(
-                        paper_title=html.escape(paper.title or "N/A"),
-                        paper_authors=html.escape(
-                            ", ".join(paper.authors) if paper.authors else "N/A"
-                        ),
-                        paper_publication_date=html.escape(
-                            self._get_formatted_date_str(paper.published_date)
-                        ),
-                        paper_content_snippet=paper_snippet_topic,
-                        overall_instructions=paper_length_guidance,
-                        target_audience=audience_type,
-                    )
-                    output_token_target_paper = self._get_output_token_target(
-                        audience_type, user_summary_size_key, is_topic_summary=False
-                    )
-                    summary_tasks.append(
+                    asyncio.create_task(
                         self._generate_single_summary(
                             paper_prompt,
                             output_token_target_paper,
                             semaphore=paper_summary_semaphore,
                         )
                     )
-
-                paper_summaries_results = await asyncio.gather(
-                    *summary_tasks, return_exceptions=True
                 )
-                for i, result in enumerate(paper_summaries_results):
-                    paper = papers_for_topic_report[i]
-                    report_parts.append(
-                        f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
+
+            paper_summaries_results = await asyncio.gather(*summary_tasks, return_exceptions=True)
+            for i, result in enumerate(paper_summaries_results):
+                paper = papers_for_topic_report[i]
+                report_parts.append(
+                    f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
+                )
+                if isinstance(result, Exception):
+                    logger.error(f"Error summarizing paper {paper.id}: {result}", exc_info=result)
+                    report_parts.append("<p><em>Error generating summary for this paper.</em></p>")
+                # Handle potential exception from asyncio.gather
+                elif isinstance(result, str):
+                    report_parts.append(f"<p>{self._text_to_html_paragraphs(result)}</p>")
+                else:
+                    # Should not happen if _generate_single_summary returns str or raises
+                    logger.warning(
+                        f"Unexpected result type for topic paper {paper.id or 'N/A'} summary: {type(result)}"
                     )
-                    if isinstance(result, Exception):
-                        logger.error(
-                            f"Error summarizing paper {paper.id}: {result}", exc_info=result
-                        )
-                        report_parts.append(
-                            "<p><em>Error generating summary for this paper.</em></p>"
-                        )
-                    # Handle potential exception from asyncio.gather
-                    elif isinstance(result, str):
-                        report_parts.append(f"<p>{self._text_to_html_paragraphs(result)}</p>")
-                    else:
-                        # Should not happen if _generate_single_summary returns str or raises
-                        logger.warning(
-                            f"Unexpected result type for topic paper {paper.id or 'N/A'} summary: {type(result)}"
-                        )
-                        report_parts.append(
-                            "<p><em>An unexpected error occurred while formatting the summary for this paper.</em></p>"
-                        )
-                    report_parts.append("</div>")
+                    report_parts.append(
+                        "<p><em>An unexpected error occurred while formatting the summary for this paper.</em></p>"
+                    )
+                # Encode params safely
+                title_q2 = urllib.parse.quote_plus(paper.title or "")
+                url_q2 = urllib.parse.quote_plus(str(paper.url) if paper.url else "")
+                report_parts.append(
+                    f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={title_q2}&paper_url={url_q2}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant</button>"
+                )
+                report_parts.append("</div>")
 
         report_body = "".join(report_parts)
 
@@ -688,57 +722,8 @@ function fallbackCopy(text) {
             # Also strip any remaining stray asterisks that aren't in math/code (best-effort)
             cleaned_text = cleaned_text.replace("*", "")
             html_body = self._text_to_html_paragraphs(cleaned_text)
-            copy_script = """
-<script>
-function copyAnswerText() {
-  try {
-    const answerEl = document.getElementById('lux-answer');
-    if (!answerEl) {
-      alert('Copy failed: Answer element not found.');
-      return;
-    }
-    const text = answerEl.innerText;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text)
-        .then(() => alert('Answer text copied!'))
-        .catch(() => fallbackCopy(text));
-    } else {
-      fallbackCopy(text);
-    }
-  } catch (err) {
-    console.error('copyAnswerText unexpected error', err);
-    alert('Could not copy text.');
-  }
-}
-function fallbackCopy(text) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.top = '-1000px';
-  document.body.appendChild(ta);
-  ta.focus();
-  ta.select();
-  try {
-    const successful = document.execCommand('copy');
-    if (successful) {
-      alert('Answer text copied!');
-    } else {
-      alert('Copy failed. Select text manually.');
-    }
-  } catch (e) {
-    alert('Copy failed. Select text manually.');
-  }
-  document.body.removeChild(ta);
-}
-</script>
-"""
-            buttons_html = (
-                "<div class='answer-actions' style='margin:1em 0;'>"
-                "<button type='button' onclick='copyAnswerText()'>Copy&nbsp;Text</button>"
-                "</div>"
-            )
             answer_container = f"<div id='lux-answer' class='direct-query-answer'>{html_body}</div>"
-            answer_html = copy_script + buttons_html + answer_container
+            answer_html = answer_container
 
         return answer_html
 
