@@ -4,6 +4,10 @@
 ruff
 mypy
 
+#logging
+loguru
+structlog
+
 # Add other dev tools here later, e.g.:
 # pytest
 # pytest-cov

@@ -631,6 +631,210 @@ class LLMService:
         self._initialized = False
         self.providers.clear()
 
+    async def generate_completion_stream(
+        self,
+        provider_name: LLMProviderName,
+        model_name: str,
+        prompt: str,
+        max_tokens: int,
+        stop_sequences: Optional[list[str]] | None = None,
+        temperature: Optional[float] | None = None,
+        system_prompt: Optional[str] | None = None,
+    ) -> AsyncIterator[str]:
+        """Yield tokens incrementally if the provider supports native streaming.
+
+        Falls back to a whitespace split on the full completion when native
+        streaming is unavailable or fails.
+        """
+        # Ensure providers ready
+        if not self._initialized:
+            await self.initialize_providers()
+
+        provider = self.providers.get(provider_name)
+        if provider is None:
+            raise LLMConfigurationError(f"Provider {provider_name} not configured.")
+
+        await provider.initialize_client()
+
+        async def _fallback_stream() -> AsyncIterator[str]:
+            full_resp = await self.generate_completion(
+                provider_name,
+                model_name,
+                prompt,
+                max_tokens,
+                stop_sequences=stop_sequences,
+                temperature=temperature,
+                system_prompt=system_prompt,
+            )
+            for token in full_resp.split():
+                yield token
+
+        # OpenAI native streaming
+        if provider_name == "openai":
+            try:
+                from openai import AsyncOpenAI  # Local import to avoid hard dep when key missing
+
+                openai_client = cast(AsyncOpenAI, provider._async_client)
+                if openai_client is None:
+                    return _fallback_stream()
+                # Build messages
+                msgs: list[dict[str, str]] = []
+                if system_prompt:
+                    msgs.append({"role": "system", "content": system_prompt})
+                msgs.append({"role": "user", "content": prompt})
+
+                effective_temp: float = temperature if temperature is not None else 0.7
+
+                async def _openai_stream() -> AsyncIterator[str]:
+                    try:
+                        resp = await openai_client.chat.completions.create(
+                            model=model_name,
+                            messages=msgs,  # type: ignore[arg-type]
+                            max_tokens=max_tokens,
+                            temperature=effective_temp,
+                            stop=stop_sequences,
+                            stream=True,
+                        )
+                        resp_iter = cast(AsyncIterator[Any], resp)
+                        async for chunk in resp_iter:
+                            delta = chunk.choices[0].delta
+                            if delta and delta.content is not None:
+                                yield str(delta.content)
+                    except Exception as exc:  # noqa: BLE001
+                        self.logger.exception(
+                            "OpenAI streaming failed – falling back", exc_info=exc
+                        )
+                        async for tok in _fallback_stream():
+                            yield tok
+
+                return _openai_stream()
+            except Exception:
+                return _fallback_stream()
+
+        # Anthropic native streaming
+        if provider_name == "anthropic":
+            try:
+                from anthropic import AsyncAnthropic  # Import lazily
+
+                anth_client = cast(AsyncAnthropic, provider._async_client)
+                if anth_client is None:
+                    return _fallback_stream()
+
+                async def _anthropic_stream() -> AsyncIterator[str]:
+                    try:
+                        effective_temp: float = temperature if temperature is not None else 0.7
+                        stream_iter = cast(
+                            AsyncIterator[Any],
+                            await anth_client.messages.create(
+                                model=model_name,
+                                max_tokens=max_tokens,
+                                temperature=effective_temp,
+                                system=system_prompt or "",
+                                messages=[{"role": "user", "content": prompt}],
+                                stream=True,
+                            ),
+                        )
+                        async for event_any in stream_iter:
+                            event = cast(Any, event_any)
+                            if hasattr(event, "delta") and getattr(event.delta, "text", None):
+                                yield str(event.delta.text)
+                    except Exception as exc:  # noqa: BLE001
+                        self.logger.exception(
+                            "Anthropic streaming failed – falling back", exc_info=exc
+                        )
+                        async for tok in _fallback_stream():
+                            yield tok
+
+                return _anthropic_stream()
+            except Exception:
+                return _fallback_stream()
+
+        # Together AI native streaming
+        if provider_name == "together_ai":
+            try:
+                from together import AsyncTogether  # Lazy import
+
+                tg_client = cast(AsyncTogether, provider._async_client)
+                if tg_client is None:
+                    tg_client = AsyncTogether(api_key=app_config.TOGETHER_API_KEY)
+                    provider._async_client = tg_client  # cache for reuse
+
+                async def _together_stream() -> AsyncIterator[str]:
+                    try:
+                        msgs: list[dict[str, str]] = []
+                        if system_prompt:
+                            msgs.append({"role": "system", "content": system_prompt})
+                        msgs.append({"role": "user", "content": prompt})
+
+                        eff_temp: float = temperature if temperature is not None else 0.7
+
+                        stream = await tg_client.chat.completions.create(
+                            model=model_name,
+                            messages=msgs,
+                            max_tokens=max_tokens,
+                            temperature=eff_temp,
+                            stop=stop_sequences,
+                            stream=True,
+                        )
+                        async for chunk in cast(AsyncIterator[Any], stream):
+                            delta = getattr(chunk.choices[0], "delta", None)
+                            if delta and getattr(delta, "content", None):
+                                yield str(delta.content)
+                    except Exception as exc:  # noqa: BLE001
+                        self.logger.exception(
+                            "TogetherAI streaming failed – falling back", exc_info=exc
+                        )
+                        async for tok in _fallback_stream():
+                            yield tok
+
+                return _together_stream()
+            except Exception:
+                return _fallback_stream()
+
+        # Gemini native streaming
+        if provider_name == "gemini":
+            try:
+                from google import genai  # Lazy import – keeps optional dependency lightweight
+
+                gm_client = cast(Any, provider._async_client)
+                if gm_client is None:
+                    gm_client = genai.Client(api_key=app_config.GEMINI_API_KEY)
+                    provider._async_client = gm_client  # cache for reuse
+
+                async def _gemini_stream() -> AsyncIterator[str]:
+                    try:
+                        final_prompt = (
+                            f"System Prompt: {system_prompt}\n\n---\n\n{prompt}"
+                            if system_prompt
+                            else prompt
+                        )
+
+                        # The gemini sdk exposes async helpers under the `aio` facade
+                        aio_client = gm_client.aio
+                        stream_iter = cast(
+                            AsyncIterator[Any],
+                            await aio_client.models.generate_content_stream(
+                                model=model_name,
+                                contents=[final_prompt],
+                            ),
+                        )
+
+                        async for chunk_any in stream_iter:
+                            chunk = cast(Any, chunk_any)
+                            text_part = getattr(chunk, "text", None)
+                            if text_part:
+                                yield str(text_part)
+                    except Exception as exc:  # noqa: BLE001
+                        self.logger.exception(
+                            "Gemini streaming failed – falling back", exc_info=exc
+                        )
+                        async for tok in _fallback_stream():
+                            yield tok
+
+                return _gemini_stream()
+            except Exception:
+                return _fallback_stream()
+
     async def generate_completion(
         self,
         provider_name: LLMProviderName,

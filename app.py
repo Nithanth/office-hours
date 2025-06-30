@@ -1,34 +1,117 @@
 import asyncio
 import html
+import logging
+import os
 import pathlib as _pathlib
 import sys
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Callable, Optional, cast
+from uuid import uuid4
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+import structlog
+from fastapi import APIRouter, Depends, FastAPI, Form, Query, Request, Response
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fasthtml.components import LI, UL, Div  # For dynamic list rendering (need LI for messages)
 from loguru import logger
 
 import config
+from chat_runtime import (
+    build_prompt,
+    get_semaphore,  # needed for GC loop
+)
+from chat_state import ChatMessage, _chat_states, get_chat_state
+from middleware.chat_session import ChatSessionMiddleware
 from models.paper import Paper
 from pages.main_page import (
     SharedPageData,
     home_page,
+    render_chat_message,
     render_error_message,
+    render_paper_card,
     render_report_config_form,
     render_search_results,
 )
 from services.exa_client import ExaClient
 from services.llm_client import LLMConfigurationError, LLMService
 from services.report_generator import ReportGenerator
+from services.text_extractor import TextExtractor
 from utils.date_utils import parse_user_date
+from utils.observability import _METRICS_ENABLED, setup_observability
+
+# CHAT_TOKEN_LAT is defined only when metrics enabled
+try:
+    from utils.observability import CHAT_TOKEN_LAT
+except ImportError:
+    CHAT_TOKEN_LAT = None
+
 from utils.search_utils import clean_query
 
+# --- Helper Accessors --------------------------------------------------
+
+_IDLE_SESSION_TTL_SEC = 3600  # 1 h
+_PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7  # 7 days
+
+# Limit concurrent TextExtractor pre-warms to avoid stampede
+_TEXT_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
+
+
+async def _prewarm_cached(url: str, paper_id: str) -> None:
+    from services.text_extractor import TextExtractor  # local import to avoid cycles
+
+    async with _TEXT_PREWARM_SEMA:
+        try:
+            await TextExtractor.instance().ensure_cached(url, paper_id)
+        except Exception as exc:
+            log.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
+
+
+async def get_session_id(request: Request) -> str:  # FastAPI Depends helper
+    """Extracts the visitor's session_id set by ChatSessionMiddleware."""
+    return getattr(request.state, "session_id", "anon")
+
+
+def get_llm_service() -> Optional[LLMService]:
+    """Return the singleton LLMService instance if initialized."""
+    return llm_service_instance
+
+
+def get_exa_client() -> Optional[ExaClient]:
+    """Return the singleton ExaClient instance if initialized."""
+    return exa_client_instance
+
+
+def get_paper_service() -> TextExtractor:
+    """For now, reuse TextExtractor as a minimal paper-content service."""
+    return TextExtractor.instance()
+
+
+# ---------------------------------------------------------------------
+
 # --- Configure Loguru Logger ---
+# ------------------- Access-log noise filter --------------------
+# uvicorn.access logs a line for every request.  After a server restart the
+# browser may keep reconnecting to the defunct /report/stream token, leading to
+# dozens of identical "204 No Content" lines.  Suppress those lines at the
+# logger level to keep the console readable (no runtime overhead per request).
+
+
+class _DropSSE204(logging.Filter):
+    """Filter out boring 204 responses for /report/stream."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401 – signature required by logging
+        msg = record.getMessage()
+        # Keep everything *except* 204 responses for the incremental report SSE.
+        return not (" 204 " in msg and "/report/stream" in msg)
+
+
+# Attach the filter to uvicorn's access logger
+logging.getLogger("uvicorn.access").addFilter(_DropSSE204())
+
+# ------------------- Loguru (application) logger ----------------
 logger.remove()  # Remove default handler
 logger.add(
     sys.stderr,
@@ -44,6 +127,10 @@ exa_client_instance: Optional[ExaClient] = None
 
 # --- Global State for Active Tasks ---
 current_direct_query_task: asyncio.Task | None = None
+
+KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
+
+# --- Main Application Setup ------------------------------------------------
 
 
 @asynccontextmanager
@@ -72,6 +159,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         llm_service_instance = LLMService()
         await llm_service_instance.initialize_providers()
         logger.info("LLM Service initialized.")
+
+        # Launch background ChatState GC loop
+        async def _chatstate_gc_loop() -> None:
+            while True:
+                await asyncio.sleep(_IDLE_SESSION_TTL_SEC)
+                now = time.time()
+                removed = 0
+                for sid, st in list(_chat_states.items()):
+                    last_t = getattr(st, "_last_t", now)
+                    if now - last_t > _IDLE_SESSION_TTL_SEC:
+                        _chat_states.pop(sid, None)
+                        removed += 1
+                if removed:
+                    log.info("chatstate_gc", evicted=removed)
+
+        gc_task = asyncio.create_task(_chatstate_gc_loop())
         yield  # Application runs here
     except ValueError as ve:
         logger.critical(f"Configuration error during startup: {ve}. Application cannot start.")
@@ -92,11 +195,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Application shutdown: Closing LLM Service...")
             await llm_service_instance.close_all_providers()
             logger.info("LLM Service closed.")
+            if "gc_task" in locals():
+                gc_task.cancel()
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Observability setup
+setup_observability(app)
+
+log = structlog.get_logger()
+
+# Import routers lazily to avoid circular import during module initialization.
+try:
+    from importlib import import_module
+
+    _report_stream = import_module("routers.report_stream")
+    _chat_modal = import_module("routers.chat_modal")
+
+    # Cast to APIRouter to satisfy static typing
+    app.include_router(cast(APIRouter, _report_stream.router))
+    app.include_router(cast(APIRouter, _chat_modal.router))
+except Exception as _imp_err:  # noqa: BLE001 – log and continue startup
+    logger.warning("Could not import routers: %s", _imp_err)
+
+# Attach per-visitor session cookie middleware (Secure=True flag set)
+app.add_middleware(ChatSessionMiddleware)
 
 # --------------------------------------------------
 # Static Files Mount (CSS, JS, images)
@@ -358,6 +484,260 @@ async def ask_llm(
         )
 
 
+# --- Chat Endpoints --------------------------------------------------------
+
+
+@app.post("/chat")
+async def chat_post(
+    request: Request,
+    session_id: str = Depends(get_session_id),
+    message: str = Form(...),
+    paper_id: str = Form(...),
+) -> Response:
+    """Accepts a user's message, stores it, and returns two things:
+    1. The user's message, rendered as a chat bubble.
+    2. An empty container for the assistant's response, equipped with SSE
+       attributes to connect to the streaming endpoint.
+    """
+    chat_state = get_chat_state(session_id)
+
+    # If a stream is already active, signal busy to frontend and let HTMX retry.
+    if chat_state.stream_active and chat_state.last_role(paper_id) == "assistant":
+        chat_state.busy_retries += 1
+        if chat_state.busy_retries >= 6:
+            chat_state.busy_retries = 0  # reset after escalation
+            return Response("Assistant still busy – please try again later.", status_code=429)
+        busy_banner = (
+            '<div id="status-banner" hx-swap-oob="innerHTML:#status-banner">'
+            "Assistant busy – retrying…"
+            "</div>"
+        )
+        return HTMLResponse(content=busy_banner, status_code=202)
+
+    # reset counter on successful accept
+    chat_state.busy_retries = 0
+
+    clean_msg = message.strip()
+    # Ignore empty/whitespace-only submits – return 204 so HTMX no-ops.
+    if not clean_msg:
+        return Response(status_code=204)
+
+    chat_state.append(paper_id, ChatMessage(role="user", content=clean_msg))
+    log.info("chat_request", session_id=session_id, paper_id=paper_id, chars=len(clean_msg))
+    # Reset ring buffer for new assistant response
+    chat_state.reset_stream_buffer()
+    chat_state.paper_cache.setdefault(paper_id, {})
+
+    # 1. Render the user's message immediately
+    user_message_html = str(render_chat_message(clean_msg, "user"))
+
+    # 2. Create a unique container for the assistant's streaming response (raw HTML)
+    assistant_response_id = f"assistant-response-{uuid4()}"
+    # Let custom JS handle token insertion. We keep the SSE connection but disable HTMX's
+    # automatic DOM swapping to avoid duplicate tokens.
+    assistant_response_container_html = (
+        f'<div id="{assistant_response_id}" class="assistant-message typing" '
+        f'hx-ext="sse" sse-connect="/chat/stream?paper_id={paper_id}" '
+        f'sse-swap="message" data-batch-ms="8" hx-sse-reconnect-delay="-1" '
+        f'hx-trigger="load">…</div>'
+    )
+
+    # Combine and return as a multi-part HTML response
+    full_response_html = user_message_html + assistant_response_container_html
+    return HTMLResponse(content=full_response_html)
+
+
+@app.get("/chat/stream")
+async def chat_stream(
+    request: Request,
+    paper_id: str,
+    resume_at: int = Query(0, ge=0, description="Token index to resume from."),
+) -> Response:
+    """Endpoint that streams the LLM's response using SSE."""
+    session_id = await get_session_id(request)
+    if not session_id:
+        return Response("Session not found", status_code=400)
+
+    # Ensure services are available
+    llm_service = get_llm_service()
+    paper_service = get_paper_service()
+    if not llm_service or not paper_service:
+        return Response("Services not available", status_code=503)
+
+    chat_state = get_chat_state(session_id)
+
+    # Resume requested but nothing to replay – fast-fail with 204 so HTMX opens a fresh stream.
+    if resume_at and chat_state.stream_buffer:
+        last_idx = chat_state.stream_buffer[-1][0]
+        if resume_at >= last_idx:
+            log.info(
+                "chat_resume_past_tail", session_id=session_id, requested=resume_at, last=last_idx
+            )
+            return Response(status_code=204)
+
+    # Reject any concurrent stream attempt (HTMX reconnect or duplicate request)
+    if chat_state.stream_active:
+        return Response(status_code=204)
+    chat_state.stream_active = True
+
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            completed_successfully = False  # tracks whether LLM finished naturally
+            # Ensure `assistant_msg` is always defined so we can safely log its length in `finally`
+            assistant_msg: str = ""
+
+            # If client requests resume and we have tokens buffered, replay them.
+            if resume_at > 0 and chat_state.stream_buffer:
+                for idx, tok in chat_state.stream_buffer:
+                    if idx >= resume_at:
+                        safe_tok = html.escape(tok).replace("\n", "<br/>")
+                        yield f"data: {safe_tok}\n\n"
+                # Log completion of replay for observability
+                log.info(
+                    "chat_resume_replay_complete", session_id=session_id, replay_start=resume_at
+                )
+                # After replaying, exit – client will open a fresh stream for new tokens
+                return
+
+            async def _client_gone() -> bool:
+                """Return True if the browser closed the EventSource; also clear flag."""
+                if await request.is_disconnected():
+                    log.info("client_disconnect_pre_llm", session_id=session_id)
+                    chat_state.stream_active = False
+                    return True
+                return False
+
+            # Bail out immediately if user already clicked Stop before backend work.
+            if await _client_gone():
+                yield "event: sse-close\ndata: \n\n"
+                return
+
+            # Ensure paper full text is cached and fresh once per stream
+            def _needs_refresh() -> bool:
+                """Return True when we should (re)cache the paper full text."""
+                if paper_id not in chat_state.paper_cache:
+                    return True
+                path = chat_state.paper_cache.get(paper_id, {}).get("full_text_path")
+                if not path:
+                    return True
+                try:
+                    age = time.time() - _pathlib.Path(path).stat().st_mtime
+                    return age > _PAPER_CACHE_TTL_SEC
+                except FileNotFoundError:
+                    # Cached file was deleted between runs → refresh
+                    return True
+
+            if _needs_refresh():
+                path = await paper_service.get_paper_content_from_id(paper_id)
+                if path:
+                    chat_state.paper_cache.setdefault(paper_id, {})["full_text_path"] = path
+
+            # User may have stopped while we were fetching/excerpting
+            if await _client_gone():
+                yield "event: sse-close\ndata: \n\n"
+                return
+
+            # Send a keep-alive ping every 15s to prevent connection drops
+            # on some hosting platforms (e.g., Heroku, Vercel)
+            last_tok_t = time.perf_counter()
+            while True:
+                try:
+                    # Check if the client has disconnected
+                    if await request.is_disconnected():
+                        print("Client disconnected, closing stream.")
+                        break
+
+                    # If there's a new user message to process...
+                    if chat_state.last_role(paper_id) == "user":
+                        prompt = await build_prompt(chat_state, paper_id)
+                        async with get_semaphore(session_id, paper_id):
+                            stream_iter = await llm_service.generate_completion_stream(
+                                provider_name=config.config.AVAILABLE_MODELS[
+                                    config.config.DEFAULT_MODEL_KEY
+                                ]["provider"],
+                                model_name=config.config.AVAILABLE_MODELS[
+                                    config.config.DEFAULT_MODEL_KEY
+                                ]["id"],
+                                prompt=prompt,
+                                max_tokens=int(os.getenv("CHAT_MAX_TOKENS", "512")),
+                                temperature=float(os.getenv("CHAT_TEMPERATURE", "0.7")),
+                                system_prompt=None,  # included in prompt text already
+                            )
+                            async for token in stream_iter:
+                                # Abort if client closed SSE connection
+                                if await request.is_disconnected():
+                                    if hasattr(stream_iter, "aclose"):
+                                        # Fire-and-forget shutdown so we don't block on network latency
+                                        asyncio.create_task(stream_iter.aclose())
+                                    completed_successfully = False
+                                    print("Client disconnected mid-stream – cancelling generation.")
+                                    break
+
+                                assistant_msg += token
+                                log.debug("chat_stream_token", session_id=session_id, t=len(token))
+                                chat_state.push_token(token)
+                                safe_token = html.escape(token).replace("\n", "<br/>")
+                                yield f"data: {safe_token}\n\n"
+                                if _METRICS_ENABLED:
+                                    now_t = time.perf_counter()
+                                    CHAT_TOKEN_LAT.observe(now_t - last_tok_t)
+                                    last_tok_t = now_t
+
+                            # If loop exited normally, mark completion
+                            if completed_successfully is False:
+                                completed_successfully = True
+                                log.info(
+                                    "chat_stream_complete",
+                                    session_id=session_id,
+                                    tokens=len(assistant_msg),
+                                )
+
+                            # Exit the outer keep-alive loop so the stream can finalise
+                            break
+
+                    # If no new message (or after breaking), just wait before sending next keep-alive
+                    await asyncio.sleep(KEEP_ALIVE_SEC)
+                    yield ": keep-alive\n\n"
+
+                except asyncio.CancelledError:
+                    print("Stream cancelled by client.")
+                    # Client closed connection – treat as aborted; skip save
+                    completed_successfully = False
+                    break
+                except Exception as e:
+                    print(f"Error in chat stream: {e}")
+                    error_message = html.escape("Sorry, an error occurred.")
+                    yield "event: error\n"  # send named event so JS can style
+                    yield f"data: {error_message}\n\n"
+                    break
+        finally:
+            log.info("chat_stream_complete", session_id=session_id, tokens=len(assistant_msg))
+            # Persist only if the stream finished without cancellation
+            if completed_successfully and assistant_msg:
+                chat_state.append(paper_id, ChatMessage(role="assistant", content=assistant_msg))
+            else:
+                # Discard any partially buffered tokens
+                chat_state.reset_stream_buffer()
+
+            # Mark stream inactive *before* attempting to emit closing events so
+            # that even if the client has already disconnected (BrokenPipe) the
+            # flag is cleared and the next /chat/stream request is accepted.
+            chat_state.stream_active = False
+
+            # Attempt to notify client of normal end; ignore any BrokenPipe
+            # raised by a vanished EventSource.
+            try:
+                # Use a simple 'done' event so frontend can deterministically
+                # finalise the message, then the HTMX-specific 'sse-close'.
+                yield "event: done\ndata: \n\n"
+                yield "event: sse-close\ndata: \n\n"
+            except Exception:
+                # Client already gone – safe to ignore.
+                pass
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 # --- Health-check Endpoint ---
 @app.get("/healthz")
 async def healthz() -> dict[str, bool]:
@@ -563,6 +943,10 @@ async def handle_search(
                 original_query=input_query_stripped,
             )
             results_html_fragment = str(results_component)
+
+            # Background pre-warm of full-text cache for top search results (URL search)
+            for paper in exa_results[:5]:  # limit to a few to avoid stampede
+                asyncio.create_task(_prewarm_cached(str(paper.url), paper.id))
         else:  # This is a topic/keyword search
             is_url_search_flag = False
             logger.info(
@@ -606,6 +990,10 @@ async def handle_search(
                 original_query=input_query_stripped,  # Pass the original query text
             )
             results_html_fragment = str(results_component)
+
+            # Background pre-warm of full-text cache for top search results (keyword search)
+            for paper in exa_results[:5]:
+                asyncio.create_task(_prewarm_cached(str(paper.url), paper.id))
 
         return HTMLResponse(content=results_html_fragment)
     except Exception as e:
@@ -967,7 +1355,22 @@ async def generate_report(
         )
 
 
-# --- Main Execution Block ---
+@app.get("/papers/{paper_id}/card")
+async def citation_card(paper_id: str) -> Response:
+    """Returns small hover card HTML for a paper citation."""
+    # For now, look in cached search results; could extend later
+    # Use simple sessionless search list in memory if needed
+    # Fallback minimal card
+    paper = None
+    # TODO: Implement lookup for paper details based on current session cache
+    if not paper:
+        return HTMLResponse(
+            content=f"<div style='padding:6px;font-size:0.8em;'>Paper {paper_id}</div>"
+        )
+    return HTMLResponse(content=str(render_paper_card(paper)))
+
+
+# --- Main Execution Block --------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn

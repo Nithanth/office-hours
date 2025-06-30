@@ -150,6 +150,10 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# ds store
+.DS_Store
+
 # tool specific
 # paper cache
 data/full_text/
+.summary_cache/

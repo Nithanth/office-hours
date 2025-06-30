@@ -44,6 +44,6 @@ fi
 ###################################
 # Start the server
 ###################################
-UVICORN_CMD=(uvicorn app:app --reload --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" "$@")
+UVICORN_CMD=(uvicorn app:app --reload --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" --log-level debug "$@")
 msg "Starting server: ${UVICORN_CMD[*]}"
 exec "${UVICORN_CMD[@]}"
