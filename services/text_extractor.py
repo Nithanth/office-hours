@@ -20,7 +20,9 @@ import re
 import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urljoin
 
+# Third-party I/O libraries used in extraction layers
 import aiohttp
 from pdfminer.high_level import extract_text
 
@@ -62,6 +64,9 @@ logger = logging.getLogger(__name__)
 
 CACHE_ROOT = Path("data/full_text")
 CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Increased size cap for PDFs – many conference papers are >10 MB
+MAX_PDF_BYTES = 15 * 1024 * 1024  # 15 MB
 
 # ---------------------------------------------------------------------------
 # Utility helpers
@@ -121,8 +126,10 @@ class TextExtractor:
         # Layered extraction --------------------------------------------
         layers = [
             self._layer_exa_contents if prefer_exa else None,
-            self._layer_arxiv,
+            self._layer_arxiv_pdf,
             self._layer_pdf,
+            self._layer_html_pdf_link,
+            self._layer_arxiv,
             self._layer_html,
         ]
 
@@ -231,6 +238,33 @@ class TextExtractor:
             return _clean_text(summary_match.group(1))
         return None
 
+    async def _layer_arxiv_pdf(self, url: str) -> str | None:
+        """If *url* is an arXiv abstract page, try its direct PDF."""
+        m = re.match(r"https?://arxiv\.org/abs/(?P<id>\d{4}\.\d{4,5})(?:v\d+)?", url)
+        if not m:
+            return None
+        pdf_url = f"https://arxiv.org/pdf/{m.group('id')}.pdf"
+        return await self._layer_pdf(pdf_url)
+
+    async def _layer_html_pdf_link(self, url: str) -> str | None:
+        """Fetch HTML, look for the first hyperlink ending in .pdf, then extract."""
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp,
+        ):
+            if resp.content_type != "text/html":
+                return None
+            raw_html = await resp.text()
+        match = re.search(
+            r"href=[\'\"](?P<link>[^\'\"]+\.pdf)(?:[?#][^\'\"]*)?[\'\"]", raw_html, re.I
+        )
+        if not match:
+            return None
+        pdf_link = match.group("link")
+        # Handle relative links
+        pdf_link = urljoin(url, pdf_link)
+        return await self._layer_pdf(pdf_link)
+
     async def _layer_pdf(self, url: str) -> str | None:
         if not url.lower().endswith(".pdf"):
             return None
@@ -240,9 +274,11 @@ class TextExtractor:
                 url, timeout=aiohttp.ClientTimeout(total=30)
             ) as resp,
         ):
-            if resp.status != 200 or int(resp.headers.get("content-length", 0)) > 10 * 1024 * 1024:
+            if resp.status != 200 or int(resp.headers.get("content-length", 0)) > MAX_PDF_BYTES:
                 return None
             pdf_bytes = await resp.read()
+        if len(pdf_bytes) > MAX_PDF_BYTES:
+            return None
         # pdfminer is CPU-heavy – run in a worker thread. Provide a file-like object.
         text = await asyncio.to_thread(extract_text, io.BytesIO(pdf_bytes))
         return _clean_text(text)
@@ -291,4 +327,4 @@ class TextExtractor:
 
     @staticmethod
     def _good_quality(text: str | None) -> bool:
-        return bool(text and len(text) >= 8_000)
+        return bool(text and len(text) >= 3_000)

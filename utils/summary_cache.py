@@ -1,4 +1,6 @@
+import atexit
 import hashlib
+import json
 import os
 from typing import Optional
 
@@ -12,9 +14,31 @@ class SummaryCache:
     """
 
     _cache_dir: str = os.environ.get("SUMMARY_CACHE_DIR", ".summary_cache")
+    _cache_json_path: str = os.path.join(_cache_dir, "cache.json")
+    _MEM_CACHE: dict[str, str] = {}
 
     # Ensure directory exists at import time
     os.makedirs(_cache_dir, exist_ok=True)
+
+    # Load existing json cache on import
+    try:
+        if os.path.exists(_cache_json_path):
+            with open(_cache_json_path, encoding="utf-8") as _f:
+                _MEM_CACHE.update(json.load(_f))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Dump on interpreter exit
+    @staticmethod
+    def _dump(_dummy: None = None) -> None:
+        try:
+            os.makedirs(SummaryCache._cache_dir, exist_ok=True)
+            with open(SummaryCache._cache_json_path, "w", encoding="utf-8") as _f:
+                json.dump(SummaryCache._MEM_CACHE, _f)
+        except Exception:
+            pass
+
+    atexit.register(_dump)
 
     @classmethod
     def _key(cls, model_id: str, prompt: str, system_prompt: str | None) -> str:
@@ -53,3 +77,13 @@ class SummaryCache:
         except Exception:
             # Best-effort caching – ignore IO errors.
             pass
+
+    @classmethod
+    def get_generic(cls, key: str) -> Optional[str]:
+        """Retrieve cached content by deterministic key."""
+        return cls._MEM_CACHE.get(key)
+
+    @classmethod
+    def set_generic(cls, key: str, content: str) -> None:
+        """Store content under deterministic key and persist to json on exit."""
+        cls._MEM_CACHE[key] = content

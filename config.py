@@ -88,11 +88,12 @@ class Config:
     # Application specific configurations from design doc
     MAX_PAPERS_PER_SEARCH: int = 20
     SUMMARY_MAX_LENGTH: int = 300  # Max words for a paper summary in the report list
-    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 3))
+    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4))
     # Absolute upper-bound on characters we will ever pass from a paper into an LLM prompt.
     # 60 k chars ≈ 15 k tokens which is already generous and avoids gigantic prompts that
     # cause provider-side truncation.
     PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 60000))
+    LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
         "S": "brief and concise, summarizing only the absolute key takeaways",

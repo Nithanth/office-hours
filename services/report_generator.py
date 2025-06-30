@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import html
 import logging
 import re
@@ -131,19 +132,45 @@ class ReportGenerator:
         except ValueError:
             return date_input
 
+    # ------------------------------------------------------------------
+    # Cache-key helpers
+    # ------------------------------------------------------------------
+
+    def _paper_cache_key(
+        self,
+        paper_id: str,
+        summary_size_key: str,
+        audience_type: str,
+    ) -> str:
+        """Stable key for per-paper summaries independent of prompt wording."""
+        return f"paper:{paper_id}|size:{summary_size_key}|aud:{audience_type}|model:{self.selected_model_api_id}"
+
+    def _topic_cache_key(
+        self,
+        query: str,
+        summary_size_key: str,
+        audience_type: str,
+    ) -> str:
+        qhash = hashlib.sha1(query.lower().encode()).hexdigest()
+        return f"topic:{qhash}|size:{summary_size_key}|aud:{audience_type}|model:{self.selected_model_api_id}"
+
     async def _generate_single_summary(
         self,
         prompt: str,
         max_tokens: int,
         semaphore: Optional[asyncio.Semaphore] = None,
         system_prompt: Optional[str] = None,
+        cache_key: str | None = None,
     ) -> str:
         import time  # timing for perf logs
 
         start_ts = time.perf_counter()
 
-        # Check cache first
+        # Check primary prompt-hash cache
         cached = SummaryCache.get(self.selected_model_api_id, prompt, system_prompt)
+        if cached is None and cache_key:
+            cached = SummaryCache.get_generic(cache_key)
+
         if cached is not None:
             dur = time.perf_counter() - start_ts
             logger.info(
@@ -168,31 +195,36 @@ class ReportGenerator:
             content = result["content"]
             # Store in cache (best-effort)
             SummaryCache.set(self.selected_model_api_id, prompt, system_prompt, content)
+            if cache_key:
+                SummaryCache.set_generic(cache_key, content)
             return content
 
+        timeout_sec = config.LLM_TIMEOUT_SECONDS
         try:
             if semaphore is not None:
                 async with semaphore:
-                    content = await _call_llm()
+                    content = await asyncio.wait_for(_call_llm(), timeout=timeout_sec)
             else:
-                content = await _call_llm()
-
-            dur = time.perf_counter() - start_ts
-            logger.info(
-                "Summary generated | provider=%s model=%s prompt_len=%d max_out_tok=%d duration=%.2fs",
+                content = await asyncio.wait_for(_call_llm(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            logger.error(
+                "LLM call timed out after %s seconds | provider=%s model=%s",
+                timeout_sec,
                 self.selected_model_provider,
                 self.selected_model_api_id,
-                len(prompt),
-                max_tokens,
-                dur,
             )
-            return content
-        except Exception as e:
-            logger.error(
-                f"Error generating summary with {self.selected_model_provider}/{self.selected_model_api_id}: {e}",
-                exc_info=True,
-            )
-            return f"Error: Could not generate summary. Details: {e}"
+            return "Error: LLM generation timed out."
+
+        dur = time.perf_counter() - start_ts
+        logger.info(
+            "Summary generated | provider=%s model=%s prompt_len=%d max_out_tok=%d duration=%.2fs",
+            self.selected_model_provider,
+            self.selected_model_api_id,
+            len(prompt),
+            max_tokens,
+            dur,
+        )
+        return content
 
     async def generate_report_html(
         self,
@@ -247,7 +279,19 @@ class ReportGenerator:
 
             async def _bounded_extract(url: str, pid: str) -> None:
                 async with sem:
-                    await extractor.ensure_cached(url, pid)
+                    path = await extractor.ensure_cached(url, pid)
+                    # If we managed to cache and paper lacks text_content, load first chunk
+                    if path:
+                        paper_obj = next((pp for pp in unique_papers if pp.id == pid), None)
+                        if paper_obj and (
+                            not paper_obj.text_content or len(paper_obj.text_content) < 200
+                        ):
+                            try:
+                                txt = await extractor.read_full_text(pid)
+                                if txt:
+                                    paper_obj.text_content = txt
+                            except Exception:
+                                pass
 
             await asyncio.gather(*[_bounded_extract(str(p.url), p.id) for p in unique_papers])
 
@@ -283,6 +327,7 @@ class ReportGenerator:
         papers_for_topic_report = (
             papers_for_topic_report if papers_for_topic_report is not None else []
         )
+
         logger.info(
             f"ReportGenerator: Starting async report generation. Input: '{html.escape(original_query)}', Is URL: {is_url_input}, "
             f"Audience: {audience_type}, Size Key: {summary_size}, "
@@ -337,7 +382,10 @@ class ReportGenerator:
             if include_section_headings:
                 report_parts.append("<h3>Summary of Input Paper</h3>")
             main_snippet = (main_input_paper.text_content or "")[:paper_max_content_snippet_chars]
-            main_prompt = active_paper_prompt_template.format(
+            fallback_note = ""
+            if len(main_snippet.strip()) < 200:
+                fallback_note = "NOTE: Full text was unavailable; summary must rely on limited context (abstract/metadata).\n\n"
+            main_prompt = fallback_note + active_paper_prompt_template.format(
                 paper_title=html.escape(main_input_paper.title or "N/A"),
                 paper_authors=html.escape(
                     ", ".join(main_input_paper.authors) if main_input_paper.authors else "N/A"
@@ -358,6 +406,11 @@ class ReportGenerator:
                         main_prompt,
                         main_tok_target,
                         semaphore=paper_summary_semaphore,
+                        cache_key=self._paper_cache_key(
+                            main_input_paper.id,
+                            user_summary_size_key,
+                            audience_type,
+                        ),
                     )
                 )
             )
@@ -368,7 +421,10 @@ class ReportGenerator:
                 report_parts.append("<h3>Summaries of Similar Papers</h3>")
             for paper in similar_papers_data:
                 snip = (paper.text_content or "")[:paper_max_content_snippet_chars]
-                paper_prompt = active_paper_prompt_template.format(
+                fallback_note = ""
+                if len(snip.strip()) < 200:
+                    fallback_note = "NOTE: Full text was unavailable; summary must rely on limited context (abstract/metadata).\n\n"
+                paper_prompt = fallback_note + active_paper_prompt_template.format(
                     paper_title=html.escape(paper.title or "N/A"),
                     paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
                     paper_publication_date=html.escape(
@@ -387,6 +443,11 @@ class ReportGenerator:
                             paper_prompt,
                             tok_target,
                             semaphore=paper_summary_semaphore,
+                            cache_key=self._paper_cache_key(
+                                paper.id,
+                                user_summary_size_key,
+                                audience_type,
+                            ),
                         )
                     )
                 )
@@ -426,6 +487,11 @@ class ReportGenerator:
                             user_prompt_topic,
                             tok_target_topic,
                             system_prompt=system_prompt_topic,
+                            cache_key=self._topic_cache_key(
+                                original_query,
+                                actual_topic_summary_size_key,
+                                audience_type,
+                            ),
                         )
                     )
                 )
@@ -489,10 +555,13 @@ class ReportGenerator:
             summary_tasks = []
             for paper in papers_for_topic_report:
                 paper_snippet_topic = (paper.text_content or "")[:paper_max_content_snippet_chars]
+                fallback_note = ""
+                if len(paper_snippet_topic.strip()) < 200:
+                    fallback_note = "NOTE: Full text was unavailable; summary must rely on limited context (abstract/metadata).\n\n"
                 paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
                     user_summary_size_key, "a detailed summary"
                 )
-                paper_prompt = active_paper_prompt_template.format(
+                paper_prompt = fallback_note + active_paper_prompt_template.format(
                     paper_title=html.escape(paper.title or "N/A"),
                     paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
                     paper_publication_date=html.escape(
@@ -511,6 +580,11 @@ class ReportGenerator:
                             paper_prompt,
                             output_token_target_paper,
                             semaphore=paper_summary_semaphore,
+                            cache_key=self._paper_cache_key(
+                                paper.id,
+                                user_summary_size_key,
+                                audience_type,
+                            ),
                         )
                     )
                 )

@@ -61,10 +61,29 @@ async def build_prompt(
             chat_state.paper_cache[paper_id]["excerpt"] = excerpt
         except Exception:
             excerpt = ""
+
+    # Fallback to cached LLM summary when no excerpt or extremely short (<200 chars)
+    if (not excerpt) or len(excerpt.strip()) < 200:
+        summary_fallback = chat_state.paper_cache.get(paper_id, {}).get("summary")
+        if summary_fallback:
+            excerpt = f"[LLM summary]\n{summary_fallback}"
+
+    # Ensure excerpt is a string for subsequent operations
+    if excerpt is None:
+        excerpt = ""
+
+    limited_ctx = len(excerpt.strip()) < 500
+
     sys_prompt = os.getenv(
         "CHAT_SYSTEM_INSTRUCTIONS",
         "You are a helpful research assistant. Answer the latest user question using the context from the paper excerpt below when helpful.",
     ).strip()
+
+    if limited_ctx:
+        sys_prompt += (
+            " IMPORTANT: The full text of the paper was unavailable. You only have the abstract or a brief summary to work with. "
+            + "Base your answer strictly on that limited context. If the information isn't present, state that it is not available rather than guessing."
+        )
 
     prompt = (
         f"{sys_prompt}\n\n"

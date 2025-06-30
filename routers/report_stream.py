@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import time
 import urllib.parse
 import uuid
@@ -257,14 +258,30 @@ async def report_stream(
         # Stream blocks **in task creation order** to maintain UI ordering while
         # still allowing the LLM calls to execute concurrently.
         for t in coros:
-            _, block_html = await t
-            # HTMX SSE extension only swaps the first `data:` line; ensure entire HTML
-            # block is delivered in a single line by stripping embedded newlines.
+            role_label: str = "block"
+            # Each task returns (role, html) or raises. Handle both.
+            try:
+                role_label, block_html = await t
+                is_error = False
+            except Exception as e:  # noqa: BLE001
+                structlog.get_logger().warning("stream_block_error", exc=str(e))
+                is_error = True
+                block_html = (
+                    "<div class='paper-summary error-block'>"
+                    "<p><strong>Error:</strong> Could not generate this section. "
+                    "LLM or extraction failed.</p></div>"
+                )
+            # Single-line HTML to satisfy HTMX SSE swap quirks
             single_line_html = block_html.replace("\n", " ")
-            yield f"event: report-block\ndata: {single_line_html}\n\n"
+            payload_obj = {
+                "role": role_label,
+                "html": single_line_html,
+                "error": is_error,
+            }
+            yield f"event: report-block\ndata: {json.dumps(payload_obj, ensure_ascii=False)}\n\n"
 
         # Finalise
-        yield "event: done\ndata: \n\n"
+        yield "event: done\ndata: {}\n\n"
         asyncio.create_task(_del_cache_later(token))
 
     return StreamingResponse(
