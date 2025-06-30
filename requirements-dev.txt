@@ -5,8 +5,7 @@ ruff
 mypy
 
 #logging
-loguru
-structlog
+# (all runtime logging deps live in requirements.txt)
 
 # Add other dev tools here later, e.g.:
 # pytest

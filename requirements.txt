@@ -1,5 +1,4 @@
 # Core Web Framework & Server
-python-fasthtml
 uvicorn
 fastapi # Added for direct FastAPI imports
 # jinja2==3.1.6 # For HTML templating - REMOVED
@@ -19,6 +18,8 @@ together
 google-genai
 google-api-core
 tenacity
+loguru
+structlog
 
 # Data Validation & Modeling
 pydantic
