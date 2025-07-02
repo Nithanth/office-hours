@@ -172,24 +172,8 @@ function _getModalParts(el) {
   const form = modal.querySelector("form[hx-post='/chat']");
   const textarea = form?.querySelector("textarea[name='message']");
   const submitBtn = form?.querySelector("button[type='submit'],input[type='submit']");
-  let stopBtn = form?.querySelector(".stop-gen-btn-global");
-  if (!stopBtn && form) {
-    stopBtn = document.createElement("button");
-    stopBtn.className = "stop-gen-btn-global";
-    stopBtn.textContent = "⏹";
-    stopBtn.title = "Stop generation (Esc)";
-    stopBtn.style.marginRight = "8px";
-    stopBtn.type = "button"; // prevent form submit
-    /* ---- Duplicate inline stop-handler no longer used: replaced by single
-       global listener at bottom of file to avoid double execution & races. ----
-    stopBtn.addEventListener("click", async () => {
-      // (old logic now in global handler)
-    */
-  }
-  // Always mount the button in the form so the global click handler can
-  // catch it. Place it just before the textarea/submit (left-most)
-  form.insertBefore(stopBtn, textarea || submitBtn || form.firstChild);
-  return { modal, form, textarea, submitBtn, stopBtn };
+  // Stop button has been removed from the UI; we no longer create or insert it.
+  return { modal, form, textarea, submitBtn };
 }
 
 // Helper to create and start animated typing dots on *target* element.
@@ -226,12 +210,9 @@ function _startTypingIndicator(targetEl, batchMs) {
   if (modal) {
     _setControlsEnabled(modal, false);
   }
-  const { form, textarea, submitBtn, stopBtn } = _getModalParts(targetEl);
+  const { form, textarea, submitBtn } = _getModalParts(targetEl);
   if (textarea) textarea.setAttribute("disabled", "true");
   if (submitBtn) submitBtn.setAttribute("disabled", "true");
-  if (stopBtn) stopBtn.style.display = "inline-block";
-
-  return entry;
 }
 
 function _flushTokens(targetEl) {
@@ -699,7 +680,6 @@ function _setControlsEnabled(modal, enabled) {
   if (!modal) return;
   const textarea = modal.querySelector("textarea[name='message']");
   const submitBtn = modal.querySelector("button[type='submit'],input[type='submit']");
-  const stopBtn = modal.querySelector('.stop-gen-btn-global');
   if (textarea) {
     textarea.disabled = !enabled;
     if (enabled) textarea.removeAttribute('disabled');
@@ -710,20 +690,12 @@ function _setControlsEnabled(modal, enabled) {
     if (enabled) submitBtn.removeAttribute('disabled');
     else submitBtn.setAttribute('disabled','true');
   }
-  if (stopBtn) {
-    // Stop should be clickable while other controls are disabled.
-    stopBtn.disabled = enabled; // inverse of textarea/submit
-    stopBtn.style.display = enabled ? 'none' : 'inline-block';
-    stopBtn.innerHTML = enabled ? '⏹' : '<span class="stop-spinner"></span>';
-  }
 }
 
 // Backwards-compat shim so existing calls keep working.
 function _maybeReleaseControls(modal) {
   _setControlsEnabled(modal, true);
 }
-
-
 
 // Refocus input and stop HTMX from reconnecting after the stream ends.
 if (!window.__luxFinalizeReg) {
@@ -756,8 +728,8 @@ if (!window.__luxFinalizeReg) {
 
 // Handle connection errors by force-closing the source & cleaning up so the server 
 // doesn’t remain in a perpetually "busy" state due to reconnection attempts from the extension.
-['sseDone','sseClose'].forEach(evtName =>
-  document.body.addEventListener(`htmx:${evtName}`, ev => {
+['sseDone','sseClose'].forEach((evtName) =>
+  document.body.addEventListener(`htmx:${evtName}`, (ev) => {
     const el = ev.detail.elt;
     if (el?.classList.contains('assistant-message')) _finalizeBubble(el);
   }));
@@ -805,9 +777,11 @@ document.body.addEventListener("htmx:sseError", (evt) => {
 });
 
 // Debug trace for SSE lifecycle
-['sseClose','sseDone','sseError'].forEach(evtName =>
-  document.body.addEventListener(`htmx:${evtName}`, e => dbg(evtName, e.detail.elt))
-);
+['sseClose','sseDone','sseError'].forEach((evtName) => {
+  document.body.addEventListener(`htmx:${evtName}`, (e) => {
+    dbg(evtName, e.detail.elt);
+  });
+});
 
 document.body.addEventListener("htmx:beforeRequest", (evt) => {
   const form = evt.target;
@@ -954,11 +928,13 @@ function initChat(sessionId, paperId) {
 
     _renderStaticMarkdown(chatLog);
 
-    // scroll to newest
-    chatLog.scrollTop = chatLog.scrollHeight;
+    // Ensure we start at the bottom even for fresh chats
+    _scrollToBottom(chatLog); // first pass
+    _scrollToBottom(chatLog, 120); // second pass after potential md highlight
   } else {
     // Fresh chat with no cached transcript → still upgrade any static md
     _renderStaticMarkdown(chatLog);
+    _scrollToBottom(chatLog);
   }
 }
 
@@ -966,12 +942,7 @@ function initChat(sessionId, paperId) {
 // UX  – Submit on Enter (Shift+Enter for newline)
 // ---------------------------------------------------------------------------
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") {
-    // Esc acts as stop shortcut
-    const { stopBtn } = _getModalParts(ev.target);
-    if (stopBtn && stopBtn.style.display !== "none") stopBtn.click();
-    return;
-  }
+  // Escape key no longer stops generation – stop button removed.
   if (ev.key !== "Enter" || ev.shiftKey) return;
   const ta = ev.target;
   if (!(ta instanceof HTMLTextAreaElement)) return;
@@ -1001,7 +972,7 @@ document.body.addEventListener("htmx:afterRequest", (evt) => {
     // Auto-scroll container to bottom after user message sent
     const modal = elt.closest(".modal");
     const chatLog = modal && modal.querySelector(".chat-log-container");
-    if (chatLog) chatLog.scrollTop = chatLog.scrollHeight;
+    if (chatLog) _scrollToBottom(chatLog);
   }
 });
 
@@ -1207,6 +1178,10 @@ function enhanceModal(modal) {
     ta.dataset.autosize = "1";
     attachAutoResize(ta);
   }
+
+  // After layout paint, scroll chat container to bottom so newest msg visible
+  const log = modal.querySelector('.chat-log-container');
+  if (log) _scrollToBottom(log);
 }
 
 // Inject caret & copy button styles once
@@ -1228,84 +1203,7 @@ function enhanceModal(modal) {
 })();
 
 document.body.addEventListener("click", async (ev) => {
-  const stopBtn = ev.target.closest(".stop-gen-btn-global");
-  if (!stopBtn) return;
-
-  dbg("STOP click");
-
-  // mark global stream state as stopping – controls already disabled
-  const modalEl = stopBtn.closest(".modal");
-
-  // Close active EventSources and flush pending entries
-  const streams = stopBtn.closest(".modal").querySelectorAll("[sse-connect]");
-  streams.forEach((el) => {
-    if (el._htmx_source && typeof el._htmx_source.close === "function") {
-      dbg("closing EventSource", el);
-      // slight delay so HTMX finishes wiring listeners; prevents missing sseClose
-      setTimeout(() => el._htmx_source.close(), 50);
-    }
-    // Do NOT strip attributes here – let HTMX fire htmx:sseClose so
-    // _finalizeBubble and _maybeReleaseControls run reliably.
-  });
-
-  for (const [node, ent] of _pendingTokenBuffers.entries()) {
-    if (!stopBtn.closest(".modal").contains(node)) continue;
-    _flushTokens(node);
-    // Replace content with stopped notice
-    node.innerHTML = '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
-    // mark as interrupted so _finalizeBubble() can skip markdown rendering
-    node.dataset.interrupted = "1";
-    _pendingTokenBuffers.delete(node);
-    // Clear any ongoing typing animation so dots stop blinking.
-    if (ent && ent.typingTimer) {
-      clearInterval(ent.typingTimer);
-      ent.typingTimer = null;
-    }
-    const caretEl = node.querySelector(".caret");
-    if (caretEl) caretEl.remove();
-
-    node.classList.add("interrupted");
-    node.classList.remove("typing");
-
-    // Explicitly finalise here in case no SSE event fires (e.g. Stop pressed
-    // before EventSource established). This will strip SSE attrs, decrement
-    // __activeStreams and potentially re-enable controls when count hits 0.
-    _finalizeBubble(node);
-
-    // Persist updated chat log so modal reopen shows stopped state.
-    _debouncedSave(node);
-  }
-
-  // Also cover bubbles that are still in the DOM as `.typing` but never
-  // entered `_pendingTokenBuffers` because the backend hadn’t emitted a
-  // first token yet (common when paper excerpt fetch fails or the user
-  // stops very quickly). These would otherwise be left “stuck” and cause
-  // the next request to inherit a ghost typing indicator.
-  const orphanTyping = stopBtn.closest(".modal").querySelectorAll(
-    ".assistant-message.typing"
-  );
-  orphanTyping.forEach((node) => {
-    if (_pendingTokenBuffers.has(node)) return; // already handled above
-
-    _flushTokens(node);
-    node.innerHTML = '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
-    node.dataset.interrupted = "1";
-
-    const caretEl = node.querySelector(".caret");
-    if (caretEl) caretEl.remove();
-
-    node.classList.add("interrupted");
-    node.classList.remove("typing");
-
-    // Persist transcript right away for orphan typing bubbles as well.
-    _debouncedSave(node);
-  });
-
-  // Controls are already locked in _setControlsEnabled(false); just show spinner.
-  stopBtn.disabled = true;
-  stopBtn.innerHTML = '<span class="stop-spinner"></span>';
-
-  
+  // Stop button has been removed from the UI; no longer handle click.
 });
 
 // ---------------------- Copy Report ----------------------------
@@ -1490,4 +1388,20 @@ function _renderStaticMarkdown(container) {
       _debouncedSave(elems[elems.length - 1]);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Utility – force-scroll a container to its bottom after layout settles
+// ---------------------------------------------------------------------------
+function _scrollToBottom(container, delay = 0) {
+  if (!(container instanceof HTMLElement)) return;
+  const doScroll = () => {
+    container.scrollTop = container.scrollHeight;
+  };
+  if (delay > 0) {
+    setTimeout(doScroll, delay);
+  } else {
+    // two RAFs ensure we run *after* paint & possible style recalcs
+    requestAnimationFrame(() => requestAnimationFrame(doScroll));
+  }
 }
