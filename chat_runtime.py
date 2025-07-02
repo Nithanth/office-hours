@@ -34,6 +34,7 @@ def get_semaphore(session_id: str, paper_id: str) -> asyncio.Semaphore:
 async def build_prompt(
     chat_state: ChatState,
     paper_id: str,
+    audience_type: str = "semi_technical",
     max_history: int = 10,
     excerpt_chars: int = int(os.getenv("EXCERPT_CHARS", "2000")),
 ) -> str:
@@ -78,6 +79,12 @@ async def build_prompt(
         "CHAT_SYSTEM_INSTRUCTIONS",
         "You are a helpful research assistant. Answer the latest user question using the context from the paper excerpt below when helpful.",
     ).strip()
+
+    # Adjust tone suffix based on audience type
+    from utils.prompt_templates import AUDIENCE_PROMPT_MAP  # late import to avoid cycles
+
+    if audience_type in AUDIENCE_PROMPT_MAP:
+        sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]
 
     if limited_ctx:
         sys_prompt += (

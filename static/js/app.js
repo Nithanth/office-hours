@@ -59,139 +59,100 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // --------------------------------------------------
-// Phase 2.1: Clear report areas when shuffle/reset buttons are clicked
+// Phase 2.1: Disable shuffle controls while a report is generating
 // --------------------------------------------------
 
-function clearReportAreas() {
-  const configArea = document.getElementById("report-config-area");
-  const displayArea = document.getElementById("report-display-area");
-  if (configArea) configArea.innerHTML = "";
-  if (displayArea) displayArea.innerHTML = "";
-}
-
-// Delegate click handling so it works even after HTMX swaps
+// When the user triggers a new report generation we disable the shuffle controls
 document.addEventListener("click", (evt) => {
   const tgt = evt.target;
   if (!(tgt instanceof HTMLElement)) return;
-  const id = tgt.id;
-  if (id === "shuffle-btn" || id === "shuffle-all-btn" || id === "reset-btn") {
-    clearReportAreas();
+
+  // Detect generate-report submit button (works even after HTMX swaps)
+  if (tgt.id === "generate-report-btn") {
+    // Disable shuffle and reset any stored chat transcripts so a fresh report
+    // opens with a clean chat modal (no stale messages from prior runs).
+    disableShuffle();
+    if (window.__luxChatCache) window.__luxChatCache.clear();
   }
 });
 
-// Set up Lux dark-mode toggle
-function setupLuxDarkToggle() {
-  const toggle = document.getElementById("lux-dark-toggle");
-  if (!toggle) return;
-  // Ensure label matches current theme on first paint
-  if (document.body.classList.contains("lux-dark")) {
-    toggle.textContent = "☀️ Light Mode";
-  } else {
-    toggle.textContent = "🌙 Dark Mode";
-  }
-  toggle.addEventListener("click", () => {
-    console.log("Dark mode toggle clicked!");
-    const isDarkMode = document.body.classList.contains("lux-dark");
-    if (isDarkMode) {
-      document.body.classList.remove('lux-dark');
-      document.body.style.backgroundColor = '';
-    } else {
-      document.body.classList.add('lux-dark');
-      document.body.style.backgroundColor = '#1a1a1a';
-    }
+// Re-enable shuffle when backend signals report completion (see listener below)
 
-    if (document.body.classList.contains("lux-dark")) {
-      toggle.textContent = '☀️ Light Mode';
-    } else {
-      toggle.textContent = '🌙 Dark Mode';
-    }
-  });
-}
-
-document.addEventListener("DOMContentLoaded", setupLuxDarkToggle);
-
-(function () {
-  // Ensure clean start (light)
-  document.body.classList.remove("lux-dark");
-})();
+// (legacy dark-mode toggle removed; settings.js now owns theme logic)
 
 // ---------------------------------------------------------------------------
-// Phase 3-A: localStorage compression helpers
-// --------------------------------------------------
+// Phase 3-A: transient in-memory transcript cache (cleared on page refresh)
+// ---------------------------------------------------------------------------
+// We no longer persist chat logs to localStorage. Instead, store them in a
+// process-wide Map so modals reopened within the same SPA session restore, but
+// a full page reload starts fresh.
 
-// Use LZString if loaded, otherwise fallback to plain text.
-function compressMaybe(str) {
-  if (!str || typeof LZString === "undefined") {
-    return "raw:" + str;
-  }
-  // Compress if it results in a smaller string, otherwise store raw.
-  const compressed = LZString.compressToBase64(str);
-  return compressed.length < str.length ? "lz:" + compressed : "raw:" + str;
+window.__luxChatCache = window.__luxChatCache || new Map();
+
+function saveTranscript(_sessionId, paperId, html) {
+  // sessionId retained for call-site compatibility, but ignored.
+  window.__luxChatCache.set(paperId, html);
+
+  // DEBUG: log first 200 chars of what we just cached
+  try {
+    console.debug("[cache save]", paperId, html.substring(0, 200).replace(/\n/g, "↩"));
+  } catch (_) {}
 }
 
-function decompressMaybe(stored) {
-  if (!stored) return null;
-  if (stored.startsWith("lz:")) {
-    try {
-      return LZString.decompressFromBase64(stored.slice(3));
-    } catch (_) {
-      return null; // Decompression failed
-    }
-  }
-  if (stored.startsWith("raw:")) return stored.slice(4);
-  return stored; // Fallback for old data without prefix
+function loadTranscript(_sessionId, paperId) {
+  return window.__luxChatCache.get(paperId) || null;
 }
 
 // Save / load transcript for given paper + session
-function saveTranscript(sessionId, paperId, html) {
-  const key = `lux:chat:${sessionId}:${paperId}`;
-  const payload = {
-    ts: Date.now(),
-    data: compressMaybe(html),
-  };
+// function saveTranscript(sessionId, paperId, html) {
+//   const key = `lux:chat:${sessionId}:${paperId}`;
+//   const payload = {
+//     ts: Date.now(),
+//     data: compressMaybe(html),
+//   };
 
-  try {
-    localStorage.setItem(key, JSON.stringify(payload));
-  } catch (e) {
-    console.warn("LocalStorage quota exceeded. Evicting oldest items.");
-    // Quota exceeded – simple LRU: find all chat keys, sort by timestamp, remove oldest 5, retry.
-    const keysToEvict = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("lux:chat:")) {
-        try {
-          const item = JSON.parse(localStorage.getItem(k));
-          if (item && item.ts) keysToEvict.push({ key: k, ts: item.ts });
-        } catch (_) {}
-      }
-    }
-    keysToEvict.sort((a, b) => a.ts - b.ts);
-    for (let i = 0; i < Math.min(5, keysToEvict.length); i++) {
-      localStorage.removeItem(keysToEvict[i].key);
-    }
+//   try {
+//     localStorage.setItem(key, JSON.stringify(payload));
+//   } catch (e) {
+//     console.warn("LocalStorage quota exceeded. Evicting oldest items.");
+//     // Quota exceeded – simple LRU: find all chat keys, sort by timestamp, remove oldest 5, retry.
+//     const keysToEvict = [];
+//     for (let i = 0; i < localStorage.length; i++) {
+//       const k = localStorage.key(i);
+//       if (k && k.startsWith("lux:chat:")) {
+//         try {
+//           const item = JSON.parse(localStorage.getItem(k));
+//           if (item && item.ts) keysToEvict.push({ key: k, ts: item.ts });
+//         } catch (_) {}
+//       }
+//     }
+//     keysToEvict.sort((a, b) => a.ts - b.ts);
+//     for (let i = 0; i < Math.min(5, keysToEvict.length); i++) {
+//       localStorage.removeItem(keysToEvict[i].key);
+//     }
 
-    // Retry once
-    try {
-      localStorage.setItem(key, JSON.stringify(payload));
-    } catch (e2) {
-      alert("Local storage full — older chats were purged to free space.");
-      console.error("Failed to save transcript even after eviction:", e2);
-    }
-  }
-}
+//     // Retry once
+//     try {
+//       localStorage.setItem(key, JSON.stringify(payload));
+//     } catch (e2) {
+//       alert("Local storage full — older chats were purged to free space.");
+//       console.error("Failed to save transcript even after eviction:", e2);
+//     }
+//   }
+// }
 
-function loadTranscript(sessionId, paperId) {
-  const key = `lux:chat:${sessionId}:${paperId}`;
-  try {
-    const stored = localStorage.getItem(key);
-    if (!stored) return null;
-    const payload = JSON.parse(stored);
-    return decompressMaybe(payload.data);
-  } catch (e) {
-    console.error("Failed to load/parse transcript:", e);
-    return null;
-  }
-}
+// function loadTranscript(sessionId, paperId) {
+//   const key = `lux:chat:${sessionId}:${paperId}`;
+//   try {
+//     const stored = localStorage.getItem(key);
+//     if (!stored) return null;
+//     const payload = JSON.parse(stored);
+//     return decompressMaybe(payload.data);
+//   } catch (e) {
+//     console.error("Failed to load/parse transcript:", e);
+//     return null;
+//   }
+// }
 
 // ---------------------------------------------------------------------------
 // Phase 4-B – Token batching for smoother UI
@@ -261,6 +222,10 @@ function _startTypingIndicator(targetEl, batchMs) {
   _pendingTokenBuffers.set(targetEl, entry);
 
   // Disable chat form controls & show global stop button
+  const modal = targetEl.closest('.modal');
+  if (modal) {
+    _setControlsEnabled(modal, false);
+  }
   const { form, textarea, submitBtn, stopBtn } = _getModalParts(targetEl);
   if (textarea) textarea.setAttribute("disabled", "true");
   if (submitBtn) submitBtn.setAttribute("disabled", "true");
@@ -405,6 +370,29 @@ async function _renderMarkdownPartial(el) {
 // Intercept SSE messages *before* HTMX swaps them so we can render tokens
 // ourselves and cancel the default behaviour that would insert duplicates.
 document.body.addEventListener("htmx:sseBeforeMessage", (evt) => {
+  // ---------------------------------------------------------------
+  // Generic JSON envelope handler for all SSE messages
+  // ---------------------------------------------------------------
+  try {
+    if (typeof evt.detail?.data === "string") {
+      const raw = evt.detail.data;
+      const trimmed = raw.trimStart();
+      if (trimmed.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed.html === "string") {
+            // Mutate the event data so downstream listeners & HTMX swap receive raw HTML
+            evt.detail.data = parsed.html;
+          }
+        } catch (e) {
+          // malformed JSON – let HTMX handle as-is
+        }
+      }
+    }
+  } catch (jsonErr) {
+    // Not JSON – ignore.
+  }
+
   const target = evt.target; // element with sse-swap attribute
   if (!(target instanceof HTMLElement)) return;
 
@@ -469,13 +457,57 @@ document.body.addEventListener("htmx:sseBeforeMessage", (evt) => {
 function _finalizeBubble(targetEl) {
   if (!targetEl) return;
   if (targetEl.dataset.finalised === "1") return; // idempotency guard
+
+  // Clean up UI controls regardless of interruption
+  const wasInterrupted = targetEl.dataset.interrupted === "1" || targetEl.classList.contains("interrupted");
+
   _flushTokens(targetEl);
-  const entry = _pendingTokenBuffers.get(targetEl);
+
+  let entry = _pendingTokenBuffers.get(targetEl);
+  
   if (entry && entry.typingTimer) {
     clearInterval(entry.typingTimer);
     entry.typingTimer = null;
   }
+
+  // Early-exit guard: if the bubble was interrupted and already shows the
+  // red stop notice (no original markdown to render), skip markdown
+  // processing to prevent a duplicate grey notice being appended.
+  const noOriginalMd = !entry || !entry.md || entry.md.trim() === "";
+  if (wasInterrupted && noOriginalMd) {
+    if (!targetEl.querySelector(".response-stopped")) {
+      const wrapper = document.createElement("span");
+      wrapper.className = "response-stopped";
+      const x = document.createElement("span");
+      x.className = "stopped-x";
+      x.textContent = "✖";
+      wrapper.appendChild(x);
+      wrapper.appendChild(document.createTextNode(" response stopped"));
+      targetEl.appendChild(wrapper);
+    }
+    targetEl.dataset.finalised = "1";
+    _pendingTokenBuffers.delete(targetEl);
+    enableShuffle();
+
+    // IMPORTANT: strip SSE attributes so _maybeReleaseControls no longer
+    // sees an active stream. Without this the textarea stays disabled on
+    // the next turn because the modal still matches [sse-connect].
+    targetEl.removeAttribute("sse-connect");
+    targetEl.removeAttribute("hx-sse-reconnect-delay");
+    targetEl.removeAttribute("hx-ext");
+    targetEl.removeAttribute("data-batch-ms");
+
+    const modal = targetEl.closest('.modal');
+    if (modal) {
+      _setControlsEnabled(modal, true);
+    }
+
+    _debouncedSave(targetEl);
+    return;
+  }
+
   dbg("_finalizeBubble", { interrupted: targetEl.dataset.interrupted, id: targetEl.id });
+
   // Lazy-load marked.js once
   let _markedPromise = null;
   function ensureMarkedLoaded() {
@@ -524,28 +556,8 @@ function _finalizeBubble(targetEl) {
   ensureMarkedLoaded()
     .then(() => ensurePurifyLoaded())
     .then(() => {
-      if (targetEl.dataset.interrupted === "1" || targetEl.classList.contains("interrupted")) {
-        _pendingTokenBuffers.delete(targetEl);
-
-        targetEl.removeAttribute("sse-connect");
-        targetEl.removeAttribute("hx-sse-reconnect-delay");
-        targetEl.removeAttribute("hx-ext");
-        targetEl.removeAttribute("data-batch-ms");
-
-        const { textarea, submitBtn, stopBtn } = _getModalParts(targetEl);
-        if (textarea) textarea.removeAttribute("disabled");
-        if (submitBtn) submitBtn.removeAttribute("disabled");
-        if (stopBtn) {
-          stopBtn.disabled = false;
-          stopBtn.innerHTML = "⏹";
-          stopBtn.style.display = "none";
-        }
-
-        targetEl.dataset.finalised = "1";
-        return;
-      }
-
       let rawMd = _decodeEntities(entry ? entry.md : targetEl.textContent);
+
       const fenceCt = (rawMd.match(/```/g) || []).length;
       if (fenceCt % 2 === 1) rawMd += "\n```";
 
@@ -560,6 +572,17 @@ function _finalizeBubble(targetEl) {
         : dirtyHtml;
 
       targetEl.innerHTML = safeHtml;
+
+      if (wasInterrupted && !targetEl.querySelector('.response-stopped')) {
+        const wrapper = document.createElement('span');
+        wrapper.className = 'response-stopped';
+        const x = document.createElement('span');
+        x.className = 'stopped-x';
+        x.textContent = '✖';
+        wrapper.appendChild(x);
+        wrapper.appendChild(document.createTextNode(' response stopped'));
+        targetEl.appendChild(wrapper);
+      }
 
       // Load highlight.js once
       let _hlPromise = null;
@@ -590,9 +613,18 @@ function _finalizeBubble(targetEl) {
         addCopyButtons(targetEl);
       });
     })
-    .catch((e) => console.error("Failed to load marked.js", e));
-
-  _pendingTokenBuffers.delete(targetEl);
+    .catch((e) => console.error("Failed to load marked.js", e))
+    .finally(() => {
+      // mark as finalised to prevent duplicate parsing
+      targetEl.dataset.finalised = "1";
+      _pendingTokenBuffers.delete(targetEl);
+      enableShuffle(); // unlock shuffle buttons
+      const modal = targetEl.closest('.modal');
+      if (modal) {
+        _setControlsEnabled(modal, true);
+      }
+      _debouncedSave(targetEl);
+    });
 
   // Prevent any further reconnects & final UI cleanup
   targetEl.removeAttribute("sse-connect");
@@ -600,57 +632,126 @@ function _finalizeBubble(targetEl) {
   targetEl.removeAttribute("hx-ext");
   targetEl.removeAttribute("data-batch-ms");
 
-  const { textarea, submitBtn, stopBtn } = _getModalParts(targetEl);
-  if (textarea) textarea.removeAttribute("disabled");
-  if (submitBtn) submitBtn.removeAttribute("disabled");
-  if (stopBtn) {
-    stopBtn.disabled = false;
-    stopBtn.innerHTML = "⏹";
-    stopBtn.style.display = "none";
-  }
-
-  // mark as finalised to prevent duplicate parsing
-  targetEl.dataset.finalised = "1";
+  // NOTE: Active stream counter already decremented above (either in early
+  // exit path or in the .finally() block). Do NOT decrement again here – that
+  // caused negative counts and premature re-enable. We keep this section as a
+  // no-op placeholder in case additional cleanup is needed later.
 }
 
-function _maybeReleaseControls(modal) {
-  if (!modal) return;
-  if (modal.querySelector('[sse-connect]')) return; // still stopping
+// Debounced transcript saver – avoids frequent writes while typing/rendering
+// ---------------------------------------------------------------------------
+// _finalizeBubble calls this helper to persist the updated chat log HTML only
+// after rendering is complete. We keep a per-container timer so reopening and
+// rapid token flushes don’t spam the in-memory cache.
 
+const _saveTimers = new WeakMap(); // chatLogContainer ➜ timeoutId
+const MAX_CHAT_LINES = 60;  // history cap when caching transcript – keep last N bubbles
+
+function _debouncedSave(bubbleEl) {
+  if (!bubbleEl) return;
+  const container = bubbleEl.closest && bubbleEl.closest('.chat-log-container');
+  if (!container) return;
+
+  // If any stream is still active (Element with sse-connect or .typing), defer
+  // saving except when we were explicitly called for an interrupted bubble.
+  const hasActiveStream = container.querySelector('[sse-connect], .assistant-message.typing');
+  if (hasActiveStream && !bubbleEl.classList.contains('interrupted')) {
+    console.debug('[cache skip]', 'activeStream', !!hasActiveStream, 'bubbleInterrupted', bubbleEl.classList.contains('interrupted'));
+    return; // still streaming – come back later.
+  }
+
+  console.debug('[cache try]', 'chatKey', container.dataset.chatKey || container.dataset.chatPid || (container.id ? container.id.replace("chat-log-", "") : ""), 'bubbleInterrupted', bubbleEl.classList.contains('interrupted'));
+
+  // Prefer explicit data-paper-id stamped by initChat; fall back to parsing the element id.
+  const chatKey = container.dataset.chatKey || container.dataset.chatPid || (container.id ? container.id.replace("chat-log-", "") : "");
+  if (!chatKey) return;
+
+  // ---------------------------------------------------------------------
+  // Sanitise: for any interrupted bubbles, guarantee they contain ONLY the
+  // red stop notice. This prevents earlier streamed tokens from leaking
+  // into the cached HTML when multiple debounced saves race.
+  // ---------------------------------------------------------------------
+  container.querySelectorAll('.assistant-message.interrupted').forEach((msg) => {
+    // Unconditionally replace content to ensure stale tokens are purged.
+    msg.innerHTML = '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
+    msg.dataset.finalised = "1";
+    // Also strip SSE attributes so the modal no longer matches [sse-connect].
+    msg.removeAttribute("sse-connect");
+    msg.removeAttribute("hx-sse-reconnect-delay");
+    msg.removeAttribute("hx-ext");
+    msg.removeAttribute("data-batch-ms");
+  });
+
+  clearTimeout(_saveTimers.get(container));
+  const t = setTimeout(() => {
+    const msgs = Array.from(container.children || []);
+    const recent = msgs.slice(-MAX_CHAT_LINES);
+    const html = recent.map((n) => n.outerHTML).join("");
+    saveTranscript(null, chatKey, html);
+  }, 120); // small delay lets DOM settle
+  _saveTimers.set(container, t);
+}
+
+// ---------------------------------------------------------------------------
+// Central helper: enable/disable textarea / submit / stop controls
+// ---------------------------------------------------------------------------
+function _setControlsEnabled(modal, enabled) {
+  if (!modal) return;
   const textarea = modal.querySelector("textarea[name='message']");
   const submitBtn = modal.querySelector("button[type='submit'],input[type='submit']");
   const stopBtn = modal.querySelector('.stop-gen-btn-global');
-
-  if (textarea) textarea.removeAttribute('disabled');
-  if (submitBtn) submitBtn.removeAttribute('disabled');
+  if (textarea) {
+    textarea.disabled = !enabled;
+    if (enabled) textarea.removeAttribute('disabled');
+    else textarea.setAttribute('disabled', 'true');
+  }
+  if (submitBtn) {
+    submitBtn.disabled = !enabled;
+    if (enabled) submitBtn.removeAttribute('disabled');
+    else submitBtn.setAttribute('disabled','true');
+  }
   if (stopBtn) {
-    stopBtn.disabled = false;
-    stopBtn.innerHTML = '⏹';
-    stopBtn.style.display = 'none';
+    stopBtn.disabled = !enabled;
+    stopBtn.style.display = enabled ? 'none' : 'inline-block';
+    stopBtn.innerHTML = enabled ? '⏹' : '<span class="stop-spinner"></span>';
   }
 }
 
+// Backwards-compat shim so existing calls keep working.
+function _maybeReleaseControls(modal) {
+  _setControlsEnabled(modal, true);
+}
+
+
+
 // Refocus input and stop HTMX from reconnecting after the stream ends.
-document.body.addEventListener("htmx:sseClose", (evt) => {
-  const targetEl = evt.detail.elt;
-  // Ensure we’re only acting on the assistant message bubble from the chat
-  if (!targetEl || !targetEl.classList.contains("assistant-message")) return;
+if (!window.__luxFinalizeReg) {
+  window.__luxFinalizeReg = true;
 
-  // 0. Explicitly close the EventSource so the browser does **not** reconnect
-  const src = evt.detail.source;
-  if (src && typeof src.close === "function") {
-    try {
-      src.close();
-    } catch (_) {}
-  }
+  const _luxFinalizeHandler = (evt) => {
+    const targetEl = evt.detail?.elt;
+    if (!targetEl || !targetEl.classList.contains("assistant-message")) return;
 
-  evt.preventDefault();
+    // Prevent HTMX attempting to reconnect; close the source explicitly.
+    const src = evt.detail.source;
+    if (src && typeof src.close === "function") {
+      dbg("closing EventSource", src);
+      // slight delay so HTMX finishes wiring listeners; prevents missing sseClose
+      setTimeout(() => src.close(), 50);
+    }
 
-  _finalizeBubble(targetEl);
-  // Refocus the chat input for the next message
-  const inp = document.getElementById("chat-input");
-  if (inp instanceof HTMLElement) inp.focus();
-});
+    evt.preventDefault();
+
+    _finalizeBubble(targetEl);
+
+    // Focus input for next turn
+    const inp = document.getElementById("chat-input");
+    if (inp instanceof HTMLElement) inp.focus();
+  };
+
+  // Capture phase so this fires *before* child hx_on handlers (e.g., saveTranscript)
+  document.body.addEventListener("htmx:sseClose", _luxFinalizeHandler, true);
+}
 
 // Handle connection errors by force-closing the source & cleaning up so the server 
 // doesn’t remain in a perpetually "busy" state due to reconnection attempts from the extension.
@@ -673,12 +774,16 @@ document.body.addEventListener("htmx:sseError", (evt) => {
 
   const el = evt.detail?.elt;
 
-  // Flush & finalise even on error so raw markdown does not remain
+  // Flush & finalise even on error so raw markdown does not remain.
   if (el?.classList.contains("assistant-message")) {
-    // If no tokens ever arrived, there is no entry in _pendingTokenBuffers.
-    // Treat this the same as a manual Stop so we don’t leave a ghost typing bubble.
-    if (!_pendingTokenBuffers.has(el)) {
+    const entry = _pendingTokenBuffers.get(el);
+    // Treat as interrupted ONLY when *no* markdown has ever flushed.
+    // That is: we have no pending entry, OR entry.first is still true *and*
+    // no markdown accumulated yet. If tokens have streamed (entry.first === false
+    // or entry.md has length), we let normal finalisation render them.
+    if (!entry || (entry.first && (!entry.md || entry.md.length === 0))) {
       el.dataset.interrupted = "1";
+      el.classList.add("interrupted");
       const caret = el.querySelector(".caret");
       if (caret) caret.remove();
       el.classList.remove("typing");
@@ -688,11 +793,8 @@ document.body.addEventListener("htmx:sseError", (evt) => {
     _finalizeBubble(el);
   }
 
-  if (el) {
-    el.removeAttribute("sse-connect");
-    el.removeAttribute("hx-ext");
-    el.removeAttribute("data-batch-ms");
-  }
+  // Do NOT strip attributes here – let HTMX fire htmx:sseClose so
+  // _finalizeBubble and _maybeReleaseControls run reliably.
 
   // _finalizeBubble already re-enabled the form controls. Just make sure the
   // global stop button is hidden (it may still be visible if we aborted very
@@ -705,9 +807,6 @@ document.body.addEventListener("htmx:sseError", (evt) => {
 ['sseClose','sseDone','sseError'].forEach(evtName =>
   document.body.addEventListener(`htmx:${evtName}`, e => dbg(evtName, e.detail.elt))
 );
-
-// Constant for Stop grace delay (ms)
-const STOP_GRACE_MS = 2000;
 
 document.body.addEventListener("htmx:beforeRequest", (evt) => {
   const form = evt.target;
@@ -730,11 +829,9 @@ document.body.addEventListener("htmx:beforeRequest", (evt) => {
     // controls remain disabled, no need for toast
     return;
   }
-  const submitBtn = form.querySelector("button[type='submit'],input[type='submit']");
-  const stopBtn = form.querySelector(".stop-gen-btn-global");
-  if (textarea) textarea.setAttribute("disabled", "true");
-  if (submitBtn) submitBtn.setAttribute("disabled", "true");
-  if (stopBtn) stopBtn.style.display = "inline-block";
+  // Ensure stop button exists, then disable all controls via central helper
+  _getModalParts(modal); // inserts stopBtn if missing
+  _setControlsEnabled(modal, false);
 });
 
 // ---------------------------------------------------------------------------
@@ -827,29 +924,40 @@ function initChat(sessionId, paperId) {
     return;
   }
 
-  const transcriptData = loadTranscript(sessionId, paperId);
+  // If this modal was opened before and then hidden, the chat log already
+  // contains prior bubbles (server-injected or cached). We leave them in place
+  // unless we have a newer cached copy – in that case we replace the DOM to
+  // ensure consistency (e.g., interrupted sanitisation done post-hoc).
+  const stableKey = chatLog.dataset.chatKey || paperId;
+  const transcriptHtml = loadTranscript(sessionId, stableKey);
 
-  if (transcriptData && transcriptData.data) {
-    const toast = document.createElement("div");
-    toast.id = `restore-toast-${paperId}`;
-    toast.className = "restore-toast";
-    toast.innerHTML = `
-      <span style="margin-right: 10px;">Restore previous chat?</span>
-      <button id="restore-yes-${paperId}" class="toast-btn">Yes</button>
-      <button id="restore-no-${paperId}" class="toast-btn">No</button>
-    `;
+  if (typeof transcriptHtml === "string" && transcriptHtml.trim()) {
+    chatLog.innerHTML = transcriptHtml;
 
-    chatLog.prepend(toast);
-
-    document.getElementById(`restore-yes-${paperId}`).addEventListener("click", () => {
-      chatLog.innerHTML = transcriptData.data;
-      // After restoring, make sure the view is scrolled to the bottom
-      chatLog.scrollTop = chatLog.scrollHeight;
+    // Extra safety: re-sanitise any interrupted bubbles that may still contain
+    // stale streamed tokens from a previous session before we hardened the
+    // stop logic. This guarantees the cached HTML we just inserted shows only
+    // the red stop notice and no partial answer.
+    chatLog.querySelectorAll('.assistant-message.interrupted').forEach((msg) => {
+      msg.innerHTML = '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
+      msg.dataset.finalised = "1";
     });
 
-    document.getElementById(`restore-no-${paperId}`).addEventListener("click", () => {
-      toast.remove();
-    });
+    // Persist the cleaned transcript back to cache so future opens are safe.
+    _debouncedSave(chatLog.lastElementChild || chatLog);
+
+    // DEBUG: log what we just injected
+    try {
+      console.debug("[cache load]", paperId, transcriptHtml.substring(0, 200).replace(/\n/g, "↩"));
+    } catch (_) {}
+
+    _renderStaticMarkdown(chatLog);
+
+    // scroll to newest
+    chatLog.scrollTop = chatLog.scrollHeight;
+  } else {
+    // Fresh chat with no cached transcript → still upgrade any static md
+    _renderStaticMarkdown(chatLog);
   }
 }
 
@@ -910,6 +1018,19 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
     }
   });
 
+  // Kick off chat restore for newly swapped chat modals if inline hx_on failed
+  root.querySelectorAll(".chat-log-container").forEach((log) => {
+    if (log.dataset.initDone === "1") return;
+    const pid = log.dataset.chatKey || log.dataset.chatPid || (log.id ? log.id.replace("chat-log-", "") : "");
+    if (!pid) return;
+    try {
+      initChat(null, pid);
+      log.dataset.initDone = "1";
+    } catch (err) {
+      console.error("initChat fallback error", err);
+    }
+  });
+
   // If a modal was just inserted, add extra UI (export, autosize)
   const modal = root.closest && root.closest(".modal");
   if (modal) enhanceModal(modal);
@@ -922,7 +1043,7 @@ function addCopyButtons(container) {
   container.querySelectorAll("pre").forEach((pre) => {
     if (pre.querySelector(".copy-btn")) return; // already added
     const btn = document.createElement("button");
-    btn.className = "copy-btn";
+    btn.className = "copy-btn hidden";
     btn.type = "button";
     btn.title = "Copy code";
     btn.textContent = "📋";
@@ -1111,6 +1232,9 @@ document.body.addEventListener("click", async (ev) => {
 
   dbg("STOP click");
 
+  // mark global stream state as stopping – controls already disabled
+  const modalEl = stopBtn.closest(".modal");
+
   // Close active EventSources and flush pending entries
   const streams = stopBtn.closest(".modal").querySelectorAll("[sse-connect]");
   streams.forEach((el) => {
@@ -1119,11 +1243,8 @@ document.body.addEventListener("click", async (ev) => {
       // slight delay so HTMX finishes wiring listeners; prevents missing sseClose
       setTimeout(() => el._htmx_source.close(), 50);
     }
-    // Do NOT strip the sse-connect/hx-ext attributes here; leaving them
-    // intact lets the HTMX SSE extension fire the `htmx:sseClose` event once
-    // it detects the connection closed. `_finalizeBubble()` will remove the
-    // attributes after it finishes, so we avoid a race that left controls
-    // disabled indefinitely.
+    // Do NOT strip attributes here – let HTMX fire htmx:sseClose so
+    // _finalizeBubble and _maybeReleaseControls run reliably.
   });
 
   for (const [node, ent] of _pendingTokenBuffers.entries()) {
@@ -1145,10 +1266,13 @@ document.body.addEventListener("click", async (ev) => {
     node.classList.add("interrupted");
     node.classList.remove("typing");
 
-    // Do NOT call _finalizeBubble() here; we must wait until the server
-    // reports the stream is closed (via sseError/sseClose) to avoid a
-    // race where the next request is sent while the backend still has
-    // stream_active=True.
+    // Explicitly finalise here in case no SSE event fires (e.g. Stop pressed
+    // before EventSource established). This will strip SSE attrs, decrement
+    // __activeStreams and potentially re-enable controls when count hits 0.
+    _finalizeBubble(node);
+
+    // Persist updated chat log so modal reopen shows stopped state.
+    _debouncedSave(node);
   }
 
   // Also cover bubbles that are still in the DOM as `.typing` but never
@@ -1163,8 +1287,7 @@ document.body.addEventListener("click", async (ev) => {
     if (_pendingTokenBuffers.has(node)) return; // already handled above
 
     _flushTokens(node);
-    node.innerHTML =
-      '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
+    node.innerHTML = '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
     node.dataset.interrupted = "1";
 
     const caretEl = node.querySelector(".caret");
@@ -1172,21 +1295,16 @@ document.body.addEventListener("click", async (ev) => {
 
     node.classList.add("interrupted");
     node.classList.remove("typing");
+
+    // Persist transcript right away for orphan typing bubbles as well.
+    _debouncedSave(node);
   });
 
-  // Keep controls disabled until we receive htmx:sseClose/_finalizeBubble.
-  // Show spinner on stop button until finalisation; do not hide here.
+  // Controls are already locked in _setControlsEnabled(false); just show spinner.
   stopBtn.disabled = true;
   stopBtn.innerHTML = '<span class="stop-spinner"></span>';
 
-  // Re-enable textarea & submit after a short grace period so the backend
-  // has time to clear `stream_active` (keep-alive ≤1 s). This restores the
-  // form to the ready state without re-introducing the earlier race.
-  const { textarea, submitBtn } = _getModalParts(stopBtn);
-  setTimeout(() => {
-    dbg("grace-timer fired");
-    _maybeReleaseControls(stopBtn.closest('.modal'));
-  }, STOP_GRACE_MS);
+  
 });
 
 // ---------------------- Copy Report ----------------------------
@@ -1300,3 +1418,75 @@ document.body.addEventListener("click", (ev) => {
     setTimeout(() => btn.classList.remove("copied"), 1200);
   }
 });
+
+document.body.addEventListener("htmx:sseMessage", (evt) => {
+  if (evt.detail && evt.detail.type === "done") {
+    document
+      .querySelectorAll(
+        ".hidden.copy-btn, .copy-btn.hidden, .hidden.copy-icon-btn, .copy-icon-btn.hidden"
+      )
+      .forEach((btn) => {
+        btn.classList.remove("hidden");
+      });
+    enableShuffle(); // unlock shuffle buttons
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Utility: upgrade stored plain-text markdown bubbles to HTML
+// ---------------------------------------------------------------------------
+function _renderStaticMarkdown(container) {
+  if (!container) return;
+
+  const elems = container.querySelectorAll(".assistant-message");
+  if (!elems.length) return;
+
+  _ensureMarkdownLibs().then(() => {
+    elems.forEach((el) => {
+      if (el.dataset.finalised === "1") {
+        const raw = el.textContent || "";
+        if (!/[\*`_\[\]]/.test(raw)) return; // looks like proper HTML already
+        // else, clear the flag so we proceed to render it now.
+        delete el.dataset.finalised;
+      }
+      // Handle interrupted bubbles: ensure we wipe any partial markdown and inject the stop notice once.
+      if (el.dataset.interrupted === "1" || el.classList.contains("interrupted")) {
+        if (!el.querySelector('.response-stopped')) {
+          el.innerHTML = "";
+          const wrapper = document.createElement("span");
+          wrapper.className = "response-stopped";
+          const x = document.createElement("span");
+          x.className = "stopped-x";
+          x.textContent = "✖";
+          wrapper.appendChild(x);
+          wrapper.appendChild(document.createTextNode(" response stopped"));
+          el.appendChild(wrapper);
+        }
+        el.dataset.finalised = "1";
+        return;
+      }
+
+      let md = el.textContent || "";
+      const fenceCt = (md.match(/```/g) || []).length;
+      if (fenceCt % 2 === 1) md += "\n```";
+
+      const dirty = window.marked.parse(md, {
+        gfm: true,
+        breaks: true,
+        smartLists: true,
+      });
+
+      const safe = window.DOMPurify ? window.DOMPurify.sanitize(dirty) : dirty;
+      el.innerHTML = safe;
+
+      if (window.hljs) {
+        el.querySelectorAll("pre code").forEach((block) => window.hljs.highlightElement(block));
+      }
+    });
+
+    // After upgrading markdown, save updated transcript so reopening modal shows rendered HTML
+    if (elems.length) {
+      _debouncedSave(elems[elems.length - 1]);
+    }
+  });
+}

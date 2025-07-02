@@ -6,6 +6,7 @@ import re
 import time
 import urllib.parse
 from datetime import datetime
+from functools import partial
 from typing import Any, Optional, Union, cast
 
 from config import config
@@ -549,74 +550,6 @@ class ReportGenerator:
                 )
                 report_parts.append("</div>")
 
-        # Topic-based report generation
-        if papers_for_topic_report:
-            # (Topic overview already generated above and appended via gather loop)
-            summary_tasks = []
-            for paper in papers_for_topic_report:
-                paper_snippet_topic = (paper.text_content or "")[:paper_max_content_snippet_chars]
-                fallback_note = ""
-                if len(paper_snippet_topic.strip()) < 200:
-                    fallback_note = "NOTE: Full text was unavailable; summary must rely on limited context (abstract/metadata).\n\n"
-                paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE.get(
-                    user_summary_size_key, "a detailed summary"
-                )
-                paper_prompt = fallback_note + active_paper_prompt_template.format(
-                    paper_title=html.escape(paper.title or "N/A"),
-                    paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
-                    paper_publication_date=html.escape(
-                        self._get_formatted_date_str(paper.published_date)
-                    ),
-                    paper_content_snippet=paper_snippet_topic,
-                    overall_instructions=paper_length_guidance,
-                    target_audience=audience_type,
-                )
-                output_token_target_paper = self._get_output_token_target(
-                    audience_type, user_summary_size_key, is_topic_summary=False
-                )
-                summary_tasks.append(
-                    asyncio.create_task(
-                        self._generate_single_summary(
-                            paper_prompt,
-                            output_token_target_paper,
-                            semaphore=paper_summary_semaphore,
-                            cache_key=self._paper_cache_key(
-                                paper.id,
-                                user_summary_size_key,
-                                audience_type,
-                            ),
-                        )
-                    )
-                )
-
-            paper_summaries_results = await asyncio.gather(*summary_tasks, return_exceptions=True)
-            for i, result in enumerate(paper_summaries_results):
-                paper = papers_for_topic_report[i]
-                report_parts.append(
-                    f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
-                )
-                if isinstance(result, Exception):
-                    logger.error(f"Error summarizing paper {paper.id}: {result}", exc_info=result)
-                    report_parts.append("<p><em>Error generating summary for this paper.</em></p>")
-                # Handle potential exception from asyncio.gather
-                elif isinstance(result, str):
-                    report_parts.append(f"<p>{self._text_to_html_paragraphs(result)}</p>")
-                else:
-                    # Should not happen if _generate_single_summary returns str or raises
-                    logger.warning(
-                        f"Unexpected result type for topic paper {paper.id or 'N/A'} summary: {type(result)}"
-                    )
-                    report_parts.append(
-                        "<p><em>An unexpected error occurred while formatting the summary for this paper.</em></p>"
-                    )
-                # Encode params safely
-                title_q2 = urllib.parse.quote_plus(paper.title or "")
-                url_q2 = urllib.parse.quote_plus(str(paper.url) if paper.url else "")
-                report_parts.append(
-                    f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={title_q2}&paper_url={url_q2}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant</button>"
-                )
-                report_parts.append("</div>")
-
         report_body = "".join(report_parts)
 
         # Dynamically generate the title based on the report content
@@ -744,7 +677,10 @@ function fallbackCopy(text) {
         # --------------------------------------------------------------
         exa_answer: dict[str, Any] = {}
         try:
-            exa_answer = self.exa_client.answer(query, top_k=num_supporting_papers)
+            loop = asyncio.get_running_loop()
+            exa_answer = await loop.run_in_executor(
+                None, partial(self.exa_client.answer, query, top_k=num_supporting_papers)
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Exa answer lookup failed: %s", exc, exc_info=True)
 

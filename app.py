@@ -224,6 +224,33 @@ except Exception as _imp_err:  # noqa: BLE001 – log and continue startup
 # Attach per-visitor session cookie middleware (Secure=True flag set)
 app.add_middleware(ChatSessionMiddleware)
 
+
+# Security headers / permissions-policy
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint  # noqa: E402
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Set common security headers on every response."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: D401 – simple middleware
+        response: Response = await call_next(request)
+
+        # Enforce HTTPS + preload (has no effect on localhost)
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload"
+        )
+        # Disable MIME type sniffing
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        # Limit referrer leakage
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        # Allow rich clipboard copy without permission prompt (Safari)
+        response.headers.setdefault("Permissions-Policy", "clipboard-read=*, clipboard-write=*")
+
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # --------------------------------------------------
 # Static Files Mount (CSS, JS, images)
 # --------------------------------------------------
@@ -436,6 +463,7 @@ async def ask_llm(
     request: Request,
     question: str = Form(...),
     audience: str = Form("technical"),
+    model_key: str | None = Form(None),
     summary_size: str = Form("M"),
 ) -> HTMLResponse:
     """Direct question-answering using the LLM without paper search.
@@ -455,9 +483,12 @@ async def ask_llm(
             content="<p>Server error: LLM service unavailable.</p>", status_code=500
         )
 
-    # Use default model from config for now
-    default_model_key = config.config.DEFAULT_MODEL_KEY
-    model_info = config.config.AVAILABLE_MODELS[default_model_key]
+    # Determine model key
+    selected_key = model_key or config.config.DEFAULT_MODEL_KEY
+    if selected_key not in config.config.AVAILABLE_MODELS:
+        logger.warning("ask_llm: unknown model_key %s; falling back to default", selected_key)
+        selected_key = config.config.DEFAULT_MODEL_KEY
+    model_info = config.config.AVAILABLE_MODELS[selected_key]
 
     rg = ReportGenerator(
         llm_service=llm_service_instance,
@@ -1383,3 +1414,34 @@ if __name__ == "__main__":
         reload=config.config.RELOAD_APP,
         log_level="info",
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin Utilities
+# ---------------------------------------------------------------------------
+
+# Lightweight, unsecured route for development convenience.  In production
+# this should be protected behind authentication or removed entirely.
+from fastapi import Depends, HTTPException, status  # noqa: E402 – after app init
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer  # noqa: E402
+
+from utils.summary_cache import SummaryCache  # noqa: E402 – after app init
+
+_admin_security = HTTPBearer(auto_error=False)
+
+
+@app.get("/admin/flush-cache", tags=["admin"])
+async def flush_summary_cache(
+    creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
+) -> dict[str, bool]:
+    """Clear all cached LLM summaries (both disk & memory).
+
+    Pass `Authorization: Bearer <ADMIN_API_KEY>` header. In dev, if the env var
+    is unset the route remains open.
+    """
+    secret = os.getenv("ADMIN_API_KEY")
+    if secret and (creds is None or creds.credentials != secret):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    SummaryCache.clear()
+    return {"ok": True}

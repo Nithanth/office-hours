@@ -90,33 +90,9 @@ def render_report_config_form(
         P(I(f"Generating report for query: '{original_query}'")),
         P(I(f"Based on {num_selected} selected paper(s).")),
         FORM(
-            Label("Select Target Audience:", for_="audience_type"),
-            Br(),
-            Select(
-                Option("Highly Technical (PhD/Researcher)", value="technical"),
-                Option("Semi-technical (Lux)", value="semi_technical", selected=True),
-                Option("Non-Technical (Other VCs)", value="non-technical"),
-                name="audience_type",
-                id="audience_type_select",
-            ),
-            Br(),
-            Br(),
-            Label("Select Model:", for_="model_select"),
-            Br(),
-            Select(
-                *[
-                    Option(
-                        model_config["display_name"],
-                        value=model_key,
-                        selected=(model_key == config.config.DEFAULT_MODEL_KEY),
-                    )
-                    for model_key, model_config in config.config.AVAILABLE_MODELS.items()
-                ],
-                name="selected_model_key",
-                id="model_select",
-            ),
-            Br(),
-            Br(),
+            # Hidden fields populated by settings.js so we still POST them
+            INPUT(type="hidden", name="audience_type", id="aud-hidden"),
+            INPUT(type="hidden", name="selected_model_key", id="model-hidden"),
             Label("Select Report Size:", for_="summary_size_select"),
             Br(),
             Select(
@@ -129,7 +105,12 @@ def render_report_config_form(
             ),
             Br(),
             Br(),
-            INPUT(type="hidden", name="original_query_for_report", value=original_query),
+            INPUT(
+                type="hidden",
+                name="original_query_for_report",
+                value=original_query,
+                id="original_query_for_report_hidden",
+            ),
             *hidden_paper_inputs,
             BUTTON("Generate Report", type="submit", style="margin-right:8px;"),
             method="post",  # ensure fallback submission is POST, not GET
@@ -137,6 +118,7 @@ def render_report_config_form(
             hx_target="#report-display-area",
             hx_swap="innerHTML",
             hx_indicator="#report-loading-indicator",
+            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden",
             hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
         ),
     )
@@ -332,19 +314,44 @@ def render_search_results(
     if not has_results:
         pass
 
-    # Add Configure Report button only if there are selectable papers
+    # Add inline size dropdown form and generate button only if there are selectable papers
     if has_results:
         results_content.extend(
             [
                 Br(),
-                BUTTON(
-                    "Configure Report",
-                    id="create-report-button",
-                    hx_post="/show-report-config",
-                    hx_target="#report-config-area",
+                FORM(
+                    # Hidden fields populated by settings.js
+                    INPUT(type="hidden", name="audience_type", id="aud-hidden"),
+                    INPUT(type="hidden", name="selected_model_key", id="model-hidden"),
+                    INPUT(
+                        type="hidden",
+                        name="original_query_for_report",
+                        value=original_query,
+                        id="original_query_for_report_hidden",
+                    ),
+                    # size dropdown
+                    Select(
+                        Option("Select Report Size", value="", disabled=True, selected=True),
+                        Option("S (Concise)", value="S"),
+                        Option("M (Standard)", value="M"),
+                        Option("L (Detailed)", value="L"),
+                        Option("XL (Comprehensive)", value="XL"),
+                        name="summary_size",
+                        id="summary_size_select",
+                        style="margin-right:0.5rem;",
+                    ),
+                    BUTTON(
+                        "Generate Report",
+                        type="submit",
+                        id="generate-report-btn",
+                        style="margin-left:0.25rem;",
+                    ),
+                    method="post",
+                    hx_post="/generate-report-incremental",
+                    hx_target="#report-display-area",
                     hx_swap="innerHTML",
-                    hx_include="[name='selected_papers_json']:checked, [name='search_query'], [name='is_url_input_source']",
-                    hx_indicator="#loading-indicator",
+                    hx_indicator="#report-loading-indicator",
+                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden",
                 ),
             ]
         )
@@ -531,7 +538,7 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                 Div(
                     id=f"chat-log-{paper_id}",
                     cls="chat-log-container",
-                    hx_on=f"htmx:sseClose: saveTranscript('{session_id}', '{paper_id}', this.innerHTML)",
+                    hx_on=f"htmx:load: initChat('{session_id}', '{paper_id}')",
                 ),
                 # This container will receive the SSE connector from the POST response
                 Div(id=f"sse-connector-container-{paper_id}"),
@@ -547,7 +554,6 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                     hx_post="/chat",
                     hx_target=f"#chat-log-{paper_id}",
                     hx_swap="beforeend",
-                    hx_vals=f'{{"paper_id": "{paper_id}"}}',
                     hx_on="htmx:afterRequest: this.reset()",
                 ),
                 cls="modal-body",
@@ -555,7 +561,6 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
             cls="modal-content",
         ),
         cls="modal",
-        hx_on=f"htmx:load: initChat('{session_id}', '{paper_id}')",
     )
 
 
@@ -608,26 +613,62 @@ def home_page(page_data: SharedPageData) -> Body:
                 href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
             ),
             Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
-            Script(
-                "document.addEventListener('DOMContentLoaded', function() {\n"
-                "  if (window.flatpickr) {\n"
-                "    flatpickr('#start_published_date', {dateFormat: 'Y-m-d'});\n"
-                "  }\n"
-                "});"
-            ),
             Style(indicator_css),
             Link(rel="stylesheet", href="/static/css/styles.css"),
             # Re-add small script to handle manual dark-mode toggle without inline style overrides
             Script(src="/static/js/app.js"),
+            # Settings & validation helper (audience/model persistence, toasts, etc.)
+            Script(src="/static/js/settings.js"),
             Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),
         ),
-        Div("█▓▒░ Lux Scholar ░▒▓█", cls="top-bar"),
-        Div(id="status-banner"),  # Placeholder for busy/alert banners
+        # Global toolbar
         Div(
-            BUTTON("🌙 Dark Mode", id="lux-dark-toggle", type="button"),
-            style="text-align:right; margin-bottom:0.5rem;",
+            Link("█▓▒░ Lux Scholar ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
+            Div("", style="flex:1"),
+            Select(
+                Option(
+                    "Select Audience",
+                    value="",
+                    disabled=True,
+                    selected=True,
+                    # color handled via select.placeholder CSS
+                ),
+                Option("Highly Technical (PhD/Researcher)", value="technical"),
+                Option("Semi-Technical (Lux)", value="semi_technical"),
+                Option("Non-technical (Other VCs)", value="non_technical"),
+                id="aud-select",
+                name="audience",
+                style="margin-right:0.5rem;",
+            ),
+            Select(
+                Option(
+                    "Select Model",
+                    value="",
+                    disabled=True,
+                    selected=True,
+                    # color handled via select.placeholder CSS
+                ),
+                *[
+                    Option(
+                        cfg["display_name"],
+                        value=key,
+                    )
+                    for key, cfg in config.config.AVAILABLE_MODELS.items()
+                ],
+                id="model-select",
+                name="model_key",
+                style="margin-right:0.5rem;",
+            ),
+            BUTTON(
+                "🌙 Dark",
+                id="lux-dark-toggle",
+                type="button",
+                style="padding:1px 4px;margin-left:4px;",
+            ),
+            cls="top-bar",
+            style="display:flex;align-items:center;padding:4px 8px;",
         ),
-        # H1(page_data.title),
+        Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             P(I("Enter a research topic, query, or paper link:")),
             FORM(  # Search Form
@@ -727,7 +768,8 @@ def home_page(page_data: SharedPageData) -> Body:
                 hx_target="#ask-result-container",
                 hx_swap="innerHTML",
                 hx_indicator="#ask-loading-indicator",
-                onsubmit="document.getElementById('report-display-area').innerHTML='';document.getElementById('report-config-area').innerHTML='';document.getElementById('ask-result-container').innerHTML='';",
+                hx_include="#model-select,#aud-select",
+                onsubmit="document.getElementById('ask-result-container').innerHTML='';",
                 id="ask-assistant-form",
                 style="padding:0.5rem 0;",
             ),

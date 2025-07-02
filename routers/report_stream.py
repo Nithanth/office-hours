@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import html
-import json
 import time
 import urllib.parse
 import uuid
@@ -69,6 +68,7 @@ async def _del_cache_later(token: str, delay: int = 60) -> None:
     REPORT_REQUEST_CACHE.pop(token, None)
 
 
+# Primary ASCII-hyphen path
 @router.post("/generate-report-incremental", response_class=HTMLResponse)
 async def generate_report_incremental(  # noqa: PLR0913
     request: Request,
@@ -97,8 +97,30 @@ async def generate_report_incremental(  # noqa: PLR0913
 
     sse_url = f"/report/stream?token={token}"
 
+    # ------------------------------------------------------------------
+    # Validate required parameters – defend against client-side bypasses
+    # ------------------------------------------------------------------
+    def _is_blank(val: str | None) -> bool:
+        return (val or "").strip() == ""
+
+    if any(_is_blank(v) for v in [audience_type, summary_size, selected_model_key]):
+        error_html = (
+            "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+            "Please select Audience, Model and Report Size before generating a report."
+            "</div>"
+        )
+        return HTMLResponse(content=error_html)
+
+    if not selected_papers_json:
+        error_html = (
+            "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+            "Please select at least one paper before generating a report."
+            "</div>"
+        )
+        return HTMLResponse(content=error_html)
+
     html_skeleton = f"""
-    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- HTMX SSE connector listening for named events -->\n      <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\"><i class=\"fa-solid fa-copy\"></i></button>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>\n    """
+    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Copy button hidden until report finished -->\n      <button id=\"copy-report-btn\" class=\"copy-icon-btn hidden\" title=\"Copy text\" type=\"button\"><i class=\"fa-solid fa-copy\"></i></button>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>\n    """
     return HTMLResponse(content=html_skeleton)
 
 
@@ -121,7 +143,7 @@ async def report_stream(
     selected_papers_json = payload["selected_papers_json"]
     audience_type = payload["audience_type"]
     summary_size = payload["summary_size"]
-    selected_model_key = payload["selected_model_key"]
+    selected_model_key = payload["selected_model_key"] or config.DEFAULT_MODEL_KEY
 
     llm_service, exa_client = await _get_services()
 
@@ -139,7 +161,14 @@ async def report_stream(
     similar_papers = papers_list[1:]
 
     # Prepare ReportGenerator
-    model_cfg = config.AVAILABLE_MODELS[selected_model_key]
+    model_cfg = config.AVAILABLE_MODELS.get(selected_model_key)
+    if model_cfg is None:
+        error_html = (
+            "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+            "Unknown model selected. Please choose a valid model and retry."
+            "</div>"
+        )
+        return HTMLResponse(content=error_html, status_code=200)
     rg = ReportGenerator(
         llm_service=llm_service,
         exa_client=exa_client,
@@ -231,7 +260,7 @@ async def report_stream(
         html_block = (
             f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank'>{html.escape(paper.title or 'Paper')}</a></h4>"
             f"{rg._text_to_html_paragraphs(summary)}"
-            f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
+            f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
             "</div>"
         )
         return role, html_block
@@ -239,6 +268,10 @@ async def report_stream(
     async def event_generator() -> AsyncIterator[str]:
         # Kick off tasks concurrently
         coros: list[asyncio.Task[tuple[str, str]]] = []
+
+        # --- Emit heading block first so it appears above all summaries ---
+        heading_html = "<h2 class='report-title text-xl font-bold mb-4'>Report</h2>"
+        yield (f"event: report-block\ndata: {heading_html}\n\n")
 
         # Derive a reliable boolean – form fields come through as strings.
         is_url_input_flag = str(payload.get("is_url_input", "false")).lower() == "true"
@@ -262,26 +295,20 @@ async def report_stream(
             # Each task returns (role, html) or raises. Handle both.
             try:
                 role_label, block_html = await t
-                is_error = False
             except Exception as e:  # noqa: BLE001
                 structlog.get_logger().warning("stream_block_error", exc=str(e))
-                is_error = True
                 block_html = (
                     "<div class='paper-summary error-block'>"
                     "<p><strong>Error:</strong> Could not generate this section. "
                     "LLM or extraction failed.</p></div>"
                 )
-            # Single-line HTML to satisfy HTMX SSE swap quirks
+            # Single-line HTML to satisfy HTMX SSE swap quirks; send directly so HTMX swaps HTML instead of raw JSON
             single_line_html = block_html.replace("\n", " ")
-            payload_obj = {
-                "role": role_label,
-                "html": single_line_html,
-                "error": is_error,
-            }
-            yield f"event: report-block\ndata: {json.dumps(payload_obj, ensure_ascii=False)}\n\n"
+            yield f"event: report-block\ndata: {single_line_html}\n\n"
 
         # Finalise
-        yield "event: done\ndata: {}\n\n"
+        # Empty payload so no stray brackets are rendered after swap targets
+        yield "event: done\ndata: \n\n"
         asyncio.create_task(_del_cache_later(token))
 
     return StreamingResponse(

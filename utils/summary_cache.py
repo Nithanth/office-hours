@@ -1,7 +1,9 @@
 import atexit
+import contextlib
 import hashlib
 import json
 import os
+import time
 from typing import Optional
 
 
@@ -16,6 +18,13 @@ class SummaryCache:
     _cache_dir: str = os.environ.get("SUMMARY_CACHE_DIR", ".summary_cache")
     _cache_json_path: str = os.path.join(_cache_dir, "cache.json")
     _MEM_CACHE: dict[str, str] = {}
+
+    # ---------------------------------------------------------------------------
+    # Cache policy
+    # ---------------------------------------------------------------------------
+    # Default time-to-live (in seconds) for cached summaries.  Can be overridden via
+    # the SUMMARY_CACHE_TTL_SEC environment variable.
+    TTL_SECONDS: int = int(os.environ.get("SUMMARY_CACHE_TTL_SEC", 24 * 60 * 60))
 
     # Ensure directory exists at import time
     os.makedirs(_cache_dir, exist_ok=True)
@@ -54,6 +63,14 @@ class SummaryCache:
         """Return cached result if present, else None."""
         path = os.path.join(cls._cache_dir, cls._key(model_id, prompt, system_prompt) + ".txt")
         if os.path.exists(path):
+            # If the file is older than TTL, treat as a cache miss and delete.
+            with contextlib.suppress(Exception):
+                if time.time() - os.path.getmtime(path) > cls.TTL_SECONDS:
+                    # Best-effort removal; ignore IO errors.
+                    with contextlib.suppress(Exception):
+                        os.remove(path)
+                    return None
+
             try:
                 with open(path, encoding="utf-8") as f:
                     return f.read()
@@ -87,3 +104,26 @@ class SummaryCache:
     def set_generic(cls, key: str, content: str) -> None:
         """Store content under deterministic key and persist to json on exit."""
         cls._MEM_CACHE[key] = content
+
+    # ---------------------------------------------------------------------
+    # Maintenance helpers
+    # ---------------------------------------------------------------------
+
+    @classmethod
+    def clear(cls) -> None:
+        """Completely flush both on-disk and in-memory caches."""
+
+        # 1) Clear in-memory map
+        cls._MEM_CACHE.clear()
+
+        # 2) Remove text files + json index
+        with contextlib.suppress(Exception):
+            for fname in os.listdir(cls._cache_dir):
+                # Only delete cache artifacts, not arbitrary files
+                if fname.endswith(".txt"):
+                    with contextlib.suppress(Exception):
+                        os.remove(os.path.join(cls._cache_dir, fname))
+
+            # Best-effort removal of cache index
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(cls._cache_json_path)

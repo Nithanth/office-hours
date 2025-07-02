@@ -104,6 +104,48 @@ body.lux-dark button:hover {
     font-size: 0.9rem;
     padding: 2px 6px;
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+}
+
+.top-bar select {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    width: 115px;            /* slightly narrower */
+    overflow: hidden;       /* hide overflow when collapsed */
+    text-overflow: ellipsis;/* show … if label is longer */
+    white-space: nowrap;    /* keep on one line */
+    color: #000;             /* default text */
+}
+
+.top-bar select.placeholder {
+    color: #888 !important;
+    font-size: 0.7rem;
+}
+
+body.lux-dark .top-bar select {
+    color: var(--lux-red);
+}
+
+body.lux-dark .top-bar select.placeholder {
+    color: #666 !important; /* dim gray in dark mode */
+}
+
+/* Dark mode toggle button styled like selects */
+.top-bar button#lux-dark-toggle {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    width: auto;           /* shrink to content */
+    height: 20px; /* approximate select height */
+    background: #fff;
+    border: 1px solid #000;
+    cursor: pointer;
+}
+
+body.lux-dark .top-bar button#lux-dark-toggle {
+    background: #333;
+    color: var(--lux-red);
+    border-color: #666;
 }
 
 body.lux-dark .top-bar {
@@ -513,4 +555,14 @@ body.lux-dark .copy-icon-btn {
   align-self: flex-end;
   margin-top: auto; /* occupy all remaining space, forces button to bottom */
   padding-top: 0.75rem; /* visual gap above */
+}
+
+.copy-btn {
+   position: absolute;
+   top: 6px;
+   right: 6px;
+ }
+
+.hidden {
+  display: none !important;
 }

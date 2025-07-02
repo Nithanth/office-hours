@@ -1,7 +1,6 @@
 from typing import Any
 
 from fasthtml.common import (
-    H1,
     Body,
     Div,
     Footer,
@@ -11,25 +10,25 @@ from fasthtml.common import (
     Link,
     Main,
     Meta,
+    Option,
     P,
     Script,
+    Select,
     Title,
 )
 
 # Define Cdn if not already part of your FastHTML/PyHTML common imports
 # Some versions of FastHTML might have this or similar utilities built-in.
 # If Cdn is not recognized, you might need to ensure it's correctly imported or defined.
-
 # def Cdn(name, version, file, integrity=None, cross_origin='anonymous', referrer_policy='no-referrer'):
 #     """Returns a script tag for a CDN."""
 #     prefix = f'https://cdnjs.cloudflare.com/ajax/libs/{name}/{version}/{file}'
 #     return Script(src=prefix, integrity=integrity, cross_origin=cross_origin, referrer_policy=referrer_policy)
-
 # htmx_script = Cdn('htmx.org', '1.9.10', 'htmx.min.js',
-#                     'sha512-nGwAlo1EX7G34KMW1zzNfX6NlC4D2jVqjS2Q3n_C8shChPZ12o9zUmlXn5GfQJ5k1R29E2TYz79E2YGFWJcvvw==')
-
+#                     'sha512-nGwAlo1EX7GfQJ5k1R29E2TYz79E2YGFWJcvvw==')
 # Example: Tailwind via CDN (can be useful for rapid prototyping)
 # tailwind_script = Script(src="https://cdn.tailwindcss.com")
+import config  # Needed for model dropdown values
 
 
 def base_layout(title_text: str, *content: Any) -> Html:
@@ -48,16 +47,57 @@ def base_layout(title_text: str, *content: Any) -> Html:
             # tailwind_script, # Uncomment if you want to use Tailwind CSS via CDN
             # htmx_script, # FastHTML usually includes HTMX, uncomment if needed explicitly
         ),
-        Body(cl="bg-gray-100"),  # Example Tailwind class, won't apply without Tailwind
         Body(
-            Header(H1(title_text), cl="bg-slate-700 p-4 text-center"),
+            # Global toolbar – logo left, controls right
+            Header(
+                Div(
+                    # Left: logo / home link
+                    Link(title_text, href="/", cl="text-lg font-bold mr-6"),
+                    # Spacer pushes controls to right
+                    Div("", cl="flex-1"),
+                    # Audience select
+                    Select(
+                        Option("Select Audience", value="", disabled=True, selected=True),
+                        Option("Highly Technical (PhD/Researcher)", value="technical"),
+                        Option("Semi-Technical (Lux)", value="semi_technical"),
+                        Option("Non-technical (Other VCs)", value="non_technical"),
+                        id="aud-select",
+                        cl="mr-3",
+                    ),
+                    # Model select – built from config at runtime for flexibility
+                    Select(
+                        Option("Select Model", value="", disabled=True, selected=True),
+                        *[
+                            Option(
+                                cfg["display_name"],
+                                value=key,
+                            )
+                            for key, cfg in config.config.AVAILABLE_MODELS.items()
+                        ],
+                        id="model-select",
+                        cl="mr-3",
+                    ),
+                    Link(
+                        "Clear",
+                        href="#",
+                        id="clear-prefs-btn",
+                        cl="text-sm text-blue-500 mr-3 underline",
+                    ),
+                    # Theme toggle button (inserted by JS later)
+                    Script(""),
+                    cl="flex items-center gap-2",
+                ),
+                cl="top-bar flex items-center px-4",
+            ),
             Main(
-                Div(*content, cl="container mx-auto p-4"),  # Basic container class from styles.css
+                Div(*content, cl="container mx-auto p-4"),
             ),
             Footer(
                 P(" 2024 Research Paper Analysis Tool. All rights reserved."),
                 cl="text-center text-sm text-gray-500 py-4",
             ),
-            Script(src="/static/js/app.js"),  # Load custom JS
+            Script(src="/static/js/app.js"),
+            Script(src="/static/js/settings.js"),
+            cl="bg-gray-100",
         ),
     )

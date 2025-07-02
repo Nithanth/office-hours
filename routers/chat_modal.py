@@ -5,20 +5,24 @@ import time
 from uuid import uuid4
 
 import structlog
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
-from components.chat_components import ChatModal  # Re-use existing helper
+from components.chat_components import ChatBubble, ChatModal  # Re-use existing helper
 
 router: APIRouter = APIRouter()
 
 
 @router.get("/chat-modal", response_class=HTMLResponse)
 async def chat_modal(
+    request: Request,
     paper_id: str = Query(..., description="ID of the paper to chat about"),
     title: str | None = Query(None, description="(Optional) Paper title to display"),
     paper_url: str | None = Query(None, description="(Optional) Paper URL for link"),
+    audience_type: str | None = Query(
+        None, description="(Optional) Audience type key from toolbar"
+    ),
 ) -> HTMLResponse:  # noqa: D401 – pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
@@ -67,14 +71,33 @@ async def chat_modal(
     modal_id = f"modal-{uuid4().hex[:8]}"
     chat_log_id = f"chat-log-{uuid4().hex[:8]}"
 
+    # ----------------- Retrieve prior conversation (if any) -----------------
+    try:
+        from chat_state import get_chat_state  # local import avoids heavy dep
+
+        session_id = getattr(request.state, "session_id", "anon")
+        history = get_chat_state(session_id).get_conversation(paper_id)
+    except Exception:  # noqa: BLE001 – fallback silently
+        history = []
+
+    history_html = "".join(str(ChatBubble(msg.content, msg.role)) for msg in history)
+
     # Build modal component.
     modal_html = str(
         ChatModal(
             modal_id=modal_id,
             title=modal_title,
             chat_log_id=chat_log_id,
+            audience_type=audience_type,
         )
     )
+
+    # Inject pre-rendered history into the empty chat-log container
+    if history_html:
+        modal_html = modal_html.replace(
+            f'id="{chat_log_id}" class="chat-log-container"></div>',
+            f'id="{chat_log_id}" class="chat-log-container">{history_html}</div>',
+        )
 
     # Inject hidden paper_id input and fix HX attribute names for HTMX
     hidden_input = f"<input type='hidden' id='hidden-paper-id' name='paper_id' value='{paper_id}'/>"
