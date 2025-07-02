@@ -711,7 +711,8 @@ function _setControlsEnabled(modal, enabled) {
     else submitBtn.setAttribute('disabled','true');
   }
   if (stopBtn) {
-    stopBtn.disabled = !enabled;
+    // Stop should be clickable while other controls are disabled.
+    stopBtn.disabled = enabled; // inverse of textarea/submit
     stopBtn.style.display = enabled ? 'none' : 'inline-block';
     stopBtn.innerHTML = enabled ? '⏹' : '<span class="stop-spinner"></span>';
   }
