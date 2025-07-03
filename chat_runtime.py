@@ -86,7 +86,9 @@ async def build_prompt(
     )
 
     # Adjust tone suffix based on audience type
-    from utils.prompt_templates import AUDIENCE_PROMPT_MAP  # late import to avoid cycles
+    from utils.prompt_templates import (
+        AUDIENCE_PROMPT_MAP,
+    )  # late import to avoid cycles
 
     if audience_type in AUDIENCE_PROMPT_MAP:
         sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]

@@ -10,7 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from models.paper import Paper
-from utils.prompt_templates import (
+
+from .prompt_templates import (
     AUDIENCE_PROMPT_MAP,
     RESEARCH_ASSISTANT_PROMPT,
 )

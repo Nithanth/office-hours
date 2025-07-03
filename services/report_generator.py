@@ -1,12 +1,24 @@
+"""Deprecated path – shim for backwards compatibility.
+
+`services.report_generator` has moved to `lux_scholar.core.services.report_generator`.
+Importing from this module is still supported during the migration but
+will emit a warning.  Please update your imports.
+"""
+
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import html
 import logging
 import re
+import sys as _sys
 import time
 import urllib.parse
+import warnings as _warnings
 from datetime import datetime
 from functools import partial
+from importlib import import_module as _imp
 from typing import Any, Optional, Union, cast
 
 from config import config
@@ -19,6 +31,15 @@ from utils.prompt_templates import (
     get_topic_analysis_prompts,
 )
 from utils.summary_cache import SummaryCache
+
+_warnings.warn(
+    "Import from 'services.report_generator' is deprecated. Use 'lux_scholar.core.services.report_generator' instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+_mod = _imp("lux_scholar.core.services.report_generator")
+_sys.modules[__name__] = _mod
 
 logger = logging.getLogger(__name__)
 
