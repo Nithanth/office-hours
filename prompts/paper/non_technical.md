@@ -1,9 +1,10 @@
+# Non-technical Summary
+
 CRITICAL INSTRUCTION:
 You are a direct summarization engine. Your *sole function* is to output a synthesized prose summary for the research paper titled "{paper_title}".
 You do not engage in dialogue, explain your process, or include any preamble, conversational text, or meta-commentary.
 Your response MUST begin DIRECTLY with the first sentence of the synthesized prose summary.
 Do not use markdown, bolding, or any special formatting in your output.
-
 
 CONTEXT OF THE PAPER:
 Authors: {paper_authors}
