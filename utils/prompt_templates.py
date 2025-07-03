@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from config import config
+from prompts import load_template
 
 # Use built-in types for List and Tuple as per Ruff UP006/UP035
 
@@ -80,6 +80,7 @@ def get_topic_analysis_prompts(
     target_audience: Optional[str] = None,
     context_snippets: Optional[str] = None,
     overall_instructions: Optional[str] = None,  # Added for length/style guidance
+    summary_size_key: str = "M",  # S, M, L, XL – controls heading granularity
     **kwargs: Any,
 ) -> tuple[str, str]:
     """Generates prompts for a landscape analysis of a research topic."""
@@ -102,6 +103,39 @@ def get_topic_analysis_prompts(
             f"\nFollow these overall instructions for the summary: {overall_instructions}"
         )
 
+    # ------------------------------------------------------------------
+    # Tailor section list based on summary_size_key
+    # ------------------------------------------------------------------
+    size_key = summary_size_key.upper()
+    if size_key == "S":
+        section_headings = [
+            "Topic Overview:",
+            "Key Findings:",
+            "Potential Impact:",
+        ]
+    elif size_key in ("L", "XL"):
+        section_headings = [
+            "Topic Overview:",
+            "Historical Context:",
+            "Current State of Research:",
+            "Key Methodologies:",
+            "Significant Findings & Discoveries:",
+            "Major Challenges & Open Questions:",
+            "Emerging Trends & Future Directions:",
+            "Potential Applications & Impact:",
+            "Recommended Further Reading:",
+        ]
+    else:  # default M
+        section_headings = [
+            "Topic Overview:",
+            "Current State of Research:",
+            "Key Methodologies:",
+            "Significant Findings & Discoveries:",
+            "Major Challenges & Open Questions:",
+            "Emerging Trends & Future Directions:",
+            "Potential Applications & Impact:",
+        ]
+
     user_prompt_parts.extend(
         [
             (
@@ -110,13 +144,7 @@ def get_topic_analysis_prompts(
             ),
             "",  # Spacer line for readability
             "Use the following EXACT heading structure (plain text, no Markdown symbols):",
-            "Topic Overview:",
-            "Current State of Research:",
-            "Key Methodologies:",
-            "Significant Findings & Discoveries:",
-            "Major Challenges & Open Questions:",
-            "Emerging Trends & Future Directions:",
-            "Potential Applications & Impact:",
+            *section_headings,
             "",  # Blank line
             "Formatting rules (strict):",
             "- Do NOT use any Markdown markup (e.g., '#', '*', '-', '1.').",
@@ -195,19 +223,28 @@ Here are the supporting paper snippets to use as evidence:
 
 AUDIENCE_PROMPT_MAP = {
     "technical": {
-        "topic": config.TOPIC_SUMMARY_PROMPT_TEMPLATE_TECHNICAL,
-        "paper": config.PAPER_SUMMARY_PROMPT_TEMPLATE_TECHNICAL,
-        "system_suffix": "Maintain a formal, technical tone suitable for researchers and domain experts. Use precise terminology.",
+        "topic": load_template("topic", "technical"),
+        "paper": load_template("paper", "technical"),
+        "system_suffix": (
+            "Your reader is a PhD-level researcher, post-doctoral fellow, or professor. "
+            "Use precise domain terminology and assume deep familiarity with advanced concepts."
+        ),
     },
     "semi_technical": {
-        "topic": config.TOPIC_SUMMARY_PROMPT_SEMI_TECH,
-        "paper": config.PAPER_SUMMARY_PROMPT_SEMI_TECH,
-        "system_suffix": "Explain concepts clearly for an audience with some technical background, like an engineer or product manager. Avoid overly dense jargon but do not oversimplify.",
+        "topic": load_template("topic", "semi_technical"),
+        "paper": load_template("paper", "semi_technical"),
+        "system_suffix": (
+            "Your reader is an under-graduate student or working professional in tech (e.g., a product manager). "
+            "Keep jargon moderate and briefly explain specialised terms."
+        ),
     },
     "non_technical": {
-        "topic": config.TOPIC_SUMMARY_PROMPT_NON_TECH,
-        "paper": config.PAPER_SUMMARY_PROMPT_NON_TECH,
-        "system_suffix": "Describe the key takeaways and impact in simple, accessible language for a general audience, like an investor or journalist. Focus on the 'so what' rather than technical details.",
+        "topic": load_template("topic", "non_technical"),
+        "paper": load_template("paper", "non_technical"),
+        "system_suffix": (
+            "Your reader has no deep technical background (think first-year undergrad). "
+            "Use plain language, everyday analogies, and metaphor where helpful. Focus on the big-picture significance."
+        ),
     },
 }
 

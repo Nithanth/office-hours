@@ -71,7 +71,7 @@ class Config:
 
     # Application Settings
     APP_TITLE: str = "Lux Scholar"
-    VERSION: str = "0.0.1"
+    VERSION: str = "0.1.0"
     YEAR: int = 2025  # Added for copyright year
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     HOST: str = os.getenv("HOST", "0.0.0.0")
@@ -88,10 +88,12 @@ class Config:
     # Application specific configurations from design doc
     MAX_PAPERS_PER_SEARCH: int = 20
     SUMMARY_MAX_LENGTH: int = 300  # Max words for a paper summary in the report list
-    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 3))
-    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(
-        os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 3900000)
-    )  # Increased to allow full paper content
+    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4))
+    # Absolute upper-bound on characters we will ever pass from a paper into an LLM prompt.
+    # 60 k chars ≈ 15 k tokens which is already generous and avoids gigantic prompts that
+    # cause provider-side truncation.
+    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 60000))
+    LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
         "S": "brief and concise, summarizing only the absolute key takeaways",
@@ -125,6 +127,13 @@ class Config:
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", 3))
     REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", 120))
+
+    # Topic summary tuning
+    MAX_TOPIC_SUMMARY_TOKENS: int = int(os.getenv("MAX_TOPIC_SUMMARY_TOKENS", 2048))
+
+    # Chat specific tuning
+    CHAT_MAX_TOKENS: int = int(os.getenv("CHAT_MAX_TOKENS", 512))
+    EXCERPT_CHARS: int = int(os.getenv("EXCERPT_CHARS", 2000))
 
     # Exa retry/backoff settings (Phase 3 hardening)
     EXA_MAX_RETRIES: int = int(os.getenv("EXA_MAX_RETRIES", 3))

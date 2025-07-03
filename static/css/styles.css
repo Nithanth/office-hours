@@ -6,6 +6,8 @@ body {
     background-color: #f4f7f6;
     color: #333;
     line-height: 1.6;
+    display: flex;
+    flex-direction: column;     /* header → card → footer */
 }
 
 /* Global CSS variables */
@@ -16,11 +18,14 @@ body {
 
 /* Basic container for content */
 .container {
-    max-width: 960px;
-    margin: 20px auto;
-    padding: 20px;
-    background-color: #fff;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 1100px;          /* wider cap */
+    width: 90%;                /* still responsive on small screens */
+    margin: 40px auto;
+    padding: 40px 60px;
+    background: #ffffff;
+    border: 1px solid #ccc;
+    box-shadow: 4px 4px 10px rgba(0,0,0,.2);
+    flex: 1 0 auto;             /* stretch and push footer */
 }
 
 header {
@@ -48,11 +53,13 @@ main {
 }
 
 footer {
+    padding-top: 1rem;
+    border-top: 1px solid #ccc;
     text-align: center;
-    padding: 1em 0;
-    margin-top: 20px;
-    font-size: 0.9em;
+    font-size: 0.8rem;
     color: #666;
+    width: 100%;
+    flex-shrink: 0;
 }
 
 /* -------------------------------------------------- */
@@ -66,7 +73,9 @@ body.lux-dark {
 
 /* Apply same dark background to main content containers */
 body.lux-dark .container {
-    background-color: #1a1a1a;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    box-shadow: 4px 4px 10px rgba(0,0,0,.6);
 }
 
 body.lux-dark a,
@@ -95,6 +104,48 @@ body.lux-dark button:hover {
     font-size: 0.9rem;
     padding: 2px 6px;
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+}
+
+.top-bar select {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    width: 115px;            /* slightly narrower */
+    overflow: hidden;       /* hide overflow when collapsed */
+    text-overflow: ellipsis;/* show … if label is longer */
+    white-space: nowrap;    /* keep on one line */
+    color: #000;             /* default text */
+}
+
+.top-bar select.placeholder {
+    color: #888 !important;
+    font-size: 0.7rem;
+}
+
+body.lux-dark .top-bar select {
+    color: var(--lux-red);
+}
+
+body.lux-dark .top-bar select.placeholder {
+    color: #666 !important; /* dim gray in dark mode */
+}
+
+/* Dark mode toggle button styled like selects */
+.top-bar button#lux-dark-toggle {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    width: auto;           /* shrink to content */
+    height: 20px; /* approximate select height */
+    background: #fff;
+    border: 1px solid #000;
+    cursor: pointer;
+}
+
+body.lux-dark .top-bar button#lux-dark-toggle {
+    background: #333;
+    color: var(--lux-red);
+    border-color: #666;
 }
 
 body.lux-dark .top-bar {
@@ -127,4 +178,423 @@ body.lux-dark .error-banner {
     background: #4b1c1c;
     color: var(--lux-red);
     border-color: #7f1d1d;
+}
+
+.ask-assistant-btn {
+    margin-top: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    background: #2563eb; /* blue tone fits light theme */
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.ask-assistant-btn:hover {
+    background: #1e40af; /* darker blue on hover */
+}
+body.lux-dark .ask-assistant-btn {
+    background: #333;
+    color: var(--lux-red);
+    border: 1px solid #555;
+}
+body.lux-dark .ask-assistant-btn:hover {
+    background: #444;
+}
+
+/* Simple modal overlay */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+body.lux-dark .modal {
+    background: rgba(0, 0, 0, 0.6);
+}
+.modal-content {
+    background: #fff;
+    padding: 1rem;
+    border-radius: 8px;
+    max-width: 800px;
+    width: 90%;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+body.lux-dark .modal-content {
+    background-color: #2a2a2a;
+    border: 1px solid #444;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+.modal-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    line-height: 1;
+}
+body.lux-dark .modal-close-btn {
+    color: var(--lux-red);
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat log & message bubbles                                          */
+/* ------------------------------------------------------------------ */
+
+.chat-log-container {
+    display: flex;
+    flex-direction: column;
+    max-height: 60vh;
+    overflow-y: auto;
+    margin-bottom: 0.75rem;
+    background-color: inherit;
+}
+
+/* Shared bubble look  */
+.user-message,
+.assistant-message {
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    margin: 0.35rem 0;
+    font-size: 1rem;
+    font-family: inherit;
+    color: #333;
+}
+
+/* Alignment & background per role */
+.user-message {
+    background: #f4f7f6;
+    margin-left: auto;
+    text-align: left;
+}
+
+.assistant-message {
+    background: transparent;
+    margin-right: auto;
+}
+
+/* Hide visual marker for interrupted messages – bubble simply stops. */
+.assistant-message.interrupted::after {
+    content: "";
+}
+
+body.lux-dark .assistant-message {
+    color: var(--lux-red);
+    background: transparent;
+}
+
+body.lux-dark .user-message {
+    background: #333;
+}
+
+/* Force red text for any nested element to override library defaults */
+body.lux-dark .user-message,
+body.lux-dark .user-message * {
+    color: var(--lux-red) !important;
+}
+
+.citation-card {
+    border: 1px solid #e5e7eb;
+}
+body.lux-dark .citation-card {
+    border-color: #333;
+}
+
+/* Force dark background for all form controls, incl. Safari */
+body.lux-dark input,
+body.lux-dark input[type="date"],
+body.lux-dark input[type="search"],
+body.lux-dark textarea,
+body.lux-dark select {
+    background: #2a2a2a !important;
+    color: var(--lux-red) !important;
+    border: 1px solid #555 !important;
+}
+
+body.lux-dark select option {
+    background: #2a2a2a;
+    color: var(--lux-red);
+}
+
+body.lux-dark textarea::placeholder {
+    color: #7f7f7f;
+}
+
+body.lux-dark textarea:focus,
+body.lux-dark textarea:active {
+    background: #2a2a2a !important;
+    color: var(--lux-red);
+    border: 1px solid #555;
+    outline: none;
+}
+
+body.lux-dark input:-webkit-autofill,
+body.lux-dark textarea:-webkit-autofill,
+body.lux-dark select:-webkit-autofill {
+    background: #2a2a2a !important;
+    -webkit-box-shadow: 0 0 0px 1000px #2a2a2a inset !important;
+    -webkit-text-fill-color: var(--lux-red) !important;
+    color: var(--lux-red) !important;
+    border: 1px solid #555 !important;
+}
+
+/* Firefox (uses internal pseudo) */
+body.lux-dark input:-moz-autofill,
+body.lux-dark textarea:-moz-autofill,
+body.lux-dark select:-moz-autofill {
+    background: #2a2a2a !important;
+    color: var(--lux-red) !important;
+    border: 1px solid #555 !important;
+}
+
+/* .export-btn { display: none !important; }  — re-enabled, handled via JS */
+
+/* ------------------------------------------------------------------ */
+/* Dark-mode form accents                                             */
+/* ------------------------------------------------------------------ */
+
+body.lux-dark input[type="number"] {
+    background: #2a2a2a !important;
+    color: var(--lux-red);
+    border: 1px solid #555;
+}
+
+/* Restore native spinner arrows */
+body.lux-dark input[type="number"]::-webkit-inner-spin-button,
+body.lux-dark input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: inner-spin-button !important; /* show arrows */
+}
+
+/* Hover: slightly lighten field */
+body.lux-dark input[type="number"]:hover {
+    background: #333 !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Unified font for all form widgets                                  */
+/* ------------------------------------------------------------------ */
+
+input, select, textarea, button {
+    font-family: Arial, sans-serif !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Ask-LLM strip background match                                      */
+/* ------------------------------------------------------------------ */
+
+#ask-assistant-form,
+.ask-llm-subtitle,
+#ask-result-container {
+    background: transparent !important;
+}
+
+/* ------------------------------------------------------------------ */
+
+/* Chat form layout */
+form[hx-post='/chat'] {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+form[hx-post='/chat'] textarea {
+  flex: 1;
+}
+
+.send-btn {
+  padding: 6px 10px;
+  background: #2563eb; /* blue tone for light mode */
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.send-btn:hover {
+  background: #1e40af;
+}
+
+.stop-gen-btn-global {
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--lux-red);
+  border: 1px solid var(--lux-red);
+  border-radius: 4px;
+  cursor: pointer;
+  display: none;
+}
+
+body.lux-dark .send-btn {
+  background: #333;
+  color: var(--lux-red);
+  border: 1px solid #555;
+}
+
+body.lux-dark .send-btn:hover {
+    background: #444;
+    color: var(--lux-red);
+}
+
+/* Spinner colour tweak for dark mode */
+body.lux-dark .lux-spinner {
+    border-color: #444; /* sides */
+    border-top-color: var(--lux-red);
+}
+
+/* Removed global override hack: inline dark-mode override no longer needed */
+body.lux-dark form,
+body.lux-dark #paper-search-form,
+body.lux-dark #results-and-report-form,
+body.lux-dark #ask-assistant-form,
+body.lux-dark .ask-llm-subtitle,
+body.lux-dark #ask-result-container,
+body.lux-dark #search-results-container,
+body.lux-dark #report-config-area,
+body.lux-dark #report-display-area {
+    background: transparent !important;
+}
+
+/* Restore-toast & chat log borders */
+body.lux-dark .restore-toast {
+    background-color: #333 !important;
+    border-color: #555 !important;
+    color: var(--lux-red) !important;
+}
+
+/* === Safari white-flash fix (no layout change) ========================= */
+body.lux-dark form,
+body.lux-dark #paper-search-form,
+body.lux-dark #results-and-report-form,
+body.lux-dark #ask-assistant-form,
+body.lux-dark #search-results-container,
+body.lux-dark #report-config-area,
+body.lux-dark #report-display-area {
+    background: transparent !important;
+}
+
+/* --- Ensure search & assistant forms blend with surrounding card also in light mode --- */
+#paper-search-form,
+#results-and-report-form,
+#ask-assistant-form {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+html, body {
+    height: 100%;               /* full-viewport flex baseline */
+}
+
+body.lux-dark footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.227) !important; /* very subtle line overriding inline */
+    color: #aaa;
+}
+
+input.paper-select-checkbox {
+    vertical-align: middle;
+    margin-top: 0.1em;
+    width: 13px;
+    height: 13px;
+}
+
+body.lux-dark input.paper-select-checkbox {
+    accent-color: var(--lux-red); /* modern browsers */
+}
+
+@supports not (accent-color: red) {
+    body.lux-dark input.paper-select-checkbox {
+        filter: hue-rotate(330deg) saturate(4); /* crude – turns native blue tick ≈ red */
+    }
+}
+
+/* --------------------------------------------------
+   Report copy icon button
+-------------------------------------------------- */
+.copy-icon-btn {
+  background: transparent;
+  border: none !important;      /* remove default button border */
+  outline: none !important;     /* no focus ring */
+  -webkit-appearance: none !important; /* kill Safari/iOS default button bg */
+  appearance: none !important;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #333;                  /* light-mode default */
+}
+
+body.lux-dark .copy-icon-btn {
+  color: var(--lux-red);
+  background-color: transparent !important; /* keep icon floating, no grey box */
+}
+
+.copy-icon-btn:hover {
+  opacity: 0.8;
+}
+
+.copy-icon-btn.copied {
+  color: #16a34a;              /* green check in both modes */
+}
+
+/* ensure report content stacks vertically so footer button stays at bottom */
+#report-content {
+  display: flex;
+  flex-direction: column;
+}
+
+#report-content .copy-icon-btn {
+  align-self: flex-end;
+  margin-top: auto; /* occupy all remaining space, forces button to bottom */
+  padding-top: 0.75rem; /* visual gap above */
+}
+
+.copy-btn {
+   position: absolute;
+   top: 6px;
+   right: 6px;
+ }
+
+.hidden {
+  display: none !important;
+}
+
+/* --- Dark mode calendar (flatpickr) overrides --- */
+body.lux-dark .flatpickr-calendar {
+    background: #1a1a1a;
+    border: 1px solid #444;
+}
+body.lux-dark .flatpickr-months .flatpickr-month,
+body.lux-dark .flatpickr-weekdays,
+body.lux-dark .flatpickr-days {
+    background: #1a1a1a;
+}
+body.lux-dark .flatpickr-day {
+    color: var(--lux-red);
+}
+body.lux-dark .flatpickr-day:hover,
+body.lux-dark .flatpickr-day.flatpickr-day:hover {
+    background: #333;
+}
+body.lux-dark .flatpickr-day.selected,
+body.lux-dark .flatpickr-day.startRange,
+body.lux-dark .flatpickr-day.endRange {
+    background: var(--lux-red);
+    color: #fff;
+}
+body.lux-dark .flatpickr-months .flatpickr-current-month,
+body.lux-dark .flatpickr-months .flatpickr-prev-month,
+body.lux-dark .flatpickr-months .flatpickr-next-month {
+    color: var(--lux-red);
+}
+body.lux-dark .flatpickr-weekday {
+    color: var(--lux-red);
 }

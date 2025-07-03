@@ -4,18 +4,17 @@ Requires EXA_API_KEY env var. Skip if missing.
 
 import os
 from pathlib import Path
+
 import pytest
 
-from services.text_extractor import TextExtractor, CACHE_ROOT
+from services.text_extractor import TextExtractor
 
 EXAMPLE_PDF_URL = "https://arxiv.org/pdf/2103.00020.pdf"  # CLIP paper (~1.7MB)
 
 
 @pytest.mark.asyncio
 @pytest.mark.network
-async def test_extract_arxiv_pdf(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:  # noqa: D401
+async def test_extract_arxiv_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: D401
     # Isolate the cache to a temporary directory for this test
     monkeypatch.setattr("services.text_extractor.CACHE_ROOT", tmp_path)
 

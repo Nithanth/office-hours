@@ -20,7 +20,9 @@ import re
 import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urljoin
 
+# Third-party I/O libraries used in extraction layers
 import aiohttp
 from pdfminer.high_level import extract_text
 
@@ -62,6 +64,9 @@ logger = logging.getLogger(__name__)
 
 CACHE_ROOT = Path("data/full_text")
 CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Increased size cap for PDFs – many conference papers are >10 MB
+MAX_PDF_BYTES = 15 * 1024 * 1024  # 15 MB
 
 # ---------------------------------------------------------------------------
 # Utility helpers
@@ -121,8 +126,10 @@ class TextExtractor:
         # Layered extraction --------------------------------------------
         layers = [
             self._layer_exa_contents if prefer_exa else None,
-            self._layer_arxiv,
+            self._layer_arxiv_pdf,
             self._layer_pdf,
+            self._layer_html_pdf_link,
+            self._layer_arxiv,
             self._layer_html,
         ]
 
@@ -145,6 +152,7 @@ class TextExtractor:
 
         try:
             cache_path.write_text(extracted, encoding="utf-8")
+            logger.info("Full-text cached ➜ %s (%d chars)", cache_path, len(extracted))
             return str(cache_path)
         except Exception as exc:  # noqa: BLE001
             logger.error("Could not write cache file %s – %s", cache_path, exc)
@@ -164,6 +172,34 @@ class TextExtractor:
             return Path(path_str).read_text(encoding="utf-8")
         except Exception:
             return None
+
+    # ------------------------------------------------------------------
+    # Compatibility helper expected by chat_stream endpoint
+    # ------------------------------------------------------------------
+
+    async def get_paper_content_from_id(self, paper_id: str) -> str | None:  # noqa: D401
+        """Return (and ensure) cached plaintext path for *paper_id*.
+
+        The chat streaming endpoint historically expects a *paper_service*
+        with ``get_paper_content_from_id``.  For now we treat the
+        ``paper_id`` parameter as the canonical URL of the paper and simply
+        delegate to :meth:`ensure_cached`.
+
+        Args:
+            paper_id: Paper URL (e.g. https://arxiv.org/abs/1234.5678).
+
+        Returns:
+            Absolute path of the cached plaintext file, or ``None`` if the
+            extraction pipeline failed.
+        """
+
+        # Fast-path: already cached?
+        existing = await self.load_full_text(paper_id)
+        if existing:
+            return existing
+
+        # Otherwise kick off extraction (prefer Exa contents when available)
+        return await self.ensure_cached(paper_id, paper_id=paper_id)
 
     # ------------------------------------------------------------------
     # Individual extraction layers
@@ -202,6 +238,33 @@ class TextExtractor:
             return _clean_text(summary_match.group(1))
         return None
 
+    async def _layer_arxiv_pdf(self, url: str) -> str | None:
+        """If *url* is an arXiv abstract page, try its direct PDF."""
+        m = re.match(r"https?://arxiv\.org/abs/(?P<id>\d{4}\.\d{4,5})(?:v\d+)?", url)
+        if not m:
+            return None
+        pdf_url = f"https://arxiv.org/pdf/{m.group('id')}.pdf"
+        return await self._layer_pdf(pdf_url)
+
+    async def _layer_html_pdf_link(self, url: str) -> str | None:
+        """Fetch HTML, look for the first hyperlink ending in .pdf, then extract."""
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp,
+        ):
+            if resp.content_type != "text/html":
+                return None
+            raw_html = await resp.text()
+        match = re.search(
+            r"href=[\'\"](?P<link>[^\'\"]+\.pdf)(?:[?#][^\'\"]*)?[\'\"]", raw_html, re.I
+        )
+        if not match:
+            return None
+        pdf_link = match.group("link")
+        # Handle relative links
+        pdf_link = urljoin(url, pdf_link)
+        return await self._layer_pdf(pdf_link)
+
     async def _layer_pdf(self, url: str) -> str | None:
         if not url.lower().endswith(".pdf"):
             return None
@@ -211,9 +274,11 @@ class TextExtractor:
                 url, timeout=aiohttp.ClientTimeout(total=30)
             ) as resp,
         ):
-            if resp.status != 200 or int(resp.headers.get("content-length", 0)) > 10 * 1024 * 1024:
+            if resp.status != 200 or int(resp.headers.get("content-length", 0)) > MAX_PDF_BYTES:
                 return None
             pdf_bytes = await resp.read()
+        if len(pdf_bytes) > MAX_PDF_BYTES:
+            return None
         # pdfminer is CPU-heavy – run in a worker thread. Provide a file-like object.
         text = await asyncio.to_thread(extract_text, io.BytesIO(pdf_bytes))
         return _clean_text(text)
@@ -239,11 +304,27 @@ class TextExtractor:
     # ------------------------------------------------------------------
 
     def _cache_path(self, url: str, paper_id: str | None) -> Path:
-        key = _sha256(url)
+        """Return a filesystem-safe cache path for *url* (and optional *paper_id*).
+
+        The filename embeds a SHA-256 of the URL for uniqueness but also keeps a
+        human-readable fragment based on *paper_id* when available.  Because a
+        paper_id is often the raw URL itself (containing slashes and other
+        illegal path characters), we aggressively **sanitize** it so the
+        resulting filename never creates unintended sub-directories.
+        """
+        key_hash = _sha256(url)
+
+        safe_fragment = ""
         if paper_id:
-            key = f"{paper_id}_{key}"
-        return CACHE_ROOT / f"{key}.txt"
+            # Replace all characters that are not safe for filenames with "_".
+            # This includes "/" so we don't accidentally create nested dirs.
+            safe_fragment = re.sub(r"[^A-Za-z0-9._-]", "_", paper_id)
+            # Prevent exceedingly long filenames on some filesystems
+            safe_fragment = safe_fragment[:80]
+
+        filename = f"{safe_fragment}_{key_hash}.txt" if safe_fragment else f"{key_hash}.txt"
+        return CACHE_ROOT / filename
 
     @staticmethod
     def _good_quality(text: str | None) -> bool:
-        return bool(text and len(text) >= 8_000)
+        return bool(text and len(text) >= 3_000)

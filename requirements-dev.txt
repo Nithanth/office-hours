@@ -4,6 +4,9 @@
 ruff
 mypy
 
+#logging
+# (all runtime logging deps live in requirements.txt)
+
 # Add other dev tools here later, e.g.:
 # pytest
 # pytest-cov
