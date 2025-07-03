@@ -155,6 +155,19 @@ function loadTranscript(_sessionId, paperId) {
 // }
 
 // ---------------------------------------------------------------------------
+// One-off migration: purge any old chat transcripts saved to localStorage so
+// conversations never persist after page reload.
+// ---------------------------------------------------------------------------
+try {
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("lux:chat:")) {
+      localStorage.removeItem(k);
+    }
+  }
+} catch (_) {}
+
+// ---------------------------------------------------------------------------
 // Phase 4-B – Token batching for smoother UI
 // ---------------------------------------------------------------------------
 const _pendingTokenBuffers = new Map(); // el -> entry
@@ -1328,6 +1341,27 @@ document.body.addEventListener("htmx:sseMessage", (evt) => {
         btn.classList.remove("hidden");
       });
     enableShuffle(); // unlock shuffle buttons
+
+    // Show success toast if utility present
+    if (typeof window.showToast === "function") {
+      window.showToast("✅ Report ready", 4000);
+    }
+  } else if (evt.detail && evt.detail.type === "failures") {
+    try {
+      const arr = JSON.parse(evt.detail.data || "[]");
+      if (Array.isArray(arr) && arr.length) {
+        const msg = arr.length === 1
+          ? `⚠ Skipped: ${arr[0]}`
+          : `⚠ Skipped ${arr.length} papers: ${arr.slice(0, 3).join(", ")}${
+              arr.length > 3 ? ", …" : ""
+            }`;
+        if (typeof window.showToast === "function") {
+          window.showToast(msg, 6000);
+        }
+      }
+    } catch (err) {
+      console.warn("[lux] failed to parse failure list", err);
+    }
   }
 });
 

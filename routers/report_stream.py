@@ -18,14 +18,16 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import HttpUrl
 
 from app import get_session_id
 from config import config
@@ -44,6 +46,32 @@ REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
 _SSE_CHUNK_SIZE = 4000  # chars
 
 
+# ------------------------------------------------------------------
+# Helper: build a robust SSE event with safe chunk lengths
+# ------------------------------------------------------------------
+def _format_sse_event(event_name: str, payload: str = "") -> str:
+    """Return a complete SSE event string.
+
+    Ensures:
+    • Payload lines never contain literal newlines (replace with spaces).
+    • Each `data:` line is ≤ 4 kB so browsers don’t truncate.
+    • Event ends with the mandatory blank line so EventSource dispatches it.
+    """
+
+    safe_payload = payload.replace("\n", " ")
+    data_lines = _iter_sse_chunks(safe_payload) or ["data: "]  # guarantee ≥1 data line
+
+    lines = [f"event: {event_name}", *data_lines, ""]  # final "" adds blank line
+    return "\n".join(lines) + "\n"
+
+
+def _iter_sse_chunks(payload: str) -> list[str]:
+    """Yield `data:` lines respecting the browser EventSource line-size limit."""
+    return [
+        f"data: {payload[i : i + _SSE_CHUNK_SIZE]}" for i in range(0, len(payload), _SSE_CHUNK_SIZE)
+    ]
+
+
 async def _get_services() -> tuple[LLMService, ExaClient]:
     # Re-use the factories defined in app.py
     from app import get_exa_client, get_llm_service
@@ -53,13 +81,6 @@ async def _get_services() -> tuple[LLMService, ExaClient]:
     if not llm_service or not exa_client:
         raise HTTPException(status_code=503, detail="Services unavailable")
     return llm_service, exa_client
-
-
-def _iter_sse_chunks(payload: str) -> list[str]:
-    """Yield `data:` lines respecting the browser EventSource line-size limit."""
-    return [
-        f"data: {payload[i : i + _SSE_CHUNK_SIZE]}" for i in range(0, len(payload), _SSE_CHUNK_SIZE)
-    ]
 
 
 async def _del_cache_later(token: str, delay: int = 60) -> None:
@@ -268,10 +289,12 @@ async def report_stream(
     async def event_generator() -> AsyncIterator[str]:
         # Kick off tasks concurrently
         coros: list[asyncio.Task[tuple[str, str]]] = []
+        task_paper_map: dict[asyncio.Task, Paper] = {}
+        failed_titles: list[str] = []
 
         # --- Emit heading block first so it appears above all summaries ---
         heading_html = "<h2 class='report-title text-xl font-bold mb-4'>Report</h2>"
-        yield (f"event: report-block\ndata: {heading_html}\n\n")
+        yield _format_sse_event("report-block", heading_html)
 
         # Derive a reliable boolean – form fields come through as strings.
         is_url_input_flag = str(payload.get("is_url_input", "false")).lower() == "true"
@@ -282,34 +305,46 @@ async def report_stream(
 
         # 2) Main paper summary
         if main_input:
-            coros.append(asyncio.create_task(_summary_task(main_input, "main")))
+            t_main = asyncio.create_task(_summary_task(main_input, "main"))
+            coros.append(t_main)
+            task_paper_map[t_main] = main_input
 
         # 3) Similar papers summaries
         for p in similar_papers:
-            coros.append(asyncio.create_task(_summary_task(p, "similar")))
+            t_sim = asyncio.create_task(_summary_task(p, "similar"))
+            coros.append(t_sim)
+            task_paper_map[t_sim] = p
 
         # Stream blocks **in task creation order** to maintain UI ordering while
         # still allowing the LLM calls to execute concurrently.
         for t in coros:
-            role_label: str = "block"
-            # Each task returns (role, html) or raises. Handle both.
             try:
-                role_label, block_html = await t
+                _role_label, block_html = await t
             except Exception as e:  # noqa: BLE001
                 structlog.get_logger().warning("stream_block_error", exc=str(e))
-                block_html = (
-                    "<div class='paper-summary error-block'>"
-                    "<p><strong>Error:</strong> Could not generate this section. "
-                    "LLM or extraction failed.</p></div>"
+                failed_titles.append(
+                    (
+                        task_paper_map.get(t)
+                        or Paper(
+                            id="N/A",
+                            title="Unknown",
+                            url=cast(HttpUrl, "https://example.com/unknown"),
+                        )
+                    ).title
                 )
-            # Single-line HTML to satisfy HTMX SSE swap quirks; send directly so HTMX swaps HTML instead of raw JSON
-            single_line_html = block_html.replace("\n", " ")
-            yield f"event: report-block\ndata: {single_line_html}\n\n"
+                continue  # skip yielding block for failed paper
 
-        # Finalise
-        # Empty payload so no stray brackets are rendered after swap targets
-        yield "event: done\ndata: \n\n"
-        asyncio.create_task(_del_cache_later(token))
+            # Successful – stream block
+            yield _format_sse_event("report-block", block_html)
+
+        # Inform client of any failures via a dedicated event **before** done
+        if failed_titles:
+            yield _format_sse_event("failures", json.dumps(failed_titles))
+
+        # Finalise – send empty payload
+        yield _format_sse_event("done", "")
+
+        await _del_cache_later(token)
 
     return StreamingResponse(
         event_generator(),

@@ -478,6 +478,7 @@ class ReportGenerator:
                     target_audience=audience_type,
                     context_snippets=consolidated_content_for_topic,
                     overall_instructions=topic_length_guidance,
+                    summary_size_key=actual_topic_summary_size_key,
                 )
                 tok_target_topic = self._get_output_token_target(
                     audience_type, actual_topic_summary_size_key, is_topic_summary=True

@@ -75,10 +75,15 @@ async def build_prompt(
 
     limited_ctx = len(excerpt.strip()) < 500
 
-    sys_prompt = os.getenv(
-        "CHAT_SYSTEM_INSTRUCTIONS",
-        "You are a helpful research assistant. Answer the latest user question using the context from the paper excerpt below when helpful.",
-    ).strip()
+    # Build system prompt: base persona + concise instruction
+    from utils.prompt_templates import DEFAULT_SYSTEM_PROMPT  # local import
+
+    sys_prompt = (
+        DEFAULT_SYSTEM_PROMPT
+        + " You are assisting in a live Q&A about a specific research paper."
+        + " Answer the user's latest question clearly and concisely."
+        + " Where relevant, ground your answer in the paper excerpt silently—do NOT state 'based on the excerpt' or similar phrases."
+    )
 
     # Adjust tone suffix based on audience type
     from utils.prompt_templates import AUDIENCE_PROMPT_MAP  # late import to avoid cycles
@@ -88,8 +93,8 @@ async def build_prompt(
 
     if limited_ctx:
         sys_prompt += (
-            " IMPORTANT: The full text of the paper was unavailable. You only have the abstract or a brief summary to work with. "
-            + "Base your answer strictly on that limited context. If the information isn't present, state that it is not available rather than guessing."
+            " Respond strictly based on the limited abstract/summary provided."
+            " If the answer cannot be derived, respond with 'Information unavailable'."
         )
 
     prompt = (

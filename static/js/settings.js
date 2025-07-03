@@ -217,7 +217,15 @@
       updateThemeBtnText();
     };
 
-    applyTheme(LS.getItem('theme') || 'light');
+    const savedTheme = LS.getItem('theme');
+
+    // Force default to light on first load even if legacy value persisted
+    if (savedTheme === 'dark') {
+      // Comment out next line if you want to retain dark across sessions
+      LS.removeItem('theme');
+    }
+
+    applyTheme('light');
 
     // Re-sync after HTMX swaps
     document.addEventListener('htmx:afterSwap', evt => {
@@ -262,6 +270,7 @@
           }
         });
         window.syncHidden();
+        LS.clear();
         showToast('Preferences cleared');
       });
     }
