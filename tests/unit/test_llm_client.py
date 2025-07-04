@@ -18,7 +18,7 @@ from config import (
 )
 
 # Adjust the import path based on your project structure
-from services.llm_client import (
+from infra.llm_service import (
     AnthropicProvider,
     GeminiProvider,
     LLMConfigurationError,
@@ -87,7 +87,7 @@ def mock_llm_config_missing_keys_fixture() -> LLMConfig:
 async def llm_service_all_keys_fixture() -> AsyncIterator[LLMService]:
     """Fixture for LLMService with all API keys, initialized and cleaned up."""
     service = LLMService()
-    await service.initialize_all_providers()
+    await service.initialize_providers()
     yield service
     await service.close_all_providers()
 
@@ -108,7 +108,7 @@ async def test_llm_service_initialization_all_keys(
     mock_general_config_fixture: GeneralConfig,
     mock_llm_config_all_keys_fixture: LLMConfig,
 ) -> None:
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -138,7 +138,7 @@ async def test_llm_service_initialization_all_keys(
         mock_global_config.LOG_LEVEL = mock_general_config_fixture.log_level
 
         service = LLMService()
-        await service.initialize_all_providers()
+        await service.initialize_providers()
         assert service.providers is not None
         assert service.logger is not None
         assert (
@@ -157,7 +157,7 @@ async def test_llm_service_initialization_missing_key_raises_error(
     mock_general_config_fixture: GeneralConfig,
     mock_llm_config_missing_keys_fixture: LLMConfig,
 ) -> None:
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_missing_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_missing_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -194,7 +194,7 @@ async def test_llm_service_initialization_missing_key_raises_error(
 
         service = LLMService()
         with pytest.raises(LLMConfigurationError) as excinfo:
-            await service.initialize_all_providers()
+            await service.initialize_providers()
         assert "OpenAIProvider API key is not configured" in str(excinfo.value)
         await service.close_all_providers()
 
@@ -208,7 +208,7 @@ async def test_generate_text_openai_success(
 ) -> None:
     mock_openai_generate.return_value = "Hello from mocked OpenAI!"
 
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -265,7 +265,7 @@ async def test_generate_text_together_ai_default_model(
 ) -> None:
     mock_together_generate.return_value = "Hello from mocked TogetherAI!"
 
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -330,7 +330,7 @@ async def test_generate_text_anthropic_error(
         original_exception=original_error,
     )
 
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -382,7 +382,7 @@ async def test_generate_text_gemini_success(
     mock_llm_config_all_keys_fixture: LLMConfig,
 ) -> None:
     mock_gemini_generate.return_value = "Hello from mocked Gemini!"
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -427,7 +427,7 @@ async def test_generate_text_uninitialized_provider_key_missing(
     mock_general_config_fixture: GeneralConfig,
     mock_llm_config_missing_keys_fixture: LLMConfig,
 ) -> None:
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_missing_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_missing_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -464,7 +464,7 @@ async def test_generate_text_uninitialized_provider_key_missing(
 
         service = LLMService()
         with pytest.raises(LLMConfigurationError) as init_excinfo:
-            await service.initialize_all_providers()
+            await service.initialize_providers()
         assert (
             "TogetherAIProvider API key is not configured" in str(init_excinfo.value)
             or "AnthropicProvider API key is not configured" in str(init_excinfo.value)
@@ -486,7 +486,7 @@ async def test_generate_text_unsupported_provider_string(
     mock_general_config_fixture: GeneralConfig,
     mock_llm_config_all_keys_fixture: LLMConfig,
 ) -> None:
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -518,7 +518,7 @@ async def test_generate_text_unsupported_provider_string(
         service = LLMService()
         with pytest.raises(KeyError) as excinfo:
             await service.generate_completion(
-                provider_name="non_existent_llm_service",  # type: ignore[arg-type]
+                provider_name="non_existent_llm_service",
                 model_name="any_model",
                 prompt="Hello",
                 max_tokens=2048,
@@ -563,7 +563,7 @@ async def test_openai_provider_internal_retries_succeed(
         mock_successful_httpx_response,
     ]
 
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -626,7 +626,7 @@ async def test_openai_provider_internal_retries_fail_max_attempts(
     mock_openai_async_client_instance.post = mock_post_method
     mock_post_method.side_effect = httpx.RequestError("OpenAI connection failed repeatedly")
 
-    with patch("services.llm_client.config") as mock_global_config:
+    with patch("infra.llm_service.config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -688,7 +688,7 @@ async def test_llm_service_context_manager_closes_providers(
     """Test that LLMService used as a context manager closes its providers."""
     # We need to mock the 'close' method of each provider class that LLMService might instantiate.
     with (
-        patch("services.llm_client.config") as mock_global_config,
+        patch("infra.llm_service.config") as mock_global_config,
         patch.object(OpenAIProvider, "close", new_callable=MagicMock) as mock_openai_close,
         patch.object(TogetherAIProvider, "close", new_callable=MagicMock) as mock_together_close,
         patch.object(AnthropicProvider, "close", new_callable=MagicMock) as mock_anthropic_close,
@@ -723,7 +723,7 @@ async def test_llm_service_context_manager_closes_providers(
         mock_global_config.LOG_LEVEL = mock_general_config_fixture.log_level
 
         async with get_llm_service() as service:
-            await service.initialize_all_providers()  # Ensure providers are created
+            await service.initialize_providers()  # Ensure providers are created
             assert Provider.OPENAI.value in service.providers  # Quick check
             # No actual call to generate_text needed, just testing setup and teardown
 

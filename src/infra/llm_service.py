@@ -17,14 +17,14 @@ from tenacity import (
 try:
     from ..config import config as app_config
 except ImportError:
-    # Fallback for direct script execution (e.g., python -m services.llm_client)
+    # Fallback for direct script execution (e.g., python -m infra.llm_service)
     import os
     import sys
 
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if PROJECT_ROOT not in sys.path:
         sys.path.append(PROJECT_ROOT)
-    from config import config as app_config
+    from config import config as app_config  # type: ignore[no-redef]
 
 # Import official client libraries
 from anthropic import APIError as AnthropicAPIError
@@ -589,27 +589,6 @@ class LLMService:
         self._initialized = True
         self.logger.info("LLMService initialization complete.")
 
-    # ------------------------------------------------------------------
-    # Backward-compatibility shim
-    # ------------------------------------------------------------------
-
-    async def initialize_all_providers(self) -> None:  # noqa: D401 – keep old name
-        """Deprecated alias. Use `initialize_providers` instead.
-
-        This wrapper exists so that existing unit tests and external
-        code written against the old API continue to function. It emits a
-        `DeprecationWarning` to encourage migration.
-        """
-        import warnings
-
-        warnings.warn(
-            "LLMService.initialize_all_providers() is deprecated. "
-            "Please switch to initialize_providers().",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        await self.initialize_providers()
-
     def is_provider_initialized(self, provider_name: LLMProviderName) -> bool:
         """Checks if the specified LLM provider is initialized and available."""
         is_init = provider_name in self.providers
@@ -957,7 +936,10 @@ async def main_test() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    logger.info(f"Configured default provider from env: {app_config.DEFAULT_LLM_PROVIDER}")
+    logger.info(
+        "Configured default provider from env: %s",
+        getattr(app_config, "DEFAULT_LLM_PROVIDER", "unknown"),
+    )
     logger.info(f"OpenAI Key set: {'Yes' if app_config.OPENAI_API_KEY else 'No'}")
     logger.info(f"Together Key set: {'Yes' if app_config.TOGETHER_API_KEY else 'No'}")
     logger.info(f"Anthropic Key set: {'Yes' if app_config.ANTHROPIC_API_KEY else 'No'}")
@@ -972,10 +954,15 @@ async def main_test() -> None:
             return
 
         logger.info(
-            f"\n--- Testing with Default Provider ({app_config.DEFAULT_LLM_PROVIDER} or fallback) ---"
+            "\n--- Testing with Default Provider (%s or fallback) ---",
+            getattr(app_config, "DEFAULT_LLM_PROVIDER", "openai"),
         )
+        default_provider_any = getattr(app_config, "DEFAULT_LLM_PROVIDER", "openai")
         result_default = await llm_service.generate_completion(
-            app_config.DEFAULT_LLM_PROVIDER, app_config.DEFAULT_MODEL_KEY, sample_prompt, 2048
+            cast(LLMProviderName, default_provider_any),
+            getattr(app_config, "DEFAULT_MODEL_KEY", "gpt-3.5-turbo"),
+            sample_prompt,
+            2048,
         )
         if result_default:
             logger.info(f"Default Provider Result: {result_default}")
@@ -1026,5 +1013,5 @@ async def main_test() -> None:
 
 
 if __name__ == "__main__":
-    # To run this example: python -m services.llm_client # or python -m tests.integration.llm_client
+    # To run this example: python -m infra.llm_service # or python -m tests.integration.llm_client
     asyncio.run(main_test())

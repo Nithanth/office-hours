@@ -22,10 +22,10 @@ from fastapi.responses import HTMLResponse
 from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
-from app import _prewarm_cached
 from config import Config as AppConfig
+from infra.exa_client import ExaClient
+from main import _prewarm_cached
 from pages.main_page import _render_paper_item, render_search_results
-from services.exa_client import ExaClient
 from services.report_generator import ReportGenerator
 from utils.date_utils import parse_user_date
 from utils.search_utils import clean_query
@@ -115,7 +115,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             )
 
             async def _run() -> str:
-                return await rg.generate_direct_query_answer(query=input_query_stripped)
+                return cast(str, await rg.generate_direct_query_answer(query=input_query_stripped))
 
             this_task = asyncio.create_task(_run())
             current_direct_query_task = this_task

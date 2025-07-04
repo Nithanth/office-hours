@@ -36,7 +36,7 @@ async def chat_modal(
     try:
         from importlib import import_module
 
-        get_paper_service = import_module("app").get_paper_service
+        get_paper_service = import_module("main").get_paper_service
         paper_service = get_paper_service()
     except Exception:  # noqa: BLE001 – best-effort metadata
         paper_service = None
@@ -73,7 +73,7 @@ async def chat_modal(
 
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
-        from chat_state import get_chat_state  # local import avoids heavy dep
+        from chat.state import get_chat_state  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
         history = get_chat_state(session_id).get_conversation(paper_id)

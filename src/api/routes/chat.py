@@ -21,10 +21,10 @@ from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from api.deps import get_llm_service, get_paper_service, get_settings
-from app import KEEP_ALIVE_SEC, get_session_id
-from chat_runtime import build_prompt, get_semaphore
-from chat_state import ChatMessage, get_chat_state
+from chat.runtime import build_prompt, get_semaphore
+from chat.state import ChatMessage, get_chat_state
 from config import Config as AppConfig
+from main import KEEP_ALIVE_SEC, get_session_id
 from pages.main_page import render_chat_message
 from utils.observability import _METRICS_ENABLED
 

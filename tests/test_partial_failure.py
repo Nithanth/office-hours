@@ -2,10 +2,10 @@ import json
 from typing import Any
 
 from fastapi.testclient import TestClient
-
-from app import app
-from config import config as app_config
 from routers import report_stream as rs
+
+from config import config as app_config
+from main import app
 from services.report_generator import ReportGenerator
 
 

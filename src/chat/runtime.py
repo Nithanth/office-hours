@@ -9,8 +9,8 @@ import asyncio
 import os
 from collections import defaultdict
 
-from chat_state import ChatState
-from services.text_extractor import TextExtractor
+from chat.state import ChatState
+from infra.text_extractor import TextExtractor
 
 # ---------------------------------------------------------------------------
 # Concurrency guard: at most 3 concurrent generations per (session, paper).
@@ -76,7 +76,7 @@ async def build_prompt(
     limited_ctx = len(excerpt.strip()) < 500
 
     # Build system prompt: base persona + concise instruction
-    from utils.prompt_templates import DEFAULT_SYSTEM_PROMPT  # local import
+    from prompts.prompt_templates import DEFAULT_SYSTEM_PROMPT  # local import
 
     sys_prompt = (
         DEFAULT_SYSTEM_PROMPT
@@ -86,7 +86,7 @@ async def build_prompt(
     )
 
     # Adjust tone suffix based on audience type
-    from utils.prompt_templates import (
+    from prompts.prompt_templates import (
         AUDIENCE_PROMPT_MAP,
     )  # late import to avoid cycles
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from services.text_extractor import TextExtractor
+from infra.text_extractor import TextExtractor
 
 
 @pytest.fixture(name="extractor")
@@ -22,7 +22,7 @@ async def test_ensure_cached_writes_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extractor: TextExtractor
 ) -> None:
     """ensure_cached should write a file and return its path when any layer succeeds."""
-    monkeypatch.setattr("services.text_extractor.CACHE_ROOT", tmp_path)
+    monkeypatch.setattr("infra.text_extractor.CACHE_ROOT", tmp_path)
 
     success_text = "A" * 9000  # Passes _good_quality check (>8k chars)
 
@@ -65,7 +65,7 @@ async def test_load_full_text_returns_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extractor: TextExtractor
 ) -> None:
     """load_full_text should return the cache path once file exists."""
-    monkeypatch.setattr("services.text_extractor.CACHE_ROOT", tmp_path)
+    monkeypatch.setattr("infra.text_extractor.CACHE_ROOT", tmp_path)
     # prepare dummy cache
     paper_id = "dummy123"
     dummy_file = tmp_path / f"{paper_id}_dummy.txt"

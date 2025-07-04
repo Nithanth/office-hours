@@ -7,13 +7,13 @@ bootstrap module and makes the dependencies easier to mock during tests.
 
 from __future__ import annotations
 
-# Singletons are still created inside ``app.py`` during application start-up.
+# Singletons are created in ``main.py`` during application start-up.
 # We import the module lazily inside each helper so that we always return the
 # latest instance (they are assigned during the lifespan event).
 from config import Config as AppConfig
-from services.exa_client import ExaClient
-from services.llm_client import LLMService
-from services.text_extractor import TextExtractor
+from infra.exa_client import ExaClient
+from infra.llm_service import LLMService
+from infra.text_extractor import TextExtractor
 
 
 def get_settings() -> AppConfig:
@@ -31,21 +31,21 @@ def get_settings() -> AppConfig:
 
 
 def get_llm_service() -> LLMService | None:
-    """Return the shared :class:`~services.llm_client.LLMService` instance."""
-    import app  # local import to avoid circulars at import time
+    """Return the shared :class:`~infra.llm_service.LLMService` instance."""
+    import main as _main  # local import to avoid circulars at import time
 
-    return app.llm_service_instance
+    return _main.llm_service_instance
 
 
 def get_exa_client() -> ExaClient | None:
-    """Return the shared :class:`~services.exa_client.ExaClient` instance."""
-    import app  # local import to avoid circulars
+    """Return the shared :class:`~infra.exa_client.ExaClient` instance."""
+    import main as _main  # local import to avoid circulars
 
-    return app.exa_client_instance
+    return _main.exa_client_instance
 
 
 def get_paper_service() -> TextExtractor:
-    """Return the singleton :class:`~services.text_extractor.TextExtractor`."""
-    from services.text_extractor import TextExtractor  # import here to dodge circulars
+    """Return the singleton :class:`~infra.text_extractor.TextExtractor`."""
+    from infra.text_extractor import TextExtractor  # import here to dodge circulars
 
     return TextExtractor.instance()

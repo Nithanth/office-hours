@@ -1,45 +1,30 @@
-"""Deprecated path – shim for backwards compatibility.
+"""Report generation service.
 
-`services.report_generator` has moved to `lux_scholar.core.services.report_generator`.
-Importing from this module is still supported during the migration but
-will emit a warning.  Please update your imports.
-"""
-
-from __future__ import annotations
+Generates per-paper and topic summaries by orchestrating LLM calls and
+Exa searches.  This is the canonical implementation; legacy shim paths
+have been removed."""
 
 import asyncio
 import hashlib
 import html
 import logging
 import re
-import sys as _sys
 import time
 import urllib.parse
-import warnings as _warnings
 from datetime import datetime
 from functools import partial
-from importlib import import_module as _imp
 from typing import Any, Optional, Union, cast
 
 from config import config
+from infra.exa_client import ExaClient
+from infra.llm_service import LLMProviderName, LLMService
 from models.paper import Paper
-from services.exa_client import ExaClient
-from services.llm_client import LLMProviderName, LLMService
-from utils.prompt_templates import (
+from prompts.prompt_templates import (
     AUDIENCE_PROMPT_MAP,
     DEFAULT_SYSTEM_PROMPT,  # local import to avoid cyclical issues
     get_topic_analysis_prompts,
 )
 from utils.summary_cache import SummaryCache
-
-_warnings.warn(
-    "Import from 'services.report_generator' is deprecated. Use 'lux_scholar.core.services.report_generator' instead.",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
-_mod = _imp("lux_scholar.core.services.report_generator")
-_sys.modules[__name__] = _mod
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +174,7 @@ class ReportGenerator:
         start_ts = time.perf_counter()
 
         # Check primary prompt-hash cache
-        cached = SummaryCache.get(self.selected_model_api_id, prompt, system_prompt)
+        cached: Any | None = SummaryCache.get(self.selected_model_api_id, prompt, system_prompt)
         if cached is None and cache_key:
             cached = SummaryCache.get_generic(cache_key)
 
@@ -202,7 +187,7 @@ class ReportGenerator:
                 len(prompt),
                 dur,
             )
-            return cached
+            return cast(str, cached)
 
         async def _call_llm() -> str:
             result = await self.llm_service.generate_completion_safe(
@@ -214,7 +199,7 @@ class ReportGenerator:
             )
             if not result["ok"]:
                 logger.error(f"LLM generation failed: {result['content']}")
-            content = result["content"]
+            content = cast(str, result["content"])
             # Store in cache (best-effort)
             SummaryCache.set(self.selected_model_api_id, prompt, system_prompt, content)
             if cache_key:
@@ -246,7 +231,7 @@ class ReportGenerator:
             max_tokens,
             dur,
         )
-        return content
+        return cast(str, content)
 
     async def generate_report_html(
         self,
@@ -276,7 +261,7 @@ class ReportGenerator:
         # Pre-fetch full text for all papers that will appear in the report
         # ------------------------------------------------------------------
         try:
-            from services.text_extractor import TextExtractor
+            from infra.text_extractor import TextExtractor
 
             extractor = TextExtractor.instance()
             # Flatten the list of papers that need summaries
@@ -579,7 +564,7 @@ class ReportGenerator:
 
         # Remove common artifacts from LLM-generated titles (e.g., 'TITLE:', markdown asterisks)
         clean_title = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", title).strip()
-        clean_title = clean_title.strip('* "')
+        clean_title = cast(str, clean_title).strip('* "')
 
         # --- Copy-text utility only (works even on non-secure origins) -----------
         script_html = """
@@ -669,7 +654,7 @@ function fallbackCopy(text) {
             raise RuntimeError(result["content"])
 
         # Clean up the title
-        return result["content"].strip().replace('"', "")
+        return cast(str, result["content"]).strip().replace('"', "")
 
     async def generate_direct_query_answer(
         self,

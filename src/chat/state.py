@@ -105,18 +105,6 @@ class ChatState:
         conv = self._histories.get(paper_id)
         return conv[-1].role if conv else None
 
-    # ------------------------------------------------------------------
-    # Legacy flat conversation access – to be removed after refactor
-    # ------------------------------------------------------------------
-
-    @property
-    def conversation(self) -> list[ChatMessage]:
-        """Flattened history across **all** papers (legacy)."""
-        flat: list[ChatMessage] = []
-        for conv in self._histories.values():
-            flat.extend(conv)
-        return flat
-
 
 # ---------------------------------------------------------------------------
 # Module-level bag for PHASE-0 – per-process, *not* shared across workers.

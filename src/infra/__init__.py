@@ -6,8 +6,8 @@ file systems, etc.) live here.  Business-logic code inside
 these concrete classes directly.
 
 During migration we will gradually move:
-    * services.llm_client  -> infra/llm_service.py
-    * services.exa_client  -> infra/exa_client.py
-    * services.text_extractor -> infra/text_extractor.py
+    * infra.llm_service  -> infra/llm_service.py
+    * infra.exa_client  -> infra/exa_client.py
+    * infra.text_extractor -> infra/text_extractor.py
 and any other I/O heavy helpers.
 """

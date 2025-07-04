@@ -4,7 +4,7 @@ import random
 import re
 import sys
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from urllib.parse import urlparse
 
 from loguru import logger
@@ -15,25 +15,19 @@ from tenacity import (
     wait_exponential,
 )
 
-from services.cached_search import CachedSearch
-
+from .cached_search import CachedSearch
 from .exa_adapter import ExaAdapter
-
-# Initialize logger
 
 # Attempt relative import for normal package use (e.g., when app.py imports this)
 try:
-    from ..config import config
+    from ..config import config as app_config
     from ..models.paper import Paper  # Import Paper model
 except ImportError:
-    # Fallback for direct script execution (e.g., python -m services.exa_client)
-    # This adds the project root (lux_scholar) to sys.path
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if PROJECT_ROOT not in sys.path:
         sys.path.append(PROJECT_ROOT)
-    # Now that PROJECT_ROOT is in sys.path, we can do direct imports
-    from config import config
-    from models.paper import Paper  # Import Paper model
+    from config import config as app_config  # type: ignore[no-redef]
+    from models.paper import Paper  # type: ignore[no-redef]
 
 
 # --- Custom Exa Client Exceptions ---
@@ -278,9 +272,9 @@ class ExaClient:
             return None
 
     @retry(
-        stop=stop_after_attempt(config.EXA_MAX_RETRIES),
+        stop=stop_after_attempt(app_config.EXA_MAX_RETRIES),
         wait=wait_exponential(
-            multiplier=1, min=config.EXA_RETRY_MIN_WAIT, max=config.EXA_RETRY_MAX_WAIT
+            multiplier=1, min=app_config.EXA_RETRY_MIN_WAIT, max=app_config.EXA_RETRY_MAX_WAIT
         ),
         retry=retry_if_exception_type((ExaAPIError, ExaRateLimitError)),
         retry_error_callback=lambda retry_state: [],
@@ -399,7 +393,10 @@ class ExaClient:
                     if cutoff_dt and paper.published_date:
                         try:
                             # paper.published_date is now guaranteed to be tz-aware from _create_paper_from_exa_result
-                            if paper.published_date < cutoff_dt:
+                            if (
+                                isinstance(paper.published_date, datetime)
+                                and paper.published_date < cutoff_dt
+                            ):
                                 continue
                         except Exception:
                             # If date unparseable or other error, drop
@@ -512,9 +509,9 @@ class ExaClient:
         return bool(url_pattern.match(text.strip()))
 
     @retry(
-        stop=stop_after_attempt(config.EXA_MAX_RETRIES),
+        stop=stop_after_attempt(app_config.EXA_MAX_RETRIES),
         wait=wait_exponential(
-            multiplier=1, min=config.EXA_RETRY_MIN_WAIT, max=config.EXA_RETRY_MAX_WAIT
+            multiplier=1, min=app_config.EXA_RETRY_MIN_WAIT, max=app_config.EXA_RETRY_MAX_WAIT
         ),
         retry=retry_if_exception_type((ExaAPIError, ExaRateLimitError)),
         retry_error_callback=lambda rs: [],
@@ -607,6 +604,7 @@ class ExaClient:
                 if (
                     start_published_date
                     and paper.published_date
+                    and isinstance(paper.published_date, datetime)
                     and paper.published_date < start_published_date
                 ):
                     continue
@@ -844,7 +842,7 @@ class ExaClient:
             # Kick off background full-text extraction
             # --------------------------------------------------
             try:
-                from services.text_extractor import TextExtractor
+                from infra.text_extractor import TextExtractor
 
                 asyncio.create_task(
                     TextExtractor.instance().ensure_cached(main_paper.url, main_paper.id)
@@ -894,7 +892,7 @@ class ExaClient:
         cs = self._last_cached_search
         if cs is None:
             return None
-        return cs.replace_wildcard()
+        return cast(Optional["Paper"], cs.replace_wildcard())
 
     def shuffle_k(self) -> list["Paper"]:
         cs = self._last_cached_search
@@ -908,7 +906,7 @@ class ExaClient:
 
     @staticmethod
     def _domain_allowed(
-        url: str | None,
+        url: Any | None,
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
     ) -> bool:
@@ -972,11 +970,11 @@ if __name__ == "__main__":
         sys.stderr, level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
-    if not config.EXA_API_KEY:
+    if not app_config.EXA_API_KEY:
         logger.error("EXA_API_KEY not found in environment. Please set it in your .env file.")
     else:
-        logger.info(f"Using EXA_API_KEY: {config.EXA_API_KEY[:5]}...")
-        client = ExaClient(api_key=config.EXA_API_KEY)
+        logger.info(f"Using EXA_API_KEY: {app_config.EXA_API_KEY[:5]}...")
+        client = ExaClient(api_key=app_config.EXA_API_KEY)
 
         # Test search_papers
         test_query = "applications of AI in drug discovery"
@@ -989,7 +987,7 @@ if __name__ == "__main__":
                 logger.info(f"  Authors: {paper.authors}")
                 logger.info(f"  Published: {paper.published_date}")
                 logger.info(
-                    f"  Abstract snippet: {paper.abstract[:200] if paper.abstract else 'N/A'}..."
+                    f"  Abstract snippet: {getattr(paper, 'abstract', '')[:200] if getattr(paper, 'abstract', None) else 'N/A'}..."
                 )
                 logger.info("  ----")
         else:
@@ -1010,7 +1008,7 @@ if __name__ == "__main__":
                 logger.info(f"  Authors: {paper.authors}")
                 logger.info(f"  Published: {paper.published_date}")
                 logger.info(
-                    f"  Content snippet: {paper.abstract[:200] if paper.abstract else 'N/A'}..."
+                    f"  Content snippet: {getattr(paper, 'abstract', '')[:200] if getattr(paper, 'abstract', None) else 'N/A'}..."
                 )  # Assuming abstract now holds full content
                 logger.info("  ----")
         else:

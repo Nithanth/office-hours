@@ -15,9 +15,9 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
+from infra.llm_service import LLMConfigurationError
 from models.paper import Paper
 from pages.main_page import render_error_message, render_paper_card
-from services.llm_client import LLMConfigurationError
 from services.report_generator import ReportGenerator
 
 # Singleton aliases (set during app startup)

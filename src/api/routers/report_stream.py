@@ -29,14 +29,14 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import HttpUrl
 
-from app import get_session_id
 from config import config
+from infra.exa_client import ExaClient
+from infra.llm_service import LLMService
+from main import get_session_id
 from models.paper import Paper
-from services.exa_client import ExaClient
-from services.llm_client import LLMService
+from prompts.prompt_templates import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
 from services.report_generator import ReportGenerator
 from utils.observability import structlog
-from utils.prompt_templates import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
 
 router: APIRouter = APIRouter(tags=["report-incremental"])
 
@@ -74,7 +74,7 @@ def _iter_sse_chunks(payload: str) -> list[str]:
 
 async def _get_services() -> tuple[LLMService, ExaClient]:
     # Re-use the factories defined in app.py
-    from app import get_exa_client, get_llm_service
+    from main import get_exa_client, get_llm_service
 
     llm_service = get_llm_service()
     exa_client = get_exa_client()

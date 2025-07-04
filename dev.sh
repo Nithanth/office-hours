@@ -4,6 +4,7 @@
 # Features:
 #   • Loads .env if present (with `export`-compatible lines).
 #   • Activates local `.venv` (if it exists and no venv active).
+#   • Ensures src is on PYTHONPATH so that 'import main' works.
 #   • Starts the FastAPI server with uvicorn & auto-reload.
 #   • Gracefully handles Ctrl-C.
 #
@@ -44,6 +45,8 @@ fi
 ###################################
 # Start the server
 ###################################
-UVICORN_CMD=(uvicorn app:app --reload --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" --log-level debug "$@")
+###################################
+export PYTHONPATH="$(pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
+UVICORN_CMD=(uvicorn main:app --reload --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" --log-level debug "$@")
 msg "Starting server: ${UVICORN_CMD[*]}"
 exec "${UVICORN_CMD[@]}"

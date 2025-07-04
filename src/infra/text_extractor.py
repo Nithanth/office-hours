@@ -55,10 +55,11 @@ else:
 # unit tests without real API keys.
 try:
     from config import config as app_config
-    from services.exa_client import ExaClient  # Circular import safe – used lazily
+    from infra.exa_client import ExaClient  # Circular import safe – used lazily
 except Exception:  # pragma: no cover – during lint/CI without deps
-    app_config = None  # type: ignore[assignment]
-    ExaClient = cast(Any, None)  # type: ignore[misc]
+    app_config = None
+    ExaClient = cast(Any, None)
+
 
 logger = logging.getLogger(__name__)
 

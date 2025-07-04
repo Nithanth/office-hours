@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from services.text_extractor import TextExtractor
+from infra.text_extractor import TextExtractor
 
 EXAMPLE_PDF_URL = "https://arxiv.org/pdf/2103.00020.pdf"  # CLIP paper (~1.7MB)
 
@@ -16,7 +16,7 @@ EXAMPLE_PDF_URL = "https://arxiv.org/pdf/2103.00020.pdf"  # CLIP paper (~1.7MB)
 @pytest.mark.network
 async def test_extract_arxiv_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: D401
     # Isolate the cache to a temporary directory for this test
-    monkeypatch.setattr("services.text_extractor.CACHE_ROOT", tmp_path)
+    monkeypatch.setattr("infra.text_extractor.CACHE_ROOT", tmp_path)
 
     if not os.getenv("EXA_API_KEY"):
         pytest.skip("EXA_API_KEY not set – skipping network integration test")

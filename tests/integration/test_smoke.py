@@ -4,9 +4,18 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+import sys
+import pathlib
 from fastapi.testclient import TestClient
 
-import app  # The main FastAPI application lives here
+# Ensure `src` is on sys.path so that `import main` resolves to src/main.py even when
+# PYTHONPATH is not set (e.g., CI test runners).
+project_root = pathlib.Path(__file__).resolve().parents[2]
+src_path = project_root / "src"
+if src_path.as_posix() not in sys.path:
+    sys.path.insert(0, src_path.as_posix())
+
+import main as app_module  # The main FastAPI application lives here
 from api.routes import ask_llm, report, search
 
 
@@ -36,9 +45,9 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     dummy = _DummyService()
 
     # Patch global singletons on the *app* module
-    monkeypatch.setattr(app, "llm_service_instance", dummy, raising=False)
-    monkeypatch.setattr(app, "exa_client_instance", dummy, raising=False)
-    monkeypatch.setattr(app, "paper_service_instance", dummy, raising=False)
+    monkeypatch.setattr(app_module, "llm_service_instance", dummy, raising=False)
+    monkeypatch.setattr(app_module, "exa_client_instance", dummy, raising=False)
+    monkeypatch.setattr(app_module, "paper_service_instance", dummy, raising=False)
 
     # Patch already-imported route modules that cache these globals at import time
     monkeypatch.setattr(ask_llm, "llm_service_instance", dummy, raising=False)
@@ -49,7 +58,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(report, "exa_client_instance", dummy, raising=False)
 
     # Patch TextExtractor singleton access used in _prewarm_cached
-    from services import text_extractor as _te
+    import infra.text_extractor as _te
 
     monkeypatch.setattr(_te.TextExtractor, "instance", lambda *a, **k: dummy, raising=False)
 
@@ -86,7 +95,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
 def client() -> TestClient:
     """Shared TestClient instance for the whole test session."""
 
-    return TestClient(app.app)
+    return TestClient(app_module.app)
 
 
 # ---------------------------------------------------------------------------

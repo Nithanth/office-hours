@@ -11,7 +11,4 @@ replace the re-export with a freshly constructed FastAPI object defined in
 
 from __future__ import annotations
 
-from .main import app as app  # explicit re-export satisfies Ruff F401
-
-# Re-export symbol list for `from api import *`
-__all__ = ["app"]
+__all__: list[str] = []  # `api` package no longer re-exports FastAPI app

@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
-from services.exa_client import ExaClient
+from infra.exa_client import ExaClient
 from services.report_generator import ReportGenerator
 
 logger = structlog.get_logger()
