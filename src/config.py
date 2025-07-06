@@ -140,108 +140,73 @@ class Config:
     EXA_RETRY_MIN_WAIT: int = int(os.getenv("EXA_RETRY_MIN_WAIT", 1))  # seconds
     EXA_RETRY_MAX_WAIT: int = int(os.getenv("EXA_RETRY_MAX_WAIT", 10))  # seconds
 
-    DEFAULT_MODEL_KEY: str = "gemini_2_5_pro_preview"
+    # Default model – can be overridden via env var.
+    DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_2_5_pro_preview")
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
-        # Gemini Models
+        # Gemini (Google) – internal provider tag remains "gemini"
         "gemini_2_5_pro_preview": {
-            "id": "gemini-2.5-pro-preview-05-06",
+            "id": "models/gemini-2.5-pro-preview-06-05",
             "provider": "gemini",
-            "input_token_limit": 1000000,  # Estimated, Gemini models have large context windows
-            "display_name": "Gemini 2.5 Pro (Preview)",
+            "input_token_limit": 1_000_000,
+            "display_name": "Gemini 2.5 Pro",
         },
-        "gemini_2_5_flash_preview": {
-            "id": "gemini-2.5-flash-preview-05-20",
+        "gemini_flash_2_5": {
+            "id": "models/gemini-2.5-flash-preview-05-20",
             "provider": "gemini",
-            "input_token_limit": 1000000,  # Estimated
-            "display_name": "Gemini 2.5 Flash (Preview)",
+            "input_token_limit": 1_000_000,
+            "display_name": "Gemini 2.5 Flash",
         },
-        "gemini_2_0_flash": {
-            "id": "gemini-2.0-flash",
-            "provider": "gemini",
-            "input_token_limit": 128000,  # Estimated
-            "display_name": "Gemini 2.0 Flash",
-        },
-        # Anthropic Models
+        # Anthropic Claude
         "anthropic_claude_opus_4_preview": {
             "id": "claude-opus-4-20250514",
             "provider": "anthropic",
-            "input_token_limit": 200000,  # Anthropic models typically have large context
-            "display_name": "Claude Opus 4 (Preview)",
+            "input_token_limit": 200_000,
+            "display_name": "Claude Opus 4",
         },
-        "anthropic_claude_sonnet_4_preview": {
+        "anthropic_claude_sonnet_4": {
             "id": "claude-sonnet-4-20250514",
             "provider": "anthropic",
-            "input_token_limit": 200000,
-            "display_name": "Claude Sonnet 4 (Preview)",
+            "input_token_limit": 200_000,
+            "display_name": "Claude Sonnet 4",
         },
-        "anthropic_claude_3_7_sonnet_latest": {
-            "id": "claude-3.7-sonnet-latest",
-            "provider": "anthropic",
-            "input_token_limit": 200000,
-            "display_name": "Claude 3.7 Sonnet (Latest)",
-        },
-        # OpenAI Models
-        "openai_gpt_4_1": {
-            "id": "gpt-4.1",
-            "provider": "openai",
-            "input_token_limit": 128000,  # Assuming similar to GPT-4 Turbo
-            "display_name": "OpenAI GPT-4.1",
-        },
+        # OpenAI GPT
         "openai_gpt_4o": {
             "id": "gpt-4o",
             "provider": "openai",
-            "input_token_limit": 128000,
-            "display_name": "OpenAI GPT-4o",
+            "input_token_limit": 128_000,
+            "display_name": "GPT-4o",
         },
-        "openai_o4_mini": {  # User provided ID 'o4-mini'
-            "id": "o4-mini",
+        "openai_gpt_4_1": {
+            "id": "gpt-4.1",
             "provider": "openai",
-            "input_token_limit": 128000,  # Estimated, assuming similar to GPT-4o context
-            "display_name": "OpenAI o4-mini",
+            "input_token_limit": 128_000,
+            "display_name": "GPT-4.1",
         },
-        "openai_o3_mini": {  # User provided ID 'o3-mini'
-            "id": "o3-mini",
+        "openai_gpt_o3": {
+            "id": "o3",
             "provider": "openai",
-            "input_token_limit": 16000,  # Estimated, assuming similar to GPT-3.5 Turbo context
-            "display_name": "OpenAI o3-mini",
+            "input_token_limit": 128_000,
+            "display_name": "o3 (Coming Soon...)",
         },
-        # Together AI Models
-        "together_deepseek_r1": {
-            "id": "deepseek-ai/DeepSeek-R1",
-            "provider": "together_ai",
-            "input_token_limit": 128000,
-            "display_name": "DeepSeek R1 (TogetherAI)",
-        },
-        "together_qwen3_235b": {
-            "id": "Qwen/Qwen3-235B-A22B-fp8-tput",
-            "provider": "together_ai",
-            "input_token_limit": 128000,
-            "display_name": "Qwen3 235B (TogetherAI)",
-        },
+        # TogetherAI Models
         "together_deepseek_v3": {
             "id": "deepseek-ai/DeepSeek-V3",
             "provider": "together_ai",
-            "input_token_limit": 131000,
+            "input_token_limit": 131_000,
             "display_name": "DeepSeek V3 (TogetherAI)",
         },
         "together_llama_4_maverick": {
             "id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
             "provider": "together_ai",
-            "input_token_limit": 950000,
+            "input_token_limit": 950_000,
             "display_name": "LLaMA-4 Maverick 17B (TogetherAI)",
         },
-        "together_llama_4_scout": {
-            "id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+        "together_qwen3_235b": {
+            "id": "Qwen/Qwen3-235B-A22B-fp8-tput",
             "provider": "together_ai",
-            "input_token_limit": 950000,
-            "display_name": "LLaMA-4 Scout 17B (TogetherAI)",
-        },
-        "together_llama_3_3_70b_turbo": {
-            "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-            "provider": "together_ai",
-            "input_token_limit": 80000,  # Assuming Llama 3.1+ context size
-            "display_name": "LLaMA-3.3 70B Turbo (TogetherAI)",
+            "input_token_limit": 128_000,
+            "display_name": "Qwen3 235B (TogetherAI)",
         },
     }
 

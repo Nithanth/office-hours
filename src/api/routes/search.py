@@ -25,7 +25,8 @@ from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from infra.exa_client import ExaClient
 from main import _prewarm_cached
-from pages.main_page import _render_paper_item, render_search_results
+from models.paper import Paper
+from pages.main_page import render_search_results
 from services.report_generator import ReportGenerator
 from utils.date_utils import parse_user_date
 from utils.search_utils import clean_query
@@ -52,7 +53,15 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
-    global current_direct_query_task
+    global current_direct_query_task, exa_client_instance, llm_service_instance
+
+    # Refresh singleton handles – route modules capture them at *import* time,
+    # but Uvicorn reload / multiprocessing means the objects may be assigned
+    # later during the app lifespan event.  Lazily fetch again if still None.
+    if exa_client_instance is None:
+        exa_client_instance = get_exa_client()
+    if llm_service_instance is None:
+        llm_service_instance = get_llm_service()
 
     logger.info(
         "handle_search: Request received",
@@ -138,7 +147,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Standard paper search flow
     # ------------------------------------------------------------------
     try:
-        assert exa_client_instance is not None
+        assert exa_client_instance is not None, "Exa client not initialised – check EXA_API_KEY"
 
         # Date parsing / validation ------------------------------------------------
         parsed_start_date: datetime | None = None
@@ -148,10 +157,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 error_html = "<div class='error-banner'>Invalid date format. Use YYYY-MM-DD.</div>"
                 return HTMLResponse(
                     content=error_html,
-                    headers={
-                        "HX-Retarget": "#search-results-container",
-                        "HX-Reswap": "innerHTML",
-                    },
+                    headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
                 )
 
         # Shared Exa filters -------------------------------------------------------
@@ -201,78 +207,164 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
 
 # ---------------------------------------------------------------------------
+# Helper – build <li> HTML string for a Paper (avoid fasthtml for endpoints)
+# ---------------------------------------------------------------------------
+
+
+def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False) -> str:  # noqa: D401
+    """Return minimal HTML <li> element for a paper suitable for HTMX swaps."""
+
+    authors_display = "Author(s): N/A"
+    if pap.authors:
+        authors_display = f"Author(s): {html.escape(', '.join(pap.authors[:5]))}"
+
+    formatted_date = (
+        pap.published_date.strftime("%B %d, %Y")
+        if isinstance(pap.published_date, datetime)
+        else "Unknown date"
+    )
+
+    li_id = "wild-card-item" if wildcard else f"paper-{pap.id}"
+    border = "2px solid #007bff" if is_main else "1px solid #ccc"
+
+    # pydantic's HttpUrl objects need casting to str before escaping
+    url_str = str(pap.url) if pap.url else "#"
+    title_str = str(pap.title) if pap.title else "No Title"
+
+    # Serialize full paper object for form submission (match initial render)
+    paper_json = pap.model_dump_json()
+    paper_json_escaped = html.escape(paper_json)
+
+    if is_main:
+        # Main (pinned) paper – always included via hidden input, show 📌 label
+        selection_input_html = (
+            f"<input type='hidden' name='selected_papers_json' value='{paper_json_escaped}'>"
+            "<span style='font-size:0.85em; margin-left:6px; color:#555;'>📌 pinned</span>"
+        )
+    else:
+        # Regular paper – user-selectable checkbox
+        selection_input_html = (
+            f"<input type='checkbox' class='paper-select-checkbox' style='margin-right:5px;' "
+            f"name='selected_papers_json' value='{paper_json_escaped}'>"
+        )
+
+    return (
+        f"<li id='{html.escape(li_id)}' style='margin-bottom:1em;padding:0.5em;border:{border};'>"
+        f"<div>"
+        f"{selection_input_html}"
+        f"<a href='{html.escape(url_str)}' target='_blank'>{html.escape(title_str)}</a><br>"
+        f"<em>{authors_display}</em><br>"
+        f"Published: {html.escape(formatted_date)}"
+        f"</div></li>"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Shuffle / Reset helpers
 # ---------------------------------------------------------------------------
 
 
 @router.post("/shuffle", response_class=HTMLResponse)
 async def shuffle_random_paper() -> HTMLResponse:
+    global exa_client_instance
+
+    if exa_client_instance is None:
+        exa_client_instance = get_exa_client()
     if exa_client_instance is None:
         return HTMLResponse(
-            content="<li id='wild-card-item'>Server starting…</li>",
+            "<ul id='papers-list'><li>Server starting…</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
     paper = cast(ExaClient, exa_client_instance).replace_wildcard()
     if paper is None:
         return HTMLResponse(
-            content="<li id='wild-card-item'>No more random papers available. Run a new search.</li>",
+            "<ul id='papers-list'><li>No more random papers available. Run a new search.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    rendered = str(_render_paper_item(paper, wildcard=True))
-    return HTMLResponse(content=rendered)
+    rendered = _paper_li_html(paper, wildcard=True)
+    logger.info("shuffle (wildcard) HTML → {}...", rendered[:200])
+    return HTMLResponse(content=rendered, headers={"HX-Reswap": "outerHTML"})
 
 
 @router.post("/shuffle_all", response_class=HTMLResponse)
 async def shuffle_all_papers() -> HTMLResponse:
+    global exa_client_instance
+
     if exa_client_instance is None:
-        return HTMLResponse("<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>")
+        exa_client_instance = get_exa_client()
+    if exa_client_instance is None:
+        return HTMLResponse(
+            "<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>",
+            headers={"HX-Reswap": "outerHTML"},
+        )
 
     client = cast(ExaClient, exa_client_instance)
     papers = client.shuffle_k()
     if not papers:
         return HTMLResponse(
-            "<li>Cache cleared – run a new search before shuffling.</li>",
+            "<ul id='papers-list'><li>Cache cleared – run a new search before shuffling.</li></ul>",
+            headers={"HX-Reswap": "outerHTML"},
         )
 
     cached = client.get_cached_search()
     pinned_id = cached.pinned_id if cached is not None else None
 
-    ul_items = [
-        _render_paper_item(
+    rendered_items = [
+        _paper_li_html(
             pap,
-            is_main_paper=(pinned_id is not None and pap.id == pinned_id),
+            is_main=(pinned_id is not None and pap.id == pinned_id),
             wildcard=(idx == len(papers) - 1),
         )
         for idx, pap in enumerate(papers)
     ]
-    ul_html = "".join(str(item) for item in ul_items)
-    return HTMLResponse(content=ul_html)
+
+    rendered_ul = (
+        "<ul id='papers-list' style='list-style-type:none; padding-left:0;'>"
+        + "".join(rendered_items)
+        + "</ul>"
+    )
+    logger.info("shuffle_all HTML → {}...", rendered_ul[:200])
+    return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})
 
 
 @router.post("/reset_results", response_class=HTMLResponse)
 async def reset_papers() -> HTMLResponse:
+    global exa_client_instance
+
     if exa_client_instance is None:
-        return HTMLResponse("<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>")
+        exa_client_instance = get_exa_client()
+    if exa_client_instance is None:
+        return HTMLResponse(
+            "<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>",
+            headers={"HX-Reswap": "outerHTML"},
+        )
 
     client = cast(ExaClient, exa_client_instance)
     core_list = client.reset_display()
     if not core_list:
         return HTMLResponse(
-            "<li>Cache cleared - run a new search before resetting.</li>",
+            "<ul id='papers-list'><li>Cache cleared - run a new search before resetting.</li></ul>",
+            headers={"HX-Reswap": "outerHTML"},
         )
 
     cached = client.get_cached_search()
     pinned_id = cached.pinned_id if cached is not None else None
 
-    ul_items = [
-        _render_paper_item(
+    rendered_items = [
+        _paper_li_html(
             pap,
-            is_main_paper=(pinned_id is not None and pap.id == pinned_id),
+            is_main=(pinned_id is not None and pap.id == pinned_id),
             wildcard=(idx == len(core_list) - 1),
         )
         for idx, pap in enumerate(core_list)
     ]
-    ul_html = "".join(str(item) for item in ul_items)
-    return HTMLResponse(content=ul_html)
+
+    rendered_ul = (
+        "<ul id='papers-list' style='list-style-type:none; padding-left:0;'>"
+        + "".join(rendered_items)
+        + "</ul>"
+    )
+    logger.info("reset_results HTML → {}...", rendered_ul[:200])
+    return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})

@@ -1,11 +1,11 @@
 # mypy: ignore-errors
 from __future__ import annotations
 
+import pathlib
+import sys
 from typing import Any
 
 import pytest
-import sys
-import pathlib
 from fastapi.testclient import TestClient
 
 # Ensure `src` is on sys.path so that `import main` resolves to src/main.py even when
@@ -15,6 +15,7 @@ src_path = project_root / "src"
 if src_path.as_posix() not in sys.path:
     sys.path.insert(0, src_path.as_posix())
 
+# ruff: noqa: E402 – intentional import order (sys.path setup before importing app)
 import main as app_module  # The main FastAPI application lives here
 from api.routes import ask_llm, report, search
 

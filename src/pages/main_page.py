@@ -287,6 +287,7 @@ def render_search_results(
                     hx_post="/shuffle",
                     hx_target="#wild-card-item",
                     hx_swap="outerHTML",
+                    hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
                 ),
                 BUTTON(
                     "🔀 Shuffle All Papers",
@@ -294,6 +295,7 @@ def render_search_results(
                     hx_post="/shuffle_all",
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
+                    hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
                     style="margin-left:0.5rem;",
                 ),
                 BUTTON(
@@ -302,6 +304,7 @@ def render_search_results(
                     hx_post="/reset_results",
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
+                    hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
                     style="margin-left:0.5rem;",
                 ),
                 style="margin-top:10px;",
@@ -614,9 +617,18 @@ def home_page(page_data: SharedPageData) -> Body:
             ),
             Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
             Style(indicator_css),
-            Link(rel="stylesheet", href="/static/css/styles.css"),
-            # Re-add small script to handle manual dark-mode toggle without inline style overrides
-            Script(src="/static/js/app.js"),
+            # Modular CSS (Phase-3 refactor)
+            Link(rel="stylesheet", href="/static/css/base.css"),
+            Link(rel="stylesheet", href="/static/css/top-bar.css"),
+            Link(rel="stylesheet", href="/static/css/utilities.css"),
+            Link(rel="stylesheet", href="/static/css/modal.css"),
+            Link(rel="stylesheet", href="/static/css/chat.css"),
+            Link(rel="stylesheet", href="/static/css/forms.css"),
+            Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
+            Link(rel="stylesheet", href="/static/css/misc.css"),
+            # Modular JS entry-points
+            Script(src="/static/js/shuffle_controls.js"),
+            Script(src="/static/js/main.js", type="module"),
             # Settings & validation helper (audience/model persistence, toasts, etc.)
             Script(src="/static/js/settings.js"),
             Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),

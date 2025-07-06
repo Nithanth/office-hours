@@ -181,7 +181,7 @@
         if (papersCount === 0) missing.push('≥1 paper');
 
         console.debug('[lux] showToast:', `Please select ${missing.join(', ')}.`);
-        showToast(`Please select ${missing.join(', ')}.`);
+        showToast(`Please select: ${missing.join(', ')}.`);
         return;
       }
     }, true); // capture phase to run before HTMX grabs the event

@@ -253,17 +253,20 @@ class ExaClient:
                 except (ValueError, TypeError):
                     paper_published_date = None
 
+            # Canonicalize URL (e.g. upgrade arXiv abs → PDF)
+            canonical_url = self._upgrade_to_pdf_url(result.url)
+
             paper_data = {
-                "id": result.id if result.id else result.url,
+                "id": result.id if result.id else canonical_url,
                 "title": result.title if result.title else "No Title Provided",
-                "url": result.url,
+                "url": canonical_url,
                 "authors": authors_list,
                 "text_content": text_content,
                 "published_date": paper_published_date,
                 "score": result.score if hasattr(result, "score") else None,
                 "source": source_description,
             }
-            return Paper(**paper_data)
+            return Paper(**paper_data)  # type: ignore[arg-type]
         except Exception as pydantic_error:
             logger.error(
                 f"Error creating Paper object for result {result.id or result.url} from {source_description}: {pydantic_error}"
@@ -763,7 +766,7 @@ class ExaClient:
 
     def _fetch_papers_from_exa(self, query: str, k: int, **kwargs: Any) -> list["Paper"]:
         """Fetches a pool of papers from the Exa API."""
-        request_count = min(k * 5, 50)
+        request_count = min(k * 10, 50)
         logger.info(f"Fetching {request_count} papers from Exa for query: '{query}'")
         return self.search_papers(query, num_results=request_count, **kwargs)
 
@@ -960,6 +963,67 @@ class ExaClient:
                         return False
 
         return True
+
+    # ------------------------------------------------------------------
+    # Canonical URL helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _upgrade_to_pdf_url(url: str | None) -> str | None:
+        """Return a more reliable *PDF* URL when possible.
+
+        Currently supports:
+        • arXiv / ar5iv: converts any *abs* or generic link into
+          https://arxiv.org/pdf/<id>.pdf so that Exa (and our downstream
+          content fetchers) can obtain the full paper text more reliably.
+
+        If the input *url* is already a direct PDF link (ends with '.pdf') or
+        the domain is not recognised, the original URL is returned unchanged.
+        """
+        if not url:
+            return url
+
+        url_str = str(url)
+
+        # Quick exit if already a PDF
+        if url_str.lower().endswith(".pdf"):
+            return url_str
+
+        if "arxiv.org" in url_str or "ar5iv.org" in url_str:
+            arxiv_id = ExaClient._extract_arxiv_id(url_str)
+            if arxiv_id:
+                return f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+
+        # OpenReview – convert forum or landing page URLs to the canonical PDF endpoint
+        if "openreview.net" in url_str:
+            parsed = urlparse(url_str)
+            paper_id = None
+            # Pattern: /forum?id=<id>
+            if parsed.query:
+                for kv in parsed.query.split("&"):
+                    if kv.startswith("id="):
+                        paper_id = kv.split("=", 1)[1]
+                        break
+            # Pattern: /forum/<id>
+            if not paper_id and parsed.path.startswith("/forum"):
+                parts = parsed.path.rstrip("/").split("/")
+                if len(parts) >= 3:
+                    paper_id = parts[-1]
+            if paper_id:
+                return f"https://openreview.net/pdf?id={paper_id}"
+
+        # ACL Anthology (aclanthology.org / aclweb.org) – append .pdf if missing
+        if "aclanthology.org" in url_str or "aclweb.org" in url_str:
+            parsed = urlparse(url_str)
+            # Already direct PDF link
+            if parsed.path.lower().endswith(".pdf"):
+                return url_str
+            clean_path = parsed.path.rstrip("/")
+            if clean_path:
+                return f"https://{parsed.netloc}{clean_path}.pdf"
+
+        # TODO: Add more domain-specific handlers (e.g. biorxiv) as needed.
+        return url_str
 
 
 # Example Usage (for direct testing of this module):

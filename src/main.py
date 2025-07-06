@@ -202,11 +202,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ChatSessionMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
-_static_path = _pathlib.Path(__file__).parent / "static"
-if _static_path.exists():
-    app.mount("/static", StaticFiles(directory=str(_static_path)), name="static")
+# ------------------- Static asset mounting -----------------------
+# The "static" directory may live alongside ``src`` (development) *or* inside
+# ``src/`` (older layouts used during tests/packaging).  Probe a couple of
+# candidate paths so that requests to ``/static/*`` succeed in either case.
+
+_static_candidates = [
+    _pathlib.Path(__file__).parent / "static",  # current src/static
+    _pathlib.Path(__file__).parent.parent / "static",  # project_root/static
+]
+
+for _static_path in _static_candidates:
+    if _static_path.exists():
+        logger.info("Mounting static assets from %s", _static_path)
+        app.mount("/static", StaticFiles(directory=str(_static_path)), name="static")
+        break
 else:
-    logger.warning("Static directory not found at %s; static assets will return 404", _static_path)
+    logger.warning(
+        "Static directory not found in any candidate paths; static assets will return 404"
+    )
 
 # ------------------- Main Execution Block -------------------
 

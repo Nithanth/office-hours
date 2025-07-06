@@ -1,0 +1,85 @@
+/* chat.css – chat log & bubble styling */
+@import url("variables.css");
+
+.chat-log-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+  background: inherit;
+}
+
+.user-message,
+.assistant-message {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  margin: 0.35rem 0;
+  font-size: 1rem;
+  color: var(--fg);
+}
+
+.user-message { background: var(--bg); margin-left:auto; }
+.assistant-message { background: transparent; margin-right:auto; }
+
+.assistant-message.interrupted::after { content:""; }
+
+body.lux-dark .assistant-message { color: var(--lux-red); }
+body.lux-dark .user-message { background:#333; }
+body.lux-dark .user-message,
+body.lux-dark .user-message * { color: var(--lux-red) !important; }
+
+/* Citation results list hover card border */
+.citation-card {
+  border: 1px solid #e5e7eb;
+}
+body.lux-dark .citation-card {
+  border-color: #333;
+}
+
+/* Restore-toast banner (appears when transcript restored) */
+.restore-toast {
+  background-color: #fef3c7; /* amber-100 */
+  border: 1px solid #fde68a;
+  color: #a16207;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+}
+body.lux-dark .restore-toast {
+  background-color: #333;
+  border-color: #555;
+  color: var(--lux-red);
+}
+
+/* Dark form controls within chat modals */
+body.lux-dark input,
+body.lux-dark input[type="date"],
+body.lux-dark input[type="search"],
+body.lux-dark textarea,
+body.lux-dark select {
+  background:#2a2a2a !important;
+  color:var(--lux-red) !important;
+  border:1px solid #555 !important;
+}
+body.lux-dark select option { background:#2a2a2a; color:var(--lux-red); }
+body.lux-dark textarea::placeholder { color:#7f7f7f; }
+body.lux-dark textarea:focus,
+body.lux-dark textarea:active { background:#2a2a2a !important; color:var(--lux-red); border:1px solid #555; outline:none; }
+
+body.lux-dark input:-webkit-autofill,
+body.lux-dark textarea:-webkit-autofill,
+body.lux-dark select:-webkit-autofill {
+  background:#2a2a2a !important;
+  -webkit-box-shadow:0 0 0px 1000px #2a2a2a inset !important;
+  -webkit-text-fill-color:var(--lux-red) !important;
+  color:var(--lux-red) !important;
+  border:1px solid #555 !important;
+}
+body.lux-dark input:-moz-autofill,
+body.lux-dark textarea:-moz-autofill,
+body.lux-dark select:-moz-autofill {
+  background:#2a2a2a !important;
+  color:var(--lux-red) !important;
+  border:1px solid #555 !important;
+}

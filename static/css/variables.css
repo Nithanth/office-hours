@@ -1,0 +1,29 @@
+/* variables.css – theme tokens for Lux Scholar */
+:root {
+  /* brand & layout */
+  --lux-red: #ef4444;
+  --page-padding: 0.5rem;
+
+  /* light theme colours */
+  --bg: #f4f7f6;
+  --fg: #333;
+  --container-bg: #ffffff;
+  --container-border: #ccc;
+  --container-shadow: rgba(0, 0, 0, 0.2);
+
+  /* dark theme overrides */
+  --bg-dark: #1a1a1a;
+  --fg-dark: var(--lux-red);
+  --container-bg-dark: var(--bg-dark);
+  --container-border-dark: #444;
+  --container-shadow-dark: rgba(0, 0, 0, 0.6);
+}
+
+/* Apply dark tokens when .lux-dark is on <body> */
+body.lux-dark {
+  --bg: var(--bg-dark);
+  --fg: var(--fg-dark);
+  --container-bg: var(--container-bg-dark);
+  --container-border: var(--container-border-dark);
+  --container-shadow: var(--container-shadow-dark);
+}
