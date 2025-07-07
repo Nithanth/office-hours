@@ -141,7 +141,12 @@ async def generate_report_incremental(  # noqa: PLR0913
         return HTMLResponse(content=error_html)
 
     html_skeleton = f"""
-    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Copy button hidden until report finished -->\n      <button id=\"copy-report-btn\" class=\"copy-icon-btn hidden\" title=\"Copy text\" type=\"button\"><i class=\"fa-solid fa-copy\"></i></button>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>\n    """
+    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Feature coming soon\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Generate Notes
+        </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
+          <i class=\"fa-solid fa-copy\"></i>
+        </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
+      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>
+    """
     return HTMLResponse(content=html_skeleton)
 
 

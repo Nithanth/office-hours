@@ -14,5 +14,8 @@ import "./chat/ui.js";
 import "./chat/events.js";
 import "./citation.js";
 
+// Report page helpers (copy button, etc.)
+import "./report.js";
+
 window.__LUX_MODULES_ACTIVE = true;
 console.debug("[lux] main.js loaded (ESM)");

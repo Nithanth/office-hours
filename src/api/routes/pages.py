@@ -93,7 +93,8 @@ async def get_home(
                 )
                 page_data.search_results = []
 
-    return HTMLResponse(str(home_page(page_data=page_data)))
+    # Prepend a standards-mode doctype to avoid browser Quirks Mode.
+    return HTMLResponse(f"<!DOCTYPE html>{str(home_page(page_data=page_data))}")
 
 
 @router.post("/show-report-config", response_class=HTMLResponse)

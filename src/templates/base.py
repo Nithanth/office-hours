@@ -31,9 +31,9 @@ from fasthtml.common import (
 import config  # Needed for model dropdown values
 
 
-def base_layout(title_text: str, *content: Any) -> Html:
-    """A basic HTML layout component."""
-    return Html(
+def base_layout(title_text: str, *content: Any) -> str:
+    """A basic HTML layout component (prepends <!DOCTYPE html>)."""
+    html_doc = Html(
         Head(
             Meta(charset="UTF-8"),
             Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
@@ -104,10 +104,12 @@ def base_layout(title_text: str, *content: Any) -> Html:
                 cl="text-center text-sm text-gray-500 py-4",
             ),
             # Modular frontend scripts (Phase 3 refactor)
-            Script(src="/static/js/shuffle_controls.js"),
+            # Script(src="/static/js/shuffle_controls.js"),  # removed: imported via main.js
             Script(src="/static/js/main.js", type="module"),
             Script(src="/static/js/app.js"),
             Script(src="/static/js/settings.js"),
             cl="bg-gray-100",
         ),
     )
+    # Prepend the required doctype to avoid Quirks Mode
+    return "<!DOCTYPE html>" + str(html_doc)

@@ -5,10 +5,11 @@ html, body { height:100%; }
 
 body.lux-dark footer { border-top:1px solid rgba(255,255,255,0.227) !important; color:#aaa; }
 
-.copy-icon-btn { background:transparent; border:none!important; outline:none!important; appearance:none!important; cursor:pointer; font-size:1rem; color:var(--fg); }
+.copy-icon-btn { background-color:transparent!important; border:none!important; outline:none!important; appearance:none!important; cursor:pointer; font-size:1rem; color:var(--fg); }
 body.lux-dark .copy-icon-btn { color:var(--lux-red); }
 .copy-icon-btn:hover { opacity:0.8; }
-.copy-icon-btn.copied { color:#16a34a; }
+.copy-icon-btn.copied { color:#16a34a !important; }
+body.lux-dark .copy-icon-btn.copied { color:#16a34a !important; }
 
 #report-content { display:flex; flex-direction:column; }
 #report-content .copy-icon-btn { align-self:flex-end; margin-top:auto; padding-top:0.75rem; }

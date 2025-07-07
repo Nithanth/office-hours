@@ -627,7 +627,6 @@ def home_page(page_data: SharedPageData) -> Body:
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
             # Modular JS entry-points
-            Script(src="/static/js/shuffle_controls.js"),
             Script(src="/static/js/main.js", type="module"),
             # Settings & validation helper (audience/model persistence, toasts, etc.)
             Script(src="/static/js/settings.js"),
