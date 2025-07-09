@@ -69,6 +69,7 @@ async def chat_modal(
         link_url = provided_url
 
     modal_id = f"modal-{uuid4().hex[:8]}"
+    # Use short random id for HTML-safe selector; paperId may contain / and :
     chat_log_id = f"chat-log-{uuid4().hex[:8]}"
 
     # ----------------- Retrieve prior conversation (if any) -----------------
@@ -92,12 +93,16 @@ async def chat_modal(
         )
     )
 
-    # Inject pre-rendered history into the empty chat-log container
-    if history_html:
-        modal_html = modal_html.replace(
-            f'id="{chat_log_id}" class="chat-log-container"></div>',
-            f'id="{chat_log_id}" class="chat-log-container">{history_html}</div>',
-        )
+    # Original snippet in ChatModal markup (no hx-on).
+    _search = f'id="{chat_log_id}" class="chat-log-container"'
+
+    # Replacement adds pid + hidden visibility only. initChat will be called via inline <script>.
+    chat_log_repl = (
+        f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden"'
+        + (f">{history_html}" if history_html else ">")
+    )
+
+    modal_html = modal_html.replace(f"{_search}></div>", f"{chat_log_repl}</div>")
 
     # Inject hidden paper_id input and fix HX attribute names for HTMX
     hidden_input = f"<input type='hidden' id='hidden-paper-id' name='paper_id' value='{paper_id}'/>"
@@ -123,6 +128,9 @@ async def chat_modal(
             f"<h2>{modal_title}</h2>",
             f'<h2><a href="{html.escape(link_url)}" target="_blank" rel="noopener noreferrer">{modal_title}</a></h2>',
         )
+
+    # Ensure hydration runs by injecting a small inline script after the modal.
+    modal_html += f"<script>initChat('{session_id}', '{paper_id}', '{chat_log_id}');</script>"
 
     dur = time.perf_counter() - start_ts
     structlog.get_logger().info(

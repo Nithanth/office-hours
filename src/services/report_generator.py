@@ -179,6 +179,10 @@ class ReportGenerator:
             cached = SummaryCache.get_generic(cache_key)
 
         if cached is not None:
+            # Optional UX: introduce small artificial delay so spinner is visible
+            delay = max(0.0, config.CACHED_SUMMARY_DELAY_SECONDS)
+            if delay:
+                await asyncio.sleep(delay)
             dur = time.perf_counter() - start_ts
             logger.info(
                 "Summary cache hit | provider=%s model=%s prompt_len=%d duration=%.2fs",

@@ -1,9 +1,22 @@
 // chat/events.js – global event wiring for chat subsystem
 
 import { dbg } from "../util.js";
+// ---------------------------------------------------------------------------
+// Session cleanup – tell backend to drop ChatState when the page unloads.
+// ---------------------------------------------------------------------------
+//
+window.addEventListener("beforeunload", () => {
+  // Fire and forget; navigator.sendBeacon is synchronous-friendly and won't block unload.
+  try {
+    navigator.sendBeacon && navigator.sendBeacon("/chat/clear_session");
+  } catch (_) {
+    /* noop */
+  }
+});
+
 import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } from "./stream.js";
 import { getModalParts, setControlsEnabled, scrollToBottom } from "./ui.js";
-import { renderStaticMarkdown } from "./markdown.js";
+import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js";
 
 // Submit on Enter, Shift+Enter for newline
 document.addEventListener("keydown", (ev) => {
@@ -32,10 +45,31 @@ document.body.addEventListener("htmx:beforeRequest", (evt) => {
     return;
   }
   const modal = form.closest(".modal");
+
+  // Basic debounce – ignore submits within 600ms window
+  const now = Date.now();
+  if (form.dataset.lastSubmit && now - parseInt(form.dataset.lastSubmit, 10) < 600) {
+    evt.preventDefault();
+    return;
+  }
+  form.dataset.lastSubmit = String(now);
+
+  // If an SSE stream is still open, block.
   const activeStream = modal?.querySelector("[sse-connect]");
   if (activeStream) {
+    if (typeof showToast === "function") showToast("Assistant is still replying…");
     evt.preventDefault();
     textarea?.focus();
+    return;
+  }
+
+  // Note: older transcript messages may lack data-finalised attr, so we only
+  // block when an assistant bubble is actively *typing* (has .typing class) or
+  // a live SSE stream is open (handled above).
+  const typing = modal?.querySelector(".assistant-message.typing");
+  if (typing) {
+    if (typeof showToast === "function") showToast("Assistant is still replying…");
+    evt.preventDefault();
     return;
   }
   // Ensure stop button exists & disable controls
@@ -56,18 +90,56 @@ document.body.addEventListener("htmx:afterRequest", (evt) => {
 });
 
 // Chat session restore helper
-export function initChat(sessionId, paperId) {
-  const chatLog = document.getElementById(`chat-log-${paperId}`);
+export function initChat(sessionId, paperId, chatLogId) {
+  const chatLog = document.getElementById(chatLogId || `chat-log-${paperId}`);
   if (!chatLog) return;
-  const stableKey = chatLog.dataset.chatKey || paperId;
+
+  // Hide during hydration to avoid raw-markdown flash & fade body later
+  const prevVis = chatLog.style.visibility;
+  chatLog.style.visibility = "hidden";
+  const modalBody = chatLog.closest(".modal")?.querySelector(".modal-body");
+  if (modalBody) {
+    modalBody.style.opacity = "0";
+  }
+
+  // Pick a stable cache key: explicit data-chat-key > data-chat-pid > paperId
+  const stableKey = chatLog.dataset.chatKey || chatLog.dataset.chatPid || paperId;
   const html = loadTranscript(sessionId, stableKey);
+  console.debug('[lux] initChat', { stableKey, cachedChars: (html || '').length });
   if (typeof html === "string" && html.trim()) {
     chatLog.innerHTML = html;
-    renderStaticMarkdown(chatLog);
-    scrollToBottom(chatLog);
+
+    // Wait until markdown libs loaded before rendering & reveal
+    ensureMarkdownLibs()
+      .then(() => {
+        renderStaticMarkdown(chatLog);
+      })
+      .finally(() => {
+        scrollToBottom(chatLog, 50);
+        chatLog.style.visibility = "visible";
+        if (modalBody) {
+          modalBody.style.transition = "opacity 0.3s ease";
+          requestAnimationFrame(() => {
+            modalBody.style.opacity = "1";
+          });
+        }
+      });
   } else {
-    renderStaticMarkdown(chatLog);
-    scrollToBottom(chatLog);
+    // Wait until markdown libs loaded before rendering & reveal
+    ensureMarkdownLibs()
+      .then(() => {
+        renderStaticMarkdown(chatLog);
+      })
+      .finally(() => {
+        scrollToBottom(chatLog, 50);
+        chatLog.style.visibility = "visible";
+        if (modalBody) {
+          modalBody.style.transition = "opacity 0.3s ease";
+          requestAnimationFrame(() => {
+            modalBody.style.opacity = "1";
+          });
+        }
+      });
   }
 }
 window.initChat = initChat;
@@ -99,4 +171,3 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
 });
 
 console.debug("[lux] chat/events.js wired listeners");
-

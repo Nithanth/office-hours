@@ -15,3 +15,21 @@ body.lux-dark .copy-icon-btn.copied { color:#16a34a !important; }
 #report-content .copy-icon-btn { align-self:flex-end; margin-top:auto; padding-top:0.75rem; }
 .copy-btn { position:absolute; top:6px; right:6px; }
 .hidden { display:none!important; }
+
+/* lightweight dialog styling for notes download */
+.lux-modal::backdrop { background:rgba(0,0,0,0.4); }
+.lux-modal {
+  border: 1px solid var(--container-border);
+  border-radius: 6px;
+  padding: 20px 24px;
+  max-width: 320px;
+  background: var(--container-bg);
+  color: var(--fg);
+  font: 15px/1.4 var(--font-body, sans-serif);
+}
+
+/* Ensure labels & legends inherit dark-mode colour */
+body.lux-dark .lux-modal label,
+body.lux-dark .lux-modal legend {
+  color: var(--lux-red);
+}

@@ -7,25 +7,27 @@ identical to sentences already present in the final report.
 The heavy dependency (`sentence-transformers`) is optional; if it is not
 installed the function will log a warning and return the chat text untouched.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import cast
 
 try:
-    from sentence_transformers import SentenceTransformer, util  # type: ignore
+    from sentence_transformers import SentenceTransformer, util
 except ImportError:  # pragma: no cover
-    SentenceTransformer = None  # type: ignore
-    util = None  # type: ignore
+    SentenceTransformer = None
+    util = None
 
 import nltk
 
 _logger = logging.getLogger(__name__)
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-_model: SentenceTransformer | None = None  # type: ignore
+_model: SentenceTransformer | None = None
 
-def _get_model() -> "SentenceTransformer":  # type: ignore
+
+def _get_model() -> SentenceTransformer:
     """Lazily load and cache the MiniLM embedding model."""
     global _model
     if _model is None:
@@ -35,13 +37,16 @@ def _get_model() -> "SentenceTransformer":  # type: ignore
             )
         _logger.info("[dedupe] Loading sentence-transformers model %s", _MODEL_NAME)
         _model = SentenceTransformer(_MODEL_NAME)
-    return _model  # type: ignore
+    return _model
 
 
-def _sentences(text: str) -> List[str]:
-    """Split text into sentences using NLTK punkt tokenizer (downloaded on demand)."""
+def _sentences(text: str) -> list[str]:
+    """Split *text* into sentences using NLTK punkt tokenizer.
+
+    The tokenizer returns ``Any`` in typeshed, so we cast for mypy compliance.
+    """
     nltk.download("punkt", quiet=True)
-    return nltk.sent_tokenize(text)
+    return cast(list[str], nltk.sent_tokenize(text))
 
 
 def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -> str:
@@ -58,7 +63,8 @@ def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -
     """
     if SentenceTransformer is None or util is None:
         _logger.warning(
-            "[dedupe] sentence-transformers unavailable; returning chat text unmodified.")
+            "[dedupe] sentence-transformers unavailable; returning chat text unmodified."
+        )
         return chat_text
 
     report_sents = _sentences(report_text)
@@ -71,7 +77,7 @@ def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -
     rep_emb = model.encode(report_sents, normalize_embeddings=True)
     chat_emb = model.encode(chat_sents, normalize_embeddings=True)
 
-    keep: List[str] = []
+    keep: list[str] = []
     for sent, emb in zip(chat_sents, chat_emb):
         sim = util.cos_sim(emb, rep_emb).max().item()
         if sim < threshold:

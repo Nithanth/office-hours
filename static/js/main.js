@@ -9,10 +9,14 @@ import "./util.js";
 
 // Chat subsystem (currently placeholders; will be populated during refactor)
 import "./chat/stream.js";
-import "./chat/markdown.js";
 import "./chat/ui.js";
 import "./chat/events.js";
 import "./citation.js";
+
+import "./chat/markdown.js";
+import { ensureMarkdownLibs } from "./chat/markdown.js";
+// Kick off background load early; no await needed.
+ensureMarkdownLibs();
 
 // Report page helpers (copy button, etc.)
 import "./report.js";

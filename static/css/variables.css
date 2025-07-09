@@ -10,6 +10,8 @@
   --container-bg: #ffffff;
   --container-border: #ccc;
   --container-shadow: rgba(0, 0, 0, 0.2);
+  /* main paper border (pinned) */
+  --main-paper-border: #007bff;
 
   /* dark theme overrides */
   --bg-dark: #1a1a1a;
@@ -26,4 +28,6 @@ body.lux-dark {
   --container-bg: var(--container-bg-dark);
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
+  /* override pinned border */
+  --main-paper-border: var(--lux-red);
 }

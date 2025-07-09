@@ -225,7 +225,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
     )
 
     li_id = "wild-card-item" if wildcard else f"paper-{pap.id}"
-    border = "2px solid #007bff" if is_main else "1px solid #ccc"
+    border = "2px solid var(--main-paper-border)" if is_main else "1px solid #ccc"
 
     # pydantic's HttpUrl objects need casting to str before escaping
     url_str = str(pap.url) if pap.url else "#"
@@ -236,10 +236,15 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
     paper_json_escaped = html.escape(paper_json)
 
     if is_main:
-        # Main (pinned) paper – always included via hidden input, show 📌 label
+        # Main (pinned) paper – render a *disabled, checked* checkbox so the
+        # visual language is identical to selectable papers, but ensure it is
+        # always included via a hidden input (disabled fields are not submitted).
+
         selection_input_html = (
+            "<input type='checkbox' class='paper-select-checkbox pinned-checkbox' checked "
+            "style='margin-right:5px; pointer-events:none;'>"
             f"<input type='hidden' name='selected_papers_json' value='{paper_json_escaped}'>"
-            "<span style='font-size:0.85em; margin-left:6px; color:#555;'>📌 pinned</span>"
+            "<span class='pinned-label' style='font-size:0.85em;'>📌 pinned</span>"
         )
     else:
         # Regular paper – user-selectable checkbox
@@ -249,7 +254,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
         )
 
     return (
-        f"<li id='{html.escape(li_id)}' style='margin-bottom:1em;padding:0.5em;border:{border};'>"
+        f"<li id='{html.escape(li_id)}' style='margin-bottom:1em;padding:0.5em;border:{border};position:relative;'>"
         f"<div>"
         f"{selection_input_html}"
         f"<a href='{html.escape(url_str)}' target='_blank'>{html.escape(title_str)}</a><br>"

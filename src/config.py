@@ -94,6 +94,9 @@ class Config:
     # cause provider-side truncation.
     PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 60000))
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
+    # UX tweak: when a summary is fully served from cache, optionally pause a bit so
+    # the user still sees the spinner briefly. Set to 0 to disable.
+    CACHED_SUMMARY_DELAY_SECONDS: float = float(os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5"))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
         "S": "brief and concise, summarizing only the absolute key takeaways",

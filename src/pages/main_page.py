@@ -173,28 +173,41 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
             authors_display = f"Author(s): {', '.join(paper.authors)}"
 
     # Basic styling for the paper item
-    item_style = "margin-bottom: 1em; padding: 0.5em; border: 1px solid #ccc;"
+    item_style = "margin-bottom: 1em; padding: 0.5em; border: 1px solid #ccc; position: relative;"
     if is_main_paper:  # Minimal distinction for main paper
-        item_style = "margin-bottom: 1em; padding: 0.5em; border: 2px solid #007bff;"
+        item_style = "margin-bottom: 1em; padding: 0.5em; border: 2px solid var(--main-paper-border); position: relative;"
 
     # Decide checkbox / hidden input behaviour
     if is_main_paper:
-        selection_input = INPUT(
-            type="hidden",  # always submitted, not user-toggleable
-            name="selected_papers_json",
-            value=paper_json_str,
-        )
+        # Visual checkbox identical to others but user cannot toggle (pointer-events:none)
+        selection_inputs = [
+            INPUT(
+                type="checkbox",
+                cls="paper-select-checkbox pinned-checkbox",
+                checked=True,
+                style="margin-right:5px; pointer-events:none;",
+            ),
+            INPUT(
+                type="hidden",
+                name="selected_papers_json",
+                value=paper_json_str,
+            ),
+        ]
         selection_label = Span(
-            "📌 pinned", style="font-size: 0.85em; margin-left: 6px; color:#555;"
+            "📌 pinned",
+            cls="pinned-label",
+            style="font-size:0.85em;",
         )
     else:
-        selection_input = INPUT(
-            type="checkbox",
-            name="selected_papers_json",
-            value=paper_json_str,
-            cls="paper-select-checkbox",
-            style="margin-right: 5px;",
-        )
+        selection_inputs = [
+            INPUT(
+                type="checkbox",
+                name="selected_papers_json",
+                value=paper_json_str,
+                cls="paper-select-checkbox",
+                style="margin-right: 5px;",
+            )
+        ]
         selection_label = Span()
 
     li_attrs = {"style": item_style, "id": f"paper-{paper.id}"}
@@ -204,16 +217,16 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
 
     return LI(
         Div(
-            selection_input,
+            *selection_inputs,
             A(
                 paper.title if paper.title else "No Title Provided",
                 href=paper.url if paper.url else "#",
                 target="_blank",
             ),
-            P(EM(authors_display)),
-            P(f"Published: {formatted_date}"),
-            # ID hidden by default; uncomment for debug
-            # P(f"ID: {paper.id[:20]}..." if paper.id else "No ID"),
+            Br(),
+            EM(authors_display),
+            Br(),
+            Span(f"Published: {formatted_date}"),
             selection_label,
         ),
         **li_attrs,
@@ -496,12 +509,10 @@ def chat_modal_styles() -> Style:
         .user-message {
             background-color: #007bff;
             color: white;
-            margin-left: auto;
         }
         .assistant-message {
             background-color: #e9e9eb;
             color: black;
-            margin-right: auto;
         }
         .restore-toast {
             padding: 10px;

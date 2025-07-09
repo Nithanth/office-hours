@@ -1,6 +1,7 @@
 // chat/ui.js – modal UI helpers & utilities for chat subsystem
 
 import { dbg } from "../util.js";
+import { finalizeBubble, saveTranscript } from "./stream.js";
 
 // Internal cache so we don't create duplicate stop buttons.
 const _stopBtnSym = Symbol("stopBtnSym");
@@ -124,6 +125,99 @@ export function enhanceModal(modal) {
   }
   const log = modal.querySelector(".chat-log-container");
   if (log) scrollToBottom(log);
+
+  // Attach one-time close handler to clean up in-flight streams
+  if (!modal.dataset.closeHook) {
+    modal.dataset.closeHook = "1";
+    const cleanUp = () => {
+      // Look for any still-present assistant bubble that was streaming or interrupted
+      let activeStream = modal.querySelector("[sse-connect]");
+      if (!activeStream) {
+        activeStream = modal.querySelector(
+          ".assistant-message.interrupted, .assistant-message.typing"
+        );
+      }
+      if (activeStream) {
+        // Close SSE quickly
+        const src = activeStream.__eventSource;
+        if (src && typeof src.close === "function") src.close();
+
+        // Remove the assistant bubble and its preceding user prompt (if any)
+        const toZap = [activeStream];
+        const prev = activeStream.previousElementSibling;
+        if (prev && prev.classList.contains("user-message")) toZap.push(prev);
+        toZap.forEach((el) => el.remove());
+        console.debug('[lux] cleanUp removed', toZap.length, 'nodes; stream aborted');
+
+        // Notify backend to abort so stream_active flag resets quickly
+        const hidden = modal.querySelector("#hidden-paper-id");
+        if (hidden && hidden.value) {
+          fetch("/chat/abort", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `paper_id=${encodeURIComponent(hidden.value)}`,
+          }).catch(() => {});
+        }
+      }
+
+      // Persist current transcript before DOM is wiped by the hx-on:click handler.
+      const log = modal.querySelector(".chat-log-container");
+      if (log) {
+        // Build a clean transcript similar to _debouncedSave to avoid caching
+        // interrupted / stopped bubbles or dangling prompts.
+        const msgs = Array.from(log.children || []);
+        const cleaned = [];
+        for (let i = 0; i < msgs.length; i++) {
+          const el = msgs[i];
+          if (el.classList.contains("user-message")) {
+            const nxt = msgs[i + 1];
+            const isCleanAssistant =
+              nxt &&
+              nxt.classList.contains("assistant-message") &&
+              nxt.dataset.finalised === "1" &&
+              nxt.dataset.interrupted !== "1" &&
+              !nxt.classList.contains("interrupted") &&
+              !nxt.querySelector(".response-stopped");
+            if (isCleanAssistant) {
+              cleaned.push(el, nxt);
+              i++; // skip paired assistant already handled
+            }
+          } else if (el.classList.contains("assistant-message")) {
+            if (
+              el.dataset.finalised === "1" &&
+              el.dataset.interrupted !== "1" &&
+              !el.classList.contains("interrupted") &&
+              !el.querySelector(".response-stopped")
+            ) {
+              cleaned.push(el);
+            }
+          } else {
+            cleaned.push(el);
+          }
+        }
+
+        const MAX_CHAT_LINES = 100;
+        const recent = cleaned.slice(-MAX_CHAT_LINES);
+        const html = recent.map((n) => n.outerHTML).join("");
+        const pid =
+          log.dataset.chatKey ||
+          log.dataset.chatPid ||
+          (log.id ? log.id.replace("chat-log-", "") : "");
+        if (pid) saveTranscript(null, pid, html);
+      }
+    };
+
+    // 1) Native <dialog> close (not used currently but safe to keep)
+    modal.addEventListener("close", cleanUp);
+
+    // 2) Our custom ✕ button empties #modal-container – intercept click BEFORE swap
+    const btn = modal.querySelector(".modal-close-btn");
+    if (btn) {
+      // Capture phase guarantees we run before the hx-on:click handler that
+      // nukes #modal-container so our activeStream element is still in the DOM.
+      btn.addEventListener("click", cleanUp, { once: true, capture: true });
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

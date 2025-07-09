@@ -26,3 +26,6 @@ structlog
 pydantic
 pdfminer.six
 readability-lxml
+
+# Document generation
+python-docx>=0.8.11

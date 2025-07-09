@@ -54,7 +54,7 @@ async def chat_post(
     chat_state = get_chat_state(session_id)
 
     # If a stream is already active, signal busy to frontend and let HTMX retry.
-    if chat_state.stream_active and chat_state.last_role(paper_id) == "assistant":
+    if chat_state.stream_active:
         chat_state.busy_retries += 1
         if chat_state.busy_retries >= 6:
             chat_state.busy_retries = 0  # reset after escalation
@@ -130,6 +130,14 @@ async def chat_stream(
     if chat_state.stream_active:
         return Response(status_code=204)
     chat_state.stream_active = True
+
+    # Log stream start for easier tracing
+    log.info(
+        "chat_stream_start",
+        session_id=session_id,
+        paper_id=paper_id,
+        resume_at=resume_at,
+    )
 
     async def event_generator() -> AsyncIterator[str]:
         try:
@@ -237,8 +245,9 @@ async def chat_stream(
                     print("Stream cancelled by client.")
                     completed_successfully = False
                     break
-                except Exception as e:  # noqa: BLE001
-                    print(f"Error in chat stream: {e}")
+                except Exception:  # noqa: BLE001
+                    # Capture full traceback for debugging
+                    log.exception("chat_stream_exception", session_id=session_id, paper_id=paper_id)
                     error_message = html.escape("Sorry, an error occurred.")
                     yield "event: error\n"
                     yield f"data: {error_message}\n\n"
@@ -258,3 +267,51 @@ async def chat_stream(
                 pass
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Abort endpoint – invoked by frontend when user closes the chat modal mid-stream.
+# It simply flips the `stream_active` flag so subsequent /chat requests are not
+# rejected. Full LLM cancellation is cooperative via check in event generator.
+# ---------------------------------------------------------------------------
+@router.post("/chat/abort")
+async def chat_abort(
+    request: Request,
+    paper_id: str = Form(...),
+    session_id: str = Depends(get_session_id),
+) -> Response:  # noqa: D401 – FastAPI style
+    """Abort any active stream for the given paper in this session."""
+
+    chat_state = get_chat_state(session_id)
+    if chat_state.stream_active:
+        chat_state.stream_active = False
+        log.info("chat_abort", session_id=session_id, paper_id=paper_id)
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Clear-session endpoint – invoked via navigator.sendBeacon on page unload to
+# wipe the in-memory ChatState so chats do not persist across hard refreshes or
+# browser restarts. Only affects the current session ID.
+# ---------------------------------------------------------------------------
+@router.post("/chat/clear_session")
+async def chat_clear_session(
+    session_id: str = Depends(get_session_id),
+) -> Response:
+    """Drop the entire ChatState for the current session.
+
+    The frontend calls this via `navigator.sendBeacon` in a `beforeunload` handler.
+    If the user has multiple tabs open we only clear the state when the last tab
+    is closed, which is acceptable for the intended UX (per-tab report play
+    session).
+    """
+
+    try:
+        from chat.state import _chat_states  # noqa: WPS437 – internal mutable bag
+
+        if session_id in _chat_states:
+            del _chat_states[session_id]
+    except Exception:  # noqa: BLE001 – defensive
+        pass
+
+    return Response(status_code=204)

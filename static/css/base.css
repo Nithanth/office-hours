@@ -23,6 +23,11 @@ body {
   flex: 1 0 auto;
 }
 
+/* Force darker border in dark mode if variables are not cascading */
+body.lux-dark .container {
+  border-color: var(--container-border-dark, #444);
+}
+
 header {
   background: #333;
   color: #fff;
@@ -47,6 +52,17 @@ footer {
   color: #666;
   width: 100%;
   flex-shrink: 0;
+}
+
+.pinned-label{
+  position:absolute;
+  top:6px;   /* tweak to taste */
+  right:6px;
+  color:#007bff; /* light mode: blue */
+}
+
+body.lux-dark .pinned-label{
+  color:var(--lux-red); /* dark mode: red */
 }
 
 /* dark-mode tweaks handled via CSS vars above */

@@ -47,10 +47,16 @@ def base_layout(title_text: str, *content: Any) -> str:
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
             Script(src="https://unpkg.com/htmx.org@1.9.10"),
-            Script(src="https://unpkg.com/htmx.org/dist/ext/sse.js"),
+            # Ensure SSE extension loads correctly (pin version to match HTMX)
+            Script(src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"),
             Script(src="/static/js/htmx-sse-pool.js"),
             # For localStorage compression of chat transcripts
             Script(src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"),
+            # Font Awesome for icons used throughout UI (copy/report etc.)
+            Link(
+                rel="stylesheet",
+                href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css",
+            ),
             # tailwind_script, # Uncomment if you want to use Tailwind CSS via CDN
             # htmx_script, # FastHTML usually includes HTMX, uncomment if needed explicitly
         ),

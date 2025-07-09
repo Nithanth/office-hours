@@ -115,13 +115,22 @@ document.addEventListener("click", handleCopyClick);
 // conditions where HTMX replaces the node after JS already removed the class.
 // ---------------------------------------------------------------------------
 const actionsObserver = new MutationObserver(() => {
-  document
-    .querySelectorAll("#report-actions.hidden")
-    .forEach((el) => {
-      el.classList.remove("hidden");
-      el.style.display = "flex";
-      el.style.justifyContent = "flex-end";
-    });
+  // Only unhide if progress spinner already gone (report finished)
+  const progressGone = !document.getElementById("report-progress");
+  if (!progressGone) return;
+
+  document.querySelectorAll("#report-actions.hidden").forEach((el) => {
+    el.classList.remove("hidden");
+    el.style.display = "flex";
+    el.style.justifyContent = "flex-end";
+
+    // Enable notes button once report finished.
+    const notesBtn = el.querySelector("#report-notes-btn");
+    if (notesBtn) {
+      notesBtn.removeAttribute("disabled");
+      notesBtn.title = "Generate Notes";
+    }
+  });
 });
 
 // Observe the whole document for added nodes (this is inexpensive for the
@@ -142,6 +151,15 @@ document.addEventListener("htmx:afterSwap", () => {
         actions.classList.remove("hidden");
         actions.style.display = "flex";
         actions.style.justifyContent = "flex-end";
+
+        // Add generic report heading if backend didn't provide one
+        const reportEl = document.getElementById("report-content");
+        if (reportEl && !reportEl.querySelector("h2")) {
+          const h2 = document.createElement("h2");
+          h2.textContent = "Research Report";
+          h2.className = "text-2xl font-bold mb-4";
+          reportEl.insertBefore(h2, reportEl.firstChild);
+        }
       }
     }
   } catch (e) {
@@ -160,3 +178,96 @@ document.addEventListener("DOMContentLoaded", () => {
     actions.style.justifyContent = "flex-end";
   }
 });
+
+// ---------------------------------------------------------------------------
+// Notes dialog helper – lazy-inject <dialog> so user can choose filename & format.
+// ---------------------------------------------------------------------------
+function openNotesDialog(onConfirm) {
+  let dlg = document.getElementById("notes-dialog");
+  if (!dlg) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<dialog id="notes-dialog" class="lux-modal">
+         <form method="dialog" id="notes-form">
+           <h3 style="margin:0 0 12px">Download Report Notes</h3>
+
+           <label class="block" style="display:block;">
+             File name:<br>
+             <input name="fname" type="text" value="report_notes" required style="width:100%;margin-top:4px;">
+           </label>
+
+           <fieldset style="margin-top:12px;">
+             <legend>Format</legend>
+             <label style="margin-right:8px;"><input type="radio" name="fmt" value="txt" checked> .txt</label>
+             <label><input type="radio" name="fmt" value="docx"> .docx</label>
+           </fieldset>
+
+           <menu style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;">
+             <button value="cancel">Cancel</button>
+             <button value="ok" class="primary">Generate</button>
+           </menu>
+         </form>
+       </dialog>`
+    );
+    dlg = document.getElementById("notes-dialog");
+    dlg.addEventListener("close", () => {
+      if (dlg.returnValue !== "ok") return; // user canceled
+      const form = dlg.querySelector("#notes-form");
+      const base = form.fname.value.trim() || "report_notes";
+      const fmt = form.fmt.value;
+      onConfirm(base, fmt);
+    });
+  }
+  dlg.showModal();
+}
+
+// ---------------------------------------------------------------------------
+// Generate Notes – open dialog, then POST and download.
+// ---------------------------------------------------------------------------
+function handleNotesClick(ev) {
+  const btn = ev.target.closest("#report-notes-btn");
+  if (!btn) return;
+
+  const reportEl = document.getElementById("report-content");
+  if (!reportEl) return;
+
+  openNotesDialog((baseName, format) => {
+    let desiredName = baseName;
+    if (!desiredName.toLowerCase().endsWith(`.${format}`)) desiredName += `.${format}`;
+
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML =
+      '<span class="lux-spinner small" style="vertical-align:middle;"></span> Generating…';
+
+    const cleaned = getCleanReportText(reportEl);
+    const fd = new FormData();
+    fd.append("report_text", cleaned);
+    fd.append("output_format", format);
+
+    fetch("/generate-report-notes", { method: "POST", body: fd })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server responded ${r.status}`);
+        return r.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement("a"), { href: url, download: desiredName });
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch((err) => {
+        console.error("[lux] notes download failed", err);
+        // eslint-disable-next-line no-alert
+        alert("Failed to generate notes. Please try again.");
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      });
+  });
+}
+
+document.addEventListener("click", handleNotesClick);

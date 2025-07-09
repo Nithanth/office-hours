@@ -2,7 +2,7 @@
 // Handles token buffering, markdown render, and finalisation of assistant messages.
 
 import { dbg, decodeEntities, debounce } from "../util.js";
-import { getModalParts, setControlsEnabled, addCopyButtons } from "./ui.js";
+import { getModalParts, setControlsEnabled, addCopyButtons, scrollToBottom } from "./ui.js";
 import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded } from "./markdown.js";
 
 // Map<Element, Entry> tracking in-flight SSE token buffers
@@ -33,6 +33,11 @@ function _startTypingIndicator(targetEl, batchMs) {
   // Reset bubble & inject children
   targetEl.innerHTML = "";
   targetEl.appendChild(contentSpan);
+
+  // Ensure log stays scrolled while the assistant is typing
+  const container = targetEl.closest(".chat-log-container");
+  if (container) scrollToBottom(container);
+
   entry.typingTimer = setInterval(() => {
     const states = [".", "..", "..."];
     const current = contentSpan.textContent;
@@ -70,6 +75,10 @@ function _flushTokens(targetEl) {
   entry.md += tokenBatch;
   entry.lastFlush = performance.now();
   entry.contentEl.textContent = entry.md; // raw until finalised (placeholder)
+
+  // Keep viewport pinned to bottom as tokens flush
+  const container = targetEl.closest(".chat-log-container");
+  if (container) scrollToBottom(container);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +138,8 @@ function _finalizeBubble(targetEl) {
 
   // Flush any remaining tokens
   _flushTokens(targetEl);
+  // Ensure .typing state cleared so UI can send further messages
+  targetEl.classList.remove("typing");
   const entry = _pendingTokenBuffers.get(targetEl);
   if (entry?.typingTimer) clearInterval(entry.typingTimer);
 
@@ -164,6 +175,13 @@ function _finalizeBubble(targetEl) {
     .catch((e) => console.error("markdown render error", e));
 
   function doneCleanup() {
+    // If no tokens were flushed we still need to remove the caret span so the
+    // response-stopped banner (or empty bubble) looks nice.
+    if (entry && entry.first) {
+      const caretSpan = entry.contentEl;
+      if (caretSpan && caretSpan.parentElement === targetEl) caretSpan.remove();
+      entry.first = false;
+    }
     targetEl.dataset.finalised = "1";
     _pendingTokenBuffers.delete(targetEl);
     if (typeof window.enableShuffle === "function") window.enableShuffle();
@@ -172,13 +190,19 @@ function _finalizeBubble(targetEl) {
     const modal = targetEl.closest(".modal");
     if (modal) setControlsEnabled(modal, true);
 
+    // Final scroll to show completed message
+    const container = targetEl.closest(".chat-log-container");
+    if (container) scrollToBottom(container);
+
+    // Persist transcript *after* final HTML render so cache stays clean
+    _debouncedSave(targetEl);
+
     // Remove SSE attributes to stop reconnection attempts
     ["sse-connect", "hx-sse-reconnect-delay", "hx-ext", "data-batch-ms"].forEach((attr) =>
       targetEl.removeAttribute(attr)
     );
 
     // Persist transcript (debounced)
-    _debouncedSave(targetEl);
   }
 }
 
@@ -190,17 +214,68 @@ function saveTranscript(_sessionId, key, html) {
   window.__luxChatCache.set(key, html);
 }
 
+export { saveTranscript };
+
 const _saveTimers = new WeakMap();
-const MAX_CHAT_LINES = 60;
+const MAX_CHAT_LINES = 100;
 function _debouncedSave(bubbleEl) {
   const container = bubbleEl?.closest?.(".chat-log-container");
   if (!container) return;
   clearTimeout(_saveTimers.get(container));
   const t = setTimeout(() => {
     const msgs = Array.from(container.children || []);
-    const recent = msgs.slice(-MAX_CHAT_LINES);
+
+    // Build a clean array: include pairs of (user, assistant-finalised) and any
+    // system/info blocks. Skip assistant bubbles that are still typing or not
+    // yet finalised, and drop a trailing user prompt without a paired reply.
+    const cleaned = [];
+    for (let i = 0; i < msgs.length; i++) {
+      const el = msgs[i];
+      if (el.classList.contains("user-message")) {
+        const nxt = msgs[i + 1];
+        const isCleanAssistant =
+          nxt &&
+          nxt.classList.contains("assistant-message") &&
+          nxt.dataset.finalised === "1" &&
+          nxt.dataset.interrupted !== "1" &&
+          !nxt.classList.contains("interrupted") &&
+          !nxt.querySelector(".response-stopped") &&
+          !nxt.querySelector(".msg-content");
+        if (isCleanAssistant) {
+          cleaned.push(el, nxt);
+          i++; // skip next since already handled
+        }
+        // else: dangling user message → drop
+      } else if (el.classList.contains("assistant-message")) {
+        // Keep only autonomous assistant messages that are finalised and not interrupted
+        if (
+          el.dataset.finalised === "1" &&
+          el.dataset.interrupted !== "1" &&
+          !el.classList.contains("interrupted") &&
+          !el.querySelector(".response-stopped") &&
+          !el.querySelector(".msg-content")
+        ) {
+          cleaned.push(el);
+        }
+      } else {
+        // Keep any other block types (system/info) as-is
+        cleaned.push(el);
+      }
+    }
+
+    const recent = cleaned.slice(-MAX_CHAT_LINES);
     const html = recent.map((n) => n.outerHTML).join("");
-    const chatKey = container.dataset.chatKey || container.dataset.chatPid || container.id?.replace("chat-log-", "");
+
+    // Skip if we ended up with an empty transcript (e.g., assistant still typing).
+    if (!html.trim()) return;
+
+    const chatKey =
+      container.dataset.chatKey || container.dataset.chatPid || container.id?.replace("chat-log-", "");
+    console.debug('[lux] saveTranscript', chatKey, {
+      cleanedLen: cleaned.length,
+      htmlChars: html.length,
+      sample: html.slice(0, 80)
+    });
     if (chatKey) saveTranscript(null, chatKey, html);
   }, 120);
   _saveTimers.set(container, t);
@@ -264,16 +339,23 @@ document.body.addEventListener("htmx:sseBeforeMessage", (evt) => {
 
 // Close EventSource on error & mark interrupted
 document.body.addEventListener("htmx:sseError", (evt) => {
+  const el = evt.detail?.elt;
+  // If bubble already completed, treat as normal close not error.
+  if (el?.dataset?.finalised === "1") return;
+
   const src = evt.detail?.source;
   if (src?.close) setTimeout(() => src.close(), 50);
-  const el = evt.detail?.elt;
+
   if (el?.classList.contains("assistant-message")) {
-    const entry = _pendingTokenBuffers.get(el);
-    if (!entry || (entry.first && (!entry.md || entry.md.length === 0))) {
-      el.dataset.interrupted = "1";
-      el.classList.add("interrupted");
-      el.innerHTML = '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
+    // Mark interrupted so UI reflects partial response and persistence can drop.
+    el.dataset.interrupted = "1";
+    el.classList.add("interrupted");
+
+    if (!el.querySelector(".response-stopped")) {
+      el.innerHTML =
+        '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
     }
+
     _finalizeBubble(el);
   }
 });

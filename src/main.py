@@ -151,6 +151,9 @@ from api.routers import (
     chat_modal as _chat_modal_router,
 )
 from api.routers import (
+    report_notes as _report_notes_router,
+)
+from api.routers import (
     report_stream as _report_stream_router,
 )
 from api.routes import (
@@ -181,6 +184,7 @@ for _r in (
     _admin_routes.router,
     _chat_modal_router.router,
     _report_stream_router.router,
+    _report_notes_router.router,
 ):
     app.include_router(_r)
 

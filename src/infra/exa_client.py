@@ -658,13 +658,61 @@ class ExaClient:
         # 1. Fetch content for the main paper_url
         try:
             logger.info(f"Fetching content for main URL: {paper_url}")
-            doc_id = self._get_id_from_url(paper_url) or paper_url  # fallback to URL
-            contents_response = self.client.get_contents([doc_id], text=True)
+            # Precompute arXiv identifier (if any) from the *input* URL so we can
+            # validate that the fetched result corresponds to the same paper.
+            input_arxiv_id = self._extract_arxiv_id(paper_url)
+
+            # 1) Crawl the *exact* URL (or its canonicalised PDF form) first so we
+            #    don't accidentally fetch a different document via id look-up.
+            canonical_url = self._upgrade_to_pdf_url(paper_url) or paper_url
+            contents_response = self.client.get_contents([canonical_url], text=True)
+
+            # 2) Fallback – if Exa had no content yet, try resolving the doc-id
+            #    using a strict url:"<url>" search and crawl that id.
+            if (not contents_response.results) or len(contents_response.results) == 0:
+                doc_id = self._get_id_from_url(paper_url)
+                if doc_id:
+                    contents_response = self.client.get_contents([doc_id], text=True)
+
             if contents_response.results and len(contents_response.results) > 0:
                 main_paper_result = contents_response.results[0]
                 main_paper_object = self._create_paper_from_exa_result(
                     main_paper_result, f"Exa (get_contents: {paper_url})"
                 )
+
+                # ------------------------------------------------------------------
+                # Sanity-check: make sure Exa didn't return a *different* arXiv paper
+                # (this can happen when url:"..." search loosens matching and returns
+                #  a related document).  If the extracted arXiv id from the fetched
+                #  result does not match the one from the user's URL, discard it so
+                #  that we don't pin an unrelated paper.
+                # ------------------------------------------------------------------
+                if main_paper_object and main_paper_object.url:
+                    # Sanity check A – arXiv id match (if applicable)
+                    if input_arxiv_id:
+                        result_arxiv_id = self._extract_arxiv_id(str(main_paper_object.url))
+                        if result_arxiv_id and result_arxiv_id != input_arxiv_id:
+                            logger.warning(
+                                "Discarding mismatched main paper. Expected arXiv id %s but got %s",
+                                input_arxiv_id,
+                                result_arxiv_id,
+                            )
+                            main_paper_object = None
+                    # Sanity check B – same registered domain as original URL
+                    if main_paper_object and main_paper_object.url:
+                        orig_host = urlparse(paper_url).netloc.lower()
+                        result_host = urlparse(str(main_paper_object.url)).netloc.lower()
+                        if (
+                            orig_host
+                            and result_host
+                            and orig_host.split(":")[0] != result_host.split(":")[0]
+                        ):
+                            logger.warning(
+                                "Discarding mismatched main paper – host differs (%s → %s)",
+                                orig_host,
+                                result_host,
+                            )
+                            main_paper_object = None
             else:
                 logger.warning(f"No content returned by Exa's get_contents for URL: {paper_url}")
 
