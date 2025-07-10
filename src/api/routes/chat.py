@@ -143,6 +143,7 @@ async def chat_stream(
         try:
             completed_successfully = False
             assistant_msg: str = ""
+            tok_idx: int = 0
 
             # If client requests resume and we have tokens buffered, replay them.
             if resume_at > 0 and chat_state.stream_buffer:
@@ -219,10 +220,23 @@ async def chat_stream(
                                     break
 
                                 assistant_msg += token
-                                log.debug("chat_stream_token", session_id=session_id, t=len(token))
+                                tok_idx += 1
+                                log.debug(
+                                    "chat_stream_token",
+                                    session_id=session_id,
+                                    idx=tok_idx,
+                                    token_len=len(token),
+                                    preview=token[:40].replace("\n", "\\n"),
+                                )
                                 chat_state.push_token(token)
                                 safe_token = html.escape(token).replace("\n", "<br/>")
                                 yield f"data: {safe_token}\n\n"
+                                log.debug(
+                                    "chat_sse_emit",
+                                    session_id=session_id,
+                                    idx=tok_idx,
+                                    chars=len(assistant_msg),
+                                )
 
                                 if _METRICS_ENABLED and CHAT_TOKEN_LAT:
                                     now_t = time.perf_counter()
@@ -235,11 +249,13 @@ async def chat_stream(
                                     "chat_stream_complete",
                                     session_id=session_id,
                                     tokens=len(assistant_msg),
+                                    total_tokens=tok_idx,
                                 )
                             break
 
                     await asyncio.sleep(KEEP_ALIVE_SEC)
                     yield ": keep-alive\n\n"
+                    log.debug("chat_sse_keepalive", session_id=session_id)
 
                 except asyncio.CancelledError:
                     print("Stream cancelled by client.")
@@ -251,9 +267,16 @@ async def chat_stream(
                     error_message = html.escape("Sorry, an error occurred.")
                     yield "event: error\n"
                     yield f"data: {error_message}\n\n"
+                    log.error("chat_stream_error_event", session_id=session_id)
                     break
         finally:
-            log.info("chat_stream_complete", session_id=session_id, tokens=len(assistant_msg))
+            log.info(
+                "chat_stream_finalise",
+                session_id=session_id,
+                tokens=len(assistant_msg),
+                completed_successfully=completed_successfully,
+                total_tokens=tok_idx,
+            )
             if completed_successfully and assistant_msg:
                 chat_state.append(paper_id, ChatMessage(role="assistant", content=assistant_msg))
             else:
@@ -261,6 +284,7 @@ async def chat_stream(
 
             chat_state.stream_active = False
             try:
+                log.info("chat_sse_emit_done", session_id=session_id)
                 yield "event: done\ndata: \n\n"
                 yield "event: sse-close\ndata: \n\n"
             except Exception:  # pragma: no cover – client already gone.
@@ -307,11 +331,11 @@ async def chat_clear_session(
     """
 
     try:
-        from chat.state import _chat_states  # noqa: WPS437 – internal mutable bag
+        from chat.state import _chat_states
 
         if session_id in _chat_states:
             del _chat_states[session_id]
-    except Exception:  # noqa: BLE001 – defensive
+    except Exception:
         pass
 
     return Response(status_code=204)

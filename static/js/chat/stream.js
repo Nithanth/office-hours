@@ -15,7 +15,7 @@ const _pendingTokenBuffers = new Map();
 function _startTypingIndicator(targetEl, batchMs) {
   dbg("typing-indicator →", { targetEl, batchMs });
   const contentSpan = document.createElement("span");
-  contentSpan.className = "msg-content caret";
+  contentSpan.className = "caret";
   contentSpan.textContent = "."; // cycles through . .. ...
 
   const entry = {
@@ -134,7 +134,14 @@ function ensureHighlightLoaded() {
 
 /** Render final markdown & clean up timers, attributes, UI state. */
 function _finalizeBubble(targetEl) {
+  console.debug('[lux] _finalizeBubble enter', { id: targetEl?.id, interrupted: targetEl?.dataset?.interrupted });
   if (!targetEl || targetEl.dataset.finalised === "1") return;
+
+  // Mark as finalised *early* to prevent a late htmx:sseError event from
+  // mis-classifying a completed response as interrupted before we finish
+  // markdown rendering. The rest of this function will refine the contents
+  // but callers (cleaners, transcript builders) can already rely on the flag.
+  targetEl.dataset.finalised = "1";
 
   // Flush any remaining tokens
   _flushTokens(targetEl);
@@ -182,7 +189,6 @@ function _finalizeBubble(targetEl) {
       if (caretSpan && caretSpan.parentElement === targetEl) caretSpan.remove();
       entry.first = false;
     }
-    targetEl.dataset.finalised = "1";
     _pendingTokenBuffers.delete(targetEl);
     if (typeof window.enableShuffle === "function") window.enableShuffle();
 
@@ -195,7 +201,7 @@ function _finalizeBubble(targetEl) {
     if (container) scrollToBottom(container);
 
     // Persist transcript *after* final HTML render so cache stays clean
-    _debouncedSave(targetEl);
+    _debouncedSave(targetEl, true);
 
     // Remove SSE attributes to stop reconnection attempts
     ["sse-connect", "hx-sse-reconnect-delay", "hx-ext", "data-batch-ms"].forEach((attr) =>
@@ -211,58 +217,69 @@ function _finalizeBubble(targetEl) {
 // ---------------------------------------------------------------------------
 window.__luxChatCache = window.__luxChatCache || new Map();
 function saveTranscript(_sessionId, key, html) {
+  console.debug('[lux] saveTranscript', { key, chars: html.length });
   window.__luxChatCache.set(key, html);
 }
 
 export { saveTranscript };
 
-const _saveTimers = new WeakMap();
-const MAX_CHAT_LINES = 100;
-function _debouncedSave(bubbleEl) {
-  const container = bubbleEl?.closest?.(".chat-log-container");
-  if (!container) return;
-  clearTimeout(_saveTimers.get(container));
-  const t = setTimeout(() => {
-    const msgs = Array.from(container.children || []);
+export function loadTranscript(_sessionId, key) {
+  const val = window.__luxChatCache?.get(key) || null;
+  console.debug('[lux] loadTranscript', { key, chars: val ? val.length : 0, sample: (val || '').slice(0, 120) });
+  return val;
+}
 
-    // Build a clean array: include pairs of (user, assistant-finalised) and any
-    // system/info blocks. Skip assistant bubbles that are still typing or not
-    // yet finalised, and drop a trailing user prompt without a paired reply.
-    const cleaned = [];
-    for (let i = 0; i < msgs.length; i++) {
-      const el = msgs[i];
-      if (el.classList.contains("user-message")) {
-        const nxt = msgs[i + 1];
-        const isCleanAssistant =
-          nxt &&
-          nxt.classList.contains("assistant-message") &&
-          nxt.dataset.finalised === "1" &&
-          nxt.dataset.interrupted !== "1" &&
-          !nxt.classList.contains("interrupted") &&
-          !nxt.querySelector(".response-stopped") &&
-          !nxt.querySelector(".msg-content");
-        if (isCleanAssistant) {
-          cleaned.push(el, nxt);
-          i++; // skip next since already handled
+const MAX_CHAT_LINES = 100;
+
+export const buildCleanTranscript = (container) => {
+  const msgs = Array.from(container.children || []);
+  const cleaned = [];
+
+  msgs.forEach((el) => {
+    if (el.classList.contains("assistant-message")) {
+      const isClean =
+        el.dataset.finalised === "1" &&
+        el.dataset.interrupted !== "1" &&
+        !el.classList.contains("interrupted") &&
+        !el.querySelector(".response-stopped");
+
+      console.debug('[lux] buildCleanTranscript assistant', {
+        id: el.id,
+        finalised: el.dataset.finalised,
+        interrupted: el.dataset.interrupted,
+        hasInterruptedCls: el.classList.contains('interrupted'),
+        hasStopped: !!el.querySelector('.response-stopped'),
+        taken: isClean
+      });
+
+      if (isClean) {
+        // Ensure the preceding user prompt (if any) is included first
+        const prev = el.previousElementSibling;
+        if (prev && prev.classList.contains("user-message") && !cleaned.includes(prev)) {
+          cleaned.push(prev);
         }
-        // else: dangling user message → drop
-      } else if (el.classList.contains("assistant-message")) {
-        // Keep only autonomous assistant messages that are finalised and not interrupted
-        if (
-          el.dataset.finalised === "1" &&
-          el.dataset.interrupted !== "1" &&
-          !el.classList.contains("interrupted") &&
-          !el.querySelector(".response-stopped") &&
-          !el.querySelector(".msg-content")
-        ) {
-          cleaned.push(el);
-        }
-      } else {
-        // Keep any other block types (system/info) as-is
         cleaned.push(el);
       }
+    } else if (el.classList.contains("user-message")) {
+      // Do NOT push standalone user prompts; we'll include it when its assistant
+      // reply passes the isClean check above. This guarantees dangling prompts
+      // from aborted turns are omitted from the cached transcript.
+      return;
+    } else {
+      cleaned.push(el); // system/info blocks, etc.
     }
+  });
 
+  return cleaned;
+};
+
+const _saveTimers = new WeakMap();
+function _debouncedSave(bubbleEl, immediate = false) {
+  const container = bubbleEl?.closest?.(".chat-log-container");
+  if (!container) return;
+  if (!immediate) clearTimeout(_saveTimers.get(container));
+  const runner = () => {
+    const cleaned = buildCleanTranscript(container);
     const recent = cleaned.slice(-MAX_CHAT_LINES);
     const html = recent.map((n) => n.outerHTML).join("");
 
@@ -277,8 +294,14 @@ function _debouncedSave(bubbleEl) {
       sample: html.slice(0, 80)
     });
     if (chatKey) saveTranscript(null, chatKey, html);
-  }, 120);
-  _saveTimers.set(container, t);
+  };
+
+  if (immediate) {
+    runner();
+  } else {
+    const t = setTimeout(runner, 120);
+    _saveTimers.set(container, t);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -289,11 +312,18 @@ document.body.addEventListener("htmx:sseBeforeMessage", (evt) => {
   const target = evt.target; // element with sse-swap attr
   if (!(target instanceof HTMLElement)) return;
 
-  // Ignore bubbles without data-batch-ms attr
-  const batchMsAttr = target.dataset.batchMs;
-  if (batchMsAttr === undefined) return;
+  // Log every SSE message before we decide what to do with it.
+  const dbgType = evt.detail?.type ?? "token";
+  const dbgData = typeof evt.detail?.data === "string" ? evt.detail.data.slice(0, 80) : "";
+  console.debug('[lux] sseBeforeMessage', { id: target.id, type: dbgType, preview: dbgData });
 
-  // Cancel default swap
+  // Only intercept and batch messages for chat bubbles that opted-in via data-batch-ms.
+  const batchMsAttr = target.dataset.batchMs;
+  if (batchMsAttr === undefined) {
+    return; // Allow HTMX to handle normally (e.g. report streams)
+  }
+
+  // Cancel default swap – we'll batch and flush ourselves.
   evt.preventDefault();
 
   if (evt.detail?.type === "error") {
@@ -333,6 +363,7 @@ document.body.addEventListener("htmx:sseBeforeMessage", (evt) => {
 ["sseDone", "sseClose"].forEach((evtName) => {
   document.body.addEventListener(`htmx:${evtName}`, (ev) => {
     const el = ev.detail?.elt;
+    console.debug(`[lux] event:hx-${evtName}`, { id: el?.id, finalised: el?.dataset?.finalised });
     if (el?.classList.contains("assistant-message")) _finalizeBubble(el);
   }, true);
 });
@@ -347,13 +378,19 @@ document.body.addEventListener("htmx:sseError", (evt) => {
   if (src?.close) setTimeout(() => src.close(), 50);
 
   if (el?.classList.contains("assistant-message")) {
-    // Mark interrupted so UI reflects partial response and persistence can drop.
-    el.dataset.interrupted = "1";
-    el.classList.add("interrupted");
+    console.warn('[lux] sseError for bubble', { id: el.id, textLen: el.textContent.length });
+    // If we actually received some tokens, treat this as a graceful close
+    // (Gemini sometimes closes the stream which HTMX surfaces as sseError).
+    const hasContent = el.textContent.trim().length > 0;
 
-    if (!el.querySelector(".response-stopped")) {
-      el.innerHTML =
-        '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
+    if (!hasContent) {
+      el.dataset.interrupted = "1";
+      el.classList.add("interrupted");
+
+      if (!el.querySelector(".response-stopped")) {
+        el.innerHTML =
+          '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
+      }
     }
 
     _finalizeBubble(el);
@@ -367,11 +404,6 @@ export const pendingBuffers = _pendingTokenBuffers;
 export const startTypingIndicator = _startTypingIndicator;
 export const flushTokens = _flushTokens;
 export const finalizeBubble = _finalizeBubble;
-export function loadTranscript(_sessionId, key) {
-  return window.__luxChatCache?.get(key) || null;
-}
-
-// TODO: migrate _pendingTokenBuffers, _startTypingIndicator, _flushTokens, and
-// related SSE event-source handling from legacy app.js.
+export const _loadTranscriptCompat = loadTranscript;
 
 console.debug("[lux] chat/stream.js loaded (placeholder)");

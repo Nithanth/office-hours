@@ -1,7 +1,7 @@
 // chat/ui.js – modal UI helpers & utilities for chat subsystem
 
 import { dbg } from "../util.js";
-import { finalizeBubble, saveTranscript } from "./stream.js";
+import { finalizeBubble, saveTranscript, pendingBuffers as _pendingBuffers } from "./stream.js";
 
 // Internal cache so we don't create duplicate stop buttons.
 const _stopBtnSym = Symbol("stopBtnSym");
@@ -124,44 +124,92 @@ export function enhanceModal(modal) {
     attachAutoResize(ta);
   }
   const log = modal.querySelector(".chat-log-container");
-  if (log) scrollToBottom(log);
+  if (log) {
+    // Sanitize any orphan nodes in case a previous close missed cleanUp.
+    const zap = [];
+    const msgs = Array.from(log.children || []);
+    for (let i = 0; i < msgs.length; i++) {
+      const el = msgs[i];
+      if (
+        el.classList.contains("assistant-message") &&
+        (
+          el.dataset.finalised !== "1" ||
+          el.dataset.interrupted === "1" ||
+          el.classList.contains("interrupted") ||
+          el.classList.contains("typing")
+        )
+      ) {
+        zap.push(el);
+        const prev = el.previousElementSibling;
+        if (prev && prev.classList.contains("user-message")) zap.push(prev);
+      }
+    }
+    // Remove a trailing user prompt without assistant reply.
+    const last = log.lastElementChild;
+    if (last && last.classList.contains("user-message")) zap.push(last);
+    zap.forEach((el) => el.remove());
+    if (zap.length) console.debug('[lux] sanitizeLog removed', zap.length, 'stale nodes');
+
+    // Always ensure controls are enabled after sanitation
+    const ta = modal.querySelector("textarea[name='prompt']");
+    const submitBtn = modal.querySelector("button[type='submit']");
+    if (ta) ta.disabled = false;
+    if (submitBtn) submitBtn.disabled = false;
+    setControlsEnabled(modal, true);
+
+    scrollToBottom(log);
+  }
 
   // Attach one-time close handler to clean up in-flight streams
   if (!modal.dataset.closeHook) {
     modal.dataset.closeHook = "1";
     const cleanUp = () => {
-      // Look for any still-present assistant bubble that was streaming or interrupted
-      let activeStream = modal.querySelector("[sse-connect]");
-      if (!activeStream) {
-        activeStream = modal.querySelector(
-          ".assistant-message.interrupted, .assistant-message.typing"
-        );
-      }
-      if (activeStream) {
-        // Close SSE quickly
-        const src = activeStream.__eventSource;
-        if (src && typeof src.close === "function") src.close();
+      const hidden = modal.querySelector("#hidden-paper-id");
 
-        // Remove the assistant bubble and its preceding user prompt (if any)
-        const toZap = [activeStream];
-        const prev = activeStream.previousElementSibling;
+      // ------------------------------------------------------------------
+      // 1. Find any unfinished assistant bubble (streaming, typing, or not yet
+      //    marked finalised) and remove it along with the paired user prompt.
+      // ------------------------------------------------------------------
+      const toZap = [];
+      const unfinishedSel = ".assistant-message.typing, .assistant-message.interrupted, .assistant-message:not([data-finalised='1'])";
+      log.querySelectorAll(unfinishedSel).forEach((el) => {
+        toZap.push(el);
+        const prev = el.previousElementSibling;
         if (prev && prev.classList.contains("user-message")) toZap.push(prev);
-        toZap.forEach((el) => el.remove());
-        console.debug('[lux] cleanUp removed', toZap.length, 'nodes; stream aborted');
+      });
+      toZap.forEach((el) => el.remove());
+      // Also drop any SSE token buffer bookkeeping attached to removed bubbles.
+      toZap.forEach((el) => {
+        const entry = _pendingBuffers.get(el);
+        if (entry?.typingTimer) clearInterval(entry.typingTimer);
+        _pendingBuffers.delete(el);
+      });
+      if (toZap.length) console.debug('[lux] cleanUp removed', toZap.length, 'unfinished nodes');
 
-        // Notify backend to abort so stream_active flag resets quickly
-        const hidden = modal.querySelector("#hidden-paper-id");
-        if (hidden && hidden.value) {
-          fetch("/chat/abort", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: `paper_id=${encodeURIComponent(hidden.value)}`,
-          }).catch(() => {});
+      // After zapping unfinished assistants, remove ANY user-message that is not
+      // immediately followed by an assistant-message. Handles cases where the
+      // assistant bubble was already removed earlier (connection error etc.)
+      const nodes = Array.from(log.children || []);
+      nodes.forEach((el, idx) => {
+        if (el.classList.contains("user-message")) {
+          const nxt = nodes[idx + 1];
+          if (!nxt || !nxt.classList.contains("assistant-message")) el.remove();
         }
+      });
+
+      // ------------------------------------------------------------------
+      // 2. Always notify backend to reset stream_active so subsequent /chat
+      //    calls are accepted, even if we didn't detect an activeStream.
+      // ------------------------------------------------------------------
+      if (hidden && hidden.value) {
+        fetch("/chat/abort", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `paper_id=${encodeURIComponent(hidden.value)}`,
+        }).catch(() => {});
       }
 
       // Persist current transcript before DOM is wiped by the hx-on:click handler.
-      const log = modal.querySelector(".chat-log-container");
       if (log) {
         // Build a clean transcript similar to _debouncedSave to avoid caching
         // interrupted / stopped bubbles or dangling prompts.
@@ -199,16 +247,27 @@ export function enhanceModal(modal) {
         const MAX_CHAT_LINES = 100;
         const recent = cleaned.slice(-MAX_CHAT_LINES);
         const html = recent.map((n) => n.outerHTML).join("");
+
+        // Avoid clobbering an existing cached transcript with an empty string
+        // (happens when the user aborted mid-stream and no clean pairs remain).
+        if (!html.trim()) return;
+
         const pid =
           log.dataset.chatKey ||
           log.dataset.chatPid ||
           (log.id ? log.id.replace("chat-log-", "") : "");
         if (pid) saveTranscript(null, pid, html);
       }
+
+      // Re-enable controls so the user can continue chatting if they reopen.
+      setControlsEnabled(modal, true);
     };
 
     // 1) Native <dialog> close (not used currently but safe to keep)
     modal.addEventListener("close", cleanUp);
+
+    // Expose for external beforeSwap hook
+    modal._luxCleanUp = cleanUp;
 
     // 2) Our custom ✕ button empties #modal-container – intercept click BEFORE swap
     const btn = modal.querySelector(".modal-close-btn");

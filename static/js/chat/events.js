@@ -15,7 +15,7 @@ window.addEventListener("beforeunload", () => {
 });
 
 import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } from "./stream.js";
-import { getModalParts, setControlsEnabled, scrollToBottom } from "./ui.js";
+import { getModalParts, setControlsEnabled, scrollToBottom, enhanceModal } from "./ui.js";
 import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js";
 
 // Submit on Enter, Shift+Enter for newline
@@ -86,6 +86,16 @@ document.body.addEventListener("htmx:afterRequest", (evt) => {
     const modal = elt.closest(".modal");
     const chatLog = modal && modal.querySelector(".chat-log-container");
     if (chatLog) scrollToBottom(chatLog);
+  }
+});
+
+// Ensure cleanUp runs even when modal is removed via ESC or overlay click
+document.body.addEventListener("htmx:beforeSwap", (evt) => {
+  const swapEl = evt.detail?.target;
+  if (!swapEl || swapEl.id !== "modal-container") return;
+  const existingModal = swapEl.querySelector(".modal");
+  if (existingModal && typeof existingModal._luxCleanUp === "function") {
+    existingModal._luxCleanUp();
   }
 });
 
@@ -168,6 +178,15 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
       console.error("initChat error", err);
     }
   });
+});
+
+// Call enhanceModal whenever a chat modal is swapped in so autosize & sanitize run
+document.body.addEventListener("htmx:afterSwap", (evt) => {
+  const tgt = evt.detail?.target;
+  if (!tgt) return;
+  // When /chat-modal returns, target will be #modal-container. The modal is its first child.
+  const modal = tgt.querySelector?.(".modal");
+  if (modal) enhanceModal(modal);
 });
 
 console.debug("[lux] chat/events.js wired listeners");

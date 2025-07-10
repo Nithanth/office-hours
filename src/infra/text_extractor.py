@@ -313,7 +313,8 @@ class TextExtractor:
         illegal path characters), we aggressively **sanitize** it so the
         resulting filename never creates unintended sub-directories.
         """
-        key_hash = _sha256(url)
+        # Url may be a pydantic.HttpUrl object – ensure we hash the string value
+        key_hash = _sha256(str(url))
 
         safe_fragment = ""
         if paper_id:
