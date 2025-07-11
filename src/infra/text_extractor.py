@@ -31,15 +31,15 @@ from pdfminer.high_level import extract_text
 # ---------------------------------------------------------------------------
 
 if TYPE_CHECKING:
-    # During static type checking we don't care about implementation – use Any.
+    # During static type checking we don't care about implementation - use Any.
     Document = Any
 else:
     try:
         from readability import Document  # type: ignore[import-not-found]
-    except ModuleNotFoundError:  # pragma: no cover – fallback path
+    except ModuleNotFoundError:  # pragma: no cover - fallback path
         try:
             from readability_lxml import Document  # type: ignore[import-not-found]
-        except ModuleNotFoundError:  # pragma: no cover – final stub fallback
+        except ModuleNotFoundError:  # pragma: no cover - final stub fallback
 
             class Document:  # type: ignore[too-few-public-methods]
                 """Minimal stub replacement when readability packages are absent."""
@@ -51,12 +51,12 @@ else:
                     return self._html
 
 
-# Local import – keep inside try/except so text_extractor is usable in
+# Local import - keep inside try/except so text_extractor is usable in
 # unit tests without real API keys.
 try:
     from config import config as app_config
-    from infra.exa_client import ExaClient  # Circular import safe – used lazily
-except Exception:  # pragma: no cover – during lint/CI without deps
+    from infra.exa_client import ExaClient  # Circular import safe - used lazily
+except Exception:  # pragma: no cover - during lint/CI without deps
     app_config = None
     ExaClient = cast(Any, None)
 
@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 CACHE_ROOT = Path("data/full_text")
 CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 
-# Increased size cap for PDFs – many conference papers are >10 MB
+# Increased size cap for PDFs - many conference papers are >10 MB
 MAX_PDF_BYTES = 15 * 1024 * 1024  # 15 MB
 
 # ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ class TextExtractor:
             try:
                 extracted = await layer(url)
             except Exception as exc:  # noqa: BLE001
-                logger.debug("%s failed for %s – %s", layer.__name__, url, exc)
+                logger.debug("%s failed for %s - %s", layer.__name__, url, exc)
                 continue
             if self._good_quality(extracted):
                 break  # Success!
@@ -156,7 +156,7 @@ class TextExtractor:
             logger.info("Full-text cached ➜ %s (%d chars)", cache_path, len(extracted))
             return str(cache_path)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Could not write cache file %s – %s", cache_path, exc)
+            logger.error("Could not write cache file %s - %s", cache_path, exc)
             return None
 
     async def load_full_text(self, paper_id: str) -> str | None:
@@ -217,7 +217,7 @@ class TextExtractor:
                 raw = response.results[0].text or ""
                 return _clean_text(raw)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Exa get_contents failed for %s – %s", url, exc)
+            logger.debug("Exa get_contents failed for %s - %s", url, exc)
         return None
 
     async def _layer_arxiv(self, url: str) -> str | None:
@@ -280,7 +280,7 @@ class TextExtractor:
             pdf_bytes = await resp.read()
         if len(pdf_bytes) > MAX_PDF_BYTES:
             return None
-        # pdfminer is CPU-heavy – run in a worker thread. Provide a file-like object.
+        # pdfminer is CPU-heavy - run in a worker thread. Provide a file-like object.
         text = await asyncio.to_thread(extract_text, io.BytesIO(pdf_bytes))
         return _clean_text(text)
 
@@ -313,7 +313,7 @@ class TextExtractor:
         illegal path characters), we aggressively **sanitize** it so the
         resulting filename never creates unintended sub-directories.
         """
-        # Url may be a pydantic.HttpUrl object – ensure we hash the string value
+        # Url may be a pydantic.HttpUrl object - ensure we hash the string value
         key_hash = _sha256(str(url))
 
         safe_fragment = ""

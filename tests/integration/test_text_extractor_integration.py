@@ -19,7 +19,7 @@ async def test_extract_arxiv_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setattr("infra.text_extractor.CACHE_ROOT", tmp_path)
 
     if not os.getenv("EXA_API_KEY"):
-        pytest.skip("EXA_API_KEY not set – skipping network integration test")
+        pytest.skip("EXA_API_KEY not set - skipping network integration test")
 
     extractor = TextExtractor.instance()
     # Force prefer_exa=False so we hit PDF layer regardless of Exa account limits

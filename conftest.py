@@ -2,7 +2,7 @@
 
 If ``pytest-asyncio`` is installed it will be registered automatically so
 ``async def`` tests work without explicit marks. If not installed we fall
-back gracefully, but async tests will error – install the package via
+back gracefully, but async tests will error - install the package via
 ``pip install -r requirements-dev.txt``.
 """
 

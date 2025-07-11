@@ -464,7 +464,7 @@ class ReportGenerator:
                 )
                 task_infos.append((paper, "similar"))
 
-        # Topic overview – queue BEFORE similar paper summaries so the overview appears first
+        # Topic overview - queue BEFORE similar paper summaries so the overview appears first
         if papers_for_topic_report:
             consolidated_content_for_topic = ""
             for _p in papers_for_topic_report:

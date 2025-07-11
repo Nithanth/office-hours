@@ -15,7 +15,7 @@ src_path = project_root / "src"
 if src_path.as_posix() not in sys.path:
     sys.path.insert(0, src_path.as_posix())
 
-# ruff: noqa: E402 – intentional import order (sys.path setup before importing app)
+# ruff: noqa: E402 - intentional import order (sys.path setup before importing app)
 import main as app_module  # The main FastAPI application lives here
 from api.routes import ask_llm, report, search
 
@@ -25,7 +25,7 @@ class _DummyService:  # very lightweight stub for external services
 
     _initialized: bool = True
 
-    async def __aenter__(self, *args: Any, **kwargs: Any):  # noqa: D401 – contextmanager helpers
+    async def __aenter__(self, *args: Any, **kwargs: Any):  # noqa: D401 - contextmanager helpers
         return self
 
     async def __aexit__(self, *args: Any, **kwargs: Any):
@@ -89,7 +89,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     # Ensure the route module references the same stub (it imported the function by name)
     monkeypatch.setattr(report, "render_error_message", lambda *a, **k: _fake_div, raising=False)
 
-    # No return – autouse fixture
+    # No return - autouse fixture
 
 
 @pytest.fixture(scope="session")
@@ -100,7 +100,7 @@ def client() -> TestClient:
 
 
 # ---------------------------------------------------------------------------
-# Smoke tests – ensure endpoints respond (status 200-399) with dummy services.
+# Smoke tests - ensure endpoints respond (status 200-399) with dummy services.
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +136,7 @@ def test_ask_llm_endpoint(client: TestClient):
 
 
 def test_generate_report_endpoint(client: TestClient):
-    # minimal payload – invalid paper JSON is fine; route returns graceful error banner
+    # minimal payload - invalid paper JSON is fine; route returns graceful error banner
     resp = client.post(
         "/generate-report",
         data={

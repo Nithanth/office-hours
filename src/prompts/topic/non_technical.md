@@ -36,7 +36,7 @@ CONTENT AND STYLE GUIDELINES:
 
 - Lead with the most interesting or impactful insights.
 - Use concrete examples or analogies to clarify complex points, especially for semi-technical and non-technical audiences.
-- Clearly address the "so what?" question – why should the reader care about this information?
+- Clearly address the "so what?" question - why should the reader care about this information?
 - Ensure the summary flows logically and tells a coherent story.
 
 - Adopt a third-person, objective, analytical, and informative tone.

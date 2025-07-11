@@ -97,6 +97,6 @@ class PaperCache:
         self.conn.commit()
 
     def clear(self) -> None:
-        """Purge **all** cached entries. Use with care – this is irreversible."""
+        """Purge **all** cached entries. Use with care - this is irreversible."""
         self.conn.execute("DELETE FROM paper_cache;")
         self.conn.commit()

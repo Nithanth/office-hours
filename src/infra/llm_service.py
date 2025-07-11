@@ -526,7 +526,7 @@ class LLMService:
 
         # Helper to look up a sensible default model for each provider
         def _get_default_model_for_provider(provider: LLMProviderName) -> str | None:
-            # If the configured DEFAULT_MODEL_KEY belongs to this provider – use it.
+            # If the configured DEFAULT_MODEL_KEY belongs to this provider - use it.
             default_info = app_config.AVAILABLE_MODELS.get(app_config.DEFAULT_MODEL_KEY)
             if default_info and default_info["provider"] == provider:
                 return str(default_info["id"])
@@ -683,7 +683,7 @@ class LLMService:
                                 yield str(delta.content)
                     except Exception as exc:  # noqa: BLE001
                         self.logger.exception(
-                            "OpenAI streaming failed – falling back", exc_info=exc
+                            "OpenAI streaming failed - falling back", exc_info=exc
                         )
                         async for tok in _fallback_stream():
                             yield tok
@@ -721,7 +721,7 @@ class LLMService:
                                 yield str(event.delta.text)
                     except Exception as exc:  # noqa: BLE001
                         self.logger.exception(
-                            "Anthropic streaming failed – falling back", exc_info=exc
+                            "Anthropic streaming failed - falling back", exc_info=exc
                         )
                         async for tok in _fallback_stream():
                             yield tok
@@ -763,7 +763,7 @@ class LLMService:
                                 yield str(delta.content)
                     except Exception as exc:  # noqa: BLE001
                         self.logger.exception(
-                            "TogetherAI streaming failed – falling back", exc_info=exc
+                            "TogetherAI streaming failed - falling back", exc_info=exc
                         )
                         async for tok in _fallback_stream():
                             yield tok
@@ -775,7 +775,7 @@ class LLMService:
         # Gemini native streaming
         if provider_name == "gemini":
             try:
-                from google import genai  # Lazy import – keeps optional dependency lightweight
+                from google import genai  # Lazy import - keeps optional dependency lightweight
 
                 gm_client = cast(Any, provider._async_client)
                 if gm_client is None:
@@ -807,7 +807,7 @@ class LLMService:
                                 yield str(text_part)
                     except Exception as exc:  # noqa: BLE001
                         self.logger.exception(
-                            "Gemini streaming failed – falling back", exc_info=exc
+                            "Gemini streaming failed - falling back", exc_info=exc
                         )
                         async for tok in _fallback_stream():
                             yield tok

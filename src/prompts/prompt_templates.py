@@ -80,7 +80,7 @@ def get_topic_analysis_prompts(
     target_audience: Optional[str] = None,
     context_snippets: Optional[str] = None,
     overall_instructions: Optional[str] = None,  # Added for length/style guidance
-    summary_size_key: str = "M",  # S, M, L, XL – controls heading granularity
+    summary_size_key: str = "M",  # S, M, L, XL - controls heading granularity
     **kwargs: Any,
 ) -> tuple[str, str]:
     """Generates prompts for a landscape analysis of a research topic."""

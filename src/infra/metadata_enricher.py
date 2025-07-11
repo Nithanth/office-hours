@@ -19,7 +19,7 @@ class MetadataEnricher:
         3. Exa search/contents
     """
 
-    # Per-API global semaphores (coarse – adjust as needed)
+    # Per-API global semaphores (coarse - adjust as needed)
     _arxiv_sem = asyncio.Semaphore(1)  # arXiv polite limit ≈1 req / 3 s
     _ss_sem = asyncio.Semaphore(3)  # SemanticScholar anonymous ≈100/day
     _exa_sem = asyncio.Semaphore(20)  # Exa generous
@@ -39,7 +39,7 @@ class MetadataEnricher:
         """
         loop = asyncio.get_running_loop()
 
-        arxiv_id = self.client._extract_arxiv_id(url)  # noqa: SLF001 – internal helper
+        arxiv_id = self.client._extract_arxiv_id(url)  # noqa: SLF001 - internal helper
         doi_val = self.client._extract_doi(url)  # noqa: SLF001
 
         # Schedule tasks lazily

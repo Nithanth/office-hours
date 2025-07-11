@@ -55,7 +55,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
     global current_direct_query_task, exa_client_instance, llm_service_instance
 
-    # Refresh singleton handles – route modules capture them at *import* time,
+    # Refresh singleton handles - route modules capture them at *import* time,
     # but Uvicorn reload / multiprocessing means the objects may be assigned
     # later during the app lifespan event.  Lazily fetch again if still None.
     if exa_client_instance is None:
@@ -133,7 +133,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             return HTMLResponse(content=answer_html)
         except asyncio.CancelledError:
             return HTMLResponse("<p><i>LLM query cancelled.</i></p>")
-        except Exception as exc:  # noqa: BLE001 – bubble unexpected errors
+        except Exception as exc:  # noqa: BLE001 - bubble unexpected errors
             logger.exception("Direct query failed", err=str(exc))
             return HTMLResponse(
                 f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>",
@@ -147,7 +147,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Standard paper search flow
     # ------------------------------------------------------------------
     try:
-        assert exa_client_instance is not None, "Exa client not initialised – check EXA_API_KEY"
+        assert exa_client_instance is not None, "Exa client not initialised - check EXA_API_KEY"
 
         # Date parsing / validation ------------------------------------------------
         parsed_start_date: datetime | None = None
@@ -210,7 +210,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
 
 # ---------------------------------------------------------------------------
-# Helper – build <li> HTML string for a Paper (avoid fasthtml for endpoints)
+# Helper - build <li> HTML string for a Paper (avoid fasthtml for endpoints)
 # ---------------------------------------------------------------------------
 
 
@@ -239,7 +239,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
     paper_json_escaped = html.escape(paper_json)
 
     if is_main:
-        # Main (pinned) paper – render a *disabled, checked* checkbox so the
+        # Main (pinned) paper - render a *disabled, checked* checkbox so the
         # visual language is identical to selectable papers, but ensure it is
         # always included via a hidden input (disabled fields are not submitted).
 
@@ -250,7 +250,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
             "<span class='pinned-label' style='font-size:0.85em;'>📌 pinned</span>"
         )
     else:
-        # Regular paper – user-selectable checkbox
+        # Regular paper - user-selectable checkbox
         selection_input_html = (
             f"<input type='checkbox' class='paper-select-checkbox' style='margin-right:5px;' "
             f"name='selected_papers_json' value='{paper_json_escaped}'>"
@@ -312,7 +312,7 @@ async def shuffle_all_papers() -> HTMLResponse:
     papers = client.shuffle_k()
     if not papers:
         return HTMLResponse(
-            "<ul id='papers-list'><li>Cache cleared – run a new search before shuffling.</li></ul>",
+            "<ul id='papers-list'><li>Cache cleared - run a new search before shuffling.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 

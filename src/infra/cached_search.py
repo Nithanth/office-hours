@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 try:
     # When project root is on PYTHONPATH (e.g. production server)
     from models.paper import Paper
-except ImportError:  # noqa: F401 – fallback when running via ``src.`` package path
+except ImportError:  # noqa: F401 - fallback when running via ``src.`` package path
     from src.models.paper import Paper
 
 __all__ = ["CachedSearch"]
@@ -40,7 +40,7 @@ class CachedSearch:
     # ------------------------------------------------------------------
     def _random_not_in(self, exclude: set[str]) -> str:
         pool = [pid for pid in self.paper_by_id if pid not in exclude]
-        if not pool:  # Fallback – shouldn’t normally happen
+        if not pool:  # Fallback - shouldn’t normally happen
             pool = list(self.paper_by_id.keys())
         return random.choice(pool)
 

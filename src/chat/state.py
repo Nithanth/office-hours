@@ -4,7 +4,7 @@ This module stores a lightweight in-memory conversation history for each
 visitor, keyed by a signed/opaque session cookie that the
 ChatSessionMiddleware adds to every request.
 
-NOTE: This implementation is deliberately simple – it is meant only for
+NOTE: This implementation is deliberately simple - it is meant only for
 PHASE-0 local development where the app typically runs in a single
 process.  For multi-process or multi-machine deployments replace the
 process-local `chat_states` dict with a shared store such as Redis in a
@@ -32,11 +32,11 @@ class ChatMessage:
     role: str  # "user" | "assistant"
     content: str
 
-    def serialise(self) -> dict[str, str]:  # noqa: D401 – small helper
+    def serialise(self) -> dict[str, str]:  # noqa: D401 - small helper
         """Return a plain-dict representation suitable for JSON, logging, etc."""
         return {"role": self.role, "content": self.content}
 
-    def __str__(self) -> str:  # pragma: no cover – convenience only
+    def __str__(self) -> str:  # pragma: no cover - convenience only
         return (
             f"{self.role}: {html.escape(self.content[:60])}…"
             if len(self.content) > 60
@@ -87,7 +87,7 @@ class ChatState:
             self.stream_buffer = self.stream_buffer[-self._buf_cap :]
 
     # ---------------------------------------------------------------------
-    # Public helpers – per-paper chat history
+    # Public helpers - per-paper chat history
     # ---------------------------------------------------------------------
 
     def append(self, paper_id: str, msg: ChatMessage) -> None:
@@ -96,7 +96,7 @@ class ChatState:
         history.append(msg)
         self._histories[paper_id] = history[-self._cap :]
 
-    def get_conversation(self, paper_id: str) -> list[ChatMessage]:  # noqa: D401 – helper
+    def get_conversation(self, paper_id: str) -> list[ChatMessage]:  # noqa: D401 - helper
         """Return a copy of the history list for *paper_id*."""
         return list(self._histories.get(paper_id, []))
 
@@ -107,16 +107,16 @@ class ChatState:
 
 
 # ---------------------------------------------------------------------------
-# Module-level bag for PHASE-0 – per-process, *not* shared across workers.
+# Module-level bag for PHASE-0 - per-process, *not* shared across workers.
 # ---------------------------------------------------------------------------
 _chat_states: dict[str, ChatState] = {}
 
 # ---------------------------------------------------------------------------
-# Multi-worker guard – log once if multiple OS CPUs or UVICORN_WORKERS>1
+# Multi-worker guard - log once if multiple OS CPUs or UVICORN_WORKERS>1
 # ---------------------------------------------------------------------------
 try:  # Sched affinity not available on macOS; fallback gracefully
     _cpu_count = len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
-except Exception:  # noqa: BLE001 – any failure → assume single worker
+except Exception:  # noqa: BLE001 - any failure → assume single worker
     _cpu_count = os.cpu_count() or 1
 
 _uvicorn_workers_env = os.getenv("UVICORN_WORKERS")
@@ -135,7 +135,7 @@ if max(_cpu_count, _declared_workers) > 1:
         _fallback_logger: Any = _logging.getLogger(__name__)
     logger.warning(
         "ChatState uses a process-local dict; multiple workers detected (cpus=%d, UVICORN_WORKERS=%d). "
-        "Conversations will NOT be shared across workers – switch to Redis or similar in later phases.",
+        "Conversations will NOT be shared across workers - switch to Redis or similar in later phases.",
         _cpu_count,
         _declared_workers,
     )

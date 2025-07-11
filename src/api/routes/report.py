@@ -1,7 +1,7 @@
 """Report-related endpoints extracted from legacy `app.py`.
 
 These routes are registered on the shared FastAPI application during the Phase-2
-refactor. Behaviour remains unchanged – we have simply moved the code into an
+refactor. Behaviour remains unchanged - we have simply moved the code into an
 `APIRouter` so that `app.py` can gradually be slimmed down.
 """
 
@@ -29,7 +29,7 @@ router = APIRouter()
 
 
 @router.post("/generate-report", response_class=HTMLResponse)
-async def generate_report(  # noqa: PLR0913 – very long signature mirrors original
+async def generate_report(  # noqa: PLR0913 - very long signature mirrors original
     request: Request,
     original_query_for_report: str = Form(...),
     selected_papers_json: list[str] = Form(...),  # noqa: B008
@@ -133,7 +133,7 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
         )
 
     # Ensure Exa client is available (initialized in lifespan)
-    global exa_client_instance  # noqa: PLW0603 – steers clear of circulars for now
+    global exa_client_instance  # noqa: PLW0603 - steers clear of circulars for now
     if exa_client_instance is None:
         logger.critical(
             "generate_report: Exa Service not available. Cannot generate report.", params=log_params
@@ -162,18 +162,18 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
             else:
                 similar_papers_for_report.append(paper)
         logger.info(
-            "generate_report: URL input – main paper identified",
+            "generate_report: URL input - main paper identified",
             main_paper_title=main_paper_for_report.title if main_paper_for_report else "<none>",
             num_similar=len(similar_papers_for_report),
         )
     else:
         topic_papers_for_report = deserialized_papers
         logger.info(
-            "generate_report: Topic input – papers for report",
+            "generate_report: Topic input - papers for report",
             num_papers=len(topic_papers_for_report),
         )
 
-    # Guard rails – ensure we have something to summarise
+    # Guard rails - ensure we have something to summarise
     if is_url_input and not (main_paper_for_report or similar_papers_for_report):
         error_html = render_error_message(
             "No papers were selected from the URL search results to generate a report.",
@@ -238,7 +238,7 @@ async def citation_card(paper_id: str) -> Response:
     """Return the small hover-card HTML for a citation link."""
 
     # TODO: When we have a paper-lookup service, attempt to fetch real details
-    paper = None  # placeholder – minimise behavioural change
+    paper = None  # placeholder - minimise behavioural change
 
     if paper is None:
         return HTMLResponse(

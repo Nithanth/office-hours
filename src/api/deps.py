@@ -22,7 +22,7 @@ def get_settings() -> AppConfig:
     Wrapped in a helper so tests can easily override via `dependency_overrides`.
     """
 
-    # NOTE: we import the *instance* created at the bottom of ``config.py`` –
+    # NOTE: we import the *instance* created at the bottom of ``config.py`` -
     # **not** the Config class.  This keeps memory footprint tiny and matches
     # existing ``config.config`` semantics.
     from config import config as _settings

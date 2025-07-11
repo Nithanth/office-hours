@@ -61,7 +61,7 @@ def base_layout(title_text: str, *content: Any) -> str:
             # htmx_script, # FastHTML usually includes HTMX, uncomment if needed explicitly
         ),
         Body(
-            # Global toolbar – logo left, controls right
+            # Global toolbar - logo left, controls right
             Header(
                 Div(
                     # Left: logo / home link
@@ -77,7 +77,7 @@ def base_layout(title_text: str, *content: Any) -> str:
                         id="aud-select",
                         cl="mr-3",
                     ),
-                    # Model select – built from config at runtime for flexibility
+                    # Model select - built from config at runtime for flexibility
                     Select(
                         Option("Select Model", value="", disabled=True, selected=True),
                         *[

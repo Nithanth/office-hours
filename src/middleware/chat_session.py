@@ -4,7 +4,7 @@ request state for easy access throughout the request-handling pipeline.
 
 PHASE-0 notes
 -------------
-* Secure=True flag is set – assumes HTTPS in production. In dev (HTTP)
+* Secure=True flag is set - assumes HTTPS in production. In dev (HTTP)
   browsers will ignore the secure bit but still send the cookie back.
 * The cookie is signed but not encrypted; contents are random so signing
   mainly protects against tampering.

@@ -143,11 +143,11 @@ class Config:
     EXA_RETRY_MIN_WAIT: int = int(os.getenv("EXA_RETRY_MIN_WAIT", 1))  # seconds
     EXA_RETRY_MAX_WAIT: int = int(os.getenv("EXA_RETRY_MAX_WAIT", 10))  # seconds
 
-    # Default model – can be overridden via env var.
+    # Default model - can be overridden via env var.
     DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_2_5_pro_preview")
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
-        # Gemini (Google) – internal provider tag remains "gemini"
+        # Gemini (Google) - internal provider tag remains "gemini"
         "gemini_2_5_pro_preview": {
             "id": "models/gemini-2.5-pro-preview-06-05",
             "provider": "gemini",
@@ -235,7 +235,7 @@ Do not use markdown, bolding, or any special formatting in your output.
     _CONTENT_QUALITY_INSTRUCTIONS_STR: str = """
 - Lead with the most interesting or impactful insights.
 - Use concrete examples or analogies to clarify complex points, especially for semi-technical and non-technical audiences.
-- Clearly address the "so what?" question – why should the reader care about this information?
+- Clearly address the "so what?" question - why should the reader care about this information?
 - Ensure the summary flows logically and tells a coherent story.
 """
 

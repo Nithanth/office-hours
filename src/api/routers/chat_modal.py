@@ -23,7 +23,7 @@ async def chat_modal(
     audience_type: str | None = Query(
         None, description="(Optional) Audience type key from toolbar"
     ),
-) -> HTMLResponse:  # noqa: D401 – pydantic description fine
+) -> HTMLResponse:  # noqa: D401 - pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
     The modal contains a chat log container, a textarea form that posts to `/chat`,
@@ -38,14 +38,14 @@ async def chat_modal(
 
         get_paper_service = import_module("main").get_paper_service
         paper_service = get_paper_service()
-    except Exception:  # noqa: BLE001 – best-effort metadata
+    except Exception:  # noqa: BLE001 - best-effort metadata
         paper_service = None
 
     paper = None
     if paper_service:  # Attempt to fetch metadata for nicer header
         try:
             paper = await paper_service.get_paper_metadata(paper_id)
-        except Exception as exc:  # noqa: BLE001 – best effort
+        except Exception as exc:  # noqa: BLE001 - best effort
             logger.warning("chat_modal: metadata lookup failed for %s: %s", paper_id, exc)
 
     # Default title if no metadata is found
@@ -78,7 +78,7 @@ async def chat_modal(
 
         session_id = getattr(request.state, "session_id", "anon")
         history = get_chat_state(session_id).get_conversation(paper_id)
-    except Exception:  # noqa: BLE001 – fallback silently
+    except Exception:  # noqa: BLE001 - fallback silently
         history = []
 
     history_html = "".join(str(ChatBubble(msg.content, msg.role)) for msg in history)

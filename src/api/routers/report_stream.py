@@ -42,7 +42,7 @@ router: APIRouter = APIRouter(tags=["report-incremental"])
 
 REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
 
-# Max size of each SSE data line – keeping well below 64 KiB browser limit
+# Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars
 
 
@@ -119,7 +119,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     sse_url = f"/report/stream?token={token}"
 
     # ------------------------------------------------------------------
-    # Validate required parameters – defend against client-side bypasses
+    # Validate required parameters - defend against client-side bypasses
     # ------------------------------------------------------------------
     def _is_blank(val: str | None) -> bool:
         return (val or "").strip() == ""
@@ -162,7 +162,7 @@ async def report_stream(
 
     payload = REPORT_REQUEST_CACHE.get(token)
     if payload is None:
-        # Unknown or expired token – send 204 so EventSource treats it as closed and
+        # Unknown or expired token - send 204 so EventSource treats it as closed and
         # does NOT exponentially retry (avoids endless 404 log spam).
         return Response(status_code=204)
 
@@ -217,11 +217,11 @@ async def report_stream(
         actual_topic_size_key = topic_size_map.get(prompt_len_label, "L")
 
         overall_instr = rg.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_size_key]
-        # Build a *brief* context – first ~150 chars from first 3 papers
+        # Build a *brief* context - first ~150 chars from first 3 papers
         ctx_parts: list[str] = []
         for p in papers_list[:3]:
             snippet = (p.text_content or "")[:150]
-            ctx_parts.append(f"{p.title[:80]} – {snippet}")
+            ctx_parts.append(f"{p.title[:80]} - {snippet}")
         context_snippets = "\n".join(ctx_parts)
 
         sys_prompt, user_prompt = get_topic_analysis_prompts(
@@ -301,7 +301,7 @@ async def report_stream(
         heading_html = "<h2 class='report-title text-xl font-bold mb-4'>Report</h2>"
         yield _format_sse_event("report-block", heading_html)
 
-        # Derive a reliable boolean – form fields come through as strings.
+        # Derive a reliable boolean - form fields come through as strings.
         is_url_input_flag = str(payload.get("is_url_input", "false")).lower() == "true"
 
         # 1) Topic overview first (queries only)
@@ -339,14 +339,14 @@ async def report_stream(
                 )
                 continue  # skip yielding block for failed paper
 
-            # Successful – stream block
+            # Successful - stream block
             yield _format_sse_event("report-block", block_html)
 
         # Inform client of any failures via a dedicated event **before** done
         if failed_titles:
             yield _format_sse_event("failures", json.dumps(failed_titles))
 
-        # Finalise – send empty payload
+        # Finalise - send empty payload
         yield _format_sse_event("done", "")
 
         await _del_cache_later(token)

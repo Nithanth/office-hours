@@ -652,7 +652,7 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),
             # Modular JS entry-points
             Script(src="/static/js/main.js", type="module"),
-            # No inline init – handled in settings.js
+            # No inline init - handled in settings.js
         ),
         # Global toolbar
         Div(

@@ -473,7 +473,7 @@ class ExaClient:
             existing_ok = False
             if paper.authors:
                 # Treat existing list as sufficient only if *at least one* author token
-                # appears to be a full name – a crude proxy is the presence of a space
+                # appears to be a full name - a crude proxy is the presence of a space
                 # character (e.g., "Yee Whye Teh") in addition to basic plausibility.
                 # This avoids cases where Exa returns a list of single-word tokens
                 # ("Dupont", "Emilien", …) which would otherwise be marked *plausible*

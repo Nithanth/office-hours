@@ -20,7 +20,7 @@ from tenacity import (
 try:
     # The canonical synchronous & async clients shipped by exa_py.
     from exa_py import Exa
-except ModuleNotFoundError as exc:  # pragma: no cover – dev mis-config
+except ModuleNotFoundError as exc:  # pragma: no cover - dev mis-config
     raise ImportError(
         "The 'exa_py' package is required but not installed. Add it to your "
         "environment or requirements.txt."
@@ -53,7 +53,7 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    def search_and_contents(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 – SDK types
+    def search_and_contents(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 - SDK types
         """Wrapper for :py:meth:`exa_py.Exa.search_and_contents`.
 
         Parameters are accepted in *snake_case* and passed directly to the SDK.
@@ -62,11 +62,11 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         # Exa SDK expects snake_case parameter names. Passing kwargs directly
         # avoids validation errors such as "Invalid option: 'numResults'".
         params = kwargs
-        logger.debug("ExaAdapter.search_and_contents %s – params=%s", query, params)
+        logger.debug("ExaAdapter.search_and_contents %s - params=%s", query, params)
         return self._sync.search_and_contents(query, **params)
 
     # ------------------------------------------------------------------
-    # Answer endpoint – short answers with supporting passages
+    # Answer endpoint - short answers with supporting passages
     # ------------------------------------------------------------------
 
     @retry(
@@ -75,24 +75,24 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    def answer(self, question: str, **kwargs: Any) -> Any:  # noqa: ANN401 – SDK types
+    def answer(self, question: str, **kwargs: Any) -> Any:  # noqa: ANN401 - SDK types
         """Wrapper for :py:meth:`exa_py.Exa.answer`.
 
         Returns Exa SDK *Answer* object which contains an `answer` string and
         supporting `results` list.
         """
-        logger.debug("ExaAdapter.answer %s – params=%s", question, kwargs)
+        logger.debug("ExaAdapter.answer %s - params=%s", question, kwargs)
         return self._sync.answer(question, **kwargs)
 
     # ------------------------------------------------------------------
-    # Async variant – handy for future performance improvements.
+    # Async variant - handy for future performance improvements.
     # ------------------------------------------------------------------
 
     async def search_and_contents_async(self, query: str, **kwargs: Any) -> Any:
         if self._async is None:
             raise RuntimeError("AsyncExa client is not available in the installed exa_py SDK.")
         params = kwargs
-        logger.debug("ExaAdapter.search_and_contents_async %s – params=%s", query, params)
+        logger.debug("ExaAdapter.search_and_contents_async %s - params=%s", query, params)
         return await self._async.search_and_contents(query, **params)
 
     # ------------------------------------------------------------------
@@ -112,7 +112,7 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         transformed: dict[str, Any] = {}
         for key, value in kwargs.items():
             if value is None:
-                continue  # Skip unset optional params – avoids SDK validation errors.
+                continue  # Skip unset optional params - avoids SDK validation errors.
 
             if "_" in key:
                 parts = key.split("_")

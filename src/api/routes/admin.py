@@ -25,7 +25,7 @@ async def healthz() -> dict[str, bool]:
 
 
 @router.get("/admin/flush-cache", tags=["admin"])
-async def flush_summary_cache(  # noqa: B008 – Depends used as default per FastAPI pattern
+async def flush_summary_cache(  # noqa: B008 - Depends used as default per FastAPI pattern
     creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
 ) -> dict[str, bool]:
     """Clear all cached LLM summaries.

@@ -3,7 +3,7 @@
 This endpoint receives the cleaned report text (sent by the browser), gathers
 the per-session chat history, instructs the LLM to create concise non-redundant
 bullet-style notes, and returns the result **as an attachment** (plain-text
-`.txt` or `.docx`).  No SSE or on-page rendering – the browser simply downloads the file.
+`.txt` or `.docx`).  No SSE or on-page rendering - the browser simply downloads the file.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
 
 
 # ---------------------------------------------------------------------------
-# POST /generate-report-notes – returns downloadable .txt or .docx
+# POST /generate-report-notes - returns downloadable .txt or .docx
 # ---------------------------------------------------------------------------
 
 
@@ -129,14 +129,14 @@ async def generate_report_notes(
             headers=headers,
         )
 
-    # Default plain text – prettify with hierarchical bullets / headings
+    # Default plain text - prettify with hierarchical bullets / headings
     plain = _render_txt(notes_text)
     headers = {"Content-Disposition": 'attachment; filename="report_notes.txt"'}
     return Response(plain, media_type="text/plain; charset=utf-8", headers=headers)
 
 
 # ---------------------------------------------------------------------------
-# Helpers – simple Markdown-ish → DOCX converter (bullets, numbered, headings)
+# Helpers - simple Markdown-ish → DOCX converter (bullets, numbered, headings)
 # ---------------------------------------------------------------------------
 
 
@@ -194,7 +194,7 @@ def _render_docx(md_text: str) -> bytes:
             _add_list_paragraph(txt_clean, level, numbered=bool(m_num))
             continue
 
-        # Non-list line – treat as paragraph or heading
+        # Non-list line - treat as paragraph or heading
         line = raw.strip()
 
         # Simple heuristic for headings without #
@@ -209,14 +209,14 @@ def _render_docx(md_text: str) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Helpers – format plain-text notes with heading + bullet hierarchy
+# Helpers - format plain-text notes with heading + bullet hierarchy
 # ---------------------------------------------------------------------------
 
 
 _PLAIN_BULLETS = ["•", "◦", "▪"]
 
 
-def _render_txt(md_text: str) -> str:  # noqa: D401 – simple helper
+def _render_txt(md_text: str) -> str:  # noqa: D401 - simple helper
     """Return plain text with nicer hierarchy (bullets & headings).
 
     • Level-0 bullet → •
@@ -255,7 +255,7 @@ def _render_txt(md_text: str) -> str:  # noqa: D401 – simple helper
             out_lines.append(f"{'  ' * level}{prefix} {txt_clean}")
             continue
 
-        # Fallback – regular line with markdown emphasis stripped
+        # Fallback - regular line with markdown emphasis stripped
         clean = re.sub(r"[*_]{1,2}(.*?)?[*_]{1,2}", r"\1", raw.strip())
         out_lines.append(clean)
 
