@@ -8,6 +8,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from main import exa_client_instance
 from utils.summary_cache import SummaryCache
 
 logger = structlog.get_logger()
@@ -39,3 +40,31 @@ async def flush_summary_cache(  # noqa: B008 – Depends used as default per Fas
 
     SummaryCache.clear()
     return {"ok": True}
+
+
+# --------------------- Paper metadata recheck -----------------------------
+
+
+@router.post("/admin/recheck-metadata", tags=["admin"])
+async def recheck_paper_metadata(
+    limit: int = 100,
+    creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
+) -> dict[str, int]:
+    """Manually trigger a batch re-enrichment of incomplete paper metadata.
+
+    Fires ``ExaClient.recheck_incomplete_metadata(limit)`` and returns the
+    number of records processed. Same bearer-token check as the other admin
+    routes.
+    """
+
+    secret = os.getenv("ADMIN_API_KEY")
+    if secret and (creds is None or creds.credentials != secret):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    if exa_client_instance is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Exa client not ready"
+        )
+
+    processed = exa_client_instance.recheck_incomplete_metadata(limit=limit)
+    return {"processed": processed}

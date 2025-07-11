@@ -210,6 +210,16 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
         ]
         selection_label = Span()
 
+    # --------------------------------------------------
+    # UX: show ✨ indicator if metadata still incomplete
+    # --------------------------------------------------
+    needs_enrichment = not paper.authors or not paper.published_date
+    enrich_span = (
+        Span(" ✨", cls="enrich-indicator", title="Metadata enriching…")
+        if needs_enrichment
+        else None
+    )
+
     li_attrs = {"style": item_style, "id": f"paper-{paper.id}"}
     if wildcard:
         li_attrs["id"] = "wild-card-item"
@@ -223,6 +233,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                 href=paper.url if paper.url else "#",
                 target="_blank",
             ),
+            enrich_span,
             Br(),
             EM(authors_display),
             Br(),
@@ -637,11 +648,11 @@ def home_page(page_data: SharedPageData) -> Body:
             Link(rel="stylesheet", href="/static/css/forms.css"),
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
-            # Modular JS entry-points
-            Script(src="/static/js/main.js", type="module"),
-            # Settings & validation helper (audience/model persistence, toasts, etc.)
             Script(src="/static/js/settings.js"),
             Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),
+            # Modular JS entry-points
+            Script(src="/static/js/main.js", type="module"),
+            # No inline init – handled in settings.js
         ),
         # Global toolbar
         Div(
@@ -707,24 +718,59 @@ def home_page(page_data: SharedPageData) -> Body:
                 Br(),
                 # Author input removed per new requirements
                 Br(),
-                Label("Published After: ", for_="start_published_date"),
-                INPUT(
-                    type="date",
-                    id="start_published_date",
-                    name="start_published_date",
-                    placeholder="YYYY-MM-DD",
+                Div(
+                    Label(
+                        "Published After ",
+                        EM("(optional)", style="color:#666; font-style:italic;"),
+                        ":",
+                        for_="start_published_date",
+                    ),
+                    INPUT(
+                        type="date",
+                        id="start_published_date",
+                        name="start_published_date",
+                        placeholder="YYYY-MM-DD",
+                        style="margin-left:6px;",
+                    ),
+                    style="display:flex; align-items:center; gap:6px; margin-bottom:6px;",
                 ),
-                Br(),
-                Label("Source Domain: ", for_="domain_filter"),
-                Select(
-                    Option("Any", value="any"),
-                    Option("arxiv.org", value="arxiv.org"),
-                    Option("openreview.net", value="openreview.net"),
-                    Option("aclweb.org", value="aclweb.org"),
-                    id="domain_filter",
-                    name="domain_filter",
+                Div(
+                    Div(
+                        Label(
+                            "Source Domain ",
+                            EM("(optional)", style="color:#666; font-style:italic;"),
+                            ":",
+                            for_="include_domains",
+                        ),
+                        Span(
+                            "Cmd/Ctrl to select/deselect multiple",
+                            style="font-size:0.75em; color:#666; margin-top:4px;",
+                        ),
+                        BUTTON(
+                            "Clear",
+                            type="button",
+                            id="clear-domains-btn",
+                            style="margin-top:6px; width:48px;",
+                        ),
+                        style="display:flex; flex-direction:column; gap:4px; justify-content:flex-start;",
+                    ),
+                    Select(
+                        Option("arxiv.org", value="arxiv.org"),
+                        Option("biorxiv.org", value="biorxiv.org"),
+                        Option("medrxiv.org", value="medrxiv.org"),
+                        Option("ieeexplore.ieee.org", value="ieeexplore.ieee.org"),
+                        Option("dl.acm.org", value="dl.acm.org"),
+                        Option("openreview.net", value="openreview.net"),
+                        Option("aclanthology.org", value="aclanthology.org"),
+                        Option("aclweb.org", value="aclweb.org"),
+                        id="include_domains",
+                        name="include_domains",
+                        multiple=True,
+                        size="4",
+                        style="width:220px; min-height:88px; margin-left:8px;",
+                    ),
+                    style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;",
                 ),
-                Br(),
                 Label("Number of Results: ", for_="num_results"),
                 INPUT(
                     type="number",
@@ -768,9 +814,10 @@ def home_page(page_data: SharedPageData) -> Body:
                 id="results-and-report-form",
             ),
             # ---------------- Ask LLM block (standalone) ----------------
+            Br(),
             P(
                 I("Research assistant for independent or follow-up questions:"),
-                style="margin-top:-0.25rem;font-size:0.9rem;",
+                style="margin-top:0.75rem;font-size:0.9rem;",
                 _class="ask-llm-subtitle",
             ),
             FORM(

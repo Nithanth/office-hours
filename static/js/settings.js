@@ -50,6 +50,20 @@
       }
     }
 
+    // Initialise Choices.js multiselect for domain filter
+    if (window.Choices) {
+      try {
+        new Choices('#include_domains', {
+          removeItemButton: true,
+          searchEnabled: true,
+          shouldSort: false,
+        });
+        console.debug('[lux] Choices multiselect initialised');
+      } catch (e) {
+        console.warn('[lux] Choices init failed', e);
+      }
+    }
+
     // Persist on change
     selects.forEach(el => {
       if (!el) return;
@@ -61,6 +75,18 @@
         window.syncHidden();
       });
     });
+
+    // Clear-domain button functionality
+    const clearDomainsBtn = document.getElementById('clear-domains-btn');
+    if (clearDomainsBtn) {
+      clearDomainsBtn.addEventListener('click', () => {
+        const sel = document.getElementById('include_domains');
+        if (!sel) return;
+        Array.from(sel.options).forEach(opt => (opt.selected = false));
+        sel.dispatchEvent(new Event('change'));
+        console.debug('[lux] Domain selections cleared');
+      });
+    }
 
     // ------------------------------------------------------------------
     // Simple toast utility

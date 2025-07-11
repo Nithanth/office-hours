@@ -155,5 +155,5 @@ cython_debug/
 
 # tool specific
 # paper cache
-data/full_text/
+data/
 .summary_cache/

@@ -3,7 +3,12 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from models.paper import Paper
+# Import Paper model with fallback to handle different execution contexts
+try:
+    # When project root is on PYTHONPATH (e.g. production server)
+    from models.paper import Paper
+except ImportError:  # noqa: F401 – fallback when running via ``src.`` package path
+    from src.models.paper import Paper
 
 __all__ = ["CachedSearch"]
 

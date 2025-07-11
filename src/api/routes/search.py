@@ -48,7 +48,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     start_published_date: str | None = Form(None),
     num_results: int | None = Form(None),  # default resolved via settings below
     mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
-    domain_filter: str | None = Form(None),
+    include_domains: list[str] | None = Form(None),  # noqa: B008
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
@@ -68,11 +68,11 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         endpoint="/search",
         method="POST",
         params={
-            "search_query": search_query,
+            "query": search_query,
             "start_published_date": start_published_date,
             "num_results": num_results,
             "mode": mode,
-            "domain_filter": domain_filter,
+            "include_domains": include_domains,
         },
     )
 
@@ -164,8 +164,11 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         shared_kwargs: dict[str, Any] = {}
         if parsed_start_date:
             shared_kwargs["start_published_date"] = parsed_start_date
-        if domain_filter and domain_filter.lower() not in {"any", "all"}:
-            shared_kwargs["include_domains"] = [domain_filter]
+        if include_domains:
+            # Remove neutral options like "any" / "all" and blank items
+            filtered_domains = [d for d in include_domains if d and d.lower() not in {"any", "all"}]
+            if filtered_domains:
+                shared_kwargs["include_domains"] = filtered_domains
 
         client = cast(ExaClient, exa_client_instance)
         is_url_search = client.is_url(input_query_stripped)
