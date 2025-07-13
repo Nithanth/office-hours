@@ -4,10 +4,12 @@ Route modules should import these helpers instead of reaching directly into
 `app.py` for the singleton instances.
 """
 
+from fastapi import Request
+
 from config import Config as AppConfig
-from infra.exa_client import ExaClient
-from infra.llm_service import LLMService
-from infra.text.text_extractor import TextExtractor
+from services.core.exa_client import ExaClient
+from services.core.llm_service import LLMService
+from services.paper.text_extractor import TextExtractor
 
 
 def get_settings() -> AppConfig:
@@ -35,7 +37,11 @@ def get_exa_client() -> ExaClient | None:
 
 
 def get_paper_service() -> TextExtractor:
-    """Return the singleton :class:`~infra.text_extractor.TextExtractor`."""
-    from infra.text.text_extractor import TextExtractor  # import here to dodge circulars
-
+    """Return the singleton :class:`~infra.text_extractor.TextExtractor` instance."""
     return TextExtractor.instance()
+
+
+async def get_session_id(request: "Request") -> str:  # noqa: D401 – FastAPI Depends
+    """Return the session-id set by the ChatSessionMiddleware (or 'anon')."""
+
+    return getattr(request.state, "session_id", "anon")

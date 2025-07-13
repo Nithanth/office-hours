@@ -81,5 +81,6 @@ def setup_observability(app: FastAPI) -> None:
     if _METRICS_ENABLED:
 
         @app.get("/metrics")
-        def _metrics() -> Response:  # noqa: D401
+        def _metrics() -> Response:
+            """Return Prometheus metrics for scraping."""
             return Response(generate_latest(), media_type="text/plain; version=0.0.4")

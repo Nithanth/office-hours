@@ -1,6 +1,6 @@
-"""Unit tests for infra.exa_utils.url_utils."""
+"""Unit tests for services.core.exa_utils.url_utils."""
 
-from infra.exa_utils import url_utils as u
+from services.core.exa_utils import url_utils as u
 
 
 def test_extract_arxiv_id_variants() -> None:

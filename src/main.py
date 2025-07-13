@@ -20,45 +20,40 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Optional
 
+# ---------------------------------------------------------------------------
+# Imports – *keep minimal globals above to avoid slow cold-start*
+# ---------------------------------------------------------------------------
+
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 import config
-from chat.state import _chat_states
-from infra.exa_client import ExaClient
-from infra.llm_service import LLMConfigurationError, LLMService
-from infra.text.text_extractor import TextExtractor
-from middleware.chat_session import ChatSessionMiddleware
+from services.chat.chat_session import ChatSessionMiddleware
+from services.chat.chat_state import _chat_states
+from services.core.exa_client import ExaClient
+from services.core.llm_service import LLMConfigurationError, LLMService
+from services.paper.text_extractor import TextExtractor
 from utils.observability import setup_observability
 
-# Optional Prometheus histogram exported by `utils.observability`.
-# It measures the **latency between consecutively streamed chat tokens** – a
-# good proxy for perceived UI smoothness during SSE streaming.  It is `None`
-# when metrics are disabled so downstream code can `if CHAT_TOKEN_LAT:` safely.
+# --- Optional Prometheus histogram; None when metrics are disabled ---
 try:
     from utils.observability import CHAT_TOKEN_LAT
 except ImportError:  # pragma: no cover
     CHAT_TOKEN_LAT = None
 
-# ---------------------------------------------------------------------------
-# Dependency-injection helpers (FastAPI ``Depends``)
-# ---------------------------------------------------------------------------
-
-_IDLE_SESSION_TTL_SEC = 3600  # 1 h
+# --- Tunables --------------------------------------------------------------
+_IDLE_SESSION_TTL_SEC = 3600  # ChatState eviction window (seconds)
 _TEXT_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
 
+# ---------------------------------------------------------------------------
+# Background warm-cache helper (triggered by search route)                  
+# ---------------------------------------------------------------------------
 
 async def _prewarm_cached(url: str, paper_id: str) -> None:
-    """Fetch & cache a paper's full-text **in the background** after search.
+    """Fetch & cache the paper HTML/PDF so later summarisation is instant."""
 
-    The *search* endpoint (``src/api/routes/search.py``) imports this helper
-    and fires it via ``asyncio.create_task`` for each search result so when the
-    user later asks to summarise a paper, its HTML/PDF is already parsed and
-    cached on disk, cutting perceived latency by ~3-5s.
-    """
-
-    from infra.text.text_extractor import TextExtractor
+    from services.paper.text_extractor import TextExtractor
 
     async with _TEXT_PREWARM_SEMA:  # Avoid hammering remote hosts concurrently.
         try:
@@ -66,38 +61,30 @@ async def _prewarm_cached(url: str, paper_id: str) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
 
+# --- FastAPI Depends helpers ----------------------------------------------
 
-async def get_session_id(request: Request) -> str:  # FastAPI Depends helper
+async def get_session_id(request: Request) -> str:
     return getattr(request.state, "session_id", "anon")
-
 
 def get_llm_service() -> Optional[LLMService]:
     return llm_service_instance
 
-
 def get_exa_client() -> Optional[ExaClient]:
     return exa_client_instance
-
 
 def get_paper_service() -> TextExtractor:
     return TextExtractor.instance()
 
+# --- Filter noisy access logs for SSE keep-alive responses ----------------
 
 class DropSSE204Filter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
         msg = record.getMessage()
         return not (" 204 " in msg and "/report/stream" in msg)
 
-
 logging.getLogger("uvicorn.access").addFilter(DropSSE204Filter())
 
-# ---------------------------------------------------------------------------
-# Bridge *all* third-party / stdlib logging → Loguru
-# ---------------------------------------------------------------------------
-# FastAPI / Uvicorn and many libraries still use the standard `logging` module.
-# The intercept handler below reroutes those records so they are formatted by
-# Loguru and share the same sinks/JSON structure as first-party logs.
-
+# --- Bridge stdlib logging → Loguru ---------------------------------------
 
 class _InterceptHandler(logging.Handler):
     """Forward standard 'logging' records to *loguru* for uniform formatting."""
@@ -113,17 +100,11 @@ class _InterceptHandler(logging.Handler):
         logger_opt = logger.opt(depth=6, exception=record.exc_info)
         logger_opt.log(level_name, record.getMessage())
 
-
 # Route the root logger through the intercept so third-party libs (uvicorn, fastapi, etc.)
 # appear in our Loguru output.
 logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
 
-# ---------------------------------------------------------------------------
-# Core application logger
-# ---------------------------------------------------------------------------
-# Remove the default Loguru sink and attach our single stderr sink so that:
-# • Log level & JSON formatting honour runtime config.
-# • There is one canonical place where logs leave the process (stdout/stderr).
+# --- Core Loguru sink ------------------------------------------------------
 
 logger.remove()
 logger.add(
@@ -134,13 +115,12 @@ logger.add(
 
 llm_service_instance: Optional[LLMService] = None
 exa_client_instance: Optional[ExaClient] = None
+# Keep GC task handle so we can cancel cleanly on shutdown
+_gc_task: Optional[asyncio.Task[None]] = None
 
 KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
 
-# ---------------------------------------------------------------------------
-# FastAPI application set-up & dependency lifetime management
-# ---------------------------------------------------------------------------
-
+# --- FastAPI lifespan: startup → shutdown ---------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -170,7 +150,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if removed:
                     logger.info("chatstate_gc", evicted=removed)
 
-        gc_task = asyncio.create_task(_chatstate_gc_loop())
+        global _gc_task
+        _gc_task = asyncio.create_task(_chatstate_gc_loop())
         yield
     except ValueError as ve:
         logger.critical("startup configuration error", err=str(ve))
@@ -186,11 +167,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Application shutdown: Closing LLM Service...")
             await llm_service_instance.close_all_providers()
             logger.info("LLM Service closed.")
-            if "gc_task" in locals():
-                gc_task.cancel()
+            if _gc_task:
+                _gc_task.cancel()
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
 
+# --- FastAPI app -----------------------------------------------------------
 
 app = FastAPI(lifespan=lifespan)
 
@@ -224,6 +206,8 @@ from api.routes import (
     search as _search_routes,
 )
 
+# --- Router registration ---------------------------------------------------
+
 for _r in (
     _chat_routes.router,
     _report_routes.router,
@@ -239,6 +223,7 @@ for _r in (
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint  # noqa: E402
 
+# --- Minimal security headers ---------------------------------------------
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: D401
@@ -251,13 +236,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Permissions-Policy", "clipboard-read=*, clipboard-write=*")
         return response
 
-
 app.add_middleware(ChatSessionMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ---------------------------------------------------------------------------
-# Static asset mounting (first matching path wins)
-# ---------------------------------------------------------------------------
+# --- Static file mounting --------------------------------------------------
 
 _static_candidates = [
     _pathlib.Path(__file__).parent / "static",  # current src/static
@@ -274,7 +256,7 @@ else:
         "Static directory not found in any candidate paths; static assets will return 404"
     )
 
-# ------------------- Main Execution Block -------------------
+# --- Manual Uvicorn entrypoint (only when python main.py) ------------------
 
 if __name__ == "__main__":
     import uvicorn

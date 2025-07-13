@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from infra.llm_service import LLMService
-from infra.llm_utils.provider_base import LLMProvider
+from services.core.llm_service import LLMService
+from services.core.llm_utils.provider_base import LLMProvider
 
 
 class _DummyProvider(LLMProvider):

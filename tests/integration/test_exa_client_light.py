@@ -1,6 +1,6 @@
 # tests/integration/test_exa_client_light.py
 
-"""Light-weight behavioural smoke tests for `infra.exa_client.ExaClient`.
+"""Light-weight behavioural smoke tests for `services.core.exa_client.ExaClient`.
 
 These tests purposely avoid **any** network traffic or real *exa_py* dependency
 by monkey-patching the `ExaAdapter` used by `ExaClient`.  The goal is to catch
@@ -19,11 +19,12 @@ from typing import Any
 
 import pytest
 
+from models.paper import Paper  # noqa: E402
+
 # Import inside tests so the monkey-patch in the autouse fixture affects the
 # module when it is first loaded.
-from infra.exa_client import ExaClient  # noqa: E402
-from infra.exa_utils import paper_utils as _paper_utils  # noqa: E402
-from models.paper import Paper  # noqa: E402
+from services.core.exa_client import ExaClient  # noqa: E402
+from services.core.exa_utils import paper_utils as _paper_utils  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures - stub ExaAdapter & heavy helpers
@@ -76,9 +77,11 @@ def _stub_exa_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
             return _FakeResponse(results)
 
     # Install stubs
-    monkeypatch.setattr("infra.exa_client.ExaAdapter", _FakeAdapter)
+    monkeypatch.setattr("services.core.exa_client.ExaAdapter", _FakeAdapter)
     # Skip network-heavy enrichment entirely - just echo the Paper back.
-    monkeypatch.setattr("infra.exa_client.ExaClient._enrich_paper_metadata", lambda self, p: p)
+    monkeypatch.setattr(
+        "services.core.exa_client.ExaClient._enrich_paper_metadata", lambda self, p: p
+    )
 
 
 # ---------------------------------------------------------------------------

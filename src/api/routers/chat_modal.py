@@ -1,3 +1,11 @@
+"""Chat-modal router.
+
+Serves `/chat-modal` which returns fully-hydrated HTML for the paper-chat UI
+modal.  The endpoint embeds prior conversation history, hides a paper-ID
+input, and rewrites HTMX attributes so the front-end can immediately stream
+messages via SSE.
+"""
+
 import html
 import time
 from uuid import uuid4
@@ -6,17 +14,10 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
-from components.chat_components import ChatBubble, ChatModal
+from api.deps import get_paper_service  # lightweight helper, no heavy imports
+from services.chat.chat_components import ChatBubble, ChatModal
 
 router: APIRouter = APIRouter()
-
-
-"""Chat modal router - returns hydrated chat modal HTML for a given paper.
-
-Provides `/chat-modal` GET endpoint used by the front-end to open a
-bootstrap modal pre-wired for SSE chat streaming. Keeps logic lean and
-avoids heavy imports until necessary.
-"""
 
 
 @router.get("/chat-modal", response_class=HTMLResponse)
@@ -37,12 +38,10 @@ async def chat_modal(
 
     start_ts = time.perf_counter()
 
+    # Best-effort metadata fetch; failures fall back to bare modal.
     try:
-        from importlib import import_module
-
-        get_paper_service = import_module("main").get_paper_service
         paper_service = get_paper_service()
-    except Exception:  # noqa: BLE001 - best-effort metadata
+    except Exception:  # noqa: BLE001 – avoid hard failure on optional metadata
         paper_service = None
 
     paper = None
@@ -77,7 +76,7 @@ async def chat_modal(
 
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
-        from chat.state import get_chat_state  # local import avoids heavy dep
+        from services.chat.chat_state import get_chat_state  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
         history = get_chat_state(session_id).get_conversation(paper_id)
@@ -86,7 +85,7 @@ async def chat_modal(
 
     history_html = "".join(str(ChatBubble(msg.content, msg.role)) for msg in history)
 
-    # Build modal component.
+    # Build modal component
     modal_html = str(
         ChatModal(
             modal_id=modal_id,
@@ -134,11 +133,7 @@ async def chat_modal(
     # Ensure hydration runs by injecting a small inline script after the modal.
     modal_html += f"<script>initChat('{session_id}', '{paper_id}', '{chat_log_id}');</script>"
 
-    dur = time.perf_counter() - start_ts
-    logger.info(
-        "chat_modal_ready",
-        paper_id=paper_id,
-        duration_ms=int(dur * 1000),
-    )
+    dur_ms = int((time.perf_counter() - start_ts) * 1000)
+    logger.info("chat_modal_ready", paper_id=paper_id, duration_ms=dur_ms)
 
     return HTMLResponse(content=modal_html)

@@ -1,6 +1,6 @@
-"""Unit tests for infra.exa_utils.text_utils."""
+"""Unit tests for services.core.exa_utils.text_utils."""
 
-from infra.exa_utils import text_utils as tu
+from services.core.exa_utils import text_utils as tu
 
 
 def test_clean_text_dedent_and_collapse() -> None:

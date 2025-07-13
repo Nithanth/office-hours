@@ -2,6 +2,7 @@
 
 import asyncio
 import html
+import os
 from datetime import datetime
 from typing import Any, cast
 
@@ -11,22 +12,33 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
-from infra.exa_client import ExaClient
-from infra.exa_utils import url_utils as _url_utils
-from main import _prewarm_cached
 from models.paper import Paper
 from pages.main_page import render_search_results
-from services.report_generator import ReportGenerator
+from services.core.exa_client import ExaClient
+from services.core.exa_utils import url_utils as _url_utils
+from services.report.report_generator import ReportGenerator
 from utils.date_utils import parse_user_date
 from utils.search_utils import clean_query
 
 router = APIRouter()
 
-# Singleton aliases (populated during app startup)
-exa_client_instance = get_exa_client()
-llm_service_instance = get_llm_service()
+# Concurrency guard for background text prewarm tasks
+_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
 
-# Track the currently running direct-query task so that a new request can cancel it.
+
+async def _prewarm_cached(url: str, paper_id: str) -> None:
+    """Background fetch & cache of paper full-text to speed up later summaries."""
+
+    from services.paper.text_extractor import TextExtractor
+
+    async with _PREWARM_SEMA:
+        try:
+            await TextExtractor.instance().ensure_cached(url, paper_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
+
+
+# Track currently running direct-query task so it can be cancelled on new requests.
 current_direct_query_task: asyncio.Task | None = None
 
 
@@ -42,15 +54,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
-    global current_direct_query_task, exa_client_instance, llm_service_instance
+    global current_direct_query_task
 
-    # Refresh singleton handles - route modules capture them at *import* time,
-    # but Uvicorn reload / multiprocessing means the objects may be assigned
-    # later during the app lifespan event.  Lazily fetch again if still None.
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if llm_service_instance is None:
-        llm_service_instance = get_llm_service()
+    exa_client = get_exa_client()
+    llm_service = get_llm_service()
 
     logger.info(
         "search_request",
@@ -96,13 +103,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     if mode == "direct":
         this_task: asyncio.Task | None = None
         try:
-            if llm_service_instance is None or not llm_service_instance._initialized:
+            if llm_service is None or not llm_service._initialized:
                 return HTMLResponse("<p>LLM service unavailable.</p>", status_code=503)
 
             mi = settings.AVAILABLE_MODELS[settings.DEFAULT_MODEL_KEY]
             rg = ReportGenerator(
-                llm_service=llm_service_instance,
-                exa_client=cast(ExaClient, exa_client_instance),
+                llm_service=llm_service,
+                exa_client=cast(ExaClient, exa_client) if exa_client else None,
                 selected_model_api_id=mi["id"],
                 selected_model_provider=mi["provider"],
                 selected_model_input_token_limit=mi["input_token_limit"],
@@ -132,7 +139,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Standard paper search flow
     # ------------------------------------------------------------------
     try:
-        assert exa_client_instance is not None, "Exa client not initialised - check EXA_API_KEY"
+        if exa_client is None:
+            raise RuntimeError("Exa client not initialised - check EXA_API_KEY")
+
+        client = cast(ExaClient, exa_client)
 
         # Date parsing / validation ------------------------------------------------
         parsed_start_date: datetime | None = None
@@ -155,7 +165,6 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             if filtered_domains:
                 shared_kwargs["include_domains"] = filtered_domains
 
-        client = cast(ExaClient, exa_client_instance)
         is_url_search = _url_utils.is_paper_url(input_query_stripped)
 
         if is_url_search:
@@ -259,17 +268,15 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
 
 @router.post("/shuffle", response_class=HTMLResponse)
 async def shuffle_random_paper() -> HTMLResponse:
-    global exa_client_instance
-
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if exa_client_instance is None:
+    """Return a single random paper (wild-card) as an HTMX swap."""
+    exa_client = get_exa_client()
+    if exa_client is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>Server starting…</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    paper = cast(ExaClient, exa_client_instance).replace_wildcard()
+    paper = cast(ExaClient, exa_client).replace_wildcard()
     if paper is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>No more random papers available. Run a new search.</li></ul>",
@@ -283,17 +290,15 @@ async def shuffle_random_paper() -> HTMLResponse:
 
 @router.post("/shuffle_all", response_class=HTMLResponse)
 async def shuffle_all_papers() -> HTMLResponse:
-    global exa_client_instance
-
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if exa_client_instance is None:
+    """Shuffle the cached papers and return the refreshed `<ul>` list."""
+    exa_client = get_exa_client()
+    if exa_client is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    client = cast(ExaClient, exa_client_instance)
+    client = cast(ExaClient, exa_client)
     papers = client.shuffle_k()
     if not papers:
         return HTMLResponse(
@@ -324,17 +329,15 @@ async def shuffle_all_papers() -> HTMLResponse:
 
 @router.post("/reset_results", response_class=HTMLResponse)
 async def reset_papers() -> HTMLResponse:
-    global exa_client_instance
-
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if exa_client_instance is None:
+    """Reset the paper list back to the cached core search results."""
+    exa_client = get_exa_client()
+    if exa_client is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    client = cast(ExaClient, exa_client_instance)
+    client = cast(ExaClient, exa_client)
     core_list = client.reset_display()
     if not core_list:
         return HTMLResponse(

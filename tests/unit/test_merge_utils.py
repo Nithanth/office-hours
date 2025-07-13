@@ -1,6 +1,6 @@
-"""Unit tests for infra.exa_utils.merge_utils."""
+"""Unit tests for services.core.exa_utils.merge_utils."""
 
-from infra.exa_utils import merge_utils as mu
+from services.core.exa_utils import merge_utils as mu
 
 
 def test_merge_dicts_keep_first() -> None:

@@ -20,12 +20,13 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from loguru import logger
 from pydantic import HttpUrl
 
+from api.deps import get_exa_client, get_llm_service, get_session_id
 from config import config
-from infra.exa_client import ExaClient
-from infra.llm_service import LLMService
 from models.paper import Paper
-from prompts.prompt_templates import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
-from services.report_generator import ReportGenerator
+from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
+from services.core.exa_client import ExaClient
+from services.core.llm_service import LLMService
+from services.report.report_generator import ReportGenerator
 
 router: APIRouter = APIRouter(tags=["report-incremental"])
 
@@ -36,7 +37,6 @@ REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
 _SSE_CHUNK_SIZE = 4000  # chars
 
 
-# ------------------------- SSE helpers ----------------------------
 def _format_sse_event(event_name: str, payload: str = "") -> str:
     """Return a browser-safe SSE event string (newline & length-sanitised)."""
 
@@ -55,8 +55,7 @@ def _iter_sse_chunks(payload: str) -> list[str]:
 
 
 async def _get_services() -> tuple[LLMService, ExaClient]:
-    # Re-use the factories defined in app.py
-    from main import get_exa_client, get_llm_service
+    """Return required core services or 503 if unavailable."""
 
     llm_service = get_llm_service()
     exa_client = get_exa_client()
@@ -95,9 +94,6 @@ async def generate_report_incremental(  # noqa: PLR0913
 
     sse_url = f"/report/stream?token={token}"
 
-    # ------------------------------------------------------------------
-    # Validate required parameters - defend against client-side bypasses
-    # ------------------------------------------------------------------
     def _is_blank(val: str | None) -> bool:
         return (val or "").strip() == ""
 
@@ -127,18 +123,13 @@ async def generate_report_incremental(  # noqa: PLR0913
     return HTMLResponse(content=html_skeleton)
 
 
-async def _get_session_id(request: Request) -> str:
-    """Return chat session id (falls back to ``"anon"``)."""
-    return getattr(request.state, "session_id", "anon")
-
-
 @router.get("/report/stream")
 async def report_stream(
     request: Request,
     token: str = Query(...),  # noqa: B008
 ) -> Response:
     """Stream report blocks for the cached *token*."""
-    session_id = await _get_session_id(request)
+    session_id = await get_session_id(request)
     if not session_id:
         raise HTTPException(status_code=400, detail="Session required")
 
@@ -186,8 +177,6 @@ async def report_stream(
     )
 
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_PAPER_SUMMARIES)
-
-    # --- Task helpers -------------------------------------------------
 
     async def _topic_overview_task() -> tuple[str, str]:
         """LLM call that builds the high-level topic/query overview block."""

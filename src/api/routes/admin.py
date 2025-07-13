@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 
-from main import exa_client_instance
-from utils.summary_cache import SummaryCache
+from api.deps import get_exa_client
+from services.report.report_utils import SummaryCache
 
 _admin_security = HTTPBearer(auto_error=False)
 
@@ -36,9 +36,6 @@ async def flush_summary_cache(  # noqa: B008 - Depends used as default per FastA
     return {"ok": True}
 
 
-# --------------------- Paper metadata recheck -----------------------------
-
-
 @router.post("/admin/recheck-metadata", tags=["admin"])
 async def recheck_paper_metadata(
     limit: int = 100,
@@ -51,12 +48,13 @@ async def recheck_paper_metadata(
         logger.warning("metadata_recheck_forbidden")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    if exa_client_instance is None:
+    exa_client = get_exa_client()
+    if exa_client is None:
         logger.error("exa_client_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Exa client not ready"
         )
 
-    processed = exa_client_instance.recheck_incomplete_metadata(limit=limit)
+    processed = exa_client.recheck_incomplete_metadata(limit=limit)
     logger.info("metadata_recheck_complete", processed=processed)
     return {"processed": processed}

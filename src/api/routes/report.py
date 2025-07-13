@@ -8,15 +8,13 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
-from infra.llm_service import LLMConfigurationError
 from models.paper import Paper
 from pages.main_page import render_error_message, render_paper_card
-from services.report_generator import ReportGenerator
+from services.core.exa_client import ExaClient
+from services.core.llm_service import LLMConfigurationError, LLMService
+from services.report.report_generator import ReportGenerator
 
-# Singleton aliases (set during app startup)
-exa_client_instance = get_exa_client()
-llm_service_instance = get_llm_service()
-
+# Services are obtained per-request via dependency helpers to avoid stale instances.
 
 router = APIRouter()
 
@@ -31,6 +29,8 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
     selected_model_key: str = Form(...),
     is_url_input: bool = Form(False),
     settings: AppConfig = Depends(get_settings),  # noqa: B008
+    llm_service: LLMService | None = Depends(get_llm_service),  # noqa: B008
+    exa_client: ExaClient | None = Depends(get_exa_client),  # noqa: B008
 ) -> HTMLResponse:
     """Generate the full HTML report (blocking).
 
@@ -48,7 +48,7 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
     }
     logger.info("report_request", **log_params)
 
-    if llm_service_instance is None or not llm_service_instance._initialized:
+    if llm_service is None or not llm_service._initialized:
         logger.critical("report_llm_unavailable", **log_params)
         error_html = render_error_message(
             "The report generation service is currently unavailable. Please try again later or contact support.",
@@ -110,9 +110,8 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
             headers={"HX-Retarget": "#report-display-area", "HX-Reswap": "innerHTML"},
         )
 
-    # Ensure Exa client is available (initialized in lifespan)
-    global exa_client_instance  # noqa: PLW0603 - steers clear of circulars for now
-    if exa_client_instance is None:
+    # Ensure Exa client is available
+    if exa_client is None:
         logger.critical("report_exa_unavailable", **log_params)
         error_html = render_error_message(
             "The paper information service is currently unavailable. Please try again later or contact support.",
@@ -164,8 +163,8 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
     # ------------------------------------------------------------------
     try:
         report_generator = ReportGenerator(
-            llm_service=llm_service_instance,
-            exa_client=exa_client_instance,
+            llm_service=llm_service,
+            exa_client=exa_client,
             selected_model_api_id=selected_model_api_id,
             selected_model_provider=selected_model_provider,
             selected_model_input_token_limit=selected_model_input_token_limit,

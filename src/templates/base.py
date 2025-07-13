@@ -20,7 +20,7 @@ from fasthtml.common import (
 )
 from loguru import logger
 
-import config  # Provides AVAILABLE_MODELS mapping
+from config import config as app_config  # Provides AVAILABLE_MODELS mapping
 
 # Structured logger bound to template component
 logger = logger.bind(component="TemplateBase")
@@ -75,7 +75,7 @@ def base_layout(title_text: str, *content: Any) -> str:
                                 cfg["display_name"],
                                 value=key,
                             )
-                            for key, cfg in config.config.AVAILABLE_MODELS.items()
+                            for key, cfg in app_config.AVAILABLE_MODELS.items()
                         ],
                         id="model-select",
                         cl="mr-3",

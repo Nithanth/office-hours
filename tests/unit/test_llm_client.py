@@ -16,15 +16,15 @@ from config import (
 )
 
 # Adjust the import path based on your project structure
-from infra.llm_service import LLMService, get_llm_service
-from infra.llm_utils.errors import (
+from services.core.llm_service import LLMService, get_llm_service
+from services.core.llm_utils.errors import (
     LLMConfigurationError,
     LLMProviderError,
     LLMRateLimitError,
 )
 
 # Provider classes now live in llm_utils.providers
-from infra.llm_utils.providers import (
+from services.core.llm_utils.providers import (
     AnthropicProvider,
     GeminiProvider,
     OpenAIProvider,
@@ -103,7 +103,7 @@ async def test_llm_service_initialization_all_keys(
     mock_general_config_fixture: GeneralConfig,
     mock_llm_config_all_keys_fixture: LLMConfig,
 ) -> None:
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -155,7 +155,7 @@ async def test_llm_service_initialization_missing_key_raises_error(
     LLMService._instance = None
     LLMService._initialized = False
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_missing_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_missing_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -218,7 +218,7 @@ async def test_generate_text_openai_success(
 ) -> None:
     mock_openai_generate.return_value = "Hello from mocked OpenAI!"
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -275,7 +275,7 @@ async def test_generate_text_together_ai_default_model(
 ) -> None:
     mock_together_generate.return_value = "Hello from mocked TogetherAI!"
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -340,7 +340,7 @@ async def test_generate_text_anthropic_error(
         original_exception=original_error,
     )
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -392,7 +392,7 @@ async def test_generate_text_gemini_success(
     mock_llm_config_all_keys_fixture: LLMConfig,
 ) -> None:
     mock_gemini_generate.return_value = "Hello from mocked Gemini!"
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -440,7 +440,7 @@ async def test_generate_text_uninitialized_provider_key_missing(
     LLMService._instance = None
     LLMService._initialized = False
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_missing_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_missing_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -499,7 +499,7 @@ async def test_generate_text_unsupported_provider_string(
     mock_general_config_fixture: GeneralConfig,
     mock_llm_config_all_keys_fixture: LLMConfig,
 ) -> None:
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -554,7 +554,7 @@ async def test_openai_provider_internal_retries_succeed(
         "OpenAI says hello after retries!",
     ]
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -607,7 +607,7 @@ async def test_openai_provider_internal_retries_fail_max_attempts(
         for _ in range(mock_llm_config_all_keys_fixture.max_retries + 1)
     ]
 
-    with patch("infra.llm_service.app_config") as mock_global_config:
+    with patch("services.core.llm_service.app_config") as mock_global_config:
         assert mock_llm_config_all_keys_fixture.openai is not None
         mock_global_config.OPENAI_API_KEY = mock_llm_config_all_keys_fixture.openai.api_key
         mock_global_config.OPENAI_DEFAULT_MODEL = (
@@ -656,13 +656,13 @@ async def test_llm_service_context_manager_closes_providers(
 ) -> None:
     """Test that LLMService used as a context manager closes its providers."""
     # We need to mock the 'close' method of each provider class that LLMService might instantiate.
-    from infra.llm_service import LLMService as _Svc
+    from services.core.llm_service import LLMService as _Svc
 
     _Svc._instance = None
     _Svc._initialized = False
 
     with (
-        patch("infra.llm_service.app_config") as mock_global_config,
+        patch("services.core.llm_service.app_config") as mock_global_config,
         patch.object(OpenAIProvider, "close", new_callable=AsyncMock) as mock_openai_close,
         patch.object(TogetherAIProvider, "close", new_callable=AsyncMock) as mock_together_close,
         patch.object(AnthropicProvider, "close", new_callable=AsyncMock) as mock_anthropic_close,

@@ -26,27 +26,26 @@ from fasthtml.components import (
     Script,
     Select,
     Span,
-    Style,
     Textarea,
     Title,
 )
 from pydantic import BaseModel
 
 import config  # Your project's config module
-from components.chat_components import ChatBubble, CitationCard
 from models.paper import Paper  # Your Paper Pydantic model
+from services.chat.chat_components import ChatBubble, CitationCard
 
 
 # --- Pydantic Models ---
 class SharedPageData(BaseModel):
+    """Lightweight container of state used by the home-page template."""
+
     title: str = config.config.APP_TITLE
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
 
 
 # --- UI Components ---
-
-
 def render_error_message(message: str, context: str = "general") -> Div:
     """Return a styled error banner."""
     return Div(
@@ -251,6 +250,7 @@ def render_search_results(
     is_url_search: bool,
     papers_list: Optional[list[Paper]] = None,
 ) -> Div:
+    """Render search results list, shuffle/reset controls and hidden HTMX fields."""
     # Out-of-band clears so a new search hides any old report UI instantly
     clearing_divs = [
         Div(id="report-config-area", **{"hx-swap-oob": "true"}),
@@ -388,6 +388,7 @@ def render_search_results(
 
 
 def loading_indicator_component() -> Div:
+    """Spinner visible while search requests are in-flight."""
     return Div(
         Div(cls="lux-spinner"),
         Span("", id="lux-loading-text", style="display:inline-block; margin-left:4px;"),
@@ -397,6 +398,7 @@ def loading_indicator_component() -> Div:
 
 
 def report_loading_indicator_component() -> Div:
+    """Spinner shown while the server composes a report."""
     return Div(
         Div(cls="lux-spinner"),
         P("Writing report...", style="display:inline-block;"),
@@ -454,88 +456,6 @@ def render_report(
     </div>"""
 
 
-def chat_modal_styles() -> Style:
-    return Style("""
-        .modal {
-            display: block;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: #fefefe;
-            margin: 10% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 700px;
-            border-radius: 8px;
-            position: relative;
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-            margin-bottom: 10px;
-        }
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.25rem;
-        }
-        .modal-close-btn {
-            border: none;
-            background: transparent;
-            font-size: 1.5rem;
-            cursor: pointer;
-        }
-        .chat-log-container {
-            height: 400px;
-            overflow-y: auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-bottom: 10px;
-            background-color: #fff;
-        }
-        .user-message, .assistant-message {
-            padding: 8px 12px;
-            border-radius: 18px;
-            margin-bottom: 8px;
-            max-width: 80%;
-            word-wrap: break-word;
-        }
-        .user-message {
-            background-color: #007bff;
-            color: white;
-        }
-        .assistant-message {
-            background-color: #e9e9eb;
-            color: black;
-        }
-        .restore-toast {
-            padding: 10px;
-            background-color: #fff3cd;
-            border: 1px solid #ffeeba;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .toast-btn {
-            margin-left: 5px;
-            padding: 4px 8px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-    """)
-
-
 def render_chat_modal(paper: Paper, session_id: str) -> Div:
     """Renders the chat modal for a specific paper."""
     paper_id = paper.id
@@ -589,15 +509,6 @@ def render_chat_message(message: str, role: str) -> Div:
 
 def home_page(page_data: SharedPageData) -> Body:
     """The main page layout, including search form and results area."""
-    indicator_css = """
-      .htmx-indicator { display: none; opacity: 0; transition: opacity 200ms ease-in; }
-      .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-block; opacity: 1; }
-
-      /* Simple spinner */
-      @keyframes lux-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg);} }
-      .lux-spinner { border: 4px solid #ccc; border-top: 4px solid #007bff; border-radius: 50%; width: 24px; height: 24px; animation: lux-spin 1s linear infinite; display:inline-block; margin-right:8px; vertical-align: middle; }
-    """
-
     # Initial content for search results area
     if (
         page_data.search_results is not None
@@ -614,7 +525,6 @@ def home_page(page_data: SharedPageData) -> Body:
         results_display_content = ""
 
     return Body(
-        chat_modal_styles(),
         Head(
             Title(page_data.title),
             # Font Awesome for icons (copy button etc.)
@@ -631,7 +541,7 @@ def home_page(page_data: SharedPageData) -> Body:
                 href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
             ),
             Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
-            Style(indicator_css),
+            Link(rel="stylesheet", href="/static/css/spinners.css"),
             # Modular CSS (Phase-3 refactor)
             Link(rel="stylesheet", href="/static/css/base.css"),
             Link(rel="stylesheet", href="/static/css/top-bar.css"),

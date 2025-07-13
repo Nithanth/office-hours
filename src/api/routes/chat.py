@@ -11,12 +11,11 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from api.deps import get_llm_service, get_paper_service, get_settings
-from chat.runtime import build_prompt, get_semaphore
-from chat.state import ChatMessage, get_chat_state
+from api.deps import get_llm_service, get_paper_service, get_session_id, get_settings
 from config import Config as AppConfig
-from main import KEEP_ALIVE_SEC, get_session_id
 from pages.main_page import render_chat_message
+from services.chat.chat_runtime import build_prompt, get_semaphore
+from services.chat.chat_state import ChatMessage, _chat_states, get_chat_state
 from utils.observability import _METRICS_ENABLED
 
 try:
@@ -26,6 +25,9 @@ except ImportError:  # pragma: no cover - metrics disabled in dev
     CHAT_TOKEN_LAT = None
 
 from loguru import logger as log
+
+# Interval between SSE keep-alive pings (seconds)
+KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
 
 # Watermark for when a cached full-text file must be refreshed (7 days).
 _PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7
@@ -322,8 +324,6 @@ async def chat_clear_session(
     """
 
     try:
-        from chat.state import _chat_states
-
         if session_id in _chat_states:
             del _chat_states[session_id]
     except Exception:

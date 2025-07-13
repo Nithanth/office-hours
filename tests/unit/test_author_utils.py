@@ -1,6 +1,6 @@
-"""Unit tests for infra.exa_utils.author_utils."""
+"""Unit tests for services.core.exa_utils.author_utils."""
 
-from infra.exa_utils import author_utils as au
+from services.core.exa_utils import author_utils as au
 
 
 def test_is_plausible_author_valid() -> None:

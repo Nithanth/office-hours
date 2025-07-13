@@ -1,4 +1,4 @@
-"""Pydantic model representing a research paper."""
+"""Canonical Pydantic model for research paper metadata used across services."""
 
 from datetime import datetime
 from typing import Optional
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 
 class Paper(BaseModel):
-    """Pydantic model to represent a research paper."""
+    """Lightweight value object representing a research paper."""
 
     id: str = Field(
         ...,
@@ -43,6 +43,7 @@ class Paper(BaseModel):
     )
 
     def __repr__(self) -> str:
+        """Return debug-friendly representation truncated for readability."""
         return (
             f"Paper(id='{self.id}', "
             f"title='{self.title[:50] + '...' if len(self.title) > 50 else self.title}', "
@@ -52,6 +53,10 @@ class Paper(BaseModel):
             f"score={self.score}, "
             f"source='{self.source}')"
         )
+
+    def __str__(self) -> str:  # noqa: D401 – simple string representation
+        """Return the paper title for a human-friendly `str()` call."""
+        return self.title
 
     class Config:
         """Pydantic model configuration."""

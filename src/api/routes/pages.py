@@ -16,8 +16,7 @@ from pages.main_page import (
     render_report_config_form,
 )
 
-# Singleton alias (populated during app startup)
-exa_client_instance = get_exa_client()
+# No module-level singleton to avoid stale DI instances.
 
 router = APIRouter()
 
@@ -39,24 +38,27 @@ async def get_home(
         if not settings.EXA_API_KEY:
             logger.error("home_missing_exa_key")
         else:
-            try:
-                assert exa_client_instance is not None
-                logger.info(
-                    "home_initial_search",
-                    query=search_query.strip(),
-                    num_results=settings.DEFAULT_PAPER_COUNT,
-                )
-                papers = await asyncio.to_thread(
-                    exa_client_instance.search_papers,
-                    query=search_query.strip(),
-                    num_results=settings.DEFAULT_PAPER_COUNT,
-                )
-                page_data.search_results = papers
-            except Exception as exc:  # log and fall back
-                logger.exception(
-                    "home_initial_search_error", query=search_query.strip(), error=str(exc)
-                )
-                page_data.search_results = []
+            exa_client = get_exa_client()
+            if exa_client is None:
+                logger.error("home_exa_client_unavailable")
+            else:
+                try:
+                    logger.info(
+                        "home_initial_search",
+                        query=search_query.strip(),
+                        num_results=settings.DEFAULT_PAPER_COUNT,
+                    )
+                    papers = await asyncio.to_thread(
+                        exa_client.search_papers,
+                        query=search_query.strip(),
+                        num_results=settings.DEFAULT_PAPER_COUNT,
+                    )
+                    page_data.search_results = papers
+                except Exception as exc:  # log and fall back
+                    logger.exception(
+                        "home_initial_search_error", query=search_query.strip(), error=str(exc)
+                    )
+                    page_data.search_results = []
 
     # Prepend a standards-mode doctype to avoid browser Quirks Mode.
     return HTMLResponse(f"<!DOCTYPE html>{str(home_page(page_data=page_data))}")

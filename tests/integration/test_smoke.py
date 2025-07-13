@@ -51,10 +51,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     # Attempt to patch TextExtractor singleton regardless of its final path.
     import importlib
 
-    for _path in (
-        "services.core.text_extractor",
-        "infra.text.text_extractor",
-    ):
+    for _path in ("services.paper.text_extractor",):
         try:
             _te_mod = importlib.import_module(_path)
             monkeypatch.setattr(
@@ -66,7 +63,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
 
     # Stub out heavy ReportGenerator calls if present
     try:
-        _rg_mod = importlib.import_module("services.report.generator")
+        _rg_mod = importlib.import_module("services.report.report_generator")
     except ModuleNotFoundError:
         try:
             _rg_mod = importlib.import_module("services.report_generator")
