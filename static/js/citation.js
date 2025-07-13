@@ -1,5 +1,4 @@
 // citation.js – citation hover cards & list highlight helpers
-// Migrated from legacy app.js
 
 import { dbg } from "./util.js";
 

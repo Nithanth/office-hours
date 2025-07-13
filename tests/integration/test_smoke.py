@@ -59,9 +59,10 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(report, "exa_client_instance", dummy, raising=False)
 
     # Patch TextExtractor singleton access used in _prewarm_cached
-    import infra.text_extractor as _te
+    import importlib
 
-    monkeypatch.setattr(_te.TextExtractor, "instance", lambda *a, **k: dummy, raising=False)
+    _te_mod = importlib.import_module("infra.text.text_extractor")
+    monkeypatch.setattr(_te_mod.TextExtractor, "instance", lambda *a, **k: dummy, raising=False)
 
     # Stub out heavyweight ReportGenerator methods so they return immediately
     from services import report_generator as _rg

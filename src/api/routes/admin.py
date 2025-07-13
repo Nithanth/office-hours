@@ -1,26 +1,19 @@
-"""Admin and health-check endpoints extracted from legacy ``app.py``."""
-
-from __future__ import annotations
+"""Health-check and small admin utilities (cache flush, metadata recheck)."""
 
 import os
-
-import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from loguru import logger
 
 from main import exa_client_instance
 from utils.summary_cache import SummaryCache
-
-logger = structlog.get_logger()
-
-router = APIRouter()
 
 _admin_security = HTTPBearer(auto_error=False)
 
 
 @router.get("/healthz")
 async def healthz() -> dict[str, bool]:
-    """Simple liveness probe for deployment platforms."""
+    """Liveness probe consumed by orchestration platforms."""
     return {"ok": True}
 
 
@@ -28,17 +21,14 @@ async def healthz() -> dict[str, bool]:
 async def flush_summary_cache(  # noqa: B008 - Depends used as default per FastAPI pattern
     creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
 ) -> dict[str, bool]:
-    """Clear all cached LLM summaries.
-
-    Requires an ``Authorization: Bearer <ADMIN_API_KEY>`` header when the
-    ``ADMIN_API_KEY`` environment variable is set. If unset the route
-    remains open (dev convenience).
-    """
+    """Clear all cached LLM summaries."""
     secret = os.getenv("ADMIN_API_KEY")
     if secret and (creds is None or creds.credentials != secret):
+        logger.warning("flush_cache_forbidden")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     SummaryCache.clear()
+    logger.info("summary_cache_flushed")
     return {"ok": True}
 
 
@@ -50,21 +40,19 @@ async def recheck_paper_metadata(
     limit: int = 100,
     creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
 ) -> dict[str, int]:
-    """Manually trigger a batch re-enrichment of incomplete paper metadata.
-
-    Fires ``ExaClient.recheck_incomplete_metadata(limit)`` and returns the
-    number of records processed. Same bearer-token check as the other admin
-    routes.
-    """
+    """Manually trigger a batch re-enrichment of incomplete paper metadata."""
 
     secret = os.getenv("ADMIN_API_KEY")
     if secret and (creds is None or creds.credentials != secret):
+        logger.warning("metadata_recheck_forbidden")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     if exa_client_instance is None:
+        logger.error("exa_client_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Exa client not ready"
         )
 
     processed = exa_client_instance.recheck_incomplete_metadata(limit=limit)
+    logger.info("metadata_recheck_complete", processed=processed)
     return {"processed": processed}

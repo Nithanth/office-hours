@@ -1,34 +1,11 @@
-"""Reusable FastHTML chat components (Phase 7).
-
-These helpers let page modules build chat-related markup with concise, typed
-wrappers instead of hand-spelling FastHTML trees everywhere.  Using central
-components simplifies future refactors and keeps styling decisions in one
-place.
-
-NOTE: Existing callers are *not* migrated in this commit to avoid a
-wide-ranging diff during active feature work.  Once chat-modal stabilises we
-can progressively adopt these helpers.
-"""
-
-from __future__ import annotations
+"""Typed FastHTML components for chat bubbles, citation cards, and chat modal."""
 
 from collections.abc import Iterable
 from typing import Any
 
 from fasthtml.components import BUTTON, H2, A, Div, Form, P, Textarea
 
-__all__ = [
-    "ChatBubble",
-    "ChatModal",
-    "CitationCard",
-]
-
-
-# ---------------------------------------------------------------------------
 # Leaf components
-# ---------------------------------------------------------------------------
-
-
 def ChatBubble(
     message: str, role: str = "assistant", oob_slot: str | None = None, **attrs: Any
 ) -> Div:
@@ -46,11 +23,7 @@ def ChatBubble(
     return Div(P(message, style="margin:0;"), cls=f"{role}-message", **attrs)
 
 
-# ---------------------------------------------------------------------------
-# Citation UX
-# ---------------------------------------------------------------------------
-
-
+# Citation card
 def CitationCard(
     title: str,
     authors: Iterable[str] | None = None,
@@ -72,11 +45,7 @@ def CitationCard(
     )
 
 
-# ---------------------------------------------------------------------------
-# Composite Chat Modal component (optional; current code builds inline)
-# ---------------------------------------------------------------------------
-
-
+# Chat modal (optional)
 def ChatModal(
     modal_id: str,
     title: str,
@@ -98,7 +67,7 @@ def ChatModal(
             Div(
                 H2(title),
                 BUTTON(
-                    "×",
+                    "x",
                     cls="modal-close-btn",
                     hx_on_click="htmx.find('#modal-container').innerHTML = ''",
                 ),

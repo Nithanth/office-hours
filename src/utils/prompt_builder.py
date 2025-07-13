@@ -1,25 +1,16 @@
-"""Prompt building utilities.
-
-Phase-1: foundation for modular prompt composition without touching the
-existing `ReportGenerator` flows.  Subsequent phases can progressively
-migrate to this builder to gain flexibility.
-"""
-
-from __future__ import annotations
+"""Lightweight prompt-composition helpers used by direct-query workflows."""
 
 from dataclasses import dataclass, field
+from loguru import logger
+
+# Component logger
+logger = logger.bind(component="PromptBuilder")
 
 from models.paper import Paper
 from prompts.prompt_templates import (
     AUDIENCE_PROMPT_MAP,
     RESEARCH_ASSISTANT_PROMPT,
 )
-
-__all__ = [
-    "Block",
-    "PromptBuilder",
-    "get_query_resolution_prompts",
-]
 
 
 @dataclass(slots=True)
@@ -38,7 +29,7 @@ class Block:
     title: str | None = None
     sep: str = "\n\n"
 
-    def render(self) -> str:  # pragma: no cover – trivial
+    def render(self) -> str:
         if self.title:
             return f"{self.title}\n{self.body.strip()}"
         return self.body.strip()
@@ -46,22 +37,22 @@ class Block:
 
 @dataclass
 class PromptBuilder:
-    """Collects blocks then renders a full prompt string."""
+    """Accumulate `Block`s and render the final prompt string."""
 
     blocks: list[Block] = field(default_factory=list)
 
-    def add(self, body: str, *, title: str | None = None, sep: str = "\n\n") -> PromptBuilder:
+    def add(self, body: str, *, title: str | None = None, sep: str = "\n\n") -> "PromptBuilder":
         self.blocks.append(Block(body=body, title=title, sep=sep))
         return self
 
-    def extend(self, block: Block) -> PromptBuilder:
+    def extend(self, block: Block) -> "PromptBuilder":
         self.blocks.append(block)
         return self
 
     def render(self) -> str:
         if not self.blocks:
             return ""
-        rendered: list[str] = [self.blocks[0].render()]
+        rendered = [self.blocks[0].render()]
         for blk in self.blocks[1:]:
             rendered.append(blk.sep + blk.render())
         return "".join(rendered).strip()
@@ -73,7 +64,7 @@ def get_query_resolution_prompts(
     audience_type: str,
     max_content_chars: int,
 ) -> tuple[str, str]:
-    """Builds the system and user prompts for the direct query resolution feature."""
+    """Return system- & user-prompt strings for direct query resolution."""
 
     # Prepare the supporting evidence string
     evidence_str = ""
@@ -104,14 +95,18 @@ def get_query_resolution_prompts(
     if audience_instructions:
         system_prompt = f"{system_prompt}\n\n{audience_instructions}"
 
+    logger.debug(
+        "building query-resolution prompt",
+        question=user_question,
+        papers=len(supporting_papers),
+        audience=audience_type,
+    )
+
     return system_prompt, user_prompt
 
 
 def get_paper_deep_dive_prompts(
     paper: Paper, audience_type: str, max_content_chars: int
 ) -> tuple[str, str]:
-    """Placeholder for future deep-dive prompt builder.
-
-    Currently unused. Raises NotImplementedError to catch accidental calls.
-    """
+    """Placeholder for future deep-dive prompt builder (not yet implemented)."""
     raise NotImplementedError("get_paper_deep_dive_prompts is not implemented yet.")

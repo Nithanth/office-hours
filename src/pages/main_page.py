@@ -1,7 +1,9 @@
+"""FastHTML page components for Lux Scholar's main UI."""
+
 from datetime import datetime
 from typing import Any, Optional
 
-# Ensure all FastHTML components used by your page and sub-components are imported
+# FastHTML components used by this page
 from fasthtml.components import (
     BUTTON,
     EM,
@@ -46,16 +48,7 @@ class SharedPageData(BaseModel):
 
 
 def render_error_message(message: str, context: str = "general") -> Div:
-    """
-    Renders a user-friendly error message with consistent styling.
-
-    Args:
-        message: The error message to display to the user
-        context: Optional context identifier for the error (useful for styling or analytics)
-
-    Returns:
-        A Div component containing the formatted error message
-    """
+    """Return a styled error banner."""
     return Div(
         P(message),
         cls=f"error-message error-context-{context}",

@@ -7,7 +7,6 @@ have been removed."""
 import asyncio
 import hashlib
 import html
-import logging
 import re
 import time
 import urllib.parse
@@ -17,7 +16,8 @@ from typing import Any, Optional, Union, cast
 
 from config import config
 from infra.exa_client import ExaClient
-from infra.llm_service import LLMProviderName, LLMService
+from infra.llm_service import LLMService
+from infra.llm_utils.types import ProviderName
 from models.paper import Paper
 from prompts.prompt_templates import (
     AUDIENCE_PROMPT_MAP,
@@ -26,7 +26,9 @@ from prompts.prompt_templates import (
 )
 from utils.summary_cache import SummaryCache
 
-logger = logging.getLogger(__name__)
+from loguru import logger
+
+logger = logger.bind(component="ReportGenerator")
 
 
 class ReportGenerator:
@@ -45,7 +47,7 @@ class ReportGenerator:
         llm_service: LLMService,
         exa_client: ExaClient,
         selected_model_api_id: str,
-        selected_model_provider: LLMProviderName,
+        selected_model_provider: ProviderName,
         selected_model_input_token_limit: int,
     ):
         self.llm_service = llm_service
@@ -101,10 +103,10 @@ class ReportGenerator:
 
         if available_for_snippet_tokens <= 0:
             logger.warning(
-                f"Calculated available tokens for snippet is non-positive ({available_for_snippet_tokens}). "
-                f"Model: {self.selected_model_api_id}, Limit: {self.selected_model_input_token_limit}, "
-                f"Overhead: {prompt_overhead}, Output Target: {output_token_target}. "
-                f"Defaulting to a small snippet size (1000 chars)."
+                "Calculated available tokens for snippet is non-positive ({available_for_snippet_tokens}). "
+                "Model: {self.selected_model_api_id}, Limit: {self.selected_model_input_token_limit}, "
+                "Overhead: {prompt_overhead}, Output Target: {output_token_target}. "
+                "Defaulting to a small snippet size (1000 chars)."
             )
             # Fallback to a very small size if calculations lead to zero or negative tokens
             return 1000
@@ -138,10 +140,6 @@ class ReportGenerator:
             return datetime.strptime(date_input, "%Y-%m-%d").strftime("%Y-%m-%d")
         except ValueError:
             return date_input
-
-    # ------------------------------------------------------------------
-    # Cache-key helpers
-    # ------------------------------------------------------------------
 
     def _paper_cache_key(
         self,
@@ -185,11 +183,7 @@ class ReportGenerator:
                 await asyncio.sleep(delay)
             dur = time.perf_counter() - start_ts
             logger.info(
-                "Summary cache hit | provider=%s model=%s prompt_len=%d duration=%.2fs",
-                self.selected_model_provider,
-                self.selected_model_api_id,
-                len(prompt),
-                dur,
+                "Summary cache hit | provider={self.selected_model_provider} model={self.selected_model_api_id} prompt_len={len(prompt)} duration={dur:.2f}"
             )
             return cast(str, cached)
 
@@ -202,7 +196,7 @@ class ReportGenerator:
                 system_prompt=system_prompt,
             )
             if not result["ok"]:
-                logger.error(f"LLM generation failed: {result['content']}")
+                logger.error("LLM generation failed", error=result["content"])
             content = cast(str, result["content"])
             # Store in cache (best-effort)
             SummaryCache.set(self.selected_model_api_id, prompt, system_prompt, content)
@@ -219,21 +213,21 @@ class ReportGenerator:
                 content = await asyncio.wait_for(_call_llm(), timeout=timeout_sec)
         except asyncio.TimeoutError:
             logger.error(
-                "LLM call timed out after %s seconds | provider=%s model=%s",
-                timeout_sec,
-                self.selected_model_provider,
-                self.selected_model_api_id,
+                "llm call timed out",
+                timeout=timeout_sec,
+                provider=self.selected_model_provider,
+                model=self.selected_model_api_id,
             )
             return "Error: LLM generation timed out."
 
         dur = time.perf_counter() - start_ts
         logger.info(
-            "Summary generated | provider=%s model=%s prompt_len=%d max_out_tok=%d duration=%.2fs",
-            self.selected_model_provider,
-            self.selected_model_api_id,
-            len(prompt),
-            max_tokens,
-            dur,
+            "Summary generated",
+            provider=self.selected_model_provider,
+            model=self.selected_model_api_id,
+            prompt_len=len(prompt),
+            max_out_tok=max_tokens,
+            duration=f"{dur:.2f}",
         )
         return cast(str, content)
 
@@ -261,11 +255,8 @@ class ReportGenerator:
         elif papers_for_topic_report is None and papers_to_summarize:
             _papers_for_topic_report = papers_to_summarize
 
-        # ------------------------------------------------------------------
-        # Pre-fetch full text for all papers that will appear in the report
-        # ------------------------------------------------------------------
         try:
-            from infra.text_extractor import TextExtractor
+            from infra.text.text_extractor import TextExtractor
 
             extractor = TextExtractor.instance()
             # Flatten the list of papers that need summaries
@@ -312,7 +303,7 @@ class ReportGenerator:
                 if cached_path:
                     p.full_text_path = cached_path
         except Exception as prep_exc:  # noqa: BLE001
-            logger.warning("Pre-fetching full text failed: %s", prep_exc, exc_info=True)
+            logger.warning("pre-fetch full text failed", error=str(prep_exc), exc_info=True)
 
         return await self._generate_report_html_async(
             original_query=query_or_url,
@@ -517,7 +508,7 @@ class ReportGenerator:
                     if include_section_headings:
                         report_parts.append("<h3>Overview</h3>")
                     if isinstance(result, Exception):
-                        logger.error("Error generating topic overview: %s", result, exc_info=result)
+                        logger.error("topic overview generation error", error=str(result), exc_info=True)
                         report_parts.append(
                             "<p><em>Could not generate topic overview due to an error.</em></p>"
                         )
@@ -536,10 +527,10 @@ class ReportGenerator:
                 )
                 if isinstance(result, Exception):
                     logger.error(
-                        "Error generating summary for paper %s: %s",
-                        paper_obj.id if paper_obj else "N/A",
-                        result,
-                        exc_info=result,
+                        "paper summary error",
+                        paper_id=paper_obj.id if paper_obj else "N/A",
+                        error=str(result),
+                        exc_info=True,
                     )
                     report_parts.append(
                         "<p><em>Summary could not be generated for this paper due to an error.</em></p>"
@@ -654,7 +645,7 @@ function fallbackCopy(text) {
             temperature=0.4,
         )
         if not result["ok"]:
-            logger.warning("Dynamic title generation failed: %s", result["content"])
+            logger.warning("dynamic title generation failed", error=result["content"])
             raise RuntimeError(result["content"])
 
         # Clean up the title
@@ -693,7 +684,7 @@ function fallbackCopy(text) {
                 None, partial(self.exa_client.answer, query, top_k=num_supporting_papers)
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Exa answer lookup failed: %s", exc, exc_info=True)
+            logger.warning("exa answer lookup failed", error=str(exc), exc_info=True)
 
         passages_block = ""
         if exa_answer and exa_answer.get("passages"):
@@ -730,7 +721,7 @@ function fallbackCopy(text) {
         logger.info(f"Direct query generation took {elapsed_time:.2f} seconds")
 
         if not result["ok"]:
-            logger.error("Direct query generation failed: %s", result["content"])
+            logger.error("direct query generation failed", error=result["content"])
             answer_html = f"<div class='error-banner'>Error: {html.escape(result['content'])}</div>"
         else:
             # Clean common markdown markup (bullets, *italic*, **bold**)
@@ -776,5 +767,5 @@ function fallbackCopy(text) {
                     dt_obj = datetime.strptime(date_str, "%B %d, %Y")
                     return dt_obj.strftime("%B %d, %Y")
                 except ValueError:
-                    logger.warning(f"Unrecognized date string format: {date_str}. Returning as is.")
+                    logger.warning("unrecognized date string format", date_str=date_str)
                     return date_str

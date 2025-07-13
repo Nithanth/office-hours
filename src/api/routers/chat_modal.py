@@ -1,17 +1,24 @@
-from __future__ import annotations
-
 import html
 import time
 from uuid import uuid4
+from typing import Final
 
-import structlog
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
+
+from components.chat_components import ChatBubble, ChatModal
+
 from loguru import logger
 
-from components.chat_components import ChatBubble, ChatModal  # Re-use existing helper
-
 router: APIRouter = APIRouter()
+
+
+"""Chat modal router - returns hydrated chat modal HTML for a given paper.
+
+Provides `/chat-modal` GET endpoint used by the front-end to open a
+bootstrap modal pre-wired for SSE chat streaming. Keeps logic lean and
+avoids heavy imports until necessary.
+"""
 
 
 @router.get("/chat-modal", response_class=HTMLResponse)
@@ -32,7 +39,6 @@ async def chat_modal(
 
     start_ts = time.perf_counter()
 
-    # Import lazily to avoid circular import when app.py includes this router
     try:
         from importlib import import_module
 
@@ -46,7 +52,9 @@ async def chat_modal(
         try:
             paper = await paper_service.get_paper_metadata(paper_id)
         except Exception as exc:  # noqa: BLE001 - best effort
-            logger.warning("chat_modal: metadata lookup failed for %s: %s", paper_id, exc)
+            logger.warning(
+                f"chat_modal: metadata lookup failed for {paper_id}: {exc}"
+            )
 
     # Default title if no metadata is found
     modal_title = paper_id
@@ -54,7 +62,6 @@ async def chat_modal(
     if title:
         modal_title = html.escape(title)
 
-    # Use caller-provided URL if any; variable rename to avoid shadowing
     provided_url = paper_url
 
     link_url: str | None = None
@@ -96,7 +103,6 @@ async def chat_modal(
     # Original snippet in ChatModal markup (no hx-on).
     _search = f'id="{chat_log_id}" class="chat-log-container"'
 
-    # Replacement adds pid + hidden visibility only. initChat will be called via inline <script>.
     chat_log_repl = (
         f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden"'
         + (f">{history_html}" if history_html else ">")
@@ -114,7 +120,7 @@ async def chat_modal(
         .replace("hx_target=", "hx-target=")
         .replace("hx_swap=", "hx-swap=")
         .replace("hx_on_click=", "hx-on:click=")
-        .replace("hx_on=", "hx-on=")  # fallback generic
+        .replace("hx_on=", "hx-on=")
     )
     # Add hx-include for hidden paper field on the chat form
     modal_html = modal_html.replace(
@@ -133,7 +139,7 @@ async def chat_modal(
     modal_html += f"<script>initChat('{session_id}', '{paper_id}', '{chat_log_id}');</script>"
 
     dur = time.perf_counter() - start_ts
-    structlog.get_logger().info(
+    logger.info(
         "chat_modal_ready",
         paper_id=paper_id,
         duration_ms=int(dur * 1000),

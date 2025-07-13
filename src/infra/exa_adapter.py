@@ -1,13 +1,6 @@
-"""services/exa_adapter.py
+"""Thin wrapper around *exa_py* with stable snake_case API and structured logging."""
 
-A thin compatibility layer over the *exa_py* SDK.  The goal is to keep version
-churn (e.g. endpoint renames, camel-vs-snake naming) isolated so the rest of the
-codebase can continue to use a stable, snake_case parameter set.
-"""
-
-from __future__ import annotations
-
-import logging
+from loguru import logger
 from typing import Any, Final
 
 from tenacity import (
@@ -25,9 +18,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover - dev mis-config
         "The 'exa_py' package is required but not installed. Add it to your "
         "environment or requirements.txt."
     ) from exc
-
-logger = logging.getLogger(__name__)
-
 
 class ExaAdapter:  # pylint: disable=too-few-public-methods
     """SDK wrapper exposing *search_and_contents* through a stable interface."""
@@ -62,7 +52,7 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         # Exa SDK expects snake_case parameter names. Passing kwargs directly
         # avoids validation errors such as "Invalid option: 'numResults'".
         params = kwargs
-        logger.debug("ExaAdapter.search_and_contents %s - params=%s", query, params)
+        logger.debug("Exa search_and_contents", query=query, params=params)
         return self._sync.search_and_contents(query, **params)
 
     # ------------------------------------------------------------------
@@ -81,7 +71,7 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         Returns Exa SDK *Answer* object which contains an `answer` string and
         supporting `results` list.
         """
-        logger.debug("ExaAdapter.answer %s - params=%s", question, kwargs)
+        logger.debug("Exa answer", question=question, params=kwargs)
         return self._sync.answer(question, **kwargs)
 
     # ------------------------------------------------------------------
@@ -92,35 +82,8 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         if self._async is None:
             raise RuntimeError("AsyncExa client is not available in the installed exa_py SDK.")
         params = kwargs
-        logger.debug("ExaAdapter.search_and_contents_async %s - params=%s", query, params)
+        logger.debug("Exa search_and_contents_async", query=query, params=params)
         return await self._async.search_and_contents(query, **params)
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _to_camel_case_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
-        """Convert *snake_case* keys in *kwargs* to *camelCase*.
-
-        Example: ``start_published_date`` → ``startPublishedDate``.
-
-        .. deprecated:: 0.0.0
-            This method is no longer used and will be removed in a future version.
-        """
-
-        transformed: dict[str, Any] = {}
-        for key, value in kwargs.items():
-            if value is None:
-                continue  # Skip unset optional params - avoids SDK validation errors.
-
-            if "_" in key:
-                parts = key.split("_")
-                camel_key = parts[0] + "".join(word.capitalize() for word in parts[1:])
-            else:
-                camel_key = key
-            transformed[camel_key] = value
-        return transformed
 
     # -----------------------------------------------
     # Accessors

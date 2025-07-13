@@ -6,13 +6,13 @@ bullet-style notes, and returns the result **as an attachment** (plain-text
 `.txt` or `.docx`).  No SSE or on-page rendering - the browser simply downloads the file.
 """
 
-from __future__ import annotations
 
 import io
 import re
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response
+from loguru import logger
 
 from chat.state import ChatState, get_chat_state
 from config import config
@@ -24,8 +24,7 @@ try:
 except ImportError:  # pragma: no cover
     _DocxDocument = None  # type: ignore[assignment]
 
-# Public alias used throughout this module. Typed as Any so static checks don’t
-# complain when python-docx is absent during type-checking.
+
 Document = cast(Any, _DocxDocument)
 
 # Runtime-safe optional import of python-docx classes --------------------------------
@@ -37,13 +36,8 @@ except Exception:  # pragma: no cover
 # Same pattern for Cm (length helper for indentation).
 Cm = cast(Any, _DocxCm)
 
+
 router = APIRouter(tags=["report-notes"])
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
     """Return a plain-text digest of the recent chat messages (all papers).
@@ -72,10 +66,18 @@ def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
 @router.post("/generate-report-notes")
 async def generate_report_notes(
     request: Request,
-    report_text: str = Form(...),  # cleaned plain-text report provided by JS
+    report_text: str = Form(...),  # cleaned plain-text report from browser
     output_format: Literal["txt", "docx"] = Form("txt"),
 ) -> Response:
+    """Generate study notes from *report_text* and recent chat history.
+
+    The notes are returned as a downloadable `.txt` or `.docx` attachment.
+    """
+
+    logger.info("report_notes: request received", output_format=output_format)
+
     if not report_text.strip():
+        logger.warning("report_notes: empty report text provided")
         raise HTTPException(status_code=400, detail="Report text required")
 
     session_id = await get_session_id(request)
@@ -85,6 +87,7 @@ async def generate_report_notes(
 
     llm_service: LLMService | None = get_llm_service()
     if llm_service is None:
+        logger.error("LLM service unavailable – cannot generate notes")
         raise HTTPException(status_code=503, detail="LLM service unavailable")
 
     model_key = config.DEFAULT_MODEL_KEY
@@ -117,11 +120,14 @@ async def generate_report_notes(
 
     if output_format == "docx":
         if Document is None:
+            logger.error("python-docx not installed - cannot render docx output")
             raise HTTPException(
-                status_code=500, detail="python-docx library not installed on server"
+                status_code=500,
+                detail="python-docx library not installed on server",
             )
 
         doc_bytes = _render_docx(notes_text)
+        logger.info(f"report_notes: docx generated ({len(doc_bytes)} bytes)")
         headers = {"Content-Disposition": 'attachment; filename="report_notes.docx"'}
         return Response(
             doc_bytes,
@@ -131,6 +137,7 @@ async def generate_report_notes(
 
     # Default plain text - prettify with hierarchical bullets / headings
     plain = _render_txt(notes_text)
+    logger.info(f"report_notes: txt generated ({len(plain)} chars)")
     headers = {"Content-Disposition": 'attachment; filename="report_notes.txt"'}
     return Response(plain, media_type="text/plain; charset=utf-8", headers=headers)
 

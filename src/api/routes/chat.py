@@ -1,12 +1,4 @@
-"""Chat endpoints extracted from legacy `app.py`.
-
-These routes are registered on the shared FastAPI application via
-`api.main.include_router()` during Phase-1 refactor.  The logic remains
-byte-for-byte equivalent to the original implementation so behaviour is
-unchanged.
-"""
-
-from __future__ import annotations
+"""Chat message POST & SSE stream endpoints (user assistant)."""
 
 import asyncio
 import html
@@ -16,7 +8,6 @@ import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
-import structlog
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -37,7 +28,7 @@ except ImportError:  # pragma: no cover - metrics disabled in dev
 # Watermark for when a cached full-text file must be refreshed (7 days).
 _PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7
 
-log = structlog.get_logger()
+from loguru import logger as log
 
 router = APIRouter()
 

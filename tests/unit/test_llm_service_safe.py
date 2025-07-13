@@ -1,28 +1,32 @@
 """Tests for LLMService.generate_completion_safe()."""
 
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
-from infra.llm_service import LLMProvider, LLMService
+from infra.llm_service import LLMService
+from infra.llm_utils.provider_base import LLMProvider
 
 
 class _DummyProvider(LLMProvider):
+    """Minimal test double that optionally raises during generation."""
+
     def __init__(self, should_fail: bool = False):
+        super().__init__(api_key="dummy", default_model="unit-test-model")
         self.should_fail = should_fail
 
-    async def initialize_client(self, api_key: Optional[str] = None) -> None:
-        """Mock initialization."""
-        pass  # No-op for dummy
-
-    async def close(self) -> None:
-        """Mock close."""
-        pass  # No-op for dummy
+    async def initialize_client(self) -> None:
+        """No-op; nothing to initialise for dummy provider."""
+        return None
 
     async def generate_text(self, *args: Any, **kwargs: Any) -> str:  # noqa: D401 – test stub
         if self.should_fail:
             raise RuntimeError("boom")
         return "ok-response"
+
+    async def close(self) -> None:  # noqa: D401 – satisfy abstract base
+        """No-op close for dummy provider."""
+        return None
 
 
 @pytest.mark.asyncio

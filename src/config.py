@@ -1,13 +1,18 @@
+"""Centralised application configuration loaded from environment variables."""
+
 import os
 from typing import Any, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-load_dotenv()  # Takes environment variables from .env.
+# Read variables from a local .env file (noop in prod).
+load_dotenv()
 
+# ---------------------------------------------------------------------------
+# Pydantic models for nested config blobs
+# ---------------------------------------------------------------------------
 
-# Configuration Models
 class GeneralConfig(BaseModel):
     app_name: str
     log_level: str
@@ -50,9 +55,7 @@ class Config:
     TOGETHER_API_KEY: Optional[str] = os.getenv("TOGETHER_API_KEY")
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
-    GEMINI_API_KEY: Optional[str] = os.getenv(
-        "GEMINI_API_KEY"
-    )  # Google AI Studio API Key for Gemini
+    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")  # Google AI Studio API Key for Gemini
     # Path to your Google credentials JSON file - will be deferred for MVP
     GOOGLE_DOCS_CREDENTIALS_PATH: Optional[str] = os.getenv("GOOGLE_DOCS_CREDENTIALS_PATH")
 
@@ -79,23 +82,18 @@ class Config:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
     LOG_FORMAT_JSON: bool = os.getenv("LUX_LOG_FORMAT_JSON", "False").lower() == "true"
     DEFAULT_PAPER_COUNT: int = int(os.getenv("DEFAULT_PAPER_COUNT", 3))
-    DEFAULT_SIMILAR_PAPER_COUNT: int = int(
-        os.getenv("DEFAULT_SIMILAR_PAPER_COUNT", 3)
-    )  # Added for similar paper searches
+    DEFAULT_SIMILAR_PAPER_COUNT: int = int(os.getenv("DEFAULT_SIMILAR_PAPER_COUNT", 3))  # Added for similar paper searches
     RELOAD_APP: bool = os.getenv("RELOAD_APP", "True").lower() == "true"
     MAX_AUTHORS_DISPLAY: int = 5  # Max authors to display before 'et al.'
 
     # Application specific configurations from design doc
     MAX_PAPERS_PER_SEARCH: int = 20
-    SUMMARY_MAX_LENGTH: int = 300  # Max words for a paper summary in the report list
+    SUMMARY_MAX_LENGTH: int = 300  # words
     MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4))
-    # Absolute upper-bound on characters we will ever pass from a paper into an LLM prompt.
-    # 60 k chars ≈ 15 k tokens which is already generous and avoids gigantic prompts that
-    # cause provider-side truncation.
+    # Hard cap on characters passed from a paper into any LLM prompt (≈15k tokens).
     PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 60000))
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
-    # UX tweak: when a summary is fully served from cache, optionally pause a bit so
-    # the user still sees the spinner briefly. Set to 0 to disable.
+    # Optional UX pause when serving cached summaries – set to 0 to disable.
     CACHED_SUMMARY_DELAY_SECONDS: float = float(os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5"))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
@@ -129,6 +127,8 @@ class Config:
     # LLM Configuration
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", 3))
+    # Async semaphore limit per LLM provider to avoid QPS throttling.
+    MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = int(os.getenv("MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4))
     REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", 120))
 
     # Topic summary tuning
@@ -217,7 +217,13 @@ class Config:
     # You can choose one of your available TogetherAI models or another reliable one.
     TOGETHER_FALLBACK_MODEL: Optional[str] = "gpt-4o"
 
-    # --- Prompt Helper Strings (Static parts of the prompts) ---
+    # ---------------------------------------------------------------------
+    # Prompt helper strings (used by prompt templates; keep in sync)
+    # ---------------------------------------------------------------------
+
+    # (1) Critical instruction for *topic* summaries – forbids any pre-amble,
+    #     enforces plain-text output, and references the ``{query_text}``
+    #     placeholder which is substituted when the prompt is built.
     _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR: str = """CRITICAL INSTRUCTION:
 You are a direct summarization engine. Your *sole function* is to output the summary text itself for the research topic: "{query_text}".
 You do not engage in dialogue, explain your process, or include any preamble, conversational text, or meta-commentary.
@@ -225,6 +231,8 @@ Your response MUST begin DIRECTLY with the first word of the synthesized topic o
 Do not use markdown, bolding, or any special formatting in your output.
 """
 
+    # (2) Critical instruction for *paper* summaries – variant tailored to an
+    #     individual paper; uses the ``{paper_title}`` placeholder.
     _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR: str = """CRITICAL INSTRUCTION:
 You are a direct summarization engine. Your *sole function* is to output a synthesized prose summary for the research paper titled "{paper_title}".
 You do not engage in dialogue, explain your process, or include any preamble, conversational text, or meta-commentary.
@@ -232,6 +240,7 @@ Your response MUST begin DIRECTLY with the first sentence of the synthesized pro
 Do not use markdown, bolding, or any special formatting in your output.
 """
 
+    # (3) Content-quality checklist – reminders to lead with insights.
     _CONTENT_QUALITY_INSTRUCTIONS_STR: str = """
 - Lead with the most interesting or impactful insights.
 - Use concrete examples or analogies to clarify complex points, especially for semi-technical and non-technical audiences.
@@ -239,18 +248,21 @@ Do not use markdown, bolding, or any special formatting in your output.
 - Ensure the summary flows logically and tells a coherent story.
 """
 
+    # (4) Output-formatting guardrails – enforce plain text.
     _FORMATTING_INSTRUCTIONS_STR: str = """
 - Output plain text only.
 - Do not use markdown, bolding, italics, or any special formatting.
 - Ensure paragraphs are well-formed.
 """
 
+    # (5) Global style guidelines – objective, analytical tone.
     _GENERAL_PROMPT_INSTRUCTIONS_STR: str = """
 - Adopt a third-person, objective, analytical, and informative tone.
 - Synthesize information rather than just extracting verbatim.
 - Ensure the summary is complete and does not end abruptly.
 """
 
+    # (6) Hybrid-input handling – differentiate topics vs. direct queries.
     _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR: str = """
 
 UNDERSTANDING THE USER'S INTENT (TOPIC vs. DIRECT QUERY):
@@ -275,116 +287,10 @@ The user's input "{query_text}" might be a broad research topic or a specific qu
 Adapt your synthesis and the structure of your summary based on this determination.
 """
 
+    # (7) Final adherence reminder – appended last to guard output.
     _FINAL_ADHERENCE_INSTRUCTION_STR: str = """IMPORTANT FINAL INSTRUCTION:
 Your response MUST begin with the first word of the summary itself. No preceding text, dialogue, or meta-commentary is allowed. Adhere strictly to all instructions.
 """
-
-    # --- Main Topic Prompt Templates ---
-    TOPIC_SUMMARY_PROMPT_TEMPLATE_TECHNICAL: str = (
-        _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR + "\n\nTASK OVERVIEW:\n"
-        "You are tasked with generating a comprehensive and technically deep overview of the research topic specified in the critical instructions. "
-        "This summary is intended for a highly technical audience, such as PhDs or active researchers in the relevant field. "
-        "Your explanation should delve into the core concepts, prevalent methodologies, significant findings, current challenges, and potential future research directions. "
-        + _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR
-        + "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    TOPIC_SUMMARY_PROMPT_SEMI_TECH: str = (
-        _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR + "\n\nTASK OVERVIEW:\n"
-        "You are tasked with generating an insightful and accessible overview of the research topic specified in the critical instructions. "
-        "This summary is for a semi-technical audience (e.g., product managers, investors with some technical background). "
-        "Explain the core concepts, key implications, potential applications, and major advancements. Avoid excessive jargon but maintain accuracy. "
-        + _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR
-        + "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    TOPIC_SUMMARY_PROMPT_NON_TECH: str = (
-        _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR + "\n\nTASK OVERVIEW:\n"
-        "You are tasked with generating a clear and concise overview of the research topic specified in the critical instructions. "
-        "This summary is for a non-technical audience (e.g., general business stakeholders, VCs without a deep tech background). "
-        "Explain the fundamental ideas, why it's important, and its potential real-world impact in simple terms. Avoid jargon entirely. "
-        + _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR
-        + "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    # --- Main Paper Prompt Templates ---
-    PAPER_SUMMARY_PROMPT_TEMPLATE_TECHNICAL: str = (
-        _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR + "\n\nCONTEXT OF THE PAPER:\n"
-        "Authors: {paper_authors}\n"
-        "Publication Date: {paper_publication_date}\n"
-        'Content Snippet for Focus:\n"""\n{paper_content_snippet}\n"""\n\n'
-        "TASK OVERVIEW:\n"
-        "Provide a synthesized, technically deep analysis of the research paper detailed above. "
-        "This summary is for a highly technical audience (e.g., PhDs, active researchers in the field). "
-        "Focus on its core contributions, methodology, key findings, limitations, and its significance to the field. "
-        "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    PAPER_SUMMARY_PROMPT_SEMI_TECH: str = (
-        _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR + "\n\nCONTEXT OF THE PAPER:\n"
-        "Authors: {paper_authors}\n"
-        "Publication Date: {paper_publication_date}\n"
-        'Content Snippet for Focus:\n"""\n{paper_content_snippet}\n"""\n\n'
-        "TASK OVERVIEW:\n"
-        "Provide an insightful and accessible summary of the research paper detailed above. "
-        "This summary is for a semi-technical audience (e.g., product managers, investors with some technical background). "
-        "Focus on its main takeaways, implications, potential applications, and overall importance. Avoid excessive jargon but maintain accuracy. "
-        "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    PAPER_SUMMARY_PROMPT_NON_TECH: str = (
-        _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR + "\n\nCONTEXT OF THE PAPER:\n"
-        "Authors: {paper_authors}\n"
-        "Publication Date: {paper_publication_date}\n"
-        'Content Snippet for Focus:\n"""\n{paper_content_snippet}\n"""\n\n'
-        "TASK OVERVIEW:\n"
-        "Provide a clear and concise summary of the research paper detailed above. "
-        "This summary is for a non-technical audience (e.g., general business stakeholders, VCs without a deep tech background). "
-        "Focus on what the paper is about in simple terms, its main conclusions, and why it matters. Avoid jargon entirely. "
-        "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
 
 
 # Instantiate config for easy import

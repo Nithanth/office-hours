@@ -1,7 +1,8 @@
-from __future__ import annotations
+"""In-memory container for a single search result set with shuffle helpers."""
 
 import random
 from dataclasses import dataclass, field
+from loguru import logger
 
 # Import Paper model with fallback to handle different execution contexts
 try:
@@ -9,8 +10,6 @@ try:
     from models.paper import Paper
 except ImportError:  # noqa: F401 - fallback when running via ``src.`` package path
     from src.models.paper import Paper
-
-__all__ = ["CachedSearch"]
 
 
 @dataclass
@@ -35,25 +34,18 @@ class CachedSearch:
     display_ids: list[str] = field(default_factory=list)
     pinned_id: str | None = None  # If set, this paper stays in position 0
 
-    # ------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------
     def _random_not_in(self, exclude: set[str]) -> str:
         pool = [pid for pid in self.paper_by_id if pid not in exclude]
-        if not pool:  # Fallback - shouldn’t normally happen
+        if not pool:
             pool = list(self.paper_by_id.keys())
-        return random.choice(pool)
+        choice = random.choice(pool)
+        logger.debug("random_paper_selected", candidate=choice)
+        return choice
 
-    # ------------------------------------------------------------------
-    # Public operations invoked by API endpoints
-    # ------------------------------------------------------------------
+    # Public operations
     def init_display(self) -> None:
-        """Populate *display_ids* for initial UI display.
-
-        If a ``pinned_id`` is set it will always occupy index 0, with the
-        remaining ``k-1`` items filled from ``orig_ids`` (skipping the pinned
-        item if already present).
-        """
+        """Populate *display_ids* for initial UI display."""
         if self.pinned_id and self.pinned_id in self.paper_by_id:
             remaining_slots = self.k - 1
             other_ids = [pid for pid in self.orig_ids if pid != self.pinned_id]
@@ -65,14 +57,11 @@ class CachedSearch:
         return [self.paper_by_id[pid] for pid in self.display_ids]
 
     def replace_wildcard(self) -> Paper:
-        """Replace the last (wild-card) slot with a random unseen paper.
-
-        The pinned first item (if any) is never replaced.
-        """
+        """Replace the last (wild-card) slot with a random unseen paper."""
         exclude = set(self.display_ids)
         new_id = self._random_not_in(exclude)
-        # Replace the last slot (acts as wildcard anchor in the UI)
         self.display_ids[-1] = new_id
+        logger.debug("wildcard_replaced", new_id=new_id)
         return self.paper_by_id[new_id]
 
     def shuffle_k(self) -> list[Paper]:
@@ -83,7 +72,6 @@ class CachedSearch:
             sample_size = min(self.k - 1, len(pool_ids))
             shuffled = random.sample(pool_ids, sample_size)
             self.display_ids = [self.pinned_id] + shuffled
-            # Pad if we didn't get enough due to small pool
             if len(self.display_ids) < self.k:
                 for pid in self.orig_ids:
                     if pid == self.pinned_id or pid in self.display_ids:
@@ -101,7 +89,9 @@ class CachedSearch:
                         break
                     if pid not in self.display_ids:
                         self.display_ids.append(pid)
-        return self.get_display_papers()
+        papers = self.get_display_papers()
+        logger.debug("shuffle_k", display_ids=self.display_ids)
+        return papers
 
     def reset_display(self) -> list[Paper]:
         """Reset to the deterministic, relevance-ordered view."""
@@ -110,4 +100,6 @@ class CachedSearch:
             self.display_ids = [self.pinned_id] + remaining[: self.k - 1]
         else:
             self.display_ids = self.orig_ids[: self.k]
-        return self.get_display_papers()
+        papers = self.get_display_papers()
+        logger.debug("reset_display", display_ids=self.display_ids)
+        return papers

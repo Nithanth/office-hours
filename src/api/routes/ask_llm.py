@@ -1,15 +1,9 @@
-"""Direct Ask-LLM endpoint extracted from legacy ``app.py``.
-
-Provides ``/ask-llm`` POST route for getting an LLM answer without
-running an Exa search.
-"""
-
-from __future__ import annotations
+"""Minimal `/ask-llm` endpoint - answer a question via the configured LLM."""
 
 import html
 from typing import cast
 
-import structlog
+from loguru import logger
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 
@@ -17,8 +11,6 @@ from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from infra.exa_client import ExaClient
 from services.report_generator import ReportGenerator
-
-logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -38,20 +30,15 @@ async def ask_llm(
 ) -> HTMLResponse:
     """Direct question-answering using the configured LLM service."""
 
-    logger.info(
-        "ask_llm: Request received",
-        endpoint="/ask-llm",
-        method="POST",
-        params={"question": question},
-    )
+    logger.info("ask_llm_request", question=question)
 
     if llm_service_instance is None or not llm_service_instance._initialized:
-        logger.error("LLM service not initialized for /ask-llm")
+        logger.error("llm_service_unavailable")
         return HTMLResponse("<p>Server error: LLM service unavailable.</p>", status_code=500)
 
     selected_key = model_key or settings.DEFAULT_MODEL_KEY
     if selected_key not in settings.AVAILABLE_MODELS:
-        logger.warning("ask_llm: unknown model_key %s; falling back to default", selected_key)
+        logger.warning("ask_llm_unknown_model_key", model_key=selected_key)
         selected_key = settings.DEFAULT_MODEL_KEY
     model_info = settings.AVAILABLE_MODELS[selected_key]
 
@@ -72,6 +59,6 @@ async def ask_llm(
         )
         return HTMLResponse(answer_html)
     except Exception as exc:
-        logger.exception("ask_llm failed", error=str(exc))
+        logger.exception("ask_llm_failed", error=str(exc))
         err_html = f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>"
         return HTMLResponse(err_html, status_code=500)

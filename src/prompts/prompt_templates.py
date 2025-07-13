@@ -1,12 +1,10 @@
+"""Prompt template helpers for Lux Scholar LLM workflows."""
+
 from typing import Any, Optional
 
-from prompts import load_template
-
-# Use built-in types for List and Tuple as per Ruff UP006/UP035
-
-# --- Default System Prompts ---
-# DEFAULT_SYSTEM_PROMPT: A general-purpose system prompt providing the base persona and instructions for the AI.
-# This can be prepended to more specific user prompts.
+# -------------------------------
+# Default system prompt
+# -------------------------------
 DEFAULT_SYSTEM_PROMPT = (
     "You are Lux Scholaris, an advanced AI research assistant. "
     "Your purpose is to provide clear, comprehensive, and insightful analysis of academic research. "
@@ -15,12 +13,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "Maintain a tone suitable for researchers and semi-technical (non-PhD) investors who are looking to learn more about a potentially complex topic."
 )
 
+# ------------------------------------------------------------------
+# Workflow-specific prompt factories
+# ------------------------------------------------------------------
 
-# --- Workflow-Specific Prompt Generation Functions ---
-
-
-# get_paper_deep_dive_prompts: Generates system and user prompts specifically for conducting an in-depth analysis of a single research paper.
-# This is intended for Workflow 3: Paper Deep Dive (see project design document).
 def get_paper_deep_dive_prompts(
     title: str,
     authors: list[str],
@@ -190,8 +186,6 @@ def get_query_resolution_prompts(
     return system_prompt, user_prompt
 
 
-# Prompt for answering a direct user query, optionally with supporting context
-# from a few papers.
 DIRECT_QUERY_USER_PROMPT = """
 User Question: {user_question}
 
@@ -221,6 +215,7 @@ Here are the supporting paper snippets to use as evidence:
 """,
 }
 
+# Mapping of audience segments to concrete prompt templates
 AUDIENCE_PROMPT_MAP = {
     "technical": {
         "topic": load_template("topic", "technical"),
@@ -248,50 +243,6 @@ AUDIENCE_PROMPT_MAP = {
     },
 }
 
-
-# --- Example Usage (for testing) ---
-if __name__ == "__main__":
-    # Paper Deep Dive Example
-    sys_prompt_paper, user_prompt_paper = get_paper_deep_dive_prompts(
-        title="Attention Is All You Need",
-        authors=[
-            "Ashish Vaswani",
-            "Noam Shazeer",
-            "Niki Parmar",
-            "Jakob Uszkoreit",
-            "Llion Jones",
-            "Aidan N. Gomez",
-            "Lukasz Kaiser",
-            "Illia Polosukhin",
-        ],
-        abstract="The dominant sequence transduction models are based on complex recurrent or convolutional neural networks... We propose a new simple network architecture, the Transformer, based solely on attention mechanisms...",
-        full_text_snippet="The Transformer allows for significantly more parallelization and can reach a new state of the art in translation quality after being trained for as little as twelve hours on eight P100 GPUs...",
-        paper_url="https://arxiv.org/abs/1706.03762",
-        target_audience="a machine learning practitioner",
-    )
-    print("--- PAPER DEEP DIVE ---")
-    print(f"System Prompt:\n{sys_prompt_paper}")
-    print(f"\nUser Prompt:\n{user_prompt_paper}")
-    print("\n" + "=" * 50 + "\n")
-
-    # Topic Analysis Example
-    sys_prompt_topic, user_prompt_topic = get_topic_analysis_prompts(
-        topic="Applications of Graph Neural Networks in Drug Discovery",
-        num_papers_to_synthesize=3,
-        scope="recent advancements and challenges",
-        target_audience="a pharmaceutical industry analyst",
-    )
-    print("--- TOPIC ANALYSIS ---")
-    print(f"System Prompt:\n{sys_prompt_topic}")
-    print(f"\nUser Prompt:\n{user_prompt_topic}")
-    print("\n" + "=" * 50 + "\n")
-
-    # Query Resolution Example
-    sys_prompt_query, user_prompt_query = get_query_resolution_prompts(
-        query="Are Large Language Models capable of genuine common-sense reasoning?",
-        num_supporting_papers=2,
-        target_audience="a cognitive scientist",
-    )
-    print("--- QUERY RESOLUTION ---")
-    print(f"System Prompt:\n{sys_prompt_query}")
-    print(f"\nUser Prompt:\n{user_prompt_query}")
+# ------------------------------------------------------------------
+# Inline demo code removed – use dedicated tests instead.
+# ------------------------------------------------------------------

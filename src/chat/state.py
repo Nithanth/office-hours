@@ -1,29 +1,9 @@
-"""Per-session chat state management.
-
-This module stores a lightweight in-memory conversation history for each
-visitor, keyed by a signed/opaque session cookie that the
-ChatSessionMiddleware adds to every request.
-
-NOTE: This implementation is deliberately simple - it is meant only for
-PHASE-0 local development where the app typically runs in a single
-process.  For multi-process or multi-machine deployments replace the
-process-local `chat_states` dict with a shared store such as Redis in a
-later phase.
-"""
-
-from __future__ import annotations
+"""Per-session in-memory chat history keyed by the session cookie."""
 
 import html
 import os
 from dataclasses import dataclass, field
 from typing import Any
-
-__all__ = [
-    "ChatMessage",
-    "ChatState",
-    "get_chat_state",
-]
-
 
 @dataclass
 class ChatMessage:
@@ -86,9 +66,7 @@ class ChatState:
         if len(self.stream_buffer) > self._buf_cap:
             self.stream_buffer = self.stream_buffer[-self._buf_cap :]
 
-    # ---------------------------------------------------------------------
-    # Public helpers - per-paper chat history
-    # ---------------------------------------------------------------------
+    # Public helpers – per-paper chat history
 
     def append(self, paper_id: str, msg: ChatMessage) -> None:
         """Append message *msg* to the chat history for *paper_id*."""
@@ -106,14 +84,8 @@ class ChatState:
         return conv[-1].role if conv else None
 
 
-# ---------------------------------------------------------------------------
-# Module-level bag for PHASE-0 - per-process, *not* shared across workers.
-# ---------------------------------------------------------------------------
 _chat_states: dict[str, ChatState] = {}
 
-# ---------------------------------------------------------------------------
-# Multi-worker guard - log once if multiple OS CPUs or UVICORN_WORKERS>1
-# ---------------------------------------------------------------------------
 try:  # Sched affinity not available on macOS; fallback gracefully
     _cpu_count = len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
 except Exception:  # noqa: BLE001 - any failure → assume single worker
@@ -125,19 +97,14 @@ try:
 except ValueError:
     _declared_workers = 1
 
-if max(_cpu_count, _declared_workers) > 1:
-    # Defer import to avoid mandatory dependency if user runs chat_state standalone
-    try:
-        from loguru import logger  # Lazy import; logger configured elsewhere
-    except ModuleNotFoundError:
-        import logging as _logging
+from loguru import logger
 
-        _fallback_logger: Any = _logging.getLogger(__name__)
+if max(_cpu_count, _declared_workers) > 1:
     logger.warning(
-        "ChatState uses a process-local dict; multiple workers detected (cpus=%d, UVICORN_WORKERS=%d). "
-        "Conversations will NOT be shared across workers - switch to Redis or similar in later phases.",
-        _cpu_count,
-        _declared_workers,
+        "chatstate_multiple_workers",
+        cpus=_cpu_count,
+        uvicorn_workers=_declared_workers,
+        note="Conversations not shared across workers; switch to Redis later.",
     )
 
 

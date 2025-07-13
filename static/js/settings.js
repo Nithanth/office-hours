@@ -1,4 +1,9 @@
-// settings.js – persists global toolbar choices and theme toggle
+// settings.js – toolbar persistence, theme toggle & form validation helpers
+// Ensures UI state (audience, model, theme) persists across HTMX swaps and
+// validates the report generator form before submit.
+// All functionality runs inside an IIFE to avoid leaking globals (except
+// explicitly exposed helpers like `syncHidden`).
+
 (() => {
   const LS = window.localStorage;
 
@@ -32,7 +37,7 @@
     selects.forEach(el => el && el.classList.add(placeholderClass));
 
     // Debug: indicate script executed
-    console.log('[lux] settings.js initialized');
+    console.debug('[lux] settings.js initialized');
 
     // Do NOT restore past Audience/Model choices – always start at placeholder.
 

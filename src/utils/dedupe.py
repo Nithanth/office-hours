@@ -1,16 +1,6 @@
-"""Utilities for semantic deduplication of chat text against report text.
+"""Semantic deduplication utilities for chat vs. report text."""
 
-This module is **not wired in yet**.  It provides `deduplicate_chat` which can be
-used later when generating report notes to drop chat sentences that are nearly
-identical to sentences already present in the final report.
-
-The heavy dependency (`sentence-transformers`) is optional; if it is not
-installed the function will log a warning and return the chat text untouched.
-"""
-
-from __future__ import annotations
-
-import logging
+import nltk
 from typing import cast
 
 try:
@@ -19,9 +9,7 @@ except ImportError:  # pragma: no cover
     SentenceTransformer = None
     util = None
 
-import nltk
-
-_logger = logging.getLogger(__name__)
+from loguru import logger
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _model: SentenceTransformer | None = None
@@ -35,7 +23,7 @@ def _get_model() -> SentenceTransformer:
             raise ImportError(
                 "sentence-transformers not installed. Install it to enable deduplication."
             )
-        _logger.info("[dedupe] Loading sentence-transformers model %s", _MODEL_NAME)
+        logger.bind(component="Dedupe").info("loading sentence-transformers model", model=_MODEL_NAME)
         _model = SentenceTransformer(_MODEL_NAME)
     return _model
 
@@ -62,9 +50,7 @@ def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -
         Filtered chat text containing only non-redundant sentences.
     """
     if SentenceTransformer is None or util is None:
-        _logger.warning(
-            "[dedupe] sentence-transformers unavailable; returning chat text unmodified."
-        )
+        logger.bind(component="Dedupe").warning("sentence-transformers unavailable; skipping dedupe")
         return chat_text
 
     report_sents = _sentences(report_text)

@@ -157,3 +157,9 @@ cython_debug/
 # paper cache
 data/
 .summary_cache/
+
+# node
+node_modules
+
+# PurgeCSS output
+static/css/dist/

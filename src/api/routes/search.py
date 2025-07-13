@@ -1,16 +1,4 @@
-"""Search and result-management endpoints extracted from legacy `app.py`.
-
-This module handles:
-• POST /search               - main Exa search and direct LLM query flow
-• POST /shuffle              - replace the wild-card paper
-• POST /shuffle_all          - reshuffle current result set
-• POST /reset_results        - revert to original ranking
-
-Behaviour is byte-for-byte equivalent to the original code; only
-organisation has changed.
-"""
-
-from __future__ import annotations
+"""Search (/search) plus shuffle/reset helper routes."""
 
 import asyncio
 import html
@@ -24,6 +12,7 @@ from loguru import logger
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from infra.exa_client import ExaClient
+from infra.exa_utils import url_utils as _url_utils
 from main import _prewarm_cached
 from models.paper import Paper
 from pages.main_page import render_search_results
@@ -64,23 +53,19 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         llm_service_instance = get_llm_service()
 
     logger.info(
-        "handle_search: Request received",
-        endpoint="/search",
-        method="POST",
-        params={
-            "query": search_query,
-            "start_published_date": start_published_date,
-            "num_results": num_results,
-            "mode": mode,
-            "include_domains": include_domains,
-        },
+        "search_request",
+        query=search_query,
+        start_date=start_published_date,
+        num_results=num_results,
+        mode=mode,
+        include_domains=include_domains,
     )
 
     # ------------------------------------------------------------------
     # Basic config guards
     # ------------------------------------------------------------------
     if not settings.EXA_API_KEY:
-        logger.error("handle_search: Exa API key not configured", endpoint="/search")
+        logger.error("search_missing_exa_key")
         error_html = (  # minimal banner; original used render_error_message but keep dependencies slim
             "<div class='error-banner'>Search service not configured. Contact support.</div>"
         )
@@ -96,12 +81,12 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     if mode != "direct":  # a paper search → cancel any in-flight Ask-LLM task
         if current_direct_query_task and not current_direct_query_task.done():
-            logger.info("Paper search initiated - cancelling active direct-query task.")
+            logger.info("search_cancel_direct_query_task")
             current_direct_query_task.cancel()
             current_direct_query_task = None
     else:  # new direct Ask-LLM query → cancel earlier one
         if current_direct_query_task and not current_direct_query_task.done():
-            logger.info("New direct query - cancelling previous task.")
+            logger.info("direct_query_cancel_previous")
             current_direct_query_task.cancel()
             current_direct_query_task = None
 
@@ -134,7 +119,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         except asyncio.CancelledError:
             return HTMLResponse("<p><i>LLM query cancelled.</i></p>")
         except Exception as exc:  # noqa: BLE001 - bubble unexpected errors
-            logger.exception("Direct query failed", err=str(exc))
+            logger.exception("direct_query_failed", error=str(exc))
             return HTMLResponse(
                 f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>",
                 status_code=500,
@@ -171,7 +156,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 shared_kwargs["include_domains"] = filtered_domains
 
         client = cast(ExaClient, exa_client_instance)
-        is_url_search = client.is_url(input_query_stripped)
+        is_url_search = _url_utils.is_paper_url(input_query_stripped)
 
         if is_url_search:
             exa_results = client.url_search_and_cache(
@@ -201,7 +186,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
         return HTMLResponse(content=str(results_component))
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Search flow failed", err=str(exc))
+        logger.exception("search_flow_failed", error=str(exc))
         error_html = "<div class='error-banner'>Could not retrieve results. Try again later.</div>"
         return HTMLResponse(
             content=error_html,
@@ -292,7 +277,7 @@ async def shuffle_random_paper() -> HTMLResponse:
         )
 
     rendered = _paper_li_html(paper, wildcard=True)
-    logger.info("shuffle (wildcard) HTML → {}...", rendered[:200])
+    logger.debug("shuffle_wildcard_html_snippet", snippet=rendered[:120])
     return HTMLResponse(content=rendered, headers={"HX-Reswap": "outerHTML"})
 
 
@@ -333,7 +318,7 @@ async def shuffle_all_papers() -> HTMLResponse:
         + "".join(rendered_items)
         + "</ul>"
     )
-    logger.info("shuffle_all HTML → {}...", rendered_ul[:200])
+    logger.debug("shuffle_all_html_snippet", snippet=rendered_ul[:120])
     return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})
 
 
@@ -374,5 +359,5 @@ async def reset_papers() -> HTMLResponse:
         + "".join(rendered_items)
         + "</ul>"
     )
-    logger.info("reset_results HTML → {}...", rendered_ul[:200])
+    logger.debug("reset_results_html_snippet", snippet=rendered_ul[:120])
     return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})

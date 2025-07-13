@@ -1,3 +1,5 @@
+"""Tiny on-disk cache for LLM-generated summaries (SHA-256 keyed)."""
+
 import atexit
 import contextlib
 import hashlib
@@ -6,22 +8,22 @@ import os
 import time
 from typing import Optional
 
+from loguru import logger
+
+# Component-level logger
+logger = logger.bind(component="SummaryCache")
+
 
 class SummaryCache:
-    """Very small file-based cache for LLM summaries.
-
-    Keyed by SHA-256 hash of (model_id, system_prompt, user_prompt).
-    Values are stored as UTF-8 text files in `.summary_cache/` (path can be
-    overridden with the `SUMMARY_CACHE_DIR` env var).
+    """Tiny on-disk cache for LLM-generated summaries (SHA-256 keyed).
+    Cached text files are stored in `.summary_cache/` (override via
+    `SUMMARY_CACHE_DIR`).
     """
 
     _cache_dir: str = os.environ.get("SUMMARY_CACHE_DIR", ".summary_cache")
     _cache_json_path: str = os.path.join(_cache_dir, "cache.json")
     _MEM_CACHE: dict[str, str] = {}
 
-    # ---------------------------------------------------------------------------
-    # Cache policy
-    # ---------------------------------------------------------------------------
     # Default time-to-live (in seconds) for cached summaries.  Can be overridden via
     # the SUMMARY_CACHE_TTL_SEC environment variable.
     TTL_SECONDS: int = int(os.environ.get("SUMMARY_CACHE_TTL_SEC", 24 * 60 * 60))
@@ -69,12 +71,16 @@ class SummaryCache:
                     # Best-effort removal; ignore IO errors.
                     with contextlib.suppress(Exception):
                         os.remove(path)
+                    logger.debug("cache ttl expired", path=path)
                     return None
 
             try:
                 with open(path, encoding="utf-8") as f:
-                    return f.read()
+                    cached = f.read()
+                    logger.debug("cache hit", path=path)
+                    return cached
             except Exception:  # noqa: BLE001
+                logger.warning("failed reading cache file", path=path)
                 return None
         return None
 
@@ -91,8 +97,10 @@ class SummaryCache:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
+            logger.debug("cache set", path=path)
         except Exception:
             # Best-effort caching – ignore IO errors.
+            logger.warning("failed writing cache file", path=path)
             pass
 
     @classmethod
@@ -104,6 +112,7 @@ class SummaryCache:
     def set_generic(cls, key: str, content: str) -> None:
         """Store content under deterministic key and persist to json on exit."""
         cls._MEM_CACHE[key] = content
+        logger.debug("generic cache set", key=key)
 
     # ---------------------------------------------------------------------
     # Maintenance helpers
@@ -115,6 +124,7 @@ class SummaryCache:
 
         # 1) Clear in-memory map
         cls._MEM_CACHE.clear()
+        logger.debug("memory cache cleared")
 
         # 2) Remove text files + json index
         with contextlib.suppress(Exception):
@@ -123,6 +133,7 @@ class SummaryCache:
                 if fname.endswith(".txt"):
                     with contextlib.suppress(Exception):
                         os.remove(os.path.join(cls._cache_dir, fname))
+            logger.debug("disk cache cleared", dir=cls._cache_dir)
 
             # Best-effort removal of cache index
             with contextlib.suppress(FileNotFoundError):

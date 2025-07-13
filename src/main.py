@@ -1,9 +1,13 @@
 # ruff: noqa: E402,F404
-"""Lux Scholar FastAPI application bootstrap (new canonical path).
+"""Lux Scholar - FastAPI bootstrap.
 
-This file was moved from the project-root `app.py` during the
-re-organisation.  The legacy `app.py` now simply re-exports
-`lux_scholar.main` so that existing imports continue to function.
+Main responsibilities:
+1. Configure global, structured logging (Loguru) and bridge stdlib logging.
+2. Initialise core singletons (LLMService, ExaClient, TextExtractor) inside the
+   FastAPI *lifespan* context so they live exactly as long as the app.
+3. Register observability helpers (request-ID middleware + optional Prometheus
+   metrics) and all API routers.
+4. Mount static assets when running under `uvicorn`.
 """
 
 import asyncio
@@ -24,25 +28,39 @@ import config
 from chat.state import _chat_states
 from infra.exa_client import ExaClient
 from infra.llm_service import LLMConfigurationError, LLMService
-from infra.text_extractor import TextExtractor
+from infra.text.text_extractor import TextExtractor
 from middleware.chat_session import ChatSessionMiddleware
 from utils.observability import setup_observability
 
-# CHAT_TOKEN_LAT is defined only when metrics enabled
+# Optional Prometheus histogram exported by `utils.observability`.
+# It measures the **latency between consecutively streamed chat tokens** – a
+# good proxy for perceived UI smoothness during SSE streaming.  It is `None`
+# when metrics are disabled so downstream code can `if CHAT_TOKEN_LAT:` safely.
 try:
     from utils.observability import CHAT_TOKEN_LAT
 except ImportError:  # pragma: no cover
     CHAT_TOKEN_LAT = None
 
-# ------------------- Helper Accessors -------------------
+# ---------------------------------------------------------------------------
+# Dependency-injection helpers (FastAPI ``Depends``)
+# ---------------------------------------------------------------------------
+
 _IDLE_SESSION_TTL_SEC = 3600  # 1 h
 _TEXT_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
 
 
 async def _prewarm_cached(url: str, paper_id: str) -> None:
-    from infra.text_extractor import TextExtractor
+    """Fetch & cache a paper's full-text **in the background** after search.
 
-    async with _TEXT_PREWARM_SEMA:
+    The *search* endpoint (``src/api/routes/search.py``) imports this helper
+    and fires it via ``asyncio.create_task`` for each search result so when the
+    user later asks to summarise a paper, its HTML/PDF is already parsed and
+    cached on disk, cutting perceived latency by ~3-5s.
+    """
+
+    from infra.text.text_extractor import TextExtractor
+
+    async with _TEXT_PREWARM_SEMA:  # Avoid hammering remote hosts concurrently.
         try:
             await TextExtractor.instance().ensure_cached(url, paper_id)
         except Exception as exc:  # noqa: BLE001
@@ -73,7 +91,38 @@ class DropSSE204Filter(logging.Filter):
 
 logging.getLogger("uvicorn.access").addFilter(DropSSE204Filter())
 
-# ------------------- Loguru (application) logger ----------------
+# ---------------------------------------------------------------------------
+# Bridge *all* third-party / stdlib logging → Loguru
+# ---------------------------------------------------------------------------
+# FastAPI / Uvicorn and many libraries still use the standard `logging` module.
+# The intercept handler below reroutes those records so they are formatted by
+# Loguru and share the same sinks/JSON structure as first-party logs.
+
+class _InterceptHandler(logging.Handler):
+    """Forward standard 'logging' records to *loguru* for uniform formatting."""
+
+    def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+        # Retrieve corresponding Loguru level (may be numeric or name).
+        try:
+            level = logger.level(record.levelname).name  # type: ignore[arg-type]
+        except ValueError:
+            level = record.levelno
+
+        logger_opt = logger.opt(depth=6, exception=record.exc_info)
+        logger_opt.log(level, record.getMessage())
+
+
+# Route the root logger through the intercept so third-party libs (uvicorn, fastapi, etc.)
+# appear in our Loguru output.
+logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
+
+# ---------------------------------------------------------------------------
+# Core application logger
+# ---------------------------------------------------------------------------
+# Remove the default Loguru sink and attach our single stderr sink so that:
+# • Log level & JSON formatting honour runtime config.
+# • There is one canonical place where logs leave the process (stdout/stderr).
+
 logger.remove()
 logger.add(
     sys.stderr,
@@ -86,16 +135,17 @@ exa_client_instance: Optional[ExaClient] = None
 
 KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
 
-# ------------------- Main Application Setup -------------------
-
+# ---------------------------------------------------------------------------
+# FastAPI application set-up & dependency lifetime management
+# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global llm_service_instance, exa_client_instance
-    logger.info("Application startup: Initializing LLM Service and Exa Client...")
+    logger.info("initializing services")
     try:
         if config.config.EXA_API_KEY is None:
-            logger.critical("EXA_API_KEY is not set. Application cannot start.")
+            logger.critical("EXA_API_KEY missing; aborting startup")
             sys.exit(1)
         exa_client_instance = ExaClient(api_key=config.config.EXA_API_KEY)
         logger.info("Exa Client initialized.")
@@ -120,17 +170,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         gc_task = asyncio.create_task(_chatstate_gc_loop())
         yield
     except ValueError as ve:
-        logger.critical("Configuration error during startup: %s. Application cannot start.", ve)
+        logger.critical("startup configuration error", err=str(ve))
         sys.exit(1)
     except LLMConfigurationError as llm_config_err:
-        logger.critical(
-            "LLM Configuration error during startup: %s. Application cannot start.", llm_config_err
-        )
+        logger.critical("llm configuration error", err=str(llm_config_err))
         sys.exit(1)
-    except Exception as e:  # noqa: BLE001
-        logger.exception(
-            "Critical error during service initialization: %s. Application cannot start.", e
-        )
+    except Exception as err:  # noqa: BLE001
+        logger.exception("unhandled startup error", err=str(err))
         sys.exit(1)
     finally:
         if llm_service_instance and llm_service_instance._initialized:
@@ -206,10 +252,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ChatSessionMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ------------------- Static asset mounting -----------------------
-# The "static" directory may live alongside ``src`` (development) *or* inside
-# ``src/`` (older layouts used during tests/packaging).  Probe a couple of
-# candidate paths so that requests to ``/static/*`` succeed in either case.
+# ---------------------------------------------------------------------------
+# Static asset mounting (first matching path wins)
+# ---------------------------------------------------------------------------
 
 _static_candidates = [
     _pathlib.Path(__file__).parent / "static",  # current src/static
@@ -218,7 +263,7 @@ _static_candidates = [
 
 for _static_path in _static_candidates:
     if _static_path.exists():
-        logger.info("Mounting static assets from %s", _static_path)
+        logger.info("mounting static assets", path=str(_static_path))
         app.mount("/static", StaticFiles(directory=str(_static_path)), name="static")
         break
 else:

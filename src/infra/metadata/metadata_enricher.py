@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from typing import Any, Optional, cast
 
@@ -7,7 +5,13 @@ from loguru import logger
 from pydantic import HttpUrl
 
 from infra.exa_client import ExaClient
+from infra.exa_utils import merge_utils as _merge_utils
+from infra.exa_utils import paper_utils as _paper_utils
+from infra.exa_utils import url_utils as _url_utils
 from models.paper import Paper
+
+
+"""Async orchestrator that merges metadata from arXiv, DOI providers, and Exa."""
 
 
 class MetadataEnricher:
@@ -27,10 +31,7 @@ class MetadataEnricher:
     def __init__(self, exa_client: ExaClient):
         self.client = exa_client
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
+    # Public API ---------------------------------------------------------
     async def enrich(self, url: str) -> Paper | None:
         """Return best-effort enriched Paper object (non-blocking).
 
@@ -39,8 +40,8 @@ class MetadataEnricher:
         """
         loop = asyncio.get_running_loop()
 
-        arxiv_id = self.client._extract_arxiv_id(url)  # noqa: SLF001 - internal helper
-        doi_val = self.client._extract_doi(url)  # noqa: SLF001
+        arxiv_id = _url_utils.extract_arxiv_id(url)
+        doi_val = _url_utils.extract_doi(url)
 
         # Schedule tasks lazily
         tasks: list[asyncio.Task] = []
@@ -60,7 +61,7 @@ class MetadataEnricher:
         meta_final: dict[str, Any] = {}
         for meta in results:  # already ordered by schedule priority
             if isinstance(meta, dict):
-                meta_final = ExaClient._merge_dicts_keep_first(meta, meta_final)
+                meta_final = _merge_utils.merge_dicts_keep_first(meta, meta_final)
 
         if not meta_final:
             return None
@@ -72,13 +73,10 @@ class MetadataEnricher:
             title=meta_final.get("title") or "No Title Provided",
             url=cast(HttpUrl, url),
         )
-        paper = self.client._update_paper_from_meta(paper, meta_final)  # noqa: SLF001
+        paper = _paper_utils.update_paper_from_meta(paper, meta_final)
         return paper
 
-    # ------------------------------------------------------------------
-    # Internal async wrappers
-    # ------------------------------------------------------------------
-
+    # Internal async wrappers -------------------------------------------
     async def _fetch_arxiv(self, arxiv_id: str) -> dict[str, Any]:
         async with self._arxiv_sem:
             logger.debug("[enrich] arXiv fetch for {}", arxiv_id)

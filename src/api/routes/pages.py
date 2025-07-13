@@ -1,15 +1,10 @@
-"""UI/Page endpoints extracted from legacy ``app.py``.
-
-Serve the home page (``/``) and report-configuration screen
-(``/show-report-config``).
-"""
-
-from __future__ import annotations
+"""Home page (`/`) and report-configuration (`/show-report-config`) routes."""
 
 import asyncio
-from typing import Any, Callable, cast
+from typing import Any, Callable
+from loguru import logger
 
-import structlog
+import fastapi
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 
@@ -26,29 +21,10 @@ from pages.main_page import (
 # Singleton alias (populated during app startup)
 exa_client_instance = get_exa_client()
 
-
-logger = structlog.get_logger()
-
 router = APIRouter()
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
-
-def _search_papers_in_thread(
-    search_method: Callable[..., list[Paper]],
-    **kwargs: Any,
-) -> list[Paper]:
-    """Execute blocking Exa requests in a worker thread."""
-    return cast(list[Paper], search_method(**kwargs))
-
-
-# ---------------------------------------------------------------------------
 # Routes
-# ---------------------------------------------------------------------------
-
-
 @router.get("/", response_class=HTMLResponse)
 async def get_home(
     request: Request,
@@ -57,24 +33,18 @@ async def get_home(
 ) -> HTMLResponse:
     """Render the main home page and optionally perform an initial search."""
 
-    logger.info(
-        "get_home: Request received",
-        endpoint="/",
-        method="GET",
-        params={"search_query": search_query},
-    )
+    logger.info("home_request", query=search_query)
     page_data = SharedPageData(current_query=search_query)
 
     # Perform initial search if query is provided
     if search_query and search_query.strip():
         if not settings.EXA_API_KEY:
-            logger.error("get_home: EXA_API_KEY not configured for initial search.")
-            page_data.search_results = []
+            logger.error("home_missing_exa_key")
         else:
             try:
                 assert exa_client_instance is not None
                 logger.info(
-                    "get_home: Performing initial Exa search",
+                    "home_initial_search",
                     query=search_query.strip(),
                     num_results=settings.DEFAULT_PAPER_COUNT,
                 )
@@ -85,11 +55,8 @@ async def get_home(
                 )
                 page_data.search_results = papers
             except Exception as exc:  # log and fall back
-                logger.error(
-                    "get_home: Error during initial Exa search",
-                    query=search_query.strip(),
-                    error=str(exc),
-                    exc_info=True,
+                logger.exception(
+                    "home_initial_search_error", query=search_query.strip(), error=str(exc)
                 )
                 page_data.search_results = []
 
@@ -111,13 +78,10 @@ async def show_report_config(
 
     form_data = await request.form()
     logger.info(
-        "show_report_config: Received request",
-        params={
-            "original_search_query": original_search_query_for_report,
-            "selected_papers_json_count": num_papers_received,
-            "is_url_input_source": is_url_input_source,
-            "raw_form_data": dict(form_data),
-        },
+        "report_config_request",
+        original_query=original_search_query_for_report,
+        papers_received=num_papers_received,
+        is_url_input_source=is_url_input_source,
     )
 
     if not selected_papers_json:
@@ -135,7 +99,7 @@ async def show_report_config(
         for paper_json_str in selected_papers_json:
             deserialized_papers.append(Paper.model_validate_json(paper_json_str))
     except Exception as exc:  # deserialization failed
-        logger.exception("show_report_config: Error deserializing JSON", error=str(exc))
+        logger.exception("report_config_deserialize_error", error=str(exc))
         error_html = render_error_message(
             "Could not process the selected paper data. Please try again.",
             context="paper_deserialization_error_show_config",
@@ -154,7 +118,7 @@ async def show_report_config(
         )
 
     logger.info(
-        "show_report_config: Rendering form",
+        "report_config_render",
         query=original_search_query_for_report,
         num_papers=len(deserialized_papers),
     )

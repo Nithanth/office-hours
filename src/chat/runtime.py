@@ -1,21 +1,14 @@
-"""chat_runtime.py
-Utilities shared by chat endpoints: per-paper semaphores and helper
-prompt assembly.
-"""
-
-from __future__ import annotations
+"""Chat helpers: per-paper semaphores and prompt builder."""
 
 import asyncio
 import os
 from collections import defaultdict
+from loguru import logger
 
 from chat.state import ChatState
-from infra.text_extractor import TextExtractor
+from infra.text.text_extractor import TextExtractor
 
-# ---------------------------------------------------------------------------
-# Concurrency guard: at most 3 concurrent generations per (session, paper).
-# ---------------------------------------------------------------------------
-
+# Concurrency guard – max 3 concurrent generations per (session, paper)
 _PaperKey = tuple[str, str]  # (session_id, paper_id)
 
 _SEMAPHORES: dict[_PaperKey, asyncio.Semaphore] = defaultdict(lambda: asyncio.Semaphore(3))
@@ -26,10 +19,7 @@ def get_semaphore(session_id: str, paper_id: str) -> asyncio.Semaphore:
     return _SEMAPHORES[(session_id, paper_id)]
 
 
-# ---------------------------------------------------------------------------
 # Prompt helper
-# ---------------------------------------------------------------------------
-
 
 async def build_prompt(
     chat_state: ChatState,
@@ -40,7 +30,6 @@ async def build_prompt(
 ) -> str:
     """Construct prompt with recent chat + paper excerpt."""
 
-    # Recent history last max_history turns for this paper
     turns = chat_state.get_conversation(paper_id)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
 
@@ -58,15 +47,17 @@ async def build_prompt(
         try:
             with open(full_text_path, encoding="utf-8") as fh:
                 excerpt = fh.read(excerpt_chars)
-            # cache excerpt to avoid disk I/O next turn
-            chat_state.paper_cache[paper_id]["excerpt"] = excerpt
-        except Exception:
+            chat_state.paper_cache[paper_id]["excerpt"] = excerpt  # cache
+            logger.debug("excerpt_loaded", paper_id=paper_id, chars=len(excerpt))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("excerpt_load_failed", paper_id=paper_id, error=str(exc))
             excerpt = ""
 
     # Fallback to cached LLM summary when no excerpt or extremely short (<200 chars)
     if (not excerpt) or len(excerpt.strip()) < 200:
         summary_fallback = chat_state.paper_cache.get(paper_id, {}).get("summary")
         if summary_fallback:
+            logger.debug("using_summary_fallback", paper_id=paper_id)
             excerpt = f"[LLM summary]\n{summary_fallback}"
 
     # Ensure excerpt is a string for subsequent operations
@@ -74,6 +65,8 @@ async def build_prompt(
         excerpt = ""
 
     limited_ctx = len(excerpt.strip()) < 500
+    if limited_ctx:
+        logger.debug("limited_context", paper_id=paper_id, chars=len(excerpt))
 
     # Build system prompt: base persona + concise instruction
     from prompts.prompt_templates import DEFAULT_SYSTEM_PROMPT  # local import

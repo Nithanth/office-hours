@@ -1,3 +1,6 @@
+"""On-disk SQLite cache for paper metadata."""
+
+# stdlib
 import json
 import os
 import sqlite3
@@ -5,14 +8,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional, cast
 
+# external
+from loguru import logger
+
 
 class PaperCache:
-    """Lightweight on-disk cache for paper metadata.
-
-    Uses the std-lib `sqlite3` module so no external services are required.
-    A single table keeps the latest known metadata for each Exa document-id.
-    """
-
+    # table schema
     _CREATE_SQL = """
         CREATE TABLE IF NOT EXISTS paper_cache (
             id           TEXT PRIMARY KEY,
@@ -23,7 +24,7 @@ class PaperCache:
         """
 
     def __init__(self, db_path: str | None = None, freshness_hours: int = 24):
-        # Normalise and resolve DB path early so subsequent ops use a concrete str
+        # Resolve DB path early so subsequent ops use a concrete str
         env_path = os.getenv("PAPER_CACHE_DB")
         self.db_path: str = str(db_path or env_path or "data/paper_cache.sqlite3")
 
@@ -35,10 +36,11 @@ class PaperCache:
         self.conn.execute(self._CREATE_SQL)
         self.conn.commit()
         self.freshness_td = timedelta(hours=freshness_hours)
+        logger.debug("paper_cache_init", path=self.db_path)
 
-    # -------- Public helpers -------------------------------------------------
-
+    # Public helpers
     def get(self, doc_id: str) -> Optional[dict[str, Any]]:
+        """Return cached metadata record or None if *doc_id* missing."""
         row = self.conn.execute(
             "SELECT metadata, last_checked, complete FROM paper_cache WHERE id = ?",
             (doc_id,),
@@ -51,20 +53,26 @@ class PaperCache:
         except Exception:
             meta = {}
         last_checked = datetime.fromisoformat(last_checked_str).replace(tzinfo=timezone.utc)
-        return {
+        rec = {
             "meta": meta,
             "last_checked": last_checked,
             "complete": bool(complete_int),
         }
+        logger.debug("paper_cache_get", id=doc_id, found=bool(rec))
+        return rec
 
     def is_fresh(self, doc_id: str) -> bool:
+        """True if cache entry exists and is newer than *freshness_td*."""
         rec = self.get(doc_id)
         if not rec:
             return False
         last_checked = cast(datetime, rec["last_checked"])
-        return bool(datetime.now(timezone.utc) - last_checked < self.freshness_td)
+        fresh = bool(datetime.now(timezone.utc) - last_checked < self.freshness_td)
+        logger.debug("paper_cache_is_fresh", id=doc_id, fresh=fresh)
+        return fresh
 
     def upsert(self, doc_id: str, meta: dict[str, Any], complete: bool) -> None:
+        """Insert or update *doc_id* row with *meta* and *complete* flag."""
         now_str = datetime.now(timezone.utc).isoformat()
         meta_json = json.dumps(meta, default=str)  # fallback str serialisation for datetimes
         self.conn.execute(
@@ -79,24 +87,27 @@ class PaperCache:
             (doc_id, meta_json, now_str, int(complete)),
         )
         self.conn.commit()
+        logger.debug("paper_cache_upsert", id=doc_id, complete=complete)
 
     def get_incomplete(self, limit: int = 100) -> list[str]:
+        """Return up to *limit* doc_ids whose metadata is incomplete."""
         rows = self.conn.execute(
             "SELECT id FROM paper_cache WHERE complete = 0 ORDER BY last_checked LIMIT ?",
             (limit,),
         ).fetchall()
-        return [r[0] for r in rows]
+        ids = [r[0] for r in rows]
+        logger.debug("paper_cache_incomplete", count=len(ids))
+        return ids
 
-    # ------------------------------------------------------------------
     # Cache invalidation helpers
-    # ------------------------------------------------------------------
-
     def delete(self, doc_id: str) -> None:
-        """Remove a single record from the cache (silently ignore if *doc_id* unknown)."""
+        """Delete *doc_id* from cache; no-op if not present."""
         self.conn.execute("DELETE FROM paper_cache WHERE id = ?", (doc_id,))
         self.conn.commit()
+        logger.debug("paper_cache_delete", id=doc_id)
 
     def clear(self) -> None:
-        """Purge **all** cached entries. Use with care - this is irreversible."""
+        """Remove every cache entry (irreversible)."""
         self.conn.execute("DELETE FROM paper_cache;")
         self.conn.commit()
+        logger.warning("paper_cache_cleared")

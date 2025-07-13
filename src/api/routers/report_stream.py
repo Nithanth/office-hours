@@ -1,20 +1,10 @@
-"""Incremental report-generation routes using Server-Sent Events (SSE).
+"""Incrementally stream report summaries via Server-Sent Events (SSE).
 
-This router provides two endpoints:
-1. POST /generate-report-incremental — receives the usual form payload, returns
-   a lightweight HTML skeleton plus an `hx-ext="sse"` element that connects the
-   browser to `/report/stream?...`.
-2. GET  /report/stream           — streams each summary block (topic overview,
-   main paper, similar papers, topic papers) as soon as it is ready.  Each
-   chunk is wrapped in an `hx-swap-oob` directive so HTMX injects it
-   immediately, giving the user a block-by-block experience.
-
-The implementation re-uses ReportGenerator._generate_single_summary and keeps
-strict ordering by yielding blocks only after they complete, but we push them
-as they come via `asyncio.as_completed` for maximal responsiveness.
+`POST /generate-report-incremental` returns an HTML shell that connects to
+`/report/stream`, and that GET endpoint streams each summary block (topic
+overview, main, similar, etc.) as soon as it is ready, improving perceived
+latency for the user.
 """
-
-from __future__ import annotations
 
 import asyncio
 import html
@@ -23,7 +13,7 @@ import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import cast
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -32,31 +22,22 @@ from pydantic import HttpUrl
 from config import config
 from infra.exa_client import ExaClient
 from infra.llm_service import LLMService
-from main import get_session_id
 from models.paper import Paper
 from prompts.prompt_templates import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
 from services.report_generator import ReportGenerator
-from utils.observability import structlog
+from loguru import logger
 
 router: APIRouter = APIRouter(tags=["report-incremental"])
 
-REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
+REPORT_REQUEST_CACHE: dict[str, dict[str, str]] = {}
 
 # Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars
 
 
-# ------------------------------------------------------------------
-# Helper: build a robust SSE event with safe chunk lengths
-# ------------------------------------------------------------------
+# ------------------------- SSE helpers ----------------------------
 def _format_sse_event(event_name: str, payload: str = "") -> str:
-    """Return a complete SSE event string.
-
-    Ensures:
-    • Payload lines never contain literal newlines (replace with spaces).
-    • Each `data:` line is ≤ 4 kB so browsers don’t truncate.
-    • Event ends with the mandatory blank line so EventSource dispatches it.
-    """
+    """Return a browser-safe SSE event string (newline & length-sanitised)."""
 
     safe_payload = payload.replace("\n", " ")
     data_lines = _iter_sse_chunks(safe_payload) or ["data: "]  # guarantee ≥1 data line
@@ -84,12 +65,11 @@ async def _get_services() -> tuple[LLMService, ExaClient]:
 
 
 async def _del_cache_later(token: str, delay: int = 60) -> None:
-    """Delete a REPORT_REQUEST_CACHE entry after `delay` seconds (grace for reconnects)."""
+    """Delete *token* from cache after *delay* seconds (gives SSE reconnect grace)."""
     await asyncio.sleep(delay)
     REPORT_REQUEST_CACHE.pop(token, None)
 
 
-# Primary ASCII-hyphen path
 @router.post("/generate-report-incremental", response_class=HTMLResponse)
 async def generate_report_incremental(  # noqa: PLR0913
     request: Request,
@@ -100,11 +80,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     selected_model_key: str = Form(...),  # noqa: B008
     is_url_input: bool = Form(False),  # noqa: B008
 ) -> HTMLResponse:
-    """Kick off incremental report generation.
-
-    Instead of generating the report synchronously, this returns an SSE hook
-    that streams blocks as they are ready.
-    """
+    """Return HTML scaffold that connects to live `/report/stream`."""
     # Generate a short-lived token and cache the full request payload server-side.
     token = str(uuid.uuid4())
     REPORT_REQUEST_CACHE[token] = {
@@ -150,13 +126,18 @@ async def generate_report_incremental(  # noqa: PLR0913
     return HTMLResponse(content=html_skeleton)
 
 
+async def _get_session_id(request: Request) -> str:
+    """Return chat session id (falls back to ``"anon"``)."""
+    return getattr(request.state, "session_id", "anon")
+
+
 @router.get("/report/stream")
 async def report_stream(
     request: Request,
     token: str = Query(...),  # noqa: B008
 ) -> Response:
-    """Stream report blocks as SSE messages identified by a short token."""
-    session_id = await get_session_id(request)
+    """Stream report blocks for the cached *token*."""
+    session_id = await _get_session_id(request)
     if not session_id:
         raise HTTPException(status_code=400, detail="Session required")
 
@@ -243,12 +224,10 @@ async def report_stream(
             system_prompt=sys_prompt,
         )
 
-        structlog.get_logger().info("topic_overview_raw", preview=overview_text[:300])
+        logger.info("topic_overview_raw", preview=overview_text[:300])
 
         dur = time.perf_counter() - start_ts
-        structlog.get_logger().info(
-            "summary_block_ready", role="topic_overview", duration_sec=round(dur, 2)
-        )
+        logger.info("summary_block_ready", role="topic_overview", duration_sec=round(dur, 2))
 
         html_block = (
             "<div class='topic-summary'><h3>Overview</h3>"
@@ -257,7 +236,7 @@ async def report_stream(
         return "topic_overview", html_block
 
     async def _summary_task(paper: Paper, role: str) -> tuple[str, str]:
-        # role helps client-side ordering/labeling
+        """LLM call that builds a summary for *paper* (role = main|similar)."""
         start_ts = time.perf_counter()
         prompt_len_label = summary_size.upper()
         tok_target = rg._get_output_token_target(audience_type, prompt_len_label, False)
@@ -277,7 +256,7 @@ async def report_stream(
         )
         summary = await rg._generate_single_summary(prompt, tok_target, semaphore=semaphore)
         dur = time.perf_counter() - start_ts
-        structlog.get_logger().info(
+        logger.info(
             "summary_block_ready",
             role=role,
             paper_id=paper.id,
@@ -326,7 +305,7 @@ async def report_stream(
             try:
                 _role_label, block_html = await t
             except Exception as e:  # noqa: BLE001
-                structlog.get_logger().warning("stream_block_error", exc=str(e))
+                logger.warning("stream_block_error", exc=str(e))
                 failed_titles.append(
                     (
                         task_paper_map.get(t)
