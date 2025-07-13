@@ -13,6 +13,7 @@ load_dotenv()
 # Pydantic models for nested config blobs
 # ---------------------------------------------------------------------------
 
+
 class GeneralConfig(BaseModel):
     app_name: str
     log_level: str
@@ -55,7 +56,9 @@ class Config:
     TOGETHER_API_KEY: Optional[str] = os.getenv("TOGETHER_API_KEY")
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
-    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")  # Google AI Studio API Key for Gemini
+    GEMINI_API_KEY: Optional[str] = os.getenv(
+        "GEMINI_API_KEY"
+    )  # Google AI Studio API Key for Gemini
     # Path to your Google credentials JSON file - will be deferred for MVP
     GOOGLE_DOCS_CREDENTIALS_PATH: Optional[str] = os.getenv("GOOGLE_DOCS_CREDENTIALS_PATH")
 
@@ -82,7 +85,9 @@ class Config:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
     LOG_FORMAT_JSON: bool = os.getenv("LUX_LOG_FORMAT_JSON", "False").lower() == "true"
     DEFAULT_PAPER_COUNT: int = int(os.getenv("DEFAULT_PAPER_COUNT", 3))
-    DEFAULT_SIMILAR_PAPER_COUNT: int = int(os.getenv("DEFAULT_SIMILAR_PAPER_COUNT", 3))  # Added for similar paper searches
+    DEFAULT_SIMILAR_PAPER_COUNT: int = int(
+        os.getenv("DEFAULT_SIMILAR_PAPER_COUNT", 3)
+    )  # Added for similar paper searches
     RELOAD_APP: bool = os.getenv("RELOAD_APP", "True").lower() == "true"
     MAX_AUTHORS_DISPLAY: int = 5  # Max authors to display before 'et al.'
 
@@ -128,7 +133,9 @@ class Config:
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", 3))
     # Async semaphore limit per LLM provider to avoid QPS throttling.
-    MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = int(os.getenv("MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4))
+    MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = int(
+        os.getenv("MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4)
+    )
     REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", 120))
 
     # Topic summary tuning

@@ -5,6 +5,7 @@ from typing import Any
 
 from fasthtml.components import BUTTON, H2, A, Div, Form, P, Textarea
 
+
 # Leaf components
 def ChatBubble(
     message: str, role: str = "assistant", oob_slot: str | None = None, **attrs: Any

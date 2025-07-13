@@ -1,14 +1,12 @@
 import html
 import time
 from uuid import uuid4
-from typing import Final
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
+from loguru import logger
 
 from components.chat_components import ChatBubble, ChatModal
-
-from loguru import logger
 
 router: APIRouter = APIRouter()
 
@@ -52,9 +50,7 @@ async def chat_modal(
         try:
             paper = await paper_service.get_paper_metadata(paper_id)
         except Exception as exc:  # noqa: BLE001 - best effort
-            logger.warning(
-                f"chat_modal: metadata lookup failed for {paper_id}: {exc}"
-            )
+            logger.warning(f"chat_modal: metadata lookup failed for {paper_id}: {exc}")
 
     # Default title if no metadata is found
     modal_title = paper_id

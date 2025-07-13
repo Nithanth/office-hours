@@ -18,6 +18,7 @@ if src_path.as_posix() not in sys.path:
 # ruff: noqa: E402 - intentional import order (sys.path setup before importing app)
 import main as app_module  # FastAPI bootstrap (imports routers internally)
 
+
 class _DummyService:  # very lightweight stub for external services
     """Trivial stub object that pretends to be initialised and async-compatible."""
 
@@ -56,7 +57,9 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     ):
         try:
             _te_mod = importlib.import_module(_path)
-            monkeypatch.setattr(_te_mod.TextExtractor, "instance", lambda *a, **k: dummy, raising=False)
+            monkeypatch.setattr(
+                _te_mod.TextExtractor, "instance", lambda *a, **k: dummy, raising=False
+            )
             break
         except ModuleNotFoundError:
             continue
@@ -71,6 +74,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
             _rg_mod = None
 
     if _rg_mod is not None:
+
         async def _fake_answer(*args: Any, **kwargs: Any) -> str:  # noqa: D401
             return "<p>stub answer</p>"
 
@@ -78,8 +82,12 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
             return "<p>stub report</p>"
 
         if hasattr(_rg_mod, "ReportGenerator"):
-            monkeypatch.setattr(_rg_mod.ReportGenerator, "generate_direct_query_answer", _fake_answer, raising=False)
-            monkeypatch.setattr(_rg_mod.ReportGenerator, "generate_report_html", _fake_report, raising=False)
+            monkeypatch.setattr(
+                _rg_mod.ReportGenerator, "generate_direct_query_answer", _fake_answer, raising=False
+            )
+            monkeypatch.setattr(
+                _rg_mod.ReportGenerator, "generate_report_html", _fake_report, raising=False
+            )
 
     # Stub out UI error rendering – avoids Fasthtml dependency
     from types import SimpleNamespace

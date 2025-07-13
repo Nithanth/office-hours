@@ -1,8 +1,11 @@
 """Pure URL helpers for arXiv IDs, domain filters, DOI extraction, etc."""
+
 import re
 from typing import Any, Optional
 from urllib.parse import urlparse
+
 from loguru import logger
+
 
 # arXiv helpers ------------------------------------------------------------
 def extract_arxiv_id(url_or_text: str | None) -> Optional[str]:
@@ -30,9 +33,11 @@ def extract_arxiv_id(url_or_text: str | None) -> Optional[str]:
 
     # fall-through
 
+
 def canonical_arxiv_abs_url(arxiv_id: str) -> str:  # noqa: D401 – helper
     """Canonical https://arxiv.org/abs/<id> URL."""
     return f"https://arxiv.org/abs/{arxiv_id}"
+
 
 # Domain include/exclude filter -------------------------------------------
 def _expand_domain_synonyms(domain: str) -> list[str]:
@@ -41,6 +46,7 @@ def _expand_domain_synonyms(domain: str) -> list[str]:
     }
     domain_lc = domain.lower()
     return [domain_lc] + synonyms.get(domain_lc, [])
+
 
 def domain_allowed(
     url: Any | None,
@@ -79,6 +85,7 @@ def domain_allowed(
     return True
 
     # No explicit logging to avoid noise in hot path
+
 
 # PDF URL upgrade helpers --------------------------------------------------
 def upgrade_to_pdf_url(url: str | None) -> str | None:
@@ -155,8 +162,10 @@ def upgrade_to_pdf_url(url: str | None) -> str | None:
 
     return url_str
 
+
 # Misc utilities -----------------------------------------------------------
 _DOI_REGEX = re.compile(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", re.I)
+
 
 def extract_doi(text: str | None) -> Optional[str]:
     """Lightweight DOI extractor (lower-cases result)."""
@@ -164,6 +173,7 @@ def extract_doi(text: str | None) -> Optional[str]:
         return None
     m = _DOI_REGEX.search(text)
     return m.group(0).lower() if m else None
+
 
 def url_equivalent(a: str | None, b: str | None) -> bool:  # noqa: D401
     """Return **True** when *a* and *b* clearly refer to the same document."""
@@ -183,6 +193,7 @@ def url_equivalent(a: str | None, b: str | None) -> bool:  # noqa: D401
 
     return _norm(a) == _norm(b)
 
+
 # URL classification -------------------------------------------------------
 _PAPER_URL_RE = re.compile(
     r"^(https?://)"  # scheme
@@ -194,6 +205,7 @@ _PAPER_URL_RE = re.compile(
     r")$",
     re.IGNORECASE,
 )
+
 
 def is_paper_url(text: str) -> bool:  # noqa: D401 simple classifier
     """Return **True** if *text* looks like an academic paper URL."""

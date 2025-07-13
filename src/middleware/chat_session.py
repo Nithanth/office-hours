@@ -3,10 +3,10 @@
 import os
 import secrets
 from typing import cast
-from loguru import logger
 
 from fastapi import Request, Response
 from itsdangerous import BadData, URLSafeSerializer
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 COOKIE_NAME = "luxsid"

@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager, suppress
 from inspect import isawaitable
 from typing import Any, Optional, cast
 
+from loguru import logger
+
 import infra.llm_utils.providers as llm_providers
 from config import config as app_config
 from infra.llm_utils.errors import (
@@ -14,8 +16,6 @@ from infra.llm_utils.errors import (
 )
 from infra.llm_utils.provider_base import LLMProvider  # noqa: F401
 from infra.llm_utils.types import LLMResult, ProviderName
-
-from loguru import logger
 
 
 class LLMService:

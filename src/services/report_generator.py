@@ -14,6 +14,8 @@ from datetime import datetime
 from functools import partial
 from typing import Any, Optional, Union, cast
 
+from loguru import logger
+
 from config import config
 from infra.exa_client import ExaClient
 from infra.llm_service import LLMService
@@ -25,8 +27,6 @@ from prompts.prompt_templates import (
     get_topic_analysis_prompts,
 )
 from utils.summary_cache import SummaryCache
-
-from loguru import logger
 
 logger = logger.bind(component="ReportGenerator")
 
@@ -508,7 +508,9 @@ class ReportGenerator:
                     if include_section_headings:
                         report_parts.append("<h3>Overview</h3>")
                     if isinstance(result, Exception):
-                        logger.error("topic overview generation error", error=str(result), exc_info=True)
+                        logger.error(
+                            "topic overview generation error", error=str(result), exc_info=True
+                        )
                         report_parts.append(
                             "<p><em>Could not generate topic overview due to an error.</em></p>"
                         )

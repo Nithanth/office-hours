@@ -2,6 +2,7 @@
 
 import random
 from dataclasses import dataclass, field
+
 from loguru import logger
 
 # Import Paper model with fallback to handle different execution contexts

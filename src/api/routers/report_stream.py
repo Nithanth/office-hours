@@ -13,10 +13,11 @@ import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
+from loguru import logger
 from pydantic import HttpUrl
 
 from config import config
@@ -25,11 +26,11 @@ from infra.llm_service import LLMService
 from models.paper import Paper
 from prompts.prompt_templates import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
 from services.report_generator import ReportGenerator
-from loguru import logger
 
 router: APIRouter = APIRouter(tags=["report-incremental"])
 
-REPORT_REQUEST_CACHE: dict[str, dict[str, str]] = {}
+# Payload values may be str, list[str], or bool – use Any to satisfy mypy.
+REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
 
 # Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars

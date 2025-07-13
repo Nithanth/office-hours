@@ -18,7 +18,6 @@ from fasthtml.common import (
     Select,
     Title,
 )
-
 from loguru import logger
 
 import config  # Provides AVAILABLE_MODELS mapping

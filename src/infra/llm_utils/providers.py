@@ -2,7 +2,6 @@
 
 import asyncio
 from typing import Any, Optional, cast
-from loguru import logger
 
 from anthropic import (
     APIError as AnthropicAPIError,
@@ -15,6 +14,7 @@ from anthropic import (
 )
 from google import genai
 from google.api_core.exceptions import GoogleAPIError
+from loguru import logger
 from openai import APIError as OpenAIAPIError
 from openai import AsyncOpenAI
 from openai import RateLimitError as OpenAIRateLimitError
@@ -288,6 +288,7 @@ class GeminiProvider(LLMProvider):
         gm_client = self._async_client
 
         import inspect
+
         from google.genai import types as _genai_types  # local import to avoid hard dep at top
 
         config_kwargs: dict[str, Any] = {
@@ -304,7 +305,7 @@ class GeminiProvider(LLMProvider):
         signature_str = str(inspect.signature(gm_client.models.generate_content))
         logger.debug("Gemini generate_content signature: {}", signature_str)
 
-        gen_config = _genai_types.GenerationConfig(**config_kwargs)  # type: ignore[arg-type]
+        gen_config = _genai_types.GenerationConfig(**config_kwargs)
 
         logger.debug("Gemini GenerationConfig kwargs: {}", config_kwargs)
 
@@ -332,8 +333,14 @@ class GeminiProvider(LLMProvider):
                 )
 
                 if not getattr(response, "text", ""):
-                    raise LLMProviderError("gemini", "Empty response text (legacy fallback)")
+                    # Explicitly chain to distinguish from errors in except handler
+                    raise LLMProviderError(
+                        "gemini",
+                        "Empty response text (legacy fallback)",
+                    ) from te
                 return str(response.text).strip()
         except GoogleAPIError as e:
             # Older transport / low-level errors still surface via google-api-core
             raise LLMProviderError("gemini", f"API request failed: {e}", e) from e
+        # Should never reach here – all paths either return or raise.
+        raise LLMProviderError("gemini", "Unknown generation failure")

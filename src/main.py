@@ -98,18 +98,20 @@ logging.getLogger("uvicorn.access").addFilter(DropSSE204Filter())
 # The intercept handler below reroutes those records so they are formatted by
 # Loguru and share the same sinks/JSON structure as first-party logs.
 
+
 class _InterceptHandler(logging.Handler):
     """Forward standard 'logging' records to *loguru* for uniform formatting."""
 
     def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
         # Retrieve corresponding Loguru level (may be numeric or name).
         try:
-            level = logger.level(record.levelname).name  # type: ignore[arg-type]
+            level_name = logger.level(record.levelname).name
         except ValueError:
-            level = record.levelno
+            # Fall back to numeric level converted to string for uniform type
+            level_name = str(record.levelno)
 
         logger_opt = logger.opt(depth=6, exception=record.exc_info)
-        logger_opt.log(level, record.getMessage())
+        logger_opt.log(level_name, record.getMessage())
 
 
 # Route the root logger through the intercept so third-party libs (uvicorn, fastapi, etc.)
@@ -138,6 +140,7 @@ KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
 # ---------------------------------------------------------------------------
 # FastAPI application set-up & dependency lifetime management
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:

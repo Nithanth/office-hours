@@ -86,7 +86,10 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         deserialized_papers = [Paper.model_validate_json(p_json) for p_json in selected_papers_json]
     except Exception as exc:  # noqa: BLE001
         logger.exception(
-            "report_deserialize_error", error=str(exc), papers_json=num_papers_received, **log_params
+            "report_deserialize_error",
+            error=str(exc),
+            papers_json=num_papers_received,
+            **log_params,
         )
         error_html = render_error_message(
             "Could not process paper data. Please try selecting papers again.",

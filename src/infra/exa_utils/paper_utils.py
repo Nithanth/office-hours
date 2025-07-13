@@ -99,7 +99,10 @@ def update_paper_from_meta(paper: Paper, meta: dict[str, Any]) -> Paper:
     if meta.get("authors"):
         clean_authors = _author_utils.filter_plausible_authors(cast(list[str], meta["authors"]))
         logger.debug(
-            "update_paper_from_meta", incoming=meta.get("authors"), clean=clean_authors, existing=paper.authors
+            "update_paper_from_meta",
+            incoming=meta.get("authors"),
+            clean=clean_authors,
+            existing=paper.authors,
         )
 
         existing_ok = False

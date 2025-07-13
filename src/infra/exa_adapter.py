@@ -1,8 +1,8 @@
 """Thin wrapper around *exa_py* with stable snake_case API and structured logging."""
 
-from loguru import logger
 from typing import Any, Final
 
+from loguru import logger
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -18,6 +18,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - dev mis-config
         "The 'exa_py' package is required but not installed. Add it to your "
         "environment or requirements.txt."
     ) from exc
+
 
 class ExaAdapter:  # pylint: disable=too-few-public-methods
     """SDK wrapper exposing *search_and_contents* through a stable interface."""

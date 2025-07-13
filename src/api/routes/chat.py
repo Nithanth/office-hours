@@ -25,10 +25,10 @@ try:
 except ImportError:  # pragma: no cover - metrics disabled in dev
     CHAT_TOKEN_LAT = None
 
+from loguru import logger as log
+
 # Watermark for when a cached full-text file must be refreshed (7 days).
 _PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7
-
-from loguru import logger as log
 
 router = APIRouter()
 

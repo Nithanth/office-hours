@@ -17,6 +17,22 @@ DEFAULT_SYSTEM_PROMPT = (
 # Workflow-specific prompt factories
 # ------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+# Helper loader – simple placeholder until full prompt files are added
+# ------------------------------------------------------------------
+
+
+def load_template(section: str, audience: str) -> str:  # noqa: D401
+    """Return a minimal placeholder template.
+
+    The refactor will later replace this with proper file-based loaders.
+    This helper simply returns a formatted string so unit tests and type
+    checkers do not fail on missing symbol errors.
+    """
+
+    return f"{{{{{section}_{audience}_template}}}}"
+
+
 def get_paper_deep_dive_prompts(
     title: str,
     authors: list[str],

@@ -6,7 +6,6 @@ bullet-style notes, and returns the result **as an attachment** (plain-text
 `.txt` or `.docx`).  No SSE or on-page rendering - the browser simply downloads the file.
 """
 
-
 import io
 import re
 from typing import Any, Literal, cast
@@ -38,6 +37,7 @@ Cm = cast(Any, _DocxCm)
 
 
 router = APIRouter(tags=["report-notes"])
+
 
 def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
     """Return a plain-text digest of the recent chat messages (all papers).

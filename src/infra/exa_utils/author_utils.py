@@ -1,6 +1,7 @@
 """Lightweight heuristics for detecting plausible author names."""
 
 import re
+
 from loguru import logger
 
 # Require at least one capital followed by lowercase

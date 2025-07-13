@@ -1,7 +1,8 @@
 """Semantic deduplication utilities for chat vs. report text."""
 
-import nltk
 from typing import cast
+
+import nltk
 
 try:
     from sentence_transformers import SentenceTransformer, util
@@ -23,7 +24,9 @@ def _get_model() -> SentenceTransformer:
             raise ImportError(
                 "sentence-transformers not installed. Install it to enable deduplication."
             )
-        logger.bind(component="Dedupe").info("loading sentence-transformers model", model=_MODEL_NAME)
+        logger.bind(component="Dedupe").info(
+            "loading sentence-transformers model", model=_MODEL_NAME
+        )
         _model = SentenceTransformer(_MODEL_NAME)
     return _model
 
@@ -50,7 +53,9 @@ def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -
         Filtered chat text containing only non-redundant sentences.
     """
     if SentenceTransformer is None or util is None:
-        logger.bind(component="Dedupe").warning("sentence-transformers unavailable; skipping dedupe")
+        logger.bind(component="Dedupe").warning(
+            "sentence-transformers unavailable; skipping dedupe"
+        )
         return chat_text
 
     report_sents = _sentences(report_text)

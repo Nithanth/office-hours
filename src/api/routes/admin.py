@@ -1,6 +1,7 @@
 """Health-check and small admin utilities (cache flush, metadata recheck)."""
 
 import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
@@ -9,6 +10,9 @@ from main import exa_client_instance
 from utils.summary_cache import SummaryCache
 
 _admin_security = HTTPBearer(auto_error=False)
+
+# Router instance for admin endpoints
+router = APIRouter()
 
 
 @router.get("/healthz")

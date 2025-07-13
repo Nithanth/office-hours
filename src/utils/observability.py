@@ -2,14 +2,12 @@
 
 import os
 import time
-import types
 import uuid
 from typing import Any, Callable
 
 from fastapi import FastAPI, Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-
 from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Component-level logger
 logger = logger.bind(component="Observability")

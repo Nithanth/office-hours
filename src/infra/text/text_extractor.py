@@ -3,14 +3,14 @@
 import asyncio
 import hashlib
 import io
-from loguru import logger
+import re
 import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 from urllib.parse import urljoin
-import re
 
 import aiohttp
+from loguru import logger
 from pdfminer.high_level import extract_text
 
 if TYPE_CHECKING:
@@ -32,6 +32,7 @@ else:
 
                 def summary(self, html_partial: bool = True) -> str:  # noqa: D401
                     return self._html
+
 
 try:
     from config import config as app_config

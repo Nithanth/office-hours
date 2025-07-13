@@ -1,16 +1,17 @@
 """Lightweight prompt-composition helpers used by direct-query workflows."""
 
 from dataclasses import dataclass, field
-from loguru import logger
 
-# Component logger
-logger = logger.bind(component="PromptBuilder")
+from loguru import logger
 
 from models.paper import Paper
 from prompts.prompt_templates import (
     AUDIENCE_PROMPT_MAP,
     RESEARCH_ASSISTANT_PROMPT,
 )
+
+# Component logger
+logger = logger.bind(component="PromptBuilder")
 
 
 @dataclass(slots=True)

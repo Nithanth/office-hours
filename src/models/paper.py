@@ -57,4 +57,3 @@ class Paper(BaseModel):
         """Pydantic model configuration."""
 
         from_attributes = True
-

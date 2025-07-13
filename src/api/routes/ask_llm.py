@@ -3,9 +3,9 @@
 import html
 from typing import cast
 
-from loguru import logger
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig

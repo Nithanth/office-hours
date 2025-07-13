@@ -3,7 +3,9 @@
 import html
 import os
 from dataclasses import dataclass, field
-from typing import Any
+
+from loguru import logger
+
 
 @dataclass
 class ChatMessage:
@@ -96,8 +98,6 @@ try:
     _declared_workers = int(_uvicorn_workers_env) if _uvicorn_workers_env else 1
 except ValueError:
     _declared_workers = 1
-
-from loguru import logger
 
 if max(_cpu_count, _declared_workers) > 1:
     logger.warning(

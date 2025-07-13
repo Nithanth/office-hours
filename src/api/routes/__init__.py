@@ -1,2 +1,1 @@
-"""Namespace package for FastAPI routers (endpoints).
-"""
+"""Namespace package for FastAPI routers (endpoints)."""

@@ -10,7 +10,6 @@ from infra.exa_utils import paper_utils as _paper_utils
 from infra.exa_utils import url_utils as _url_utils
 from models.paper import Paper
 
-
 """Async orchestrator that merges metadata from arXiv, DOI providers, and Exa."""
 
 

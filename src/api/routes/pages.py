@@ -1,12 +1,10 @@
 """Home page (`/`) and report-configuration (`/show-report-config`) routes."""
 
 import asyncio
-from typing import Any, Callable
-from loguru import logger
 
-import fastapi
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from loguru import logger
 
 from api.deps import get_exa_client, get_settings
 from config import Config as AppConfig
@@ -76,7 +74,7 @@ async def show_report_config(
     is_url = is_url_input_source == "true"
     num_papers_received = len(selected_papers_json) if selected_papers_json else 0
 
-    form_data = await request.form()
+    # No need to retain raw form data – remove unused variable.
     logger.info(
         "report_config_request",
         original_query=original_search_query_for_report,
