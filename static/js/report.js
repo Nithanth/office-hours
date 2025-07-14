@@ -1,6 +1,34 @@
 // report.js – handles actions specific to the rendered research report
 
 // ---------------------------------------------------------------------------
+// One-off style & constants (module scope)
+// ---------------------------------------------------------------------------
+// Inject utility class so we avoid setting style props in JS.
+(function addReportStyles() {
+  if (document.getElementById("lux-report-styles")) return;
+  const style = document.createElement("style");
+  style.id = "lux-report-styles";
+  style.textContent = ".lux-flex-end{display:flex;justify-content:flex-end;}";
+  document.head.appendChild(style);
+})();
+
+// Hoisted so we don’t recreate on every getCleanReportText() call.
+const BLOCK_TAGS = new Set([
+  "P",
+  "DIV",
+  "SECTION",
+  "ARTICLE",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "LI",
+  "BR",
+]);
+
+// ---------------------------------------------------------------------------
 // Copy Report Button (simple clipboard helper)
 // ---------------------------------------------------------------------------
 function fallbackCopy(text) {
@@ -12,7 +40,10 @@ function fallbackCopy(text) {
   ta.focus();
   ta.select();
   try {
-    document.execCommand("copy");
+    const ok = document.execCommand("copy");
+    if (!ok) console.warn("[lux] execCommand('copy') returned false");
+  } catch (e) {
+    console.warn("[lux] execCommand('copy') failed", e);
   } finally {
     document.body.removeChild(ta);
   }
@@ -21,21 +52,6 @@ function fallbackCopy(text) {
 function getCleanReportText(reportEl) {
   // Helper to walk DOM and collect text with newlines between blocks.
   const lines = [];
-
-  const BLOCK_TAGS = new Set([
-    "P",
-    "DIV",
-    "SECTION",
-    "ARTICLE",
-    "H1",
-    "H2",
-    "H3",
-    "H4",
-    "H5",
-    "H6",
-    "LI",
-    "BR",
-  ]);
 
   function dfs(node) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -121,8 +137,7 @@ const actionsObserver = new MutationObserver(() => {
 
   document.querySelectorAll("#report-actions.hidden").forEach((el) => {
     el.classList.remove("hidden");
-    el.style.display = "flex";
-    el.style.justifyContent = "flex-end";
+    el.classList.add("lux-flex-end");
 
     // Enable notes button once report finished.
     const notesBtn = el.querySelector("#report-notes-btn");
@@ -149,8 +164,7 @@ document.addEventListener("htmx:afterSwap", () => {
       const actions = document.getElementById("report-actions");
       if (actions) {
         actions.classList.remove("hidden");
-        actions.style.display = "flex";
-        actions.style.justifyContent = "flex-end";
+        actions.classList.add("lux-flex-end");
 
         // Add generic report heading if backend didn't provide one
         const reportEl = document.getElementById("report-content");
@@ -174,8 +188,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (progressGone && actions && actions.classList.contains("hidden")) {
     console.debug("[lux] report.js: fallback unhide actions (DOMContentLoaded)");
     actions.classList.remove("hidden");
-    actions.style.display = "flex";
-    actions.style.justifyContent = "flex-end";
+    actions.classList.add("lux-flex-end");
   }
 });
 

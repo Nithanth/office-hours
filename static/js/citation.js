@@ -2,7 +2,9 @@
 
 import { dbg } from "./util.js";
 
+// Cache & shared refs ------------------------------------------------------
 const citationCardCache = new Map();
+let currentFetchCtrl = null; // abort controller for in-flight card fetch
 let tooltipDiv = document.getElementById("citation-tooltip");
 if (!tooltipDiv) {
   tooltipDiv = document.createElement("div");
@@ -30,10 +32,14 @@ document.body.addEventListener("mouseover", (ev) => {
   if (!cite) return;
   const paperId = cite.dataset.paperId;
   hoverTimer = setTimeout(async () => {
+    // Abort any previously pending request
+    if (currentFetchCtrl) currentFetchCtrl.abort();
+    currentFetchCtrl = new AbortController();
+
     let html = citationCardCache.get(paperId);
     if (!html) {
       try {
-        const resp = await fetch(`/papers/${paperId}/card`);
+        const resp = await fetch(`/papers/${paperId}/card`, { signal: currentFetchCtrl.signal });
         if (!resp.ok) return;
         html = await resp.text();
         citationCardCache.set(paperId, html);
@@ -48,8 +54,15 @@ document.body.addEventListener("mouseover", (ev) => {
   }, 150);
 });
 
+// Throttle tooltip follow using requestAnimationFrame
+let _rafId = null;
 document.body.addEventListener("mousemove", (ev) => {
-  if (tooltipDiv.style.display === "block") positionTooltip(ev);
+  if (tooltipDiv.style.display !== "block") return;
+  if (_rafId) cancelAnimationFrame(_rafId);
+  _rafId = requestAnimationFrame(() => {
+    positionTooltip(ev);
+    _rafId = null;
+  });
 });
 
 document.body.addEventListener("mouseout", (ev) => {
@@ -59,6 +72,7 @@ document.body.addEventListener("mouseout", (ev) => {
   }
   if (ev.target.closest && ev.target.closest("[data-paper-id]")) {
     tooltipDiv.style.display = "none";
+    if (currentFetchCtrl) currentFetchCtrl.abort();
   }
 });
 

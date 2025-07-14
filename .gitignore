@@ -161,5 +161,6 @@ data/
 # node
 node_modules
 
-# PurgeCSS output
-static/css/dist/
+# PurgeCSS output (keep committed so Docker image can serve optimised CSS)
+# If you prefer to re-generate on CI, re-enable this ignore.
+#static/css/dist/

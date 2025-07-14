@@ -1,7 +1,7 @@
 // chat/stream.js – SSE streaming & typing indicator logic
 // Handles token buffering, markdown render, and finalisation of assistant messages.
 
-import { dbg, decodeEntities, debounce } from "../util.js";
+import { dbg, decodeEntities } from "../util.js";
 import { getModalParts, setControlsEnabled, addCopyButtons, scrollToBottom } from "./ui.js";
 import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded } from "./markdown.js";
 
@@ -82,55 +82,9 @@ function _flushTokens(targetEl) {
 }
 
 // ---------------------------------------------------------------------------
-// Markdown helpers now provided by chat/markdown.js
+// Markdown helpers now provided by chat/markdown.js – legacy loaders removed.
 // ---------------------------------------------------------------------------
 /* legacy markdown helpers removed – now using chat/markdown.js */
-let _markedPromise = null;
-function ensureMarkedLoaded() {
-  if (window.marked) return Promise.resolve();
-  if (_markedPromise) return _markedPromise;
-  _markedPromise = new Promise((resolve) => {
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js";
-    s.onload = () => resolve();
-    document.head.appendChild(s);
-  });
-  return _markedPromise;
-}
-
-let _purifyPromise = null;
-function ensurePurifyLoaded() {
-  if (window.DOMPurify) return Promise.resolve();
-  if (_purifyPromise) return _purifyPromise;
-  _purifyPromise = new Promise((resolve) => {
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/dompurify@3.1.2/dist/purify.min.js";
-    s.onload = () => resolve();
-    document.head.appendChild(s);
-  });
-  return _purifyPromise;
-}
-
-let _hlPromise = null;
-function ensureHighlightLoaded() {
-  if (window.hljs) return Promise.resolve();
-  if (_hlPromise) return _hlPromise;
-  _hlPromise = new Promise((resolve) => {
-    const dark = document.body.classList.contains("lux-dark");
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github${
-      dark ? "-dark" : ""
-    }.min.css`;
-    document.head.appendChild(css);
-
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js";
-    s.onload = () => resolve();
-    document.head.appendChild(s);
-  });
-  return _hlPromise;
-}
 
 /** Render final markdown & clean up timers, attributes, UI state. */
 function _finalizeBubble(targetEl) {

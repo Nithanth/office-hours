@@ -21,4 +21,4 @@ COPY . .
 
 # Command to run the application using Uvicorn
 # The port here will be overridden by docker-compose if specified there
-CMD ["python", "app.py"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

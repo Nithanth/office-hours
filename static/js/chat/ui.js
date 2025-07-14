@@ -23,7 +23,7 @@ export function getModalParts(el) {
     stopBtn = document.createElement("button");
     stopBtn.type = "button";
     stopBtn.textContent = "Stop";
-    stopBtn.className = "stop-btn hidden text-sm px-2 py-1 rounded bg-red-600 text-white";
+    stopBtn.className = "stop-btn text-sm px-2 py-1 rounded bg-red-600 text-white";
     stopBtn.addEventListener("click", () => {
       const activeStream = modal.querySelector("[sse-connect]");
       if (activeStream) {
@@ -32,7 +32,7 @@ export function getModalParts(el) {
         const src = activeStream.__eventSource;
         if (src && typeof src.close === "function") src.close();
       }
-      stopBtn.style.display = "none";
+      stopBtn.classList.add("hidden");
     });
     modal.appendChild(stopBtn);
     modal[_stopBtnSym] = stopBtn;
@@ -59,7 +59,10 @@ export function setControlsEnabled(modal, enabled) {
     else submitBtn.setAttribute("disabled", "true");
   }
   const { stopBtn } = getModalParts(modal);
-  if (stopBtn) stopBtn.style.display = enabled ? "none" : "inline-block";
+  if (stopBtn) {
+    if (enabled) stopBtn.classList.add("hidden");
+    else stopBtn.classList.remove("hidden");
+  }
 
   dbg("controls", { enabled, modal });
 }

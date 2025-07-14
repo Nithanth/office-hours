@@ -23,7 +23,6 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # Imports – *keep minimal globals above to avoid slow cold-start*
 # ---------------------------------------------------------------------------
-
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -47,8 +46,9 @@ _IDLE_SESSION_TTL_SEC = 3600  # ChatState eviction window (seconds)
 _TEXT_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
 
 # ---------------------------------------------------------------------------
-# Background warm-cache helper (triggered by search route)                  
+# Background warm-cache helper (triggered by search route)
 # ---------------------------------------------------------------------------
+
 
 async def _prewarm_cached(url: str, paper_id: str) -> None:
     """Fetch & cache the paper HTML/PDF so later summarisation is instant."""
@@ -61,30 +61,39 @@ async def _prewarm_cached(url: str, paper_id: str) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
 
+
 # --- FastAPI Depends helpers ----------------------------------------------
+
 
 async def get_session_id(request: Request) -> str:
     return getattr(request.state, "session_id", "anon")
 
+
 def get_llm_service() -> Optional[LLMService]:
     return llm_service_instance
+
 
 def get_exa_client() -> Optional[ExaClient]:
     return exa_client_instance
 
+
 def get_paper_service() -> TextExtractor:
     return TextExtractor.instance()
 
+
 # --- Filter noisy access logs for SSE keep-alive responses ----------------
+
 
 class DropSSE204Filter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
         msg = record.getMessage()
         return not (" 204 " in msg and "/report/stream" in msg)
 
+
 logging.getLogger("uvicorn.access").addFilter(DropSSE204Filter())
 
 # --- Bridge stdlib logging → Loguru ---------------------------------------
+
 
 class _InterceptHandler(logging.Handler):
     """Forward standard 'logging' records to *loguru* for uniform formatting."""
@@ -99,6 +108,7 @@ class _InterceptHandler(logging.Handler):
 
         logger_opt = logger.opt(depth=6, exception=record.exc_info)
         logger_opt.log(level_name, record.getMessage())
+
 
 # Route the root logger through the intercept so third-party libs (uvicorn, fastapi, etc.)
 # appear in our Loguru output.
@@ -121,6 +131,7 @@ _gc_task: Optional[asyncio.Task[None]] = None
 KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
 
 # --- FastAPI lifespan: startup → shutdown ---------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -171,6 +182,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 _gc_task.cancel()
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
+
 
 # --- FastAPI app -----------------------------------------------------------
 
@@ -225,6 +237,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 # --- Minimal security headers ---------------------------------------------
 
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: D401
         response: Response = await call_next(request)
@@ -235,6 +248,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault("Permissions-Policy", "clipboard-read=*, clipboard-write=*")
         return response
+
 
 app.add_middleware(ChatSessionMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)

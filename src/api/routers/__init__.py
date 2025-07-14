@@ -15,8 +15,25 @@ from api.routers import report, chat
 
 from importlib import import_module as _imp
 
-chat = _imp("api.routers.chat")  # type: ignore[attr-defined]
-report = _imp("api.routers.report")  # type: ignore[attr-defined]
-search = _imp("api.routers.search")  # type: ignore[attr-defined]
+chat = _imp("api.routers.chat")
+report = _imp("api.routers.report")
 
-__all__: list[str] = ["chat", "report", "search"]
+# Commonly-used standalone routers (stream + notes) – re-export for tests
+report_stream = _imp("api.routers.report_stream")
+report_notes = _imp("api.routers.report_notes")
+
+# Base public symbols
+__all__: list[str] = [
+    "chat",
+    "report",
+    "report_stream",
+    "report_notes",
+]
+
+# *Optional* search router (may be absent in some builds)
+try:
+    search = _imp("api.routers.search")
+    __all__.append("search")
+except ModuleNotFoundError:
+    # Silently skip when not available
+    pass

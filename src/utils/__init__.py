@@ -10,8 +10,8 @@ from utils import text_to_html_paragraphs, deduplicate_chat
 ```
 """
 
-from .html_builder import text_to_html_paragraphs
 from .dedupe import deduplicate_chat
+from .html_builder import text_to_html_paragraphs
 
 __all__: list[str] = [
     "text_to_html_paragraphs",

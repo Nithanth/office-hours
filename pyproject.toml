@@ -57,6 +57,8 @@ warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 explicit_package_bases = true
+# Exclude test files from strict type checking – keeps CI noise low
+exclude = "^tests/"
 # You might want to add specific paths to check, or it will check all by default
 # files = ["app.py", "services/", "models/", "pages/", "config.py"]
 

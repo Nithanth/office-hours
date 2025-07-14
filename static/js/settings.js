@@ -7,14 +7,24 @@
 (() => {
   const LS = window.localStorage;
 
-  // Expose helper globally so HTMX swap handlers can call it
-  window.syncHidden = function syncHidden() {
+  // ------------------------------------------------------------------
+  // Helper: sync hidden inputs (debounced via rAF to avoid thrashing)
+  // ------------------------------------------------------------------
+  let _syncPending = null;
+  function _doSyncHidden() {
     const audSel = document.getElementById('aud-select');
     const modelSel = document.getElementById('model-select');
     const audHidden = document.getElementById('aud-hidden');
     const modelHidden = document.getElementById('model-hidden');
     if (audHidden && audSel) audHidden.value = audSel.value;
     if (modelHidden && modelSel) modelHidden.value = modelSel.value;
+  }
+  window.syncHidden = function syncHidden() {
+    if (_syncPending) return;
+    _syncPending = requestAnimationFrame(() => {
+      _syncPending = null;
+      _doSyncHidden();
+    });
   };
 
   function init() {
@@ -97,6 +107,20 @@
     // Simple toast utility
     // ------------------------------------------------------------------
 
+    // Inject toast CSS once
+    (function injectToastCss() {
+      if (document.getElementById('lux-toast-style')) return;
+      const s = document.createElement('style');
+      s.id = 'lux-toast-style';
+      s.textContent = `
+        .lux-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:6px;z-index:9999;font-size:.9rem;font-family:Arial,sans-serif;border:1px solid transparent;opacity:0;transition:opacity .25s ease;}
+        .lux-toast.show{opacity:1;}
+        body:not(.lux-dark) .lux-toast{background:#ffffff;color:#000;border-color:#000}
+        body.lux-dark .lux-toast{background:#333;color:#ef4444;border-color:#666}
+      `;
+      document.head.appendChild(s);
+    })();
+
     function showToast(msg, ms = 3500) {
       const existing = document.querySelector('.lux-toast');
       if (existing) existing.remove();
@@ -104,35 +128,11 @@
       const toast = document.createElement('div');
       toast.className = 'lux-toast';
       toast.textContent = msg;
-
-      // Theme-aware styling
-      const isDark = document.body.classList.contains('lux-dark');
-      const bgColor = isDark ? '#333' : '#ffffff';
-      const textColor = isDark ? '#ef4444' /* var(--lux-red) */ : '#000000';
-
-      Object.assign(toast.style, {
-        position: 'fixed',
-        bottom: '24px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: bgColor,
-        color: textColor,
-        padding: '10px 16px',
-        borderRadius: '6px',
-        zIndex: 9999,
-        fontSize: '0.9rem',
-        fontFamily: 'Arial, sans-serif',
-        border: isDark ? '1px solid #666' : '1px solid #000',
-        opacity: '0',
-        transition: 'opacity 0.25s ease',
-      });
       document.body.appendChild(toast);
-      requestAnimationFrame(() => {
-        console.debug('[lux] showToast called with', msg);
-        toast.style.opacity = '1';
-      });
+
+      requestAnimationFrame(() => toast.classList.add('show'));
       setTimeout(() => {
-        toast.style.opacity = '0';
+        toast.classList.remove('show');
         toast.addEventListener('transitionend', () => toast.remove());
       }, ms);
     }

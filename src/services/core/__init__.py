@@ -14,7 +14,7 @@ from services.core import LLMService, ExaClient
 ```
 """
 
-from services.core.llm_service import LLMService  # noqa: F401 - re-export
 from services.core.exa_client import ExaClient  # noqa: F401 - re-export
+from services.core.llm_service import LLMService  # noqa: F401 - re-export
 
 __all__: list[str] = ["LLMService", "ExaClient"]

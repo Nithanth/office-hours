@@ -14,7 +14,15 @@
     if (!src || src.readyState === EventSource.CLOSED) {
       src = new EventSource(url, { withCredentials: true });
       pool[url] = src;
+
+      // Remove from pool on permanent close/error to avoid memory bloat.
+      const cleanup = () => delete pool[url];
+      src.addEventListener("error", cleanup, { once: true });
+      src.addEventListener("close", cleanup, { once: true });
     }
     return src;
   };
+
+  // Debug helper: inspect open EventSource connections.
+  window.__htmxSsePool = pool;
 })();

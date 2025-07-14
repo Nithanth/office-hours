@@ -1,14 +1,16 @@
 """Centralised application configuration loaded from environment variables."""
 
+import datetime
 import os
 from typing import Any, Optional
-import datetime
+
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
 # Load .env only in development/local environments to avoid accidental leakage
 if os.getenv("ENV", "dev") != "prod":  # Treat any non-"prod" value as dev
     load_dotenv()
+
 
 # --- Nested Pydantic stubs (currently unused, reserved for future) ---
 class GeneralConfig(BaseModel):
@@ -73,6 +75,11 @@ class Config:
     MODAL_TOKEN_SECRET: Optional[str] = os.getenv("MODAL_TOKEN_SECRET")
 
     # --- App runtime settings ---
+    # --- Environment and asset prefixes ---
+    ENV: str = os.getenv("ENV", "dev").lower()
+    # Front-end CSS folder: use purged bundle in production for smaller payload.
+    CSS_PREFIX: str = os.getenv("CSS_PREFIX", "css/dist" if ENV == "prod" else "css")
+
     APP_TITLE: str = "Lux Scholar"
     VERSION: str = "0.1.0"
     YEAR: int = int(os.getenv("YEAR", datetime.datetime.utcnow().year))
