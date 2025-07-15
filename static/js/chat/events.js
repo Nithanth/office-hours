@@ -245,4 +245,13 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
   if (modal) enhanceModal(modal);
 });
 
+document.body.addEventListener("htmx:responseError", (e) => {
+  const banner = document.getElementById("status-banner");
+  if (banner) {
+    banner.innerHTML = e?.detail?.xhr?.responseText || "Request failed";
+    banner.style.display = "block";
+    banner.setAttribute("role", "alert");
+  }
+});
+
 console.debug("[lux] chat/events.js wired listeners");

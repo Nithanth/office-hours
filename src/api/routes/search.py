@@ -18,6 +18,7 @@ from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
 from services.report.report_generator import ReportGenerator
 from utils.date_utils import parse_user_date
+from utils.rate_limit import limiter
 from utils.search_utils import clean_query
 
 router = APIRouter()
@@ -42,6 +43,7 @@ async def _prewarm_cached(url: str, paper_id: str) -> None:
 current_direct_query_task: asyncio.Task | None = None
 
 
+@limiter.limit("100/5minute")
 @router.post("/search", response_class=HTMLResponse)
 async def handle_search(  # noqa: PLR0913 - long signature preserves original API
     request: Request,

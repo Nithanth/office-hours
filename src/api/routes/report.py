@@ -13,12 +13,14 @@ from pages.main_page import render_error_message, render_paper_card
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMConfigurationError, LLMService
 from services.report.report_generator import ReportGenerator
+from utils.rate_limit import limiter
 
 # Services are obtained per-request via dependency helpers to avoid stale instances.
 
 router = APIRouter()
 
 
+@limiter.limit("20/5minute")
 @router.post("/generate-report", response_class=HTMLResponse)
 async def generate_report(  # noqa: PLR0913 - very long signature mirrors original
     request: Request,

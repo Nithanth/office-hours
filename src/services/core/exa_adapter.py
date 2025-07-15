@@ -9,6 +9,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+from utils.observability import _METRICS_ENABLED, EXA_LAT
 
 try:
     # The canonical synchronous & async clients shipped by exa_py.
@@ -56,6 +57,9 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         # avoids validation errors such as "Invalid option: 'numResults'".
         params = kwargs
         logger.debug("Exa search_and_contents", query=query, params=params)
+        if _METRICS_ENABLED and EXA_LAT is not None:
+            with EXA_LAT.time():
+                return self._sync.search_and_contents(query, **params)
         return self._sync.search_and_contents(query, **params)
 
     # ------------------------------------------------------------------
@@ -75,6 +79,9 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         supporting `results` list.
         """
         logger.debug("Exa answer", question=question, params=kwargs)
+        if _METRICS_ENABLED and EXA_LAT is not None:
+            with EXA_LAT.time():
+                return self._sync.answer(question, **kwargs)
         return self._sync.answer(question, **kwargs)
 
     # ------------------------------------------------------------------

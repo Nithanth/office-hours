@@ -28,6 +28,7 @@ from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMService
 from services.report.report_generator import ReportGenerator
 from utils.observability import _METRICS_ENABLED, REPORT_BLOCKS, REPORT_LAT, REPORT_REQ
+from utils.rate_limit import limiter
 
 router: APIRouter = APIRouter(tags=["report-incremental"])
 
@@ -71,6 +72,7 @@ async def _del_cache_later(token: str, delay: int = 60) -> None:
     REPORT_REQUEST_CACHE.pop(token, None)
 
 
+@limiter.limit("20/5minute")
 @router.post("/generate-report-incremental", response_class=HTMLResponse)
 async def generate_report_incremental(  # noqa: PLR0913
     request: Request,
@@ -299,7 +301,7 @@ async def report_stream(
         for t in coros:
             try:
                 _role_label, block_html = await t
-            except Exception as e:  # noqa: BLE001
+            except (asyncio.TimeoutError, ValueError, RuntimeError) as e:
                 logger.warning("stream_block_error", exc=str(e))
                 failed_titles.append(
                     (

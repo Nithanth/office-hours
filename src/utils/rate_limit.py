@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 
 # Global limiter instance with sensible defaults.
 # Override/extend per-route limits via the decorator.
-limiter: Limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])  # ~1.6 r/s
+limiter: Limiter = Limiter(key_func=get_remote_address, default_limits=["100/5minute"])  # ~0.33 r/s
 
 # Re-export helpers for convenience
 __all__ = [

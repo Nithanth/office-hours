@@ -10,6 +10,8 @@ from typing import Optional
 
 from loguru import logger
 
+from utils.observability import _METRICS_ENABLED, CACHE_HIT
+
 # Component-level logger
 logger = logger.bind(component="SummaryCache")
 
@@ -78,6 +80,8 @@ class SummaryCache:
                 with open(path, encoding="utf-8") as f:
                     cached = f.read()
                     logger.debug("cache hit", path=path)
+                    if _METRICS_ENABLED and CACHE_HIT is not None:
+                        CACHE_HIT.inc()
                     return cached
             except OSError as read_err:
                 logger.warning("failed reading cache file", path=path, error=str(read_err))

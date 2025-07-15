@@ -17,6 +17,7 @@ from services.core.llm_utils.errors import (
 from services.core.llm_utils.provider_base import LLMProvider
 from services.core.llm_utils.types import LLMResult, ProviderName
 
+from utils.observability import _METRICS_ENABLED, LLM_TOKENS
 
 class LLMService:
     """Orchestrates LLM calls to various providers."""
@@ -475,6 +476,9 @@ class LLMService:
                 request_id=request_id,
             )
             is_ok = not content.startswith("Error:")
+            if is_ok and _METRICS_ENABLED and LLM_TOKENS is not None:
+                # Rough token estimate – whitespace split is sufficient for counters.
+                LLM_TOKENS.inc(len(content.split()))
             return {"ok": is_ok, "content": content}
         except Exception as e:  # catch any leakage
             # Emit full stack trace for observability before surfacing generic error to UI.

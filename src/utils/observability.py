@@ -57,11 +57,31 @@ if _METRICS_ENABLED:
         buckets=(1, 2, 5, 10, 30, 60, 120),
     )
 
+    # ---------------- Additional metrics (API + caching) --------------------
+    EXA_LAT = Histogram(
+        "exa_request_latency_seconds",
+        "Exa SDK request latency",
+        buckets=(0.05, 0.1, 0.5, 1, 2, 5, 10),
+    )
+
+    LLM_TOKENS = Counter(
+        "llm_tokens_total",
+        "Total tokens streamed / returned from LLM providers",
+    )
+
+    CACHE_HIT = Counter(
+        "cache_hit_total",
+        "Number of cache hits for LLM summary cache",
+    )
+
 else:
     # Provide safe fallbacks so importing modules can reference these symbols
     REPORT_REQ = None  # type: ignore
     REPORT_BLOCKS = None  # type: ignore
     REPORT_LAT = None  # type: ignore
+    EXA_LAT = None  # type: ignore
+    LLM_TOKENS = None  # type: ignore
+    CACHE_HIT = None  # type: ignore
 
 # ---------------------------------------------------------------------------
 # Middleware
