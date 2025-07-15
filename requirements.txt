@@ -1,34 +1,34 @@
 # Core Web Framework & Server
-python-fasthtml  # Provides 'fasthtml' import namespace
-uvicorn
-fastapi # Added for direct FastAPI imports
+python-fasthtml~=0.12  # Provides 'fasthtml' import namespace
+uvicorn~=0.34
+fastapi~=0.115  # Added for direct FastAPI imports
 # jinja2==3.1.6 # For HTML templating - REMOVED
 
 # Environment & Configuration
-python-dotenv
+python-dotenv~=1.1
 
 # Caching & Job Management
-redis
+redis~=6.2
 
 # API Clients & HTTP
-httpx
-exa_py>=0.2.0
-openai
-anthropic
-together
-google-genai
-google-api-core
-tenacity
-loguru
-nltk
-sentence-transformers
-prometheus_client
-slowapi
+httpx~=0.28
+exa_py~=1.14
+openai~=1.85
+anthropic~=0.53
+together~=1.5
+google-genai~=1.19
+google-api-core~=2.25
+tenacity~=9.1
+loguru~=0.7
+nltk~=3.9
+sentence-transformers~=5.0
+prometheus_client~=0.22
+slowapi~=0.1
 
 # Data Validation & Modeling
-pydantic
-pdfminer.six
-readability-lxml
+pydantic~=2.11
+pdfminer.six==20250506
+readability-lxml~=0.8.4
 
 # Document generation
-python-docx>=0.8.11
+python-docx~=1.2
