@@ -11,6 +11,7 @@ Main responsibilities:
 """
 
 import asyncio
+import html
 import logging
 import os
 import pathlib as _pathlib
@@ -23,10 +24,9 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # Imports – *keep minimal globals above to avoid slow cold-start*
 # ---------------------------------------------------------------------------
-from fastapi import FastAPI, Request, Response, HTTPException
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
-import html
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 import config
@@ -257,7 +257,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Very restrictive CSP; adjust 'img-src' and 'media-src' as needed.
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'" ,
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
         )
         return response
 
@@ -267,7 +267,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 import uvicorn
 from slowapi.middleware import SlowAPIMiddleware
-from utils.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
+
+from utils.rate_limit import RateLimitExceeded, _rate_limit_exceeded_handler, limiter
 
 # Attach rate limiter middleware & exception handling
 app.add_middleware(SlowAPIMiddleware)
@@ -300,6 +301,7 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> HTML
     logger.exception("unhandled_exception", err=str(exc))
     banner = _html_error_banner("Unexpected server error – please try again.")
     return HTMLResponse(content=banner, status_code=500)
+
 
 # --- Static file mounting --------------------------------------------------
 

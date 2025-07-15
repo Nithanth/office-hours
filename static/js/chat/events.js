@@ -146,6 +146,16 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+// Activate close button on Enter/Space when focused (keyboard a11y)
+document.addEventListener("keydown", (ev) => {
+  if (!["Enter", " ", "Spacebar"].includes(ev.key)) return;
+  const target = ev.target;
+  if (target && target.classList && target.classList.contains("modal-close-btn")) {
+    ev.preventDefault();
+    target.click();
+  }
+});
+
 export function initChat(sessionId, paperId, chatLogId) {
   const chatLog = document.getElementById(chatLogId || `chat-log-${paperId}`);
   if (!chatLog) return;

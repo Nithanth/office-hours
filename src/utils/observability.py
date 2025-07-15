@@ -40,6 +40,29 @@ if _METRICS_ENABLED:
         buckets=(0.01, 0.05, 0.1, 0.2, 0.5, 1, 2),
     )
 
+    # ---------------- Report generation metrics -----------------------------
+    REPORT_REQ = Counter(
+        "report_requests_total",
+        "Number of /generate-report-incremental POST requests",
+    )
+
+    REPORT_BLOCKS = Counter(
+        "report_blocks_total",
+        "Number of summary or overview blocks streamed to clients",
+    )
+
+    REPORT_LAT = Histogram(
+        "report_generation_latency_seconds",
+        "Time to fully generate & stream a report",
+        buckets=(1, 2, 5, 10, 30, 60, 120),
+    )
+
+else:
+    # Provide safe fallbacks so importing modules can reference these symbols
+    REPORT_REQ = None  # type: ignore
+    REPORT_BLOCKS = None  # type: ignore
+    REPORT_LAT = None  # type: ignore
+
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------

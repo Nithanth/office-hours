@@ -1,8 +1,8 @@
 """FastHTML page components for Lux Scholar's main UI."""
 
+import html
 from datetime import datetime
 from typing import Any, Optional
-import html
 
 # FastHTML components used by this page
 from fasthtml.components import (
@@ -469,6 +469,7 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                     "×",
                     cls="modal-close-btn",
                     aria_label="Close modal",
+                    tabindex="0",
                     hx_on="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",
@@ -487,7 +488,7 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                         name="message",
                         placeholder="Ask about this paper...",
                         rows="3",
-                        style="width: 100%; border-radius: 4px; padding: 5px;",
+                        style="width:100%;max-width:40rem;height:6rem;font-family:inherit;",
                     ),
                     BUTTON("Send", type="submit", style="margin-top: 5px;"),
                     id=f"chat-form-{paper_id}",
@@ -730,7 +731,7 @@ def home_page(page_data: SharedPageData) -> Body:
                     id="direct_question",
                     name="question",
                     placeholder="e.g., 'Summarize the transformer architecture'",
-                    style="width:40rem;max-width:90%;height:6rem;font-family:inherit;",
+                    style="width:100%;max-width:40rem;height:6rem;font-family:inherit;",
                 ),
                 Br(),
                 BUTTON(
