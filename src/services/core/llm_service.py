@@ -16,8 +16,8 @@ from services.core.llm_utils.errors import (
 )
 from services.core.llm_utils.provider_base import LLMProvider
 from services.core.llm_utils.types import LLMResult, ProviderName
-
 from utils.observability import _METRICS_ENABLED, LLM_TOKENS
+
 
 class LLMService:
     """Orchestrates LLM calls to various providers."""

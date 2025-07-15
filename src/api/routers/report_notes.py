@@ -7,7 +7,7 @@ It also injects recent chat context so the LLM can avoid repetition.
 
 from typing import Literal
 
-from fastapi import APIRouter, Form, Request, Response, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Request, Response
 from loguru import logger
 
 from api.deps import get_llm_service, get_session_id

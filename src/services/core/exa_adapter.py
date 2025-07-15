@@ -9,6 +9,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+
 from utils.observability import _METRICS_ENABLED, EXA_LAT
 
 try:
