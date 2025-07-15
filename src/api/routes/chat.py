@@ -17,6 +17,7 @@ from pages.main_page import render_chat_message
 from services.chat.chat_runtime import build_prompt, get_semaphore
 from services.chat.chat_state import ChatMessage, _chat_states, get_chat_state
 from utils.observability import _METRICS_ENABLED
+from utils.rate_limit import limiter
 
 try:
     # Only present when metrics enabled
@@ -35,6 +36,8 @@ _PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7
 router = APIRouter()
 
 
+# 20 requests per minute per IP, bursts of 5 per second
+@limiter.limit("20/minute")
 @router.post("/chat")
 async def chat_post(
     request: Request,  # noqa: D401 - FastAPI signature style

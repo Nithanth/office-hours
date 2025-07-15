@@ -11,6 +11,7 @@ Main responsibilities:
 """
 
 import asyncio
+import html
 import logging
 import os
 import pathlib as _pathlib
@@ -23,7 +24,8 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # Imports – *keep minimal globals above to avoid slow cold-start*
 # ---------------------------------------------------------------------------
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -251,11 +253,55 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault("Permissions-Policy", "clipboard-read=*, clipboard-write=*")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        # Very restrictive CSP; adjust 'img-src' and 'media-src' as needed.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+        )
         return response
 
 
 app.add_middleware(ChatSessionMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+
+import uvicorn
+from slowapi.middleware import SlowAPIMiddleware
+
+from utils.rate_limit import RateLimitExceeded, _rate_limit_exceeded_handler, limiter
+
+# Attach rate limiter middleware & exception handling
+app.add_middleware(SlowAPIMiddleware)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# --- Global friendly error handlers ----------------------------------------
+
+
+def _html_error_banner(message: str) -> str:  # helper
+    return (
+        "<div class='error-banner' style='color:#d9534f;background-color:#f9f2f2;"
+        "border:1px solid #d9534f;padding:10px;border-radius:4px;margin:10px 0;'>"
+        f"{html.escape(message)}"
+        "</div>"
+    )
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(request: Request, exc: HTTPException) -> HTMLResponse:  # noqa: D401
+    """Convert HTTPException to a styled banner so HTMX swaps show feedback."""
+    banner = _html_error_banner(exc.detail if exc.detail else "Request failed")
+    return HTMLResponse(content=banner, status_code=exc.status_code)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> HTMLResponse:  # noqa: D401
+    """Catch-all fallback – log & return user-friendly banner."""
+    logger.exception("unhandled_exception", err=str(exc))
+    banner = _html_error_banner("Unexpected server error – please try again.")
+    return HTMLResponse(content=banner, status_code=500)
+
 
 # --- Static file mounting --------------------------------------------------
 
@@ -277,8 +323,6 @@ else:
 # --- Manual Uvicorn entrypoint (only when python main.py) ------------------
 
 if __name__ == "__main__":
-    import uvicorn
-
     print(f"Starting Uvicorn server on http://{config.config.HOST}:{config.config.PORT}")
     uvicorn.run(
         "main:app",

@@ -27,6 +27,8 @@ from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, get_topic_analysis_promp
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMService
 from services.report.report_generator import ReportGenerator
+from utils.observability import _METRICS_ENABLED, REPORT_BLOCKS, REPORT_LAT, REPORT_REQ
+from utils.rate_limit import limiter
 
 router: APIRouter = APIRouter(tags=["report-incremental"])
 
@@ -70,6 +72,7 @@ async def _del_cache_later(token: str, delay: int = 60) -> None:
     REPORT_REQUEST_CACHE.pop(token, None)
 
 
+@limiter.limit("20/5minute")
 @router.post("/generate-report-incremental", response_class=HTMLResponse)
 async def generate_report_incremental(  # noqa: PLR0913
     request: Request,
@@ -81,6 +84,10 @@ async def generate_report_incremental(  # noqa: PLR0913
     is_url_input: bool = Form(False),  # noqa: B008
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
+    # Metrics: count incoming requests
+    if _METRICS_ENABLED and REPORT_REQ is not None:
+        REPORT_REQ.inc()
+
     # Generate a short-lived token and cache the full request payload server-side.
     token = str(uuid.uuid4())
     REPORT_REQUEST_CACHE[token] = {
@@ -260,6 +267,7 @@ async def report_stream(
         return role, html_block
 
     async def event_generator() -> AsyncIterator[str]:
+        _start_time = time.perf_counter()  # latency metric
         # Kick off tasks concurrently
         coros: list[asyncio.Task[tuple[str, str]]] = []
         task_paper_map: dict[asyncio.Task, Paper] = {}
@@ -293,7 +301,7 @@ async def report_stream(
         for t in coros:
             try:
                 _role_label, block_html = await t
-            except Exception as e:  # noqa: BLE001
+            except (asyncio.TimeoutError, ValueError, RuntimeError) as e:
                 logger.warning("stream_block_error", exc=str(e))
                 failed_titles.append(
                     (
@@ -308,6 +316,8 @@ async def report_stream(
                 continue  # skip yielding block for failed paper
 
             # Successful - stream block
+            if _METRICS_ENABLED and REPORT_BLOCKS is not None:
+                REPORT_BLOCKS.inc()
             yield _format_sse_event("report-block", block_html)
 
         # Inform client of any failures via a dedicated event **before** done
@@ -316,6 +326,10 @@ async def report_stream(
 
         # Finalise - send empty payload
         yield _format_sse_event("done", "")
+
+        # Observe overall latency once all blocks sent
+        if _METRICS_ENABLED and REPORT_LAT is not None:
+            REPORT_LAT.observe(time.perf_counter() - _start_time)
 
         await _del_cache_later(token)
 

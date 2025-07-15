@@ -258,11 +258,39 @@
 
     applyTheme('light');
 
+    // ------------------------------------------------------------------
+    // Summary size persistence (S/M/L/XL)
+    // ------------------------------------------------------------------
+
+    const SIZE_KEY = "summary_size";
+
+    function restoreSummarySize() {
+      const saved = LS.getItem(SIZE_KEY);
+      if (!saved) return;
+      document.querySelectorAll('#summary_size_select').forEach(sel => {
+        if (sel && sel.value !== saved) sel.value = saved;
+      });
+    }
+
+    // On change, persist value
+    document.body.addEventListener('change', evt => {
+      const t = evt.target;
+      if (t && t.id === 'summary_size_select') {
+        LS.setItem(SIZE_KEY, t.value);
+      }
+    });
+
+    // Initial restore (in case form already present)
+    restoreSummarySize();
+
     // Re-sync after HTMX swaps
     document.addEventListener('htmx:afterSwap', evt => {
       if (typeof syncHidden === 'function') syncHidden();
       setPlaceholderState(document.getElementById('aud-select'));
       setPlaceholderState(document.getElementById('model-select'));
+
+      // Re-apply saved report size after new form injected
+      restoreSummarySize();
 
       // Convert any injected error blocks to toasts and clean them up.
       document.querySelectorAll('.alert-error, .error-message').forEach(el => {

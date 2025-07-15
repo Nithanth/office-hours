@@ -51,7 +51,7 @@ async def build_prompt(
                 excerpt = fh.read(excerpt_chars)
             chat_state.paper_cache[paper_id]["excerpt"] = excerpt  # cache
             logger.debug("excerpt_loaded", paper_id=paper_id, chars=len(excerpt))
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, UnicodeDecodeError) as exc:
             logger.warning("excerpt_load_failed", paper_id=paper_id, error=str(exc))
             excerpt = ""
 

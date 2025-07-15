@@ -88,6 +88,20 @@ document.body.addEventListener("htmx:beforeRequest", (evt) => {
   setControlsEnabled(modal, false);
 });
 
+// Skeleton loader for Ask-LLM standalone form
+document.body.addEventListener("htmx:beforeRequest", (ev) => {
+  const form = ev.target;
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.getAttribute("hx-post") !== "/ask-llm") return;
+
+  const targetSel = form.getAttribute("hx-target");
+  if (!targetSel) return;
+  const target = document.querySelector(targetSel);
+  if (!target) return;
+
+  target.innerHTML = "<div class='skeleton' style='width:100%;height:4rem;border-radius:4px;'></div>";
+});
+
 // Clear textarea & scroll after user message sent
 document.body.addEventListener("htmx:afterRequest", (evt) => {
   const elt = evt.target;
@@ -97,6 +111,16 @@ document.body.addEventListener("htmx:afterRequest", (evt) => {
     const modal = elt.closest(".modal");
     const chatLog = modal && modal.querySelector(".chat-log-container");
     if (chatLog) scrollToBottom(chatLog);
+  }
+});
+
+// Remove skeleton after response swap
+document.body.addEventListener("htmx:afterSwap", (ev) => {
+  const target = ev.target;
+  if (target && target.querySelector && target.querySelector(".skeleton")) {
+    // If actual response is non-empty, skeleton will be overwritten already. Ensure gone.
+    const skel = target.querySelector(".skeleton");
+    if (skel) skel.remove();
   }
 });
 
@@ -111,6 +135,27 @@ document.body.addEventListener("htmx:beforeSwap", (evt) => {
 });
 
 // Chat session restore helper
+// Close open modal on ESC key for accessibility
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  const modal = document.querySelector(".modal");
+  if (modal) {
+    const closeBtn = modal.querySelector(".modal-close-btn");
+    if (closeBtn) closeBtn.click();
+    else modal.remove();
+  }
+});
+
+// Activate close button on Enter/Space when focused (keyboard a11y)
+document.addEventListener("keydown", (ev) => {
+  if (!["Enter", " ", "Spacebar"].includes(ev.key)) return;
+  const target = ev.target;
+  if (target && target.classList && target.classList.contains("modal-close-btn")) {
+    ev.preventDefault();
+    target.click();
+  }
+});
+
 export function initChat(sessionId, paperId, chatLogId) {
   const chatLog = document.getElementById(chatLogId || `chat-log-${paperId}`);
   if (!chatLog) return;
@@ -198,6 +243,15 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
   // When /chat-modal returns, target will be #modal-container. The modal is its first child.
   const modal = tgt.querySelector?.(".modal");
   if (modal) enhanceModal(modal);
+});
+
+document.body.addEventListener("htmx:responseError", (e) => {
+  const banner = document.getElementById("status-banner");
+  if (banner) {
+    banner.innerHTML = e?.detail?.xhr?.responseText || "Request failed";
+    banner.style.display = "block";
+    banner.setAttribute("role", "alert");
+  }
 });
 
 console.debug("[lux] chat/events.js wired listeners");

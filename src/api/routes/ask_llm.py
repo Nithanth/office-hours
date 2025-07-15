@@ -9,10 +9,12 @@ from loguru import logger
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from services.report.report_generator import ReportGenerator
+from utils.rate_limit import limiter
 
 router = APIRouter()
 
 
+@limiter.limit("10/minute")
 @router.post("/ask-llm", response_class=HTMLResponse)
 async def ask_llm(
     request: Request,

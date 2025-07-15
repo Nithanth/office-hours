@@ -1,5 +1,7 @@
 # Research Paper Analysis Tool
 
+![CI](https://github.com/your-org/lux_scholar/actions/workflows/ci.yml/badge.svg)
+
 A web-based research paper analysis tool that enables users to search academic papers, generate AI-powered summaries, and display results. Built with FastHTML (PyHTML), Modal, Exa, Together AI, and Redis.
 
 ## Project Setup
@@ -74,3 +76,4 @@ If you want to run `app.py` directly without Docker (e.g., for very quick UI tes
 * The application uses FastHTML for the web framework and HTMX for dynamic UI updates.
 * Asynchronous, compute-intensive tasks are intended to be offloaded to Modal.
 * Ensure your `.env` file is correctly configured for all external services (Exa, Together AI, Modal, Redis).
+* **Pre-commit** hooks: after cloning, run `pre-commit install` to auto-format & lint each commit.

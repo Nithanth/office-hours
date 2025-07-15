@@ -15,6 +15,7 @@ from config import config
 from services.chat.chat_state import ChatState, get_chat_state
 from services.core.llm_service import LLMService
 from services.notes.notes_generator import NotesGenerator
+from utils.rate_limit import limiter
 
 router = APIRouter(tags=["report-notes"])
 
@@ -38,6 +39,7 @@ def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
     return digest[:char_cap]
 
 
+@limiter.limit("20/5minute")
 @router.post("/generate-report-notes")
 async def generate_report_notes(
     request: Request,

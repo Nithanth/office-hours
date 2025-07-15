@@ -1,5 +1,6 @@
 """FastHTML page components for Lux Scholar's main UI."""
 
+import html
 from datetime import datetime
 from typing import Any, Optional
 
@@ -430,9 +431,9 @@ def render_report(
         summary = paper_summaries[i]
         paper_list_html += f"""\
         <div class="paper-summary-item mt-4 pt-4 border-t border-gray-700">
-            <h4 class="text-lg font-semibold">{paper.title}</h4>
-            <p class="text-sm">Source: <a href="{paper.url}" target="_blank" class="hover:underline">{paper.url}</a></p>
-            <p class="mt-2">{summary}</p>
+            <h4 class="text-lg font-semibold">{html.escape(paper.title)}</h4>
+            <p class="text-sm">Source: <a href="{html.escape(paper.url)}" target="_blank" class="hover:underline">{html.escape(paper.url)}</a></p>
+            <p class="mt-2">{html.escape(summary)}</p>
             <button class="ask-assistant-btn mt-2 text-sm flex items-center gap-1"
                     hx-get="/paper-modal?paper_id={paper.id}"
                     hx-target="#modal-container"
@@ -443,16 +444,16 @@ def render_report(
 
     return f"""\
     <div id="report-content" class="mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50">
-        <h2 class="text-2xl font-bold mb-4">{title}</h2>
+        <h2 class="text-2xl font-bold mb-4">{html.escape(title)}</h2>
         <div class="main-summary mb-6">
             <h3 class="text-xl font-semibold mb-2">Overall Analysis</h3>
-            <p>{main_summary}</p>
+            <p>{html.escape(main_summary)}</p>
         </div>
         <div class="paper-summaries">
             <h3 class="text-xl font-semibold mb-2">Key Paper Summaries</h3>
             {paper_list_html}
         </div>
-        <button id="copy-report-btn" class="copy-icon-btn" title="Copy text" type="button"><i class="fa-solid fa-copy"></i></button>
+        <button id="copy-report-btn" class="copy-icon-btn" title="Copy text" aria-label="Copy report" type="button"><i class="fa-solid fa-copy"></i></button>
     </div>"""
 
 
@@ -467,6 +468,8 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                 BUTTON(
                     "×",
                     cls="modal-close-btn",
+                    aria_label="Close modal",
+                    tabindex="0",
                     hx_on="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",
@@ -485,7 +488,7 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                         name="message",
                         placeholder="Ask about this paper...",
                         rows="3",
-                        style="width: 100%; border-radius: 4px; padding: 5px;",
+                        style="width:100%;max-width:40rem;height:6rem;font-family:inherit;",
                     ),
                     BUTTON("Send", type="submit", style="margin-top: 5px;"),
                     id=f"chat-form-{paper_id}",
@@ -552,7 +555,6 @@ def home_page(page_data: SharedPageData) -> Body:
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
             Script(src="/static/js/settings.js"),
-            Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),
             # Modular JS entry-points
             Script(src="/static/js/main.js", type="module"),
             # No inline init - handled in settings.js
@@ -598,6 +600,7 @@ def home_page(page_data: SharedPageData) -> Body:
             BUTTON(
                 "🌙 Dark",
                 id="lux-dark-toggle",
+                aria_label="Toggle dark mode",
                 type="button",
                 style="padding:1px 4px;margin-left:4px;",
             ),
@@ -616,7 +619,7 @@ def home_page(page_data: SharedPageData) -> Body:
                     required=True,
                     placeholder="e.g., 'transformer architecture overview', or 'https://www.arxiv.org/pdf/2506.08388'",
                     value=page_data.current_query or "",
-                    style="width:40rem;max-width:90%;",
+                    style="max-width:100%;width:100%;",
                 ),
                 Br(),
                 # Author input removed per new requirements
@@ -728,7 +731,7 @@ def home_page(page_data: SharedPageData) -> Body:
                     id="direct_question",
                     name="question",
                     placeholder="e.g., 'Summarize the transformer architecture'",
-                    style="width:40rem;max-width:90%;height:6rem;font-family:inherit;",
+                    style="width:100%;max-width:40rem;height:6rem;font-family:inherit;",
                 ),
                 Br(),
                 BUTTON(

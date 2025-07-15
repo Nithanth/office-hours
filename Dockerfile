@@ -1,24 +1,39 @@
-# Start from a Python base image
-FROM python:3.10-slim
+# -------- Builder stage --------
+FROM python:3.10-slim AS builder
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file into the container
+# Ensure Python can find modules inside /app/src when executed as a package
+ENV PYTHONPATH="/app/src"
+
+# Install build deps
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency list & install into a temp dir (keeps final image slim)
 COPY requirements.txt .
+RUN python -m pip install --upgrade pip \
+    && pip install --no-warn-script-location --no-cache-dir --prefix=/install -r requirements.txt
 
-# Install dependencies
-# Ensure that pip is upgraded and then install requirements
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application code into the container
+# Copy application source (needed for static analysis & runtime)
 COPY . .
 
-# Expose the port the app runs on (as defined in .env or config.py, default 8000)
-# This will be dynamically set by docker-compose using the .env file
-# EXPOSE 8000 
+# -------- Runtime stage --------
+FROM python:3.10-slim
 
-# Command to run the application using Uvicorn
-# The port here will be overridden by docker-compose if specified there
+WORKDIR /app
+ENV PYTHONPATH="/app/src" PYTHONUNBUFFERED=1
+
+# Create non-root user
+RUN addgroup --system lux && adduser --system --ingroup lux lux
+
+# Copy dependencies from builder image
+COPY --from=builder /install /usr/local
+
+# Copy application code (only runtime files)
+COPY --from=builder /app /app
+
+USER lux
+
+EXPOSE 8000
+
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
