@@ -340,10 +340,11 @@ class LLMService:
                             else prompt
                         )
 
-                        aio_client = gm_client.aio
+                        # gm_client is already an _AsyncClient instance (see GeminiProvider)
+                        # so we can call generate_content_stream directly.
                         stream_iter = cast(
                             AsyncIterator[Any],
-                            await aio_client.models.generate_content_stream(
+                            await gm_client.models.generate_content_stream(
                                 model=model_name,
                                 contents=[final_prompt],
                             ),
@@ -476,6 +477,8 @@ class LLMService:
             is_ok = not content.startswith("Error:")
             return {"ok": is_ok, "content": content}
         except Exception as e:  # catch any leakage
+            # Emit full stack trace for observability before surfacing generic error to UI.
+            self.logger.exception("llm_generate_completion_safe_error", exc_info=e)
             return {"ok": False, "content": f"Unhandled exception in LLM call: {e}"}
 
     def _resolve_default_model(self, provider: ProviderName) -> str | None:

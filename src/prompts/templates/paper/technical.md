@@ -15,7 +15,8 @@ Content Snippet for Focus:
 """
 
 TASK OVERVIEW:
-Provide a synthesized, technically deep analysis of the research paper detailed above. This summary is for a highly technical audience (e.g., PhDs, active researchers in the field). Focus on its core contributions, methodology, key findings, limitations, and its significance to the field. The designated target audience is: {target_audience}.
+Provide a synthesized, technically deep analysis of the research paper detailed above. This summary is for a highly technical audience (e.g., PhDs, active researchers in the field). Focus on its core contributions, methodology, key findings, limitations, and its significance to the field.
+NOTE: If this prompt was generated for a *direct paper URL* workflow, avoid any generic topic overview—summarise the paper only.
 Please adhere to the following length guidance: {overall_instructions}
 
 CONTENT AND STYLE GUIDELINES:
@@ -28,11 +29,13 @@ CONTENT AND STYLE GUIDELINES:
 - Adopt a third-person, objective, analytical, and informative tone.
 - Synthesize information rather than just extracting verbatim.
 - Ensure the summary is complete and does not end abruptly.
+- If a requested detail is absent from the provided snippet, state "Not found in provided sources." — do NOT invent content.
+- When referencing a specific line, append line number in square brackets (e.g., [L12]).
+- Separate paragraphs with a blank line.
+- Respond in the same language as the input (default to English if ambiguous).
 
 FORMATTING REQUIREMENTS:
 
-- Output plain text only.
-- Do not use markdown, bolding, italics, or any special formatting.
-- Ensure paragraphs are well-formed.
-IMPORTANT FINAL INSTRUCTION:
-Your response MUST begin with the first word of the summary itself. No preceding text, dialogue, or meta-commentary is allowed. Adhere strictly to all instructions.
+- Allowed Markdown: headings, lists, and inline `code` for formulas or variables.
+- Avoid tables, images, and multi-line code blocks unless strictly necessary.
+- Ensure paragraphs are well-formed and cohesive.

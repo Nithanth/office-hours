@@ -20,6 +20,22 @@ from pydantic import HttpUrl
 
 from models.paper import Paper
 from services.paper.cache.paper_cache import PaperCache
+
+# ---------------------------------------------------------------------------
+# Metadata fetch helpers (moved to services.paper.metadata)
+# ---------------------------------------------------------------------------
+from services.paper.metadata.metadata_fetchers import (
+    fetch_arxiv_metadata as _fetch_arxiv_metadata,
+)
+from services.paper.metadata.metadata_fetchers import (
+    fetch_crossref_metadata as _fetch_crossref_metadata,
+)
+from services.paper.metadata.metadata_fetchers import (
+    fetch_doi_metadata as _fetch_doi_metadata,
+)
+from services.paper.metadata.metadata_fetchers import (
+    fetch_semantic_scholar_arxiv as _fetch_ss_arxiv,
+)
 from services.query.cache import CachedSearch
 
 from .exa_adapter import ExaAdapter
@@ -31,18 +47,6 @@ from .exa_utils import (
 )
 from .exa_utils import (
     url_utils as _url_utils,
-)
-from .metadata.metadata_fetchers import (
-    fetch_arxiv_metadata as _fetch_arxiv_metadata,
-)
-from .metadata.metadata_fetchers import (
-    fetch_crossref_metadata as _fetch_crossref_metadata,
-)
-from .metadata.metadata_fetchers import (
-    fetch_doi_metadata as _fetch_doi_metadata,
-)
-from .metadata.metadata_fetchers import (
-    fetch_semantic_scholar_arxiv as _fetch_ss_arxiv,
 )
 
 
@@ -132,6 +136,21 @@ class ExaClient:
         """Best-effort wrapper around `get_contents` guaranteeing URL match."""
         try:
             res = self.client.get_contents([url], text=True)
+            first_res = res.results[0] if getattr(res, "results", None) else None
+            if first_res:
+                snippet = (first_res.text[:100] + "…") if getattr(first_res, "text", None) else ""
+                meta = {
+                    "title": getattr(first_res, "title", None),
+                    "authors": getattr(first_res, "authors", None),
+                    "published_date": getattr(first_res, "published_date", None),
+                    "url": getattr(first_res, "url", None)
+                    or getattr(first_res, "canonical_url", None),
+                    "id": getattr(first_res, "id", None),
+                    "text_snippet": snippet,
+                }
+                logger.info("_safe_get_contents direct: url={} → meta={}", url, meta)
+            else:
+                logger.info("_safe_get_contents direct: url={} → no results", url)
             if res.results and _url_utils.url_equivalent(
                 url, res.results[0].url or getattr(res.results[0], "canonical_url", None)
             ):
@@ -142,6 +161,23 @@ class ExaClient:
                 return None
 
             res2 = self.client.get_contents([doc_id], text=True)
+            first_res2 = res2.results[0] if getattr(res2, "results", None) else None
+            if first_res2:
+                snippet2 = (
+                    (first_res2.text[:100] + "…") if getattr(first_res2, "text", None) else ""
+                )
+                meta2 = {
+                    "title": getattr(first_res2, "title", None),
+                    "authors": getattr(first_res2, "authors", None),
+                    "published_date": getattr(first_res2, "published_date", None),
+                    "url": getattr(first_res2, "url", None)
+                    or getattr(first_res2, "canonical_url", None),
+                    "id": getattr(first_res2, "id", None),
+                    "text_snippet": snippet2,
+                }
+                logger.info("_safe_get_contents by_id: doc_id={} → meta={}", doc_id, meta2)
+            else:
+                logger.info("_safe_get_contents by_id: doc_id={} → no results", doc_id)
             if res2.results:
                 return res2.results[0]
         except Exception as exc:
@@ -431,15 +467,14 @@ class ExaClient:
             )
 
             try:
+                # Avoid dumping full metadata for every similar paper – that can flood logs.
                 logger.debug(
-                    "Raw Exa similar results (pre-filter): [{}]",
-                    ", ".join(
-                        f"{getattr(r, 'title', 'NO TITLE')} | {getattr(r, 'published_date', 'no-date')} | score={getattr(r, 'score', 'NA')}"
-                        for r in similar_response.results
-                    ),
+                    "Exa similar results: {} items returned for URL {}",
+                    len(similar_response.results),
+                    paper_url,
                 )
             except Exception:
-                logger.exception("Failed to log raw Exa similar results")
+                logger.warning("Failed to log Exa similar result count", url=paper_url)
 
             prelim: list[Paper] = []
             for result in similar_response.results:
@@ -553,23 +588,85 @@ class ExaClient:
             A dictionary with 'main_paper' (Paper object or None) and
             'similar_papers' (List of Paper objects).
         """
+        # Normalize arXiv PDF links to their canonical abstract page so Exa &
+        # metadata enrichment return richer information.
+        normalized_url = paper_url
+        arxiv_id = _url_utils.extract_arxiv_id(paper_url)
+        if arxiv_id and "arxiv.org/pdf" in paper_url.lower():
+            normalized_url = _url_utils.canonical_arxiv_abs_url(arxiv_id)
+            logger.info("Normalized arXiv PDF URL to abs page: {} → {}", paper_url, normalized_url)
+
         main_paper_object: Optional[Paper] = None
         similar_papers_list: list[Paper] = []
 
-        # 1. Fetch content for the main paper_url
+        # --------------------------------------------------------------
+        # 0. Preferred: high-quality arXiv / DOI enrichment first
+        # --------------------------------------------------------------
         try:
-            logger.info("Fetching content for main URL (safe): {}", paper_url)
-
-            main_res = self._safe_get_contents(paper_url)
-            if main_res:
-                main_paper_object = _paper_utils.create_paper_from_exa_result(
-                    main_res, f"Exa (safe_get_contents: {paper_url})"
+            main_paper_object = self.enrich_url(normalized_url)
+            if main_paper_object:
+                logger.info(
+                    "enrich_url primary succeeded for {} - authors={} pub_date={}",
+                    normalized_url,
+                    len(main_paper_object.authors or []),
+                    main_paper_object.published_date,
                 )
-                if main_paper_object and main_paper_object.url:
-                    enriched_main = self.enrich_url(str(main_paper_object.url))
-                    if enriched_main is not None:
-                        main_paper_object = enriched_main
+        except Exception as enrich_exc:  # noqa: BLE001 – fall back gracefully
+            logger.warning("primary enrich_url failed for {} - {}", normalized_url, enrich_exc)
 
+        # 1. If still incomplete, try Exa get_contents for richer text/metadata
+        try:
+            needs_exa = (
+                main_paper_object is None
+                or not main_paper_object.authors
+                or not main_paper_object.published_date
+                or not main_paper_object.text_content
+            )
+
+            if not needs_exa:
+                raise StopIteration  # skip Exa path; jump to similar search
+
+            logger.info("Fetching content for main URL (safe): {}", normalized_url)
+
+            main_res = self._safe_get_contents(normalized_url)
+            if main_res is not None:
+                snippet_main = (
+                    (main_res.text[:100] + "…") if getattr(main_res, "text", None) else ""
+                )
+                meta_main = {
+                    "title": getattr(main_res, "title", None),
+                    "authors": getattr(main_res, "authors", None),
+                    "published_date": getattr(main_res, "published_date", None),
+                    "url": getattr(main_res, "url", None)
+                    or getattr(main_res, "canonical_url", None),
+                    "id": getattr(main_res, "id", None),
+                    "text_snippet": snippet_main,
+                }
+                logger.info("main_res summary for {} → meta={}", normalized_url, meta_main)
+            else:
+                logger.info("main_res summary for {} → None", normalized_url)
+            if main_res:
+                try:
+                    main_paper_object = _paper_utils.create_paper_from_exa_result(
+                        main_res, f"Exa (safe_get_contents: {normalized_url})"
+                    )
+                except Exception as conv_exc:  # noqa: BLE001 – log and fall back
+                    logger.warning(
+                        "create_paper_from_exa_result failed for {} - {}",
+                        normalized_url,
+                        conv_exc,
+                        exc_info=True,
+                    )
+                    main_paper_object = None
+
+            if main_paper_object and main_paper_object.url:
+                enriched_main = self.enrich_url(str(main_paper_object.url))
+                if enriched_main is not None:
+                    main_paper_object = enriched_main
+
+        except StopIteration:
+            # Skip Exa branch – already have quality metadata
+            pass
         except Exception as e:
             logger.error(
                 "content fetch failed",
@@ -578,12 +675,19 @@ class ExaClient:
                 exc_info=True,
             )
 
+        # If Exa content fetch failed entirely, fall back to MetadataEnricher on the normalized URL.
+        if main_paper_object is None:
+            fallback_paper = self.enrich_url(normalized_url)
+            logger.info("fallback enrich_url result for {} → {}", normalized_url, fallback_paper)
+            if fallback_paper is not None:
+                main_paper_object = fallback_paper
+
         # 2. Find similar papers to the paper_url
         try:
-            logger.info("Finding similar papers for URL: {}", paper_url)
+            logger.info("Finding similar papers for URL: {}", normalized_url)
 
             similar_papers_list = self.find_similar_papers(
-                paper_url,
+                normalized_url,
                 num_results=num_similar_results,
                 category=category,
                 start_published_date=start_published_date,
@@ -762,9 +866,7 @@ class ExaClient:
             cached_paper = cast(Paper, _paper_utils.update_paper_from_meta(cached_paper, meta))
             return cached_paper
 
-        from .metadata.metadata_enricher import (
-            MetadataEnricher,
-        )
+        from services.paper.metadata.metadata_enricher import MetadataEnricher
 
         enricher = MetadataEnricher(self)
 

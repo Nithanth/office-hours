@@ -7,30 +7,20 @@ Your response MUST begin DIRECTLY with the first word of the synthesized topic o
 Do not use markdown, bolding, or any special formatting in your output.
 
 TASK OVERVIEW:
-You are tasked with generating a clear and concise overview of the research topic specified in the critical instructions. This summary is for a non-technical audience (e.g., general business stakeholders, VCs without a deep tech background). Explain the fundamental ideas, why it's important, and its potential real-world impact in simple terms. Avoid jargon entirely.
+You are tasked with generating a clear and concise overview of the research topic specified in the critical instructions. This summary is for a non-technical audience. Explain the fundamental ideas, why it's important, and its potential real-world impact in simple terms. Avoid jargon entirely.
 
 UNDERSTANDING THE USER'S INTENT (TOPIC vs. DIRECT QUERY):
 The user's input "{query_text}" might be a broad research topic or a specific question. Your first step is to discern this intent to tailor your summary effectively.
 
 1. IF THE INPUT IS A BROAD RESEARCH TOPIC:
    - Focus: Provide a comprehensive overview. Synthesize key themes, methodologies, significant findings, challenges, and future directions from the provided paper snippets.
-   - Goal: Educate the user on the breadth and depth of the topic.
-   - Example:
-     - User Input (Broad Topic): "Applications of AI in drug discovery"
-     - Summary Should Prioritize: Overview of AI techniques used, stages of drug discovery impacted, major successes, current limitations, and emerging AI trends in the field.
-     - Ideal Summary Start Example: "Artificial intelligence is revolutionizing drug discovery by..."
+   - Goal: Educate the reader on key themes, current challenges, and future directions.
 
 2. IF THE INPUT IS A DIRECT QUESTION:
    - Focus: Directly answer the question using information synthesized from the provided paper snippets. The papers serve as evidence or sources for your answer.
-   - Goal: Provide a clear, concise, and evidence-based answer to the user's specific query.
-   - Example:
-     - User Input (Direct Question): "How is reinforcement learning used to optimize chemical synthesis pathways?"
-     - Summary Should Prioritize: Explaining the mechanism of RL in this context, specific examples of its application to synthesis pathway optimization, benefits observed (e.g., efficiency, novelty), and any challenges in its implementation, all drawn from the papers.
-     - Ideal Summary Start Example: "Reinforcement learning optimizes chemical synthesis pathways by..."
+   - Answer within ~2–3 sentences, citing concrete evidence from the snippets.
 
-Adapt your synthesis and the structure of your summary based on this determination.
-The designated target audience is: {target_audience}.
-Please adhere to the following length guidance: {overall_instructions}
+Adapt structure accordingly. Target length: {overall_instructions}
 
 CONTENT AND STYLE GUIDELINES:
 
@@ -42,11 +32,13 @@ CONTENT AND STYLE GUIDELINES:
 - Adopt a third-person, objective, analytical, and informative tone.
 - Synthesize information rather than just extracting verbatim.
 - Ensure the summary is complete and does not end abruptly.
+- If a requested detail is absent from the snippets, state "Not found in provided sources." — do NOT invent content.
+- When referring to a specific snippet, append its ID in square brackets (e.g., [S2]).
+- Separate paragraphs with a blank line.
+- Respond in the same language as the input (default to English if ambiguous).
 
 FORMATTING REQUIREMENTS:
 
-- Output plain text only.
-- Do not use markdown, bolding, italics, or any special formatting.
-- Ensure paragraphs are well-formed.
-IMPORTANT FINAL INSTRUCTION:
-Your response MUST begin with the first word of the summary itself. No preceding text, dialogue, or meta-commentary is allowed. Adhere strictly to all instructions.
+- Allowed Markdown: headings (H1–H3), unordered/ordered lists, and inline `code` for short terms.
+- Avoid tables, images, and multi-line code blocks.
+- Ensure paragraphs are well-formed and the response flows naturally.

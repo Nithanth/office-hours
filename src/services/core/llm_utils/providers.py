@@ -13,7 +13,6 @@ from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
 from google import genai
-from google.api_core.exceptions import GoogleAPIError
 from loguru import logger
 from openai import APIError as OpenAIAPIError
 from openai import AsyncOpenAI
@@ -289,58 +288,60 @@ class GeminiProvider(LLMProvider):
 
         import inspect
 
-        from google.genai import types as _genai_types  # local import to avoid hard dep at top
+        # ------------------------------------------
+        # Build kwargs dynamically from signature
+        # ------------------------------------------
+        sig_params = set(inspect.signature(gm_client.models.generate_content).parameters)
 
-        config_kwargs: dict[str, Any] = {
-            "temperature": actual_temperature,
-            "max_output_tokens": max_tokens,
+        _req_kwargs: dict[str, Any] = {
+            "model": (model or self.default_model),
+            "contents": prompt,
         }
-        if system_prompt:
-            config_kwargs["system_instruction"] = system_prompt
 
-        # Map optional safety_settings list (already sdk SafetySetting items or plain dicts)
-        if "safety_settings" in kwargs and kwargs["safety_settings"] is not None:
-            config_kwargs["safety_settings"] = kwargs["safety_settings"]
+        # Pass optional kwargs ONLY if the target SDK version supports them.
+        if "temperature" in sig_params and actual_temperature is not None:
+            _req_kwargs["temperature"] = actual_temperature
+        if "max_output_tokens" in sig_params and max_tokens is not None:
+            _req_kwargs["max_output_tokens"] = max_tokens
+        if "system_instruction" in sig_params and system_prompt:
+            _req_kwargs["system_instruction"] = system_prompt
 
-        signature_str = str(inspect.signature(gm_client.models.generate_content))
-        logger.debug("Gemini generate_content signature: {}", signature_str)
-
-        gen_config = _genai_types.GenerationConfig(**config_kwargs)
-
-        logger.debug("Gemini GenerationConfig kwargs: {}", config_kwargs)
+        logger.debug("Gemini generate_content final kwargs: {}", _req_kwargs)
 
         try:
-            response = await gm_client.models.generate_content(
-                model=(model or self.default_model),
-                contents=prompt,
-                generation_config=gen_config,
-            )
+            response = await gm_client.models.generate_content(**_req_kwargs)
 
             if not getattr(response, "text", ""):
                 raise LLMProviderError("gemini", "Empty response text")
             return str(response.text).strip()
-        except TypeError as te:
-            # Catch older SDKs that still reject GenerationConfig params; retry barebones
-            if "generation_config" in str(te) or "temperature" in str(te):
-                # fallback: remove param wrapper and pass simple args supported by legacy
-                logger.info("GeminiProvider TypeError fallback", error=str(te))
+        except Exception as gen_exc:
+            # Gracefully handle SDK signature churn or validation issues.
+            err_msg = str(gen_exc)
+            retriable = any(
+                key in err_msg for key in ("generation_config", "temperature", "system_instruction")
+            )
 
-                response = await gm_client.models.generate_content(
-                    model=(model or self.default_model),
-                    contents=prompt,
-                    temperature=actual_temperature,
-                    max_output_tokens=max_tokens,
+            if retriable:
+                logger.warning(
+                    "GeminiProvider primary call failed - retrying minimal signature", error=err_msg
                 )
 
-                if not getattr(response, "text", ""):
-                    # Explicitly chain to distinguish from errors in except handler
+                # Retry with the absolute minimal supported signature to maximise cross-version compat.
+                try:
+                    response = await gm_client.models.generate_content(
+                        model=(model or self.default_model),
+                        contents=prompt,
+                    )
+
+                    if not getattr(response, "text", ""):
+                        raise LLMProviderError("gemini", "Empty response text (fallback)")
+                    return str(response.text).strip()
+                except Exception as fallback_exc:  # noqa: BLE001 – surface below
+                    # Chain the original error context for easier debugging.
                     raise LLMProviderError(
                         "gemini",
-                        "Empty response text (legacy fallback)",
-                    ) from te
-                return str(response.text).strip()
-        except GoogleAPIError as e:
-            # Older transport / low-level errors still surface via google-api-core
-            raise LLMProviderError("gemini", f"API request failed: {e}", e) from e
-        # Should never reach here – all paths either return or raise.
-        raise LLMProviderError("gemini", "Unknown generation failure")
+                        f"Fallback generate_content failed: {fallback_exc}",
+                        fallback_exc,
+                    ) from gen_exc
+            # Non-retriable – propagate as provider error.
+            raise

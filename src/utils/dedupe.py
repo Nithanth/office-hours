@@ -1,16 +1,10 @@
-"""Semantic deduplication utilities for chat vs. report text."""
+"""Utility functions for deduplicating chat messages against the generated report."""
 
 from typing import cast
 
 import nltk
-
-try:
-    from sentence_transformers import SentenceTransformer, util
-except ImportError:  # pragma: no cover
-    SentenceTransformer = None
-    util = None
-
 from loguru import logger
+from sentence_transformers import SentenceTransformer, util
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _model: SentenceTransformer | None = None
@@ -20,10 +14,6 @@ def _get_model() -> SentenceTransformer:
     """Lazily load and cache the MiniLM embedding model."""
     global _model
     if _model is None:
-        if SentenceTransformer is None:
-            raise ImportError(
-                "sentence-transformers not installed. Install it to enable deduplication."
-            )
         logger.bind(component="Dedupe").info(
             "loading sentence-transformers model", model=_MODEL_NAME
         )
@@ -32,10 +22,7 @@ def _get_model() -> SentenceTransformer:
 
 
 def _sentences(text: str) -> list[str]:
-    """Split *text* into sentences using NLTK punkt tokenizer.
-
-    The tokenizer returns ``Any`` in typeshed, so we cast for mypy compliance.
-    """
+    """Split *text* into sentences using NLTK's punkt tokenizer."""
     nltk.download("punkt", quiet=True)
     return cast(list[str], nltk.sent_tokenize(text))
 
@@ -52,11 +39,7 @@ def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -
     Returns:
         Filtered chat text containing only non-redundant sentences.
     """
-    if SentenceTransformer is None or util is None:
-        logger.bind(component="Dedupe").warning(
-            "sentence-transformers unavailable; skipping dedupe"
-        )
-        return chat_text
+    # Dependencies are assumed present; proceed directly.
 
     report_sents = _sentences(report_text)
     chat_sents = _sentences(chat_text)

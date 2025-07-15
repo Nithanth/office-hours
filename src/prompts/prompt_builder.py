@@ -40,10 +40,6 @@ def _load_template(rel_path: str) -> str:
 
 DEFAULT_SYSTEM_PROMPT: str = _load_template("system/default.md")
 
-# ---------------------------------------------------------------------------
-# Workflow-specific prompt factories (unchanged below)
-# ------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 # Audience-specific template loader
@@ -163,7 +159,7 @@ def get_topic_analysis_prompts(
             "Key Findings:",
             "Potential Impact:",
         ]
-    elif size_key in ("L", "XL"):
+    elif size_key == "L":
         section_headings = [
             "Topic Overview:",
             "Historical Context:",

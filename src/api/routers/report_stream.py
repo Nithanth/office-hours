@@ -183,9 +183,8 @@ async def report_stream(
         start_ts = time.perf_counter()
         prompt_len_label = summary_size.upper()
 
-        # Length guidance follows mapping logic from ReportGenerator
-        topic_size_map = {"S": "M", "M": "L", "L": "XL", "XL": "XL"}
-        actual_topic_size_key = topic_size_map.get(prompt_len_label, "L")
+        # Topic summary now respects the same S/M/L sizing
+        actual_topic_size_key = prompt_len_label if prompt_len_label in ("S", "M", "L") else "M"
 
         overall_instr = rg.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_size_key]
         # Build a *brief* context - first ~150 chars from first 3 papers

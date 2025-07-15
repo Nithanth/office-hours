@@ -2,7 +2,7 @@
 
 import re
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Optional, cast
 
 from loguru import logger
@@ -64,10 +64,27 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
         published_date: datetime | None = None
         if pd_str := getattr(result, "published_date", None):
             with suppress(Exception):
-                if "T" in pd_str:
-                    published_date = datetime.fromisoformat(pd_str.replace("Z", "+00:00"))
+                if isinstance(pd_str, str):
+                    # Normalise common timestamp strings emitted by APIs (both ISO and space-separated)
+                    cleaned = pd_str.replace("Z", "+00:00")
+                    try:
+                        published_date = datetime.fromisoformat(cleaned)
+                    except ValueError:
+                        # Fallback to space-separated "YYYY-MM-DD HH:MM:SS+00:00"
+                        try:
+                            if "+" in cleaned:
+                                dt_part, tz_part = cleaned.split("+", 1)
+                                paper_dt = datetime.strptime(dt_part.strip(), "%Y-%m-%d %H:%M:%S")
+                                published_date = paper_dt.replace(tzinfo=None)
+                            else:
+                                # Bare date string
+                                published_date = datetime.strptime(cleaned, "%Y-%m-%d").replace(
+                                    tzinfo=None
+                                )
+                        except Exception:
+                            published_date = None
                 else:
-                    published_date = datetime.strptime(pd_str, "%Y-%m-%d").replace(tzinfo=None)
+                    published_date = pd_str  # assume datetime already
 
         paper = Paper(
             id=getattr(result, "id", None),
@@ -115,14 +132,37 @@ def update_paper_from_meta(paper: Paper, meta: dict[str, Any]) -> Paper:
             ):
                 existing_ok = True
 
-        if not existing_ok:
+        # Only replace when we actually obtained at least one plausible author;
+        # prevents wiping out a valid list with an empty fallback.
+        if clean_authors and not existing_ok:
             paper.authors = clean_authors
 
     if meta.get("published_date") and not paper.published_date:
-        with suppress(Exception):
-            paper.published_date = datetime.fromisoformat(str(meta["published_date"])).replace(
-                tzinfo=timezone.utc
-            )
+        pd_raw = meta["published_date"]
+        try:
+            if isinstance(pd_raw, str):
+                # Normalise common timestamp strings emitted by APIs (both ISO and space-separated)
+                cleaned = pd_raw.replace("Z", "+00:00")
+                try:
+                    paper.published_date = datetime.fromisoformat(cleaned)
+                except ValueError:
+                    # Fallback to space-separated "YYYY-MM-DD HH:MM:SS+00:00"
+                    try:
+                        if "+" in cleaned:
+                            dt_part, tz_part = cleaned.split("+", 1)
+                            paper_dt = datetime.strptime(dt_part.strip(), "%Y-%m-%d %H:%M:%S")
+                            paper.published_date = paper_dt.replace(tzinfo=None)
+                        else:
+                            # Bare date string
+                            paper.published_date = datetime.strptime(cleaned, "%Y-%m-%d").replace(
+                                tzinfo=None
+                            )
+                    except Exception:
+                        paper.published_date = None
+            else:
+                paper.published_date = pd_raw  # assume datetime already
+        except Exception:  # noqa: BLE001 – defensive, keep original string
+            paper.published_date = pd_raw
 
     if meta.get("text_content") and not paper.text_content:
         paper.text_content = meta["text_content"]

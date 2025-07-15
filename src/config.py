@@ -109,27 +109,24 @@ class Config:
         "S": "brief and concise, summarizing only the absolute key takeaways",
         "M": "moderately detailed, covering the main points comprehensively but without excessive depth on any single one",
         "L": "detailed and thorough, exploring the nuances and providing substantial supporting information for each key aspect",
-        "XL": "highly comprehensive and exhaustive, suitable for deep understanding and including extensive details, context, and implications",
+        # XL removed – we now standardise on S, M, L only.
     }
 
     SUMMARY_OUTPUT_TOKEN_TARGETS: dict[str, dict[str, int]] = {
         "technical": {
-            "S": 2000,  # Reverting to generous upper bound (was 500, orig 250)
-            "M": 4000,  # Reverting to generous upper bound (was 1000, orig 500)
-            "L": 6000,  # Reverting to generous upper bound (was 1500, orig 800)
-            "XL": 10000,  # Reverting to generous upper bound (was 2500, orig 1300)
+            "S": 2000,
+            "M": 4000,
+            "L": 6000,
         },
         "semi_technical": {
             "S": 2000,
             "M": 4000,
             "L": 6000,
-            "XL": 10000,
         },
         "non_technical": {
             "S": 2000,
             "M": 4000,
             "L": 6000,
-            "XL": 10000,
         },
     }
 
