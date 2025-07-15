@@ -251,11 +251,26 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault("Permissions-Policy", "clipboard-read=*, clipboard-write=*")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        # Very restrictive CSP; adjust 'img-src' and 'media-src' as needed.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'" ,
+        )
         return response
 
 
 app.add_middleware(ChatSessionMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+
+import uvicorn
+from slowapi.middleware import SlowAPIMiddleware
+from utils.rate_limit import limiter, RateLimitExceeded, _rate_limit_exceeded_handler
+
+# Attach rate limiter middleware & exception handling
+app.add_middleware(SlowAPIMiddleware)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Static file mounting --------------------------------------------------
 
@@ -277,8 +292,6 @@ else:
 # --- Manual Uvicorn entrypoint (only when python main.py) ------------------
 
 if __name__ == "__main__":
-    import uvicorn
-
     print(f"Starting Uvicorn server on http://{config.config.HOST}:{config.config.PORT}")
     uvicorn.run(
         "main:app",

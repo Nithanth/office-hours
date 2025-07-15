@@ -68,8 +68,9 @@ def ChatModal(
             Div(
                 H2(title),
                 BUTTON(
-                    "x",
+                    "×",
                     cls="modal-close-btn",
+                    aria_label="Close modal",
                     hx_on_click="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",

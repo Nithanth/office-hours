@@ -1,0 +1,20 @@
+# Exclude dev artifacts and secrets from Docker build context
+
+# Python caches and virtualenvs
+__pycache__/
+*.py[cod]
+.env
+*.env
+*.venv
+.venv/
+
+# Node modules
+node_modules/
+
+# Data & local caches
+.data/
+data/
+.summary_cache/
+
+# Git
+.git/

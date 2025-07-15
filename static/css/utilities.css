@@ -99,3 +99,25 @@ body.lux-dark input:hover, body.lux-dark textarea:hover, body.lux-dark select:ho
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
 body.lux-dark .text-blue-500 { color: var(--lux-red); }
+
+/* Ensure mobile no-horizontal-scroll */
+html, body { overflow-x: hidden; }
+
+.container { max-width: 100%; box-sizing: border-box; }
+
+.paper-summary-item, form, input, textarea, select {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* Skeleton loading pulse */
+@keyframes lux-pulse {
+  0% { background-color:#eee; }
+  50% { background-color:#ddd; }
+  100% { background-color:#eee; }
+}
+.skeleton {
+  animation: lux-pulse 1.2s ease-in-out infinite;
+  pointer-events:none;
+  color: transparent !important;
+}

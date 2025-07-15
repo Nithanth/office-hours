@@ -78,6 +78,7 @@ export function addCopyButtons(container) {
     btn.className = "copy-btn hidden";
     btn.type = "button";
     btn.title = "Copy code";
+    btn.setAttribute("aria-label", "Copy code block");
     btn.textContent = "📋";
     btn.addEventListener("click", () => {
       navigator.clipboard.writeText(pre.innerText).then(() => {

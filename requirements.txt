@@ -20,9 +20,10 @@ google-genai
 google-api-core
 tenacity
 loguru
-structlog
 nltk
 sentence-transformers
+prometheus_client
+slowapi
 
 # Data Validation & Modeling
 pydantic

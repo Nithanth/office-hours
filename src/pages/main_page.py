@@ -467,6 +467,7 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                 BUTTON(
                     "×",
                     cls="modal-close-btn",
+                    aria_label="Close modal",
                     hx_on="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",
@@ -598,6 +599,7 @@ def home_page(page_data: SharedPageData) -> Body:
             BUTTON(
                 "🌙 Dark",
                 id="lux-dark-toggle",
+                aria_label="Toggle dark mode",
                 type="button",
                 style="padding:1px 4px;margin-left:4px;",
             ),
