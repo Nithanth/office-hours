@@ -155,5 +155,12 @@ cython_debug/
 
 # tool specific
 # paper cache
-data/full_text/
+data/
 .summary_cache/
+
+# node
+node_modules
+
+# PurgeCSS output (keep committed so Docker image can serve optimised CSS)
+# If you prefer to re-generate on CI, re-enable this ignore.
+#static/css/dist/

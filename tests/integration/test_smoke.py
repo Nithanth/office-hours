@@ -15,9 +15,8 @@ src_path = project_root / "src"
 if src_path.as_posix() not in sys.path:
     sys.path.insert(0, src_path.as_posix())
 
-# ruff: noqa: E402 – intentional import order (sys.path setup before importing app)
-import main as app_module  # The main FastAPI application lives here
-from api.routes import ask_llm, report, search
+# ruff: noqa: E402 - intentional import order (sys.path setup before importing app)
+import main as app_module  # FastAPI bootstrap (imports routers internally)
 
 
 class _DummyService:  # very lightweight stub for external services
@@ -25,7 +24,7 @@ class _DummyService:  # very lightweight stub for external services
 
     _initialized: bool = True
 
-    async def __aenter__(self, *args: Any, **kwargs: Any):  # noqa: D401 – contextmanager helpers
+    async def __aenter__(self, *args: Any, **kwargs: Any):  # noqa: D401 - contextmanager helpers
         return self
 
     async def __aexit__(self, *args: Any, **kwargs: Any):
@@ -48,48 +47,57 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
     # Patch global singletons on the *app* module
     monkeypatch.setattr(app_module, "llm_service_instance", dummy, raising=False)
     monkeypatch.setattr(app_module, "exa_client_instance", dummy, raising=False)
-    monkeypatch.setattr(app_module, "paper_service_instance", dummy, raising=False)
 
-    # Patch already-imported route modules that cache these globals at import time
-    monkeypatch.setattr(ask_llm, "llm_service_instance", dummy, raising=False)
-    monkeypatch.setattr(ask_llm, "exa_client_instance", dummy, raising=False)
-    monkeypatch.setattr(search, "llm_service_instance", dummy, raising=False)
-    monkeypatch.setattr(search, "exa_client_instance", dummy, raising=False)
-    monkeypatch.setattr(report, "llm_service_instance", dummy, raising=False)
-    monkeypatch.setattr(report, "exa_client_instance", dummy, raising=False)
+    # Attempt to patch TextExtractor singleton regardless of its final path.
+    import importlib
 
-    # Patch TextExtractor singleton access used in _prewarm_cached
-    import infra.text_extractor as _te
+    for _path in ("services.paper.text_extractor",):
+        try:
+            _te_mod = importlib.import_module(_path)
+            monkeypatch.setattr(
+                _te_mod.TextExtractor, "instance", lambda *a, **k: dummy, raising=False
+            )
+            break
+        except ModuleNotFoundError:
+            continue
 
-    monkeypatch.setattr(_te.TextExtractor, "instance", lambda *a, **k: dummy, raising=False)
+    # Stub out heavy ReportGenerator calls if present
+    try:
+        _rg_mod = importlib.import_module("services.report.report_generator")
+    except ModuleNotFoundError:
+        try:
+            _rg_mod = importlib.import_module("services.report_generator")
+        except ModuleNotFoundError:
+            _rg_mod = None
 
-    # Stub out heavyweight ReportGenerator methods so they return immediately
-    from services import report_generator as _rg
+    if _rg_mod is not None:
 
-    async def _fake_answer(*args: Any, **kwargs: Any) -> str:  # noqa: D401
-        return "<p>stub answer</p>"
+        async def _fake_answer(*args: Any, **kwargs: Any) -> str:  # noqa: D401
+            return "<p>stub answer</p>"
 
-    async def _fake_report(*args: Any, **kwargs: Any) -> str:  # noqa: D401
-        return "<p>stub report</p>"
+        async def _fake_report(*args: Any, **kwargs: Any) -> str:  # noqa: D401
+            return "<p>stub report</p>"
 
-    monkeypatch.setattr(
-        _rg.ReportGenerator, "generate_direct_query_answer", _fake_answer, raising=False
-    )
-    monkeypatch.setattr(_rg.ReportGenerator, "generate_report_html", _fake_report, raising=False)
+        if hasattr(_rg_mod, "ReportGenerator"):
+            monkeypatch.setattr(
+                _rg_mod.ReportGenerator, "generate_direct_query_answer", _fake_answer, raising=False
+            )
+            monkeypatch.setattr(
+                _rg_mod.ReportGenerator, "generate_report_html", _fake_report, raising=False
+            )
 
-    # Stub out UI error rendering to avoid fasthtml dependency during tests
+    # Stub out UI error rendering – avoids Fasthtml dependency
     from types import SimpleNamespace
 
-    from pages import main_page as _mp
+    try:
+        from pages import main_page as _mp
 
-    _fake_div = SimpleNamespace(
-        render=lambda: "<div>stub error</div>"
-    )  # minimal object with .render()
-    monkeypatch.setattr(_mp, "render_error_message", lambda *a, **k: _fake_div, raising=False)
-    # Ensure the route module references the same stub (it imported the function by name)
-    monkeypatch.setattr(report, "render_error_message", lambda *a, **k: _fake_div, raising=False)
+        _fake_div = SimpleNamespace(render=lambda: "<div>stub error</div>")
+        monkeypatch.setattr(_mp, "render_error_message", lambda *a, **k: _fake_div, raising=False)
+    except ModuleNotFoundError:
+        pass
 
-    # No return – autouse fixture
+    # No return - autouse fixture
 
 
 @pytest.fixture(scope="session")
@@ -100,7 +108,7 @@ def client() -> TestClient:
 
 
 # ---------------------------------------------------------------------------
-# Smoke tests – ensure endpoints respond (status 200-399) with dummy services.
+# Smoke tests - ensure endpoints respond (status 200-399) with dummy services.
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +144,7 @@ def test_ask_llm_endpoint(client: TestClient):
 
 
 def test_generate_report_endpoint(client: TestClient):
-    # minimal payload – invalid paper JSON is fine; route returns graceful error banner
+    # minimal payload - invalid paper JSON is fine; route returns graceful error banner
     resp = client.post(
         "/generate-report",
         data={

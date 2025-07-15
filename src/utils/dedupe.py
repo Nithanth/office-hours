@@ -1,27 +1,10 @@
-"""Utilities for semantic deduplication of chat text against report text.
+"""Utility functions for deduplicating chat messages against the generated report."""
 
-This module is **not wired in yet**.  It provides `deduplicate_chat` which can be
-used later when generating report notes to drop chat sentences that are nearly
-identical to sentences already present in the final report.
-
-The heavy dependency (`sentence-transformers`) is optional; if it is not
-installed the function will log a warning and return the chat text untouched.
-"""
-
-from __future__ import annotations
-
-import logging
 from typing import cast
 
-try:
-    from sentence_transformers import SentenceTransformer, util
-except ImportError:  # pragma: no cover
-    SentenceTransformer = None
-    util = None
-
 import nltk
-
-_logger = logging.getLogger(__name__)
+from loguru import logger
+from sentence_transformers import SentenceTransformer, util
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 _model: SentenceTransformer | None = None
@@ -31,20 +14,15 @@ def _get_model() -> SentenceTransformer:
     """Lazily load and cache the MiniLM embedding model."""
     global _model
     if _model is None:
-        if SentenceTransformer is None:
-            raise ImportError(
-                "sentence-transformers not installed. Install it to enable deduplication."
-            )
-        _logger.info("[dedupe] Loading sentence-transformers model %s", _MODEL_NAME)
+        logger.bind(component="Dedupe").info(
+            "loading sentence-transformers model", model=_MODEL_NAME
+        )
         _model = SentenceTransformer(_MODEL_NAME)
     return _model
 
 
 def _sentences(text: str) -> list[str]:
-    """Split *text* into sentences using NLTK punkt tokenizer.
-
-    The tokenizer returns ``Any`` in typeshed, so we cast for mypy compliance.
-    """
+    """Split *text* into sentences using NLTK's punkt tokenizer."""
     nltk.download("punkt", quiet=True)
     return cast(list[str], nltk.sent_tokenize(text))
 
@@ -61,11 +39,7 @@ def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -
     Returns:
         Filtered chat text containing only non-redundant sentences.
     """
-    if SentenceTransformer is None or util is None:
-        _logger.warning(
-            "[dedupe] sentence-transformers unavailable; returning chat text unmodified."
-        )
-        return chat_text
+    # Dependencies are assumed present; proceed directly.
 
     report_sents = _sentences(report_text)
     chat_sents = _sentences(chat_text)

@@ -1,11 +1,4 @@
-"""Report-related endpoints extracted from legacy `app.py`.
-
-These routes are registered on the shared FastAPI application during the Phase-2
-refactor. Behaviour remains unchanged – we have simply moved the code into an
-`APIRouter` so that `app.py` can gradually be slimmed down.
-"""
-
-from __future__ import annotations
+"""Report generation (`/generate-report`) and citation card routes."""
 
 import html
 
@@ -15,21 +8,19 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
-from infra.llm_service import LLMConfigurationError
 from models.paper import Paper
 from pages.main_page import render_error_message, render_paper_card
-from services.report_generator import ReportGenerator
+from services.core.exa_client import ExaClient
+from services.core.llm_service import LLMConfigurationError, LLMService
+from services.report.report_generator import ReportGenerator
 
-# Singleton aliases (set during app startup)
-exa_client_instance = get_exa_client()
-llm_service_instance = get_llm_service()
-
+# Services are obtained per-request via dependency helpers to avoid stale instances.
 
 router = APIRouter()
 
 
 @router.post("/generate-report", response_class=HTMLResponse)
-async def generate_report(  # noqa: PLR0913 – very long signature mirrors original
+async def generate_report(  # noqa: PLR0913 - very long signature mirrors original
     request: Request,
     original_query_for_report: str = Form(...),
     selected_papers_json: list[str] = Form(...),  # noqa: B008
@@ -38,11 +29,12 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
     selected_model_key: str = Form(...),
     is_url_input: bool = Form(False),
     settings: AppConfig = Depends(get_settings),  # noqa: B008
+    llm_service: LLMService | None = Depends(get_llm_service),  # noqa: B008
+    exa_client: ExaClient | None = Depends(get_exa_client),  # noqa: B008
 ) -> HTMLResponse:
     """Generate the full HTML report (blocking).
 
-    This is a verbatim copy of the legacy implementation in `app.py` so that the
-    behaviour and responses remain unchanged while we continue the refactor.
+    Behaviour mirrors the legacy implementation while refactor is underway.
     """
 
     num_papers_received = len(selected_papers_json) if selected_papers_json else 0
@@ -54,18 +46,10 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
     }
-    logger.info(
-        "generate_report: Request received",
-        endpoint="/generate-report",
-        method="POST",
-        params=log_params,
-    )
+    logger.info("report_request", **log_params)
 
-    if llm_service_instance is None or not llm_service_instance._initialized:
-        logger.critical(
-            "generate_report: LLMService not initialized. Cannot generate report.",
-            params=log_params,
-        )
+    if llm_service is None or not llm_service._initialized:
+        logger.critical("report_llm_unavailable", **log_params)
         error_html = render_error_message(
             "The report generation service is currently unavailable. Please try again later or contact support.",
             context="llm_service_unavailable",
@@ -83,10 +67,7 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
             break
 
     if not actual_model_key_in_config:
-        logger.error(
-            f"generate_report: Invalid model key '{selected_model_key}' provided.",
-            params=log_params,
-        )
+        logger.error("report_invalid_model_key", model_key=selected_model_key, **log_params)
         error_html = render_error_message(
             f"The selected model '{html.escape(selected_model_key)}' is not recognized. Please choose a valid model.",
             context="invalid_model_key",
@@ -105,10 +86,10 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
         deserialized_papers = [Paper.model_validate_json(p_json) for p_json in selected_papers_json]
     except Exception as exc:  # noqa: BLE001
         logger.exception(
-            "generate_report: Error deserializing paper JSON",
+            "report_deserialize_error",
             error=str(exc),
-            num_papers_json=num_papers_received,
-            params=log_params,
+            papers_json=num_papers_received,
+            **log_params,
         )
         error_html = render_error_message(
             "Could not process paper data. Please try selecting papers again.",
@@ -120,10 +101,7 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
         )
 
     if not deserialized_papers:
-        logger.warning(
-            "generate_report: No papers provided for report generation after deserialization",
-            params=log_params,
-        )
+        logger.warning("report_no_papers_after_deserialize", **log_params)
         error_html = render_error_message(
             "No papers were selected to generate a report.", context="no_papers_for_report"
         ).render()
@@ -132,12 +110,9 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
             headers={"HX-Retarget": "#report-display-area", "HX-Reswap": "innerHTML"},
         )
 
-    # Ensure Exa client is available (initialized in lifespan)
-    global exa_client_instance  # noqa: PLW0603 – steers clear of circulars for now
-    if exa_client_instance is None:
-        logger.critical(
-            "generate_report: Exa Service not available. Cannot generate report.", params=log_params
-        )
+    # Ensure Exa client is available
+    if exa_client is None:
+        logger.critical("report_exa_unavailable", **log_params)
         error_html = render_error_message(
             "The paper information service is currently unavailable. Please try again later or contact support.",
             context="exa_service_unavailable",
@@ -162,18 +137,15 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
             else:
                 similar_papers_for_report.append(paper)
         logger.info(
-            "generate_report: URL input – main paper identified",
-            main_paper_title=main_paper_for_report.title if main_paper_for_report else "<none>",
+            "report_url_mode",
+            main_paper_title=(main_paper_for_report.title if main_paper_for_report else "<none>"),
             num_similar=len(similar_papers_for_report),
         )
     else:
         topic_papers_for_report = deserialized_papers
-        logger.info(
-            "generate_report: Topic input – papers for report",
-            num_papers=len(topic_papers_for_report),
-        )
+        logger.info("report_topic_mode", num_papers=len(topic_papers_for_report))
 
-    # Guard rails – ensure we have something to summarise
+    # Guard rails - ensure we have something to summarise
     if is_url_input and not (main_paper_for_report or similar_papers_for_report):
         error_html = render_error_message(
             "No papers were selected from the URL search results to generate a report.",
@@ -191,8 +163,8 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
     # ------------------------------------------------------------------
     try:
         report_generator = ReportGenerator(
-            llm_service=llm_service_instance,
-            exa_client=exa_client_instance,
+            llm_service=llm_service,
+            exa_client=exa_client,
             selected_model_api_id=selected_model_api_id,
             selected_model_provider=selected_model_provider,
             selected_model_input_token_limit=selected_model_input_token_limit,
@@ -210,22 +182,14 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
         )
         return HTMLResponse(content=report_html)
     except LLMConfigurationError as llm_err:
-        logger.error(
-            "generate_report: LLM config error",
-            error=str(llm_err),
-            params=log_params,
-        )
+        logger.error("report_llm_config_error", error=str(llm_err), **log_params)
         error_html = render_error_message(
             f"LLM Configuration Error: {llm_err}. Please check API keys and model settings.",
             context="llm_config_error_report_gen",
         ).render()
         return HTMLResponse(content=error_html)
     except Exception as exc:  # noqa: BLE001
-        logger.exception(
-            "generate_report: Unexpected error during report generation",
-            error=str(exc),
-            params=log_params,
-        )
+        logger.exception("report_unexpected_error", error=str(exc), **log_params)
         error_html = render_error_message(
             f"An unexpected error occurred while generating the report: {exc}",
             context="unexpected_report_gen_error",
@@ -237,8 +201,8 @@ async def generate_report(  # noqa: PLR0913 – very long signature mirrors orig
 async def citation_card(paper_id: str) -> Response:
     """Return the small hover-card HTML for a citation link."""
 
-    # TODO: When we have a paper-lookup service, attempt to fetch real details
-    paper = None  # placeholder – minimise behavioural change
+    # Placeholder until paper-lookup service exists
+    paper = None
 
     if paper is None:
         return HTMLResponse(

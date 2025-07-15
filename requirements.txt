@@ -21,6 +21,8 @@ google-api-core
 tenacity
 loguru
 structlog
+nltk
+sentence-transformers
 
 # Data Validation & Modeling
 pydantic

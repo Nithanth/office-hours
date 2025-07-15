@@ -1,4 +1,11 @@
-/* util.js – shared helpers for Lux Scholar frontend (ES module) */
+/* util.js – thin shared helpers for Lux Scholar frontend (ESM).
+ * Only exports widely-used utilities; keep lean.
+ *
+ * Guidelines:
+ *   • Zero dependencies.
+ *   • No DOM reads in hot paths – prefer cached params.
+ *   • Keep bundle footprint tiny (<1kB).
+ */
 
 // Debug logger wrapper. Keeps signature identical to console.debug so callers
 // can simply replace it. If you want to silence logs in production, toggle the
@@ -8,26 +15,36 @@ export function dbg(...args) {
   if (window.DEBUG !== false) console.debug("[lux]", ...args);
 }
 
-// Simple debounce helper. Returns a wrapped function that delays execution
-// until `wait` ms have elapsed since the last call.
-export function debounce(fn, wait = 120) {
-  let timerId;
-  // eslint-disable-next-line func-names
-  return function (...args) {
-    clearTimeout(timerId);
-    // Preserve `this` so the original context is not lost.
-    // eslint-disable-next-line consistent-this
-    const that = this;
-    timerId = setTimeout(() => {
-      fn.apply(that, args);
-    }, wait);
-  };
-}
-
-// HTML entity decoder – handy when you need to turn a raw string back into
-// display text (used by chat markdown rendering).
+// HTML entity decoder – handy when turning HTML string back into plain text
+// (used by chat markdown rendering).
 export function decodeEntities(htmlStr) {
   const txt = document.createElement("textarea");
   txt.innerHTML = htmlStr;
   return txt.value;
 }
+
+// ---------------------------------------------------------------------------
+// rAF throttle – ensure a callback runs at most once per animation frame.
+// Returns a wrapped function with .cancel() to drop a pending invocation.
+// ---------------------------------------------------------------------------
+export function rafThrottle(fn) {
+  let rafId = null;
+  let lastArgs = null;
+  const wrapper = (...args) => {
+    lastArgs = args;
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      // eslint-disable-next-line prefer-spread
+      fn.apply(null, lastArgs);
+    });
+  };
+  wrapper.cancel = () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  };
+  return wrapper;
+}
+
+// Make util functions accessible from console for quick inspection.
+window.luxUtil = { dbg, decodeEntities, rafThrottle };

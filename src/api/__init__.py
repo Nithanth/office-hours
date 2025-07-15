@@ -1,14 +1,20 @@
-"""API package exposing the FastAPI application.
+"""HTTP layer built on FastAPI.
 
-During the initial refactor we re-export the legacy `app` instance defined in
-`app.py` so that external entry-points (e.g. `uvicorn app:app`) continue to
-work unchanged.
+Directory layout:
+• `routes/`   - low-level endpoints (often no prefix) that group related paths.
+• `routers/`  - higher-level APIRouters mounted by `main.app` (e.g. /search).
 
-In later phases we will migrate routes into `api.routes.*` and eventually
-replace the re-export with a freshly constructed FastAPI object defined in
-`api/main.py`.
+Nothing is executed at import-time; we only expose the sub-modules so tools and
+IDE autocompletion work:
+
+```python
+from api import routes, routers
+```
 """
 
-from __future__ import annotations
+from importlib import import_module as _imp
 
-__all__: list[str] = []  # `api` package no longer re-exports FastAPI app
+routes = _imp("api.routes")
+routers = _imp("api.routers")
+
+__all__: list[str] = ["routes", "routers"]

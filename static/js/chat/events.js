@@ -5,18 +5,29 @@ import { dbg } from "../util.js";
 // Session cleanup – tell backend to drop ChatState when the page unloads.
 // ---------------------------------------------------------------------------
 //
+import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } from "./stream.js";
+import { getModalParts, setControlsEnabled, scrollToBottom, enhanceModal } from "./ui.js";
+import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js";
+
+// Flag so we only fire the clear-session beacon once (some browsers trigger
+// multiple beforeunload/unload events which would spam the backend).
+let _sentClearBeacon = false;
+
+// ---------------------------------------------------------------------------
+// Session cleanup – tell backend to drop ChatState when the page unloads.
+// ---------------------------------------------------------------------------
+
 window.addEventListener("beforeunload", () => {
-  // Fire and forget; navigator.sendBeacon is synchronous-friendly and won't block unload.
+  if (_sentClearBeacon) return;
   try {
-    navigator.sendBeacon && navigator.sendBeacon("/chat/clear_session");
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/chat/clear_session");
+      _sentClearBeacon = true;
+    }
   } catch (_) {
     /* noop */
   }
 });
-
-import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } from "./stream.js";
-import { getModalParts, setControlsEnabled, scrollToBottom, enhanceModal } from "./ui.js";
-import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js";
 
 // Submit on Enter, Shift+Enter for newline
 document.addEventListener("keydown", (ev) => {

@@ -5,6 +5,9 @@
 import { addCopyButtons } from "./ui.js";
 import { dbg } from "../util.js";
 
+// Snapshot dark-mode at module load so we don’t query DOM on every call.
+const _isDarkMode = document.body.classList.contains("lux-dark");
+
 // ---------------------------------------------------------------------------
 // Lazy-loader for marked.js & DOMPurify so we pay the cost only on demand.
 // ---------------------------------------------------------------------------
@@ -43,12 +46,10 @@ export function ensureHighlightLoaded() {
   if (_hlPromise) return _hlPromise;
 
   _hlPromise = new Promise((resolve) => {
-    const dark = document.body.classList.contains("lux-dark");
-
     const css = document.createElement("link");
     css.rel = "stylesheet";
     css.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github${
-      dark ? "-dark" : ""
+      _isDarkMode ? "-dark" : ""
     }.min.css`;
     document.head.appendChild(css);
 

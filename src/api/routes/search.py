@@ -1,19 +1,8 @@
-"""Search and result-management endpoints extracted from legacy `app.py`.
-
-This module handles:
-• POST /search               - main Exa search and direct LLM query flow
-• POST /shuffle              - replace the wild-card paper
-• POST /shuffle_all          - reshuffle current result set
-• POST /reset_results        - revert to original ranking
-
-Behaviour is byte-for-byte equivalent to the original code; only
-organisation has changed.
-"""
-
-from __future__ import annotations
+"""Search (/search) plus shuffle/reset helper routes."""
 
 import asyncio
 import html
+import os
 from datetime import datetime
 from typing import Any, cast
 
@@ -23,21 +12,33 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
-from infra.exa_client import ExaClient
-from main import _prewarm_cached
 from models.paper import Paper
 from pages.main_page import render_search_results
-from services.report_generator import ReportGenerator
+from services.core.exa_client import ExaClient
+from services.core.exa_utils import url_utils as _url_utils
+from services.report.report_generator import ReportGenerator
 from utils.date_utils import parse_user_date
 from utils.search_utils import clean_query
 
 router = APIRouter()
 
-# Singleton aliases (populated during app startup)
-exa_client_instance = get_exa_client()
-llm_service_instance = get_llm_service()
+# Concurrency guard for background text prewarm tasks
+_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
 
-# Track the currently running direct-query task so that a new request can cancel it.
+
+async def _prewarm_cached(url: str, paper_id: str) -> None:
+    """Background fetch & cache of paper full-text to speed up later summaries."""
+
+    from services.paper.text_extractor import TextExtractor
+
+    async with _PREWARM_SEMA:
+        try:
+            await TextExtractor.instance().ensure_cached(url, paper_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
+
+
+# Track currently running direct-query task so it can be cancelled on new requests.
 current_direct_query_task: asyncio.Task | None = None
 
 
@@ -48,39 +49,30 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     start_published_date: str | None = Form(None),
     num_results: int | None = Form(None),  # default resolved via settings below
     mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
-    domain_filter: str | None = Form(None),
+    include_domains: list[str] | None = Form(None),  # noqa: B008
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
-    global current_direct_query_task, exa_client_instance, llm_service_instance
+    global current_direct_query_task
 
-    # Refresh singleton handles – route modules capture them at *import* time,
-    # but Uvicorn reload / multiprocessing means the objects may be assigned
-    # later during the app lifespan event.  Lazily fetch again if still None.
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if llm_service_instance is None:
-        llm_service_instance = get_llm_service()
+    exa_client = get_exa_client()
+    llm_service = get_llm_service()
 
     logger.info(
-        "handle_search: Request received",
-        endpoint="/search",
-        method="POST",
-        params={
-            "search_query": search_query,
-            "start_published_date": start_published_date,
-            "num_results": num_results,
-            "mode": mode,
-            "domain_filter": domain_filter,
-        },
+        "search_request",
+        query=search_query,
+        start_date=start_published_date,
+        num_results=num_results,
+        mode=mode,
+        include_domains=include_domains,
     )
 
     # ------------------------------------------------------------------
     # Basic config guards
     # ------------------------------------------------------------------
     if not settings.EXA_API_KEY:
-        logger.error("handle_search: Exa API key not configured", endpoint="/search")
+        logger.error("search_missing_exa_key")
         error_html = (  # minimal banner; original used render_error_message but keep dependencies slim
             "<div class='error-banner'>Search service not configured. Contact support.</div>"
         )
@@ -96,12 +88,12 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     if mode != "direct":  # a paper search → cancel any in-flight Ask-LLM task
         if current_direct_query_task and not current_direct_query_task.done():
-            logger.info("Paper search initiated - cancelling active direct-query task.")
+            logger.info("search_cancel_direct_query_task")
             current_direct_query_task.cancel()
             current_direct_query_task = None
     else:  # new direct Ask-LLM query → cancel earlier one
         if current_direct_query_task and not current_direct_query_task.done():
-            logger.info("New direct query - cancelling previous task.")
+            logger.info("direct_query_cancel_previous")
             current_direct_query_task.cancel()
             current_direct_query_task = None
 
@@ -111,13 +103,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     if mode == "direct":
         this_task: asyncio.Task | None = None
         try:
-            if llm_service_instance is None or not llm_service_instance._initialized:
+            if llm_service is None or not llm_service._initialized:
                 return HTMLResponse("<p>LLM service unavailable.</p>", status_code=503)
 
             mi = settings.AVAILABLE_MODELS[settings.DEFAULT_MODEL_KEY]
             rg = ReportGenerator(
-                llm_service=llm_service_instance,
-                exa_client=cast(ExaClient, exa_client_instance),
+                llm_service=llm_service,
+                exa_client=cast(ExaClient, exa_client) if exa_client else None,
                 selected_model_api_id=mi["id"],
                 selected_model_provider=mi["provider"],
                 selected_model_input_token_limit=mi["input_token_limit"],
@@ -133,8 +125,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             return HTMLResponse(content=answer_html)
         except asyncio.CancelledError:
             return HTMLResponse("<p><i>LLM query cancelled.</i></p>")
-        except Exception as exc:  # noqa: BLE001 – bubble unexpected errors
-            logger.exception("Direct query failed", err=str(exc))
+        except Exception as exc:  # noqa: BLE001 - bubble unexpected errors
+            logger.exception("direct_query_failed", error=str(exc))
             return HTMLResponse(
                 f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>",
                 status_code=500,
@@ -147,7 +139,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Standard paper search flow
     # ------------------------------------------------------------------
     try:
-        assert exa_client_instance is not None, "Exa client not initialised – check EXA_API_KEY"
+        if exa_client is None:
+            raise RuntimeError("Exa client not initialised - check EXA_API_KEY")
+
+        client = cast(ExaClient, exa_client)
 
         # Date parsing / validation ------------------------------------------------
         parsed_start_date: datetime | None = None
@@ -164,11 +159,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         shared_kwargs: dict[str, Any] = {}
         if parsed_start_date:
             shared_kwargs["start_published_date"] = parsed_start_date
-        if domain_filter and domain_filter.lower() not in {"any", "all"}:
-            shared_kwargs["include_domains"] = [domain_filter]
+        if include_domains:
+            # Remove neutral options like "any" / "all" and blank items
+            filtered_domains = [d for d in include_domains if d and d.lower() not in {"any", "all"}]
+            if filtered_domains:
+                shared_kwargs["include_domains"] = filtered_domains
 
-        client = cast(ExaClient, exa_client_instance)
-        is_url_search = client.is_url(input_query_stripped)
+        is_url_search = _url_utils.is_paper_url(input_query_stripped)
 
         if is_url_search:
             exa_results = client.url_search_and_cache(
@@ -198,7 +195,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
         return HTMLResponse(content=str(results_component))
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Search flow failed", err=str(exc))
+        logger.exception("search_flow_failed", error=str(exc))
         error_html = "<div class='error-banner'>Could not retrieve results. Try again later.</div>"
         return HTMLResponse(
             content=error_html,
@@ -207,7 +204,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
 
 # ---------------------------------------------------------------------------
-# Helper – build <li> HTML string for a Paper (avoid fasthtml for endpoints)
+# Helper - build <li> HTML string for a Paper (avoid fasthtml for endpoints)
 # ---------------------------------------------------------------------------
 
 
@@ -236,7 +233,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
     paper_json_escaped = html.escape(paper_json)
 
     if is_main:
-        # Main (pinned) paper – render a *disabled, checked* checkbox so the
+        # Main (pinned) paper - render a *disabled, checked* checkbox so the
         # visual language is identical to selectable papers, but ensure it is
         # always included via a hidden input (disabled fields are not submitted).
 
@@ -247,7 +244,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
             "<span class='pinned-label' style='font-size:0.85em;'>📌 pinned</span>"
         )
     else:
-        # Regular paper – user-selectable checkbox
+        # Regular paper - user-selectable checkbox
         selection_input_html = (
             f"<input type='checkbox' class='paper-select-checkbox' style='margin-right:5px;' "
             f"name='selected_papers_json' value='{paper_json_escaped}'>"
@@ -271,17 +268,15 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
 
 @router.post("/shuffle", response_class=HTMLResponse)
 async def shuffle_random_paper() -> HTMLResponse:
-    global exa_client_instance
-
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if exa_client_instance is None:
+    """Return a single random paper (wild-card) as an HTMX swap."""
+    exa_client = get_exa_client()
+    if exa_client is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>Server starting…</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    paper = cast(ExaClient, exa_client_instance).replace_wildcard()
+    paper = cast(ExaClient, exa_client).replace_wildcard()
     if paper is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>No more random papers available. Run a new search.</li></ul>",
@@ -289,27 +284,25 @@ async def shuffle_random_paper() -> HTMLResponse:
         )
 
     rendered = _paper_li_html(paper, wildcard=True)
-    logger.info("shuffle (wildcard) HTML → {}...", rendered[:200])
+    logger.debug("shuffle_wildcard_html_snippet", snippet=rendered[:120])
     return HTMLResponse(content=rendered, headers={"HX-Reswap": "outerHTML"})
 
 
 @router.post("/shuffle_all", response_class=HTMLResponse)
 async def shuffle_all_papers() -> HTMLResponse:
-    global exa_client_instance
-
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if exa_client_instance is None:
+    """Shuffle the cached papers and return the refreshed `<ul>` list."""
+    exa_client = get_exa_client()
+    if exa_client is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    client = cast(ExaClient, exa_client_instance)
+    client = cast(ExaClient, exa_client)
     papers = client.shuffle_k()
     if not papers:
         return HTMLResponse(
-            "<ul id='papers-list'><li>Cache cleared – run a new search before shuffling.</li></ul>",
+            "<ul id='papers-list'><li>Cache cleared - run a new search before shuffling.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
@@ -330,23 +323,21 @@ async def shuffle_all_papers() -> HTMLResponse:
         + "".join(rendered_items)
         + "</ul>"
     )
-    logger.info("shuffle_all HTML → {}...", rendered_ul[:200])
+    logger.debug("shuffle_all_html_snippet", snippet=rendered_ul[:120])
     return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})
 
 
 @router.post("/reset_results", response_class=HTMLResponse)
 async def reset_papers() -> HTMLResponse:
-    global exa_client_instance
-
-    if exa_client_instance is None:
-        exa_client_instance = get_exa_client()
-    if exa_client_instance is None:
+    """Reset the paper list back to the cached core search results."""
+    exa_client = get_exa_client()
+    if exa_client is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>Error: Exa client not initialized.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    client = cast(ExaClient, exa_client_instance)
+    client = cast(ExaClient, exa_client)
     core_list = client.reset_display()
     if not core_list:
         return HTMLResponse(
@@ -371,5 +362,5 @@ async def reset_papers() -> HTMLResponse:
         + "".join(rendered_items)
         + "</ul>"
     )
-    logger.info("reset_results HTML → {}...", rendered_ul[:200])
+    logger.debug("reset_results_html_snippet", snippet=rendered_ul[:120])
     return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})

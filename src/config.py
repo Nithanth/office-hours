@@ -1,13 +1,18 @@
+"""Centralised application configuration loaded from environment variables."""
+
+import datetime
 import os
 from typing import Any, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-load_dotenv()  # Takes environment variables from .env.
+# Load .env only in development/local environments to avoid accidental leakage
+if os.getenv("ENV", "dev") != "prod":  # Treat any non-"prod" value as dev
+    load_dotenv()
 
 
-# Configuration Models
+# --- Nested Pydantic stubs (currently unused, reserved for future) ---
 class GeneralConfig(BaseModel):
     app_name: str
     log_level: str
@@ -56,23 +61,28 @@ class Config:
     # Path to your Google credentials JSON file - will be deferred for MVP
     GOOGLE_DOCS_CREDENTIALS_PATH: Optional[str] = os.getenv("GOOGLE_DOCS_CREDENTIALS_PATH")
 
-    # Redis Configuration
+    # --- Redis settings ---
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", 6379))
     REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD")
     REDIS_DB: int = int(os.getenv("REDIS_DB", 0))
     CACHE_TTL_SECONDS: int = int(os.getenv("CACHE_TTL_SECONDS", 3600))  # 1 hour default
 
-    # Modal Configuration
+    # --- Modal settings ---
     MODAL_TOKEN: Optional[str] = os.getenv("MODAL_TOKEN")
     MODAL_WORKSPACE: Optional[str] = os.getenv("MODAL_WORKSPACE")
     MODAL_TOKEN_ID: Optional[str] = os.getenv("MODAL_TOKEN_ID")
     MODAL_TOKEN_SECRET: Optional[str] = os.getenv("MODAL_TOKEN_SECRET")
 
-    # Application Settings
+    # --- App runtime settings ---
+    # --- Environment and asset prefixes ---
+    ENV: str = os.getenv("ENV", "dev").lower()
+    # Front-end CSS folder: use purged bundle in production for smaller payload.
+    CSS_PREFIX: str = os.getenv("CSS_PREFIX", "css/dist" if ENV == "prod" else "css")
+
     APP_TITLE: str = "Lux Scholar"
     VERSION: str = "0.1.0"
-    YEAR: int = 2025  # Added for copyright year
+    YEAR: int = int(os.getenv("YEAR", datetime.datetime.utcnow().year))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", 8000))
@@ -85,69 +95,67 @@ class Config:
     RELOAD_APP: bool = os.getenv("RELOAD_APP", "True").lower() == "true"
     MAX_AUTHORS_DISPLAY: int = 5  # Max authors to display before 'et al.'
 
-    # Application specific configurations from design doc
+    # --- Paper/report tuning ---
     MAX_PAPERS_PER_SEARCH: int = 20
-    SUMMARY_MAX_LENGTH: int = 300  # Max words for a paper summary in the report list
+    SUMMARY_MAX_LENGTH: int = 300  # words
     MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4))
-    # Absolute upper-bound on characters we will ever pass from a paper into an LLM prompt.
-    # 60 k chars ≈ 15 k tokens which is already generous and avoids gigantic prompts that
-    # cause provider-side truncation.
+    # Hard cap on characters passed from a paper into any LLM prompt (≈15k tokens).
     PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 60000))
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
-    # UX tweak: when a summary is fully served from cache, optionally pause a bit so
-    # the user still sees the spinner briefly. Set to 0 to disable.
+    # Optional UX pause when serving cached summaries – set to 0 to disable.
     CACHED_SUMMARY_DELAY_SECONDS: float = float(os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5"))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
         "S": "brief and concise, summarizing only the absolute key takeaways",
         "M": "moderately detailed, covering the main points comprehensively but without excessive depth on any single one",
         "L": "detailed and thorough, exploring the nuances and providing substantial supporting information for each key aspect",
-        "XL": "highly comprehensive and exhaustive, suitable for deep understanding and including extensive details, context, and implications",
+        # XL removed – we now standardise on S, M, L only.
     }
 
     SUMMARY_OUTPUT_TOKEN_TARGETS: dict[str, dict[str, int]] = {
         "technical": {
-            "S": 2000,  # Reverting to generous upper bound (was 500, orig 250)
-            "M": 4000,  # Reverting to generous upper bound (was 1000, orig 500)
-            "L": 6000,  # Reverting to generous upper bound (was 1500, orig 800)
-            "XL": 10000,  # Reverting to generous upper bound (was 2500, orig 1300)
+            "S": 2000,
+            "M": 4000,
+            "L": 6000,
         },
         "semi_technical": {
             "S": 2000,
             "M": 4000,
             "L": 6000,
-            "XL": 10000,
         },
         "non_technical": {
             "S": 2000,
             "M": 4000,
             "L": 6000,
-            "XL": 10000,
         },
     }
 
-    # LLM Configuration
+    # --- LLM request defaults ---
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", 3))
+    # Async semaphore limit per LLM provider to avoid QPS throttling.
+    MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = int(
+        os.getenv("MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4)
+    )
     REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", 120))
 
     # Topic summary tuning
     MAX_TOPIC_SUMMARY_TOKENS: int = int(os.getenv("MAX_TOPIC_SUMMARY_TOKENS", 2048))
 
-    # Chat specific tuning
+    # --- Chat prompt sizing ---
     CHAT_MAX_TOKENS: int = int(os.getenv("CHAT_MAX_TOKENS", 512))
     EXCERPT_CHARS: int = int(os.getenv("EXCERPT_CHARS", 2000))
 
-    # Exa retry/backoff settings (Phase 3 hardening)
+    # --- Exa API back-off ---
     EXA_MAX_RETRIES: int = int(os.getenv("EXA_MAX_RETRIES", 3))
     EXA_RETRY_MIN_WAIT: int = int(os.getenv("EXA_RETRY_MIN_WAIT", 1))  # seconds
     EXA_RETRY_MAX_WAIT: int = int(os.getenv("EXA_RETRY_MAX_WAIT", 10))  # seconds
 
-    # Default model – can be overridden via env var.
+    # --- Default/fallback LLM models ---
     DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_2_5_pro_preview")
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
-        # Gemini (Google) – internal provider tag remains "gemini"
+        # Gemini (Google) - internal provider tag remains "gemini"
         "gemini_2_5_pro_preview": {
             "id": "models/gemini-2.5-pro-preview-06-05",
             "provider": "gemini",
@@ -213,178 +221,10 @@ class Config:
         },
     }
 
-    # Fallback model for TogetherAI if the primary fails (Optional)
-    # You can choose one of your available TogetherAI models or another reliable one.
+    # Fallback TogetherAI model if primary fails
     TOGETHER_FALLBACK_MODEL: Optional[str] = "gpt-4o"
 
-    # --- Prompt Helper Strings (Static parts of the prompts) ---
-    _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR: str = """CRITICAL INSTRUCTION:
-You are a direct summarization engine. Your *sole function* is to output the summary text itself for the research topic: "{query_text}".
-You do not engage in dialogue, explain your process, or include any preamble, conversational text, or meta-commentary.
-Your response MUST begin DIRECTLY with the first word of the synthesized topic overview. For example, if the topic is "Quantum Computing", your response must start like: "Quantum computing is an emerging field..."
-Do not use markdown, bolding, or any special formatting in your output.
-"""
-
-    _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR: str = """CRITICAL INSTRUCTION:
-You are a direct summarization engine. Your *sole function* is to output a synthesized prose summary for the research paper titled "{paper_title}".
-You do not engage in dialogue, explain your process, or include any preamble, conversational text, or meta-commentary.
-Your response MUST begin DIRECTLY with the first sentence of the synthesized prose summary.
-Do not use markdown, bolding, or any special formatting in your output.
-"""
-
-    _CONTENT_QUALITY_INSTRUCTIONS_STR: str = """
-- Lead with the most interesting or impactful insights.
-- Use concrete examples or analogies to clarify complex points, especially for semi-technical and non-technical audiences.
-- Clearly address the "so what?" question – why should the reader care about this information?
-- Ensure the summary flows logically and tells a coherent story.
-"""
-
-    _FORMATTING_INSTRUCTIONS_STR: str = """
-- Output plain text only.
-- Do not use markdown, bolding, italics, or any special formatting.
-- Ensure paragraphs are well-formed.
-"""
-
-    _GENERAL_PROMPT_INSTRUCTIONS_STR: str = """
-- Adopt a third-person, objective, analytical, and informative tone.
-- Synthesize information rather than just extracting verbatim.
-- Ensure the summary is complete and does not end abruptly.
-"""
-
-    _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR: str = """
-
-UNDERSTANDING THE USER'S INTENT (TOPIC vs. DIRECT QUERY):
-The user's input "{query_text}" might be a broad research topic or a specific question. Your first step is to discern this intent to tailor your summary effectively.
-
-1. IF THE INPUT IS A BROAD RESEARCH TOPIC:
-   - Focus: Provide a comprehensive overview. Synthesize key themes, methodologies, significant findings, challenges, and future directions from the provided paper snippets.
-   - Goal: Educate the user on the breadth and depth of the topic.
-   - Example:
-     - User Input (Broad Topic): "Applications of AI in drug discovery"
-     - Summary Should Prioritize: Overview of AI techniques used, stages of drug discovery impacted, major successes, current limitations, and emerging AI trends in the field.
-     - Ideal Summary Start Example: "Artificial intelligence is revolutionizing drug discovery by..."
-
-2. IF THE INPUT IS A DIRECT QUESTION:
-   - Focus: Directly answer the question using information synthesized from the provided paper snippets. The papers serve as evidence or sources for your answer.
-   - Goal: Provide a clear, concise, and evidence-based answer to the user's specific query.
-   - Example:
-     - User Input (Direct Question): "How is reinforcement learning used to optimize chemical synthesis pathways?"
-     - Summary Should Prioritize: Explaining the mechanism of RL in this context, specific examples of its application to synthesis pathway optimization, benefits observed (e.g., efficiency, novelty), and any challenges in its implementation, all drawn from the papers.
-     - Ideal Summary Start Example: "Reinforcement learning optimizes chemical synthesis pathways by..."
-
-Adapt your synthesis and the structure of your summary based on this determination.
-"""
-
-    _FINAL_ADHERENCE_INSTRUCTION_STR: str = """IMPORTANT FINAL INSTRUCTION:
-Your response MUST begin with the first word of the summary itself. No preceding text, dialogue, or meta-commentary is allowed. Adhere strictly to all instructions.
-"""
-
-    # --- Main Topic Prompt Templates ---
-    TOPIC_SUMMARY_PROMPT_TEMPLATE_TECHNICAL: str = (
-        _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR + "\n\nTASK OVERVIEW:\n"
-        "You are tasked with generating a comprehensive and technically deep overview of the research topic specified in the critical instructions. "
-        "This summary is intended for a highly technical audience, such as PhDs or active researchers in the relevant field. "
-        "Your explanation should delve into the core concepts, prevalent methodologies, significant findings, current challenges, and potential future research directions. "
-        + _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR
-        + "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    TOPIC_SUMMARY_PROMPT_SEMI_TECH: str = (
-        _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR + "\n\nTASK OVERVIEW:\n"
-        "You are tasked with generating an insightful and accessible overview of the research topic specified in the critical instructions. "
-        "This summary is for a semi-technical audience (e.g., product managers, investors with some technical background). "
-        "Explain the core concepts, key implications, potential applications, and major advancements. Avoid excessive jargon but maintain accuracy. "
-        + _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR
-        + "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    TOPIC_SUMMARY_PROMPT_NON_TECH: str = (
-        _CRITICAL_INSTRUCTION_TOPIC_TEMPLATE_STR + "\n\nTASK OVERVIEW:\n"
-        "You are tasked with generating a clear and concise overview of the research topic specified in the critical instructions. "
-        "This summary is for a non-technical audience (e.g., general business stakeholders, VCs without a deep tech background). "
-        "Explain the fundamental ideas, why it's important, and its potential real-world impact in simple terms. Avoid jargon entirely. "
-        + _HYBRID_INPUT_HANDLING_INSTRUCTIONS_STR
-        + "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    # --- Main Paper Prompt Templates ---
-    PAPER_SUMMARY_PROMPT_TEMPLATE_TECHNICAL: str = (
-        _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR + "\n\nCONTEXT OF THE PAPER:\n"
-        "Authors: {paper_authors}\n"
-        "Publication Date: {paper_publication_date}\n"
-        'Content Snippet for Focus:\n"""\n{paper_content_snippet}\n"""\n\n'
-        "TASK OVERVIEW:\n"
-        "Provide a synthesized, technically deep analysis of the research paper detailed above. "
-        "This summary is for a highly technical audience (e.g., PhDs, active researchers in the field). "
-        "Focus on its core contributions, methodology, key findings, limitations, and its significance to the field. "
-        "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    PAPER_SUMMARY_PROMPT_SEMI_TECH: str = (
-        _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR + "\n\nCONTEXT OF THE PAPER:\n"
-        "Authors: {paper_authors}\n"
-        "Publication Date: {paper_publication_date}\n"
-        'Content Snippet for Focus:\n"""\n{paper_content_snippet}\n"""\n\n'
-        "TASK OVERVIEW:\n"
-        "Provide an insightful and accessible summary of the research paper detailed above. "
-        "This summary is for a semi-technical audience (e.g., product managers, investors with some technical background). "
-        "Focus on its main takeaways, implications, potential applications, and overall importance. Avoid excessive jargon but maintain accuracy. "
-        "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
-
-    PAPER_SUMMARY_PROMPT_NON_TECH: str = (
-        _CRITICAL_INSTRUCTION_PAPER_TEMPLATE_STR + "\n\nCONTEXT OF THE PAPER:\n"
-        "Authors: {paper_authors}\n"
-        "Publication Date: {paper_publication_date}\n"
-        'Content Snippet for Focus:\n"""\n{paper_content_snippet}\n"""\n\n'
-        "TASK OVERVIEW:\n"
-        "Provide a clear and concise summary of the research paper detailed above. "
-        "This summary is for a non-technical audience (e.g., general business stakeholders, VCs without a deep tech background). "
-        "Focus on what the paper is about in simple terms, its main conclusions, and why it matters. Avoid jargon entirely. "
-        "The designated target audience is: {target_audience}.\n"
-        "Please adhere to the following length guidance: {overall_instructions}\n"
-        "\nCONTENT AND STYLE GUIDELINES:\n"
-        + _CONTENT_QUALITY_INSTRUCTIONS_STR
-        + _GENERAL_PROMPT_INSTRUCTIONS_STR
-        + "\nFORMATTING REQUIREMENTS:\n"
-        + _FORMATTING_INSTRUCTIONS_STR
-        + _FINAL_ADHERENCE_INSTRUCTION_STR
-    )
+    __all__: list[str] = ["Config", "config"]
 
 
 # Instantiate config for easy import

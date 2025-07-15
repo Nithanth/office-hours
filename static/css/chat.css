@@ -17,10 +17,16 @@
   margin: 0.35rem 0;
   font-size: 1rem;
   color: var(--fg);
+  line-height: 1.45;
 }
 
-.user-message { background: var(--bg); margin-left:auto; }
-.assistant-message { background: transparent; margin-right:auto; }
+.user-message { background: var(--bg); margin-left:auto; white-space: pre-wrap; }
+.assistant-message { background: transparent; margin-right:auto; white-space: normal; }
+
+.assistant-message p,
+.assistant-message li {
+  margin: 0.25rem 0;
+}
 
 .assistant-message.interrupted::after { content:""; }
 
@@ -83,3 +89,30 @@ body.lux-dark select:-moz-autofill {
   color:var(--lux-red) !important;
   border:1px solid #555 !important;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Fixed-size chat modal                                                     */
+/* ------------------------------------------------------------------------- */
+
+/* Target any modal that contains a .chat-log-container */
+.modal-content:has(.chat-log-container) {
+  width: 850px;
+  max-width: 850px;
+  height: 80vh;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Allow chat log to fill remaining space */
+.modal-content:has(.chat-log-container) .chat-log-container {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+.modal-content:has(.chat-log-container) form {
+  flex-shrink: 0;
+}
+
+/* Hide legacy stop button – modal now auto-closes streaming when needed */
+.stop-btn { display: none !important; }

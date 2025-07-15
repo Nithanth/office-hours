@@ -1,12 +1,4 @@
-"""Chat endpoints extracted from legacy `app.py`.
-
-These routes are registered on the shared FastAPI application via
-`api.main.include_router()` during Phase-1 refactor.  The logic remains
-byte-for-byte equivalent to the original implementation so behaviour is
-unchanged.
-"""
-
-from __future__ import annotations
+"""Chat message POST & SSE stream endpoints (user assistant)."""
 
 import asyncio
 import html
@@ -16,35 +8,36 @@ import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
-import structlog
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from api.deps import get_llm_service, get_paper_service, get_settings
-from chat.runtime import build_prompt, get_semaphore
-from chat.state import ChatMessage, get_chat_state
+from api.deps import get_llm_service, get_paper_service, get_session_id, get_settings
 from config import Config as AppConfig
-from main import KEEP_ALIVE_SEC, get_session_id
 from pages.main_page import render_chat_message
+from services.chat.chat_runtime import build_prompt, get_semaphore
+from services.chat.chat_state import ChatMessage, _chat_states, get_chat_state
 from utils.observability import _METRICS_ENABLED
 
 try:
     # Only present when metrics enabled
     from utils.observability import CHAT_TOKEN_LAT
-except ImportError:  # pragma: no cover – metrics disabled in dev
+except ImportError:  # pragma: no cover - metrics disabled in dev
     CHAT_TOKEN_LAT = None
+
+from loguru import logger as log
+
+# Interval between SSE keep-alive pings (seconds)
+KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
 
 # Watermark for when a cached full-text file must be refreshed (7 days).
 _PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7
-
-log = structlog.get_logger()
 
 router = APIRouter()
 
 
 @router.post("/chat")
 async def chat_post(
-    request: Request,  # noqa: D401 – FastAPI signature style
+    request: Request,  # noqa: D401 - FastAPI signature style
     session_id: str = Depends(get_session_id),
     message: str = Form(...),
     paper_id: str = Form(...),
@@ -58,10 +51,10 @@ async def chat_post(
         chat_state.busy_retries += 1
         if chat_state.busy_retries >= 6:
             chat_state.busy_retries = 0  # reset after escalation
-            return Response("Assistant still busy – please try again later.", status_code=429)
+            return Response("Assistant still busy - please try again later.", status_code=429)
         busy_banner = (
             '<div id="status-banner" hx-swap-oob="innerHTML:#status-banner">'
-            "Assistant busy – retrying…"
+            "Assistant busy - retrying…"
             "</div>"
         )
         return HTMLResponse(content=busy_banner, status_code=202)
@@ -70,7 +63,7 @@ async def chat_post(
     chat_state.busy_retries = 0
 
     clean_msg = message.strip()
-    # Ignore empty/whitespace-only submits – return 204 so HTMX no-ops.
+    # Ignore empty/whitespace-only submits - return 204 so HTMX no-ops.
     if not clean_msg:
         return Response(status_code=204)
 
@@ -287,14 +280,14 @@ async def chat_stream(
                 log.info("chat_sse_emit_done", session_id=session_id)
                 yield "event: done\ndata: \n\n"
                 yield "event: sse-close\ndata: \n\n"
-            except Exception:  # pragma: no cover – client already gone.
+            except Exception:  # pragma: no cover - client already gone.
                 pass
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
-# Abort endpoint – invoked by frontend when user closes the chat modal mid-stream.
+# Abort endpoint - invoked by frontend when user closes the chat modal mid-stream.
 # It simply flips the `stream_active` flag so subsequent /chat requests are not
 # rejected. Full LLM cancellation is cooperative via check in event generator.
 # ---------------------------------------------------------------------------
@@ -303,7 +296,7 @@ async def chat_abort(
     request: Request,
     paper_id: str = Form(...),
     session_id: str = Depends(get_session_id),
-) -> Response:  # noqa: D401 – FastAPI style
+) -> Response:  # noqa: D401 - FastAPI style
     """Abort any active stream for the given paper in this session."""
 
     chat_state = get_chat_state(session_id)
@@ -314,7 +307,7 @@ async def chat_abort(
 
 
 # ---------------------------------------------------------------------------
-# Clear-session endpoint – invoked via navigator.sendBeacon on page unload to
+# Clear-session endpoint - invoked via navigator.sendBeacon on page unload to
 # wipe the in-memory ChatState so chats do not persist across hard refreshes or
 # browser restarts. Only affects the current session ID.
 # ---------------------------------------------------------------------------
@@ -331,8 +324,6 @@ async def chat_clear_session(
     """
 
     try:
-        from chat.state import _chat_states
-
         if session_id in _chat_states:
             del _chat_states[session_id]
     except Exception:

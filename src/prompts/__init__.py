@@ -25,23 +25,11 @@ Additional template groups (e.g. "direct_query") can be added using the same
 pattern — just create the folder and corresponding audience files.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
-from config import config  # existing source-of-truth for legacy strings
-
-# ---------------------------------------------------------------------------
-# Fallbacks – bridge to existing in-code constants so nothing breaks
-# ---------------------------------------------------------------------------
-_FALLBACKS: dict[tuple[str, str], str] = {
-    ("topic", "technical"): config.TOPIC_SUMMARY_PROMPT_TEMPLATE_TECHNICAL,
-    ("topic", "semi_technical"): config.TOPIC_SUMMARY_PROMPT_SEMI_TECH,
-    ("topic", "non_technical"): config.TOPIC_SUMMARY_PROMPT_NON_TECH,
-    ("paper", "technical"): config.PAPER_SUMMARY_PROMPT_TEMPLATE_TECHNICAL,
-    ("paper", "semi_technical"): config.PAPER_SUMMARY_PROMPT_SEMI_TECH,
-    ("paper", "non_technical"): config.PAPER_SUMMARY_PROMPT_NON_TECH,
-}
+# Prompt templates now live exclusively in markdown files under ``src/prompts``.
+# If a requested template file is missing we raise an explicit error so the
+# issue surfaces during development.
 
 # Base directory where prompt override files may live — same folder as this __init__
 _BASE_DIR = Path(__file__).parent
@@ -50,16 +38,13 @@ _BASE_DIR = Path(__file__).parent
 def load_template(template_type: str, audience: str) -> str:  # noqa: D401 – simple loader
     """Return the prompt template for (*template_type*, *audience*).
 
-    Template search order:
-        1. `prompts/<template_type>/<audience>.md` (override file)
-        2. Hard-coded constant on the `config` singleton (legacy fallback)
+    Template location: `prompts/<template_type>/<audience>.md`.
+    The function raises ``FileNotFoundError`` if the file is absent.
     """
     file_path = _BASE_DIR / template_type / f"{audience}.md"
-    if file_path.exists():
-        try:
-            return file_path.read_text(encoding="utf-8")
-        except Exception:  # noqa: BLE001 – fall back if file unreadable
-            pass
-
-    # Fallback – guaranteed to exist given the previous codebase state
-    return _FALLBACKS[(template_type, audience)]
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Prompt template not found: {file_path.relative_to(_BASE_DIR.parent)}"
+        ) from exc

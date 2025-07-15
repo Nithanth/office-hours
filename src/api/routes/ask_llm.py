@@ -1,30 +1,16 @@
-"""Direct Ask-LLM endpoint extracted from legacy ``app.py``.
-
-Provides ``/ask-llm`` POST route for getting an LLM answer without
-running an Exa search.
-"""
-
-from __future__ import annotations
+"""Minimal `/ask-llm` endpoint - answers a question via the configured LLM."""
 
 import html
-from typing import cast
 
-import structlog
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
+from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
-from infra.exa_client import ExaClient
-from services.report_generator import ReportGenerator
-
-logger = structlog.get_logger()
+from services.report.report_generator import ReportGenerator
 
 router = APIRouter()
-
-# Singleton aliases (initialized during app startup)
-exa_client_instance = get_exa_client()
-llm_service_instance = get_llm_service()
 
 
 @router.post("/ask-llm", response_class=HTMLResponse)
@@ -38,26 +24,29 @@ async def ask_llm(
 ) -> HTMLResponse:
     """Direct question-answering using the configured LLM service."""
 
-    logger.info(
-        "ask_llm: Request received",
-        endpoint="/ask-llm",
-        method="POST",
-        params={"question": question},
-    )
+    logger.info("ask_llm_request", question=question)
 
-    if llm_service_instance is None or not llm_service_instance._initialized:
-        logger.error("LLM service not initialized for /ask-llm")
-        return HTMLResponse("<p>Server error: LLM service unavailable.</p>", status_code=500)
+    llm_service = get_llm_service()
+    exa_client = get_exa_client()
+
+    if llm_service is None or not llm_service._initialized:
+        logger.error("llm_service_unavailable")
+        return HTMLResponse("<p>Server error: LLM service unavailable.</p>", status_code=503)
+
+    if exa_client is None:
+        logger.error("exa_client_unavailable")
+        return HTMLResponse("<p>Server error: Exa client unavailable.</p>", status_code=503)
 
     selected_key = model_key or settings.DEFAULT_MODEL_KEY
     if selected_key not in settings.AVAILABLE_MODELS:
-        logger.warning("ask_llm: unknown model_key %s; falling back to default", selected_key)
+        logger.warning("ask_llm_unknown_model_key", model_key=selected_key)
         selected_key = settings.DEFAULT_MODEL_KEY
+
     model_info = settings.AVAILABLE_MODELS[selected_key]
 
     rg = ReportGenerator(
-        llm_service=llm_service_instance,
-        exa_client=cast(ExaClient, exa_client_instance),
+        llm_service=llm_service,
+        exa_client=exa_client,
         selected_model_api_id=model_info["id"],
         selected_model_provider=model_info["provider"],
         selected_model_input_token_limit=model_info["input_token_limit"],
@@ -72,6 +61,6 @@ async def ask_llm(
         )
         return HTMLResponse(answer_html)
     except Exception as exc:
-        logger.exception("ask_llm failed", error=str(exc))
+        logger.exception("ask_llm_failed", error=str(exc))
         err_html = f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>"
         return HTMLResponse(err_html, status_code=500)

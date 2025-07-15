@@ -1,28 +1,28 @@
+"""Date parsing helpers for user-supplied input."""
+
 from datetime import datetime, timezone
+
+from loguru import logger
+
+logger = logger.bind(component="DateUtils")
 
 
 def parse_user_date(date_str: str | None) -> datetime | None:
-    """
-    Parses a date string from user input into a timezone-aware datetime object.
+    """Return UTC start-of-day datetime for *date_str*.
 
-    Accepts 'YYYY-MM-DD' and 'MM/DD/YYYY' formats.
-    Returns a datetime object representing the start of the day in UTC.
-    Returns None if the input is None, empty, or invalid.
+    Supports "YYYY-MM-DD" and "MM/DD/YYYY"; returns *None* when the input is
+    missing or cannot be parsed.
     """
     if not date_str or not date_str.strip():
         return None
 
-    cleaned_date = date_str.strip()
-    dt_obj = None
+    cleaned = date_str.strip()
     for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
         try:
-            dt_obj = datetime.strptime(cleaned_date, fmt)
-            break
+            dt = datetime.strptime(cleaned, fmt)
+            return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
         except ValueError:
             continue
 
-    if dt_obj:
-        # Return as a timezone-aware datetime object at the start of the day UTC
-        return dt_obj.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
-
+    logger.debug("unrecognized date format", value=cleaned)
     return None

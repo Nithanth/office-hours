@@ -1,15 +1,21 @@
-from __future__ import annotations
+"""Chat-modal router.
+
+Serves `/chat-modal` which returns fully-hydrated HTML for the paper-chat UI
+modal.  The endpoint embeds prior conversation history, hides a paper-ID
+input, and rewrites HTMX attributes so the front-end can immediately stream
+messages via SSE.
+"""
 
 import html
 import time
 from uuid import uuid4
 
-import structlog
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
-from components.chat_components import ChatBubble, ChatModal  # Re-use existing helper
+from api.deps import get_paper_service  # lightweight helper, no heavy imports
+from services.chat.chat_components import ChatBubble, ChatModal
 
 router: APIRouter = APIRouter()
 
@@ -23,7 +29,7 @@ async def chat_modal(
     audience_type: str | None = Query(
         None, description="(Optional) Audience type key from toolbar"
     ),
-) -> HTMLResponse:  # noqa: D401 – pydantic description fine
+) -> HTMLResponse:  # noqa: D401 - pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
     The modal contains a chat log container, a textarea form that posts to `/chat`,
@@ -32,21 +38,18 @@ async def chat_modal(
 
     start_ts = time.perf_counter()
 
-    # Import lazily to avoid circular import when app.py includes this router
+    # Best-effort metadata fetch; failures fall back to bare modal.
     try:
-        from importlib import import_module
-
-        get_paper_service = import_module("main").get_paper_service
         paper_service = get_paper_service()
-    except Exception:  # noqa: BLE001 – best-effort metadata
+    except Exception:  # noqa: BLE001 – avoid hard failure on optional metadata
         paper_service = None
 
     paper = None
     if paper_service:  # Attempt to fetch metadata for nicer header
         try:
             paper = await paper_service.get_paper_metadata(paper_id)
-        except Exception as exc:  # noqa: BLE001 – best effort
-            logger.warning("chat_modal: metadata lookup failed for %s: %s", paper_id, exc)
+        except Exception as exc:  # noqa: BLE001 - best effort
+            logger.warning(f"chat_modal: metadata lookup failed for {paper_id}: {exc}")
 
     # Default title if no metadata is found
     modal_title = paper_id
@@ -54,7 +57,6 @@ async def chat_modal(
     if title:
         modal_title = html.escape(title)
 
-    # Use caller-provided URL if any; variable rename to avoid shadowing
     provided_url = paper_url
 
     link_url: str | None = None
@@ -74,16 +76,16 @@ async def chat_modal(
 
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
-        from chat.state import get_chat_state  # local import avoids heavy dep
+        from services.chat.chat_state import get_chat_state  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
         history = get_chat_state(session_id).get_conversation(paper_id)
-    except Exception:  # noqa: BLE001 – fallback silently
+    except Exception:  # noqa: BLE001 - fallback silently
         history = []
 
     history_html = "".join(str(ChatBubble(msg.content, msg.role)) for msg in history)
 
-    # Build modal component.
+    # Build modal component
     modal_html = str(
         ChatModal(
             modal_id=modal_id,
@@ -96,7 +98,6 @@ async def chat_modal(
     # Original snippet in ChatModal markup (no hx-on).
     _search = f'id="{chat_log_id}" class="chat-log-container"'
 
-    # Replacement adds pid + hidden visibility only. initChat will be called via inline <script>.
     chat_log_repl = (
         f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden"'
         + (f">{history_html}" if history_html else ">")
@@ -114,7 +115,7 @@ async def chat_modal(
         .replace("hx_target=", "hx-target=")
         .replace("hx_swap=", "hx-swap=")
         .replace("hx_on_click=", "hx-on:click=")
-        .replace("hx_on=", "hx-on=")  # fallback generic
+        .replace("hx_on=", "hx-on=")
     )
     # Add hx-include for hidden paper field on the chat form
     modal_html = modal_html.replace(
@@ -132,11 +133,7 @@ async def chat_modal(
     # Ensure hydration runs by injecting a small inline script after the modal.
     modal_html += f"<script>initChat('{session_id}', '{paper_id}', '{chat_log_id}');</script>"
 
-    dur = time.perf_counter() - start_ts
-    structlog.get_logger().info(
-        "chat_modal_ready",
-        paper_id=paper_id,
-        duration_ms=int(dur * 1000),
-    )
+    dur_ms = int((time.perf_counter() - start_ts) * 1000)
+    logger.info("chat_modal_ready", paper_id=paper_id, duration_ms=dur_ms)
 
     return HTMLResponse(content=modal_html)

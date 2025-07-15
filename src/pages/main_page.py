@@ -1,7 +1,9 @@
+"""FastHTML page components for Lux Scholar's main UI."""
+
 from datetime import datetime
 from typing import Any, Optional
 
-# Ensure all FastHTML components used by your page and sub-components are imported
+# FastHTML components used by this page
 from fasthtml.components import (
     BUTTON,
     EM,
@@ -24,38 +26,28 @@ from fasthtml.components import (
     Script,
     Select,
     Span,
-    Style,
     Textarea,
     Title,
 )
 from pydantic import BaseModel
 
 import config  # Your project's config module
-from components.chat_components import ChatBubble, CitationCard
 from models.paper import Paper  # Your Paper Pydantic model
+from services.chat.chat_components import ChatBubble, CitationCard
 
 
 # --- Pydantic Models ---
 class SharedPageData(BaseModel):
+    """Lightweight container of state used by the home-page template."""
+
     title: str = config.config.APP_TITLE
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
 
 
 # --- UI Components ---
-
-
 def render_error_message(message: str, context: str = "general") -> Div:
-    """
-    Renders a user-friendly error message with consistent styling.
-
-    Args:
-        message: The error message to display to the user
-        context: Optional context identifier for the error (useful for styling or analytics)
-
-    Returns:
-        A Div component containing the formatted error message
-    """
+    """Return a styled error banner."""
     return Div(
         P(message),
         cls=f"error-message error-context-{context}",
@@ -210,6 +202,16 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
         ]
         selection_label = Span()
 
+    # --------------------------------------------------
+    # UX: show ✨ indicator if metadata still incomplete
+    # --------------------------------------------------
+    needs_enrichment = not paper.authors or not paper.published_date
+    enrich_span = (
+        Span(" ✨", cls="enrich-indicator", title="Metadata enriching…")
+        if needs_enrichment
+        else None
+    )
+
     li_attrs = {"style": item_style, "id": f"paper-{paper.id}"}
     if wildcard:
         li_attrs["id"] = "wild-card-item"
@@ -223,6 +225,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                 href=paper.url if paper.url else "#",
                 target="_blank",
             ),
+            enrich_span,
             Br(),
             EM(authors_display),
             Br(),
@@ -247,6 +250,7 @@ def render_search_results(
     is_url_search: bool,
     papers_list: Optional[list[Paper]] = None,
 ) -> Div:
+    """Render search results list, shuffle/reset controls and hidden HTMX fields."""
     # Out-of-band clears so a new search hides any old report UI instantly
     clearing_divs = [
         Div(id="report-config-area", **{"hx-swap-oob": "true"}),
@@ -384,6 +388,7 @@ def render_search_results(
 
 
 def loading_indicator_component() -> Div:
+    """Spinner visible while search requests are in-flight."""
     return Div(
         Div(cls="lux-spinner"),
         Span("", id="lux-loading-text", style="display:inline-block; margin-left:4px;"),
@@ -393,6 +398,7 @@ def loading_indicator_component() -> Div:
 
 
 def report_loading_indicator_component() -> Div:
+    """Spinner shown while the server composes a report."""
     return Div(
         Div(cls="lux-spinner"),
         P("Writing report...", style="display:inline-block;"),
@@ -450,88 +456,6 @@ def render_report(
     </div>"""
 
 
-def chat_modal_styles() -> Style:
-    return Style("""
-        .modal {
-            display: block;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: #fefefe;
-            margin: 10% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 700px;
-            border-radius: 8px;
-            position: relative;
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-            margin-bottom: 10px;
-        }
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.25rem;
-        }
-        .modal-close-btn {
-            border: none;
-            background: transparent;
-            font-size: 1.5rem;
-            cursor: pointer;
-        }
-        .chat-log-container {
-            height: 400px;
-            overflow-y: auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-bottom: 10px;
-            background-color: #fff;
-        }
-        .user-message, .assistant-message {
-            padding: 8px 12px;
-            border-radius: 18px;
-            margin-bottom: 8px;
-            max-width: 80%;
-            word-wrap: break-word;
-        }
-        .user-message {
-            background-color: #007bff;
-            color: white;
-        }
-        .assistant-message {
-            background-color: #e9e9eb;
-            color: black;
-        }
-        .restore-toast {
-            padding: 10px;
-            background-color: #fff3cd;
-            border: 1px solid #ffeeba;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .toast-btn {
-            margin-left: 5px;
-            padding: 4px 8px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-    """)
-
-
 def render_chat_modal(paper: Paper, session_id: str) -> Div:
     """Renders the chat modal for a specific paper."""
     paper_id = paper.id
@@ -585,15 +509,6 @@ def render_chat_message(message: str, role: str) -> Div:
 
 def home_page(page_data: SharedPageData) -> Body:
     """The main page layout, including search form and results area."""
-    indicator_css = """
-      .htmx-indicator { display: none; opacity: 0; transition: opacity 200ms ease-in; }
-      .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-block; opacity: 1; }
-
-      /* Simple spinner */
-      @keyframes lux-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg);} }
-      .lux-spinner { border: 4px solid #ccc; border-top: 4px solid #007bff; border-radius: 50%; width: 24px; height: 24px; animation: lux-spin 1s linear infinite; display:inline-block; margin-right:8px; vertical-align: middle; }
-    """
-
     # Initial content for search results area
     if (
         page_data.search_results is not None
@@ -610,7 +525,6 @@ def home_page(page_data: SharedPageData) -> Body:
         results_display_content = ""
 
     return Body(
-        chat_modal_styles(),
         Head(
             Title(page_data.title),
             # Font Awesome for icons (copy button etc.)
@@ -627,7 +541,7 @@ def home_page(page_data: SharedPageData) -> Body:
                 href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
             ),
             Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
-            Style(indicator_css),
+            Link(rel="stylesheet", href="/static/css/spinners.css"),
             # Modular CSS (Phase-3 refactor)
             Link(rel="stylesheet", href="/static/css/base.css"),
             Link(rel="stylesheet", href="/static/css/top-bar.css"),
@@ -637,11 +551,11 @@ def home_page(page_data: SharedPageData) -> Body:
             Link(rel="stylesheet", href="/static/css/forms.css"),
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
-            # Modular JS entry-points
-            Script(src="/static/js/main.js", type="module"),
-            # Settings & validation helper (audience/model persistence, toasts, etc.)
             Script(src="/static/js/settings.js"),
             Script(src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"),
+            # Modular JS entry-points
+            Script(src="/static/js/main.js", type="module"),
+            # No inline init - handled in settings.js
         ),
         # Global toolbar
         Div(
@@ -707,24 +621,59 @@ def home_page(page_data: SharedPageData) -> Body:
                 Br(),
                 # Author input removed per new requirements
                 Br(),
-                Label("Published After: ", for_="start_published_date"),
-                INPUT(
-                    type="date",
-                    id="start_published_date",
-                    name="start_published_date",
-                    placeholder="YYYY-MM-DD",
+                Div(
+                    Label(
+                        "Published After ",
+                        EM("(optional)", style="color:#666; font-style:italic;"),
+                        ":",
+                        for_="start_published_date",
+                    ),
+                    INPUT(
+                        type="date",
+                        id="start_published_date",
+                        name="start_published_date",
+                        placeholder="YYYY-MM-DD",
+                        style="margin-left:6px;",
+                    ),
+                    style="display:flex; align-items:center; gap:6px; margin-bottom:6px;",
                 ),
-                Br(),
-                Label("Source Domain: ", for_="domain_filter"),
-                Select(
-                    Option("Any", value="any"),
-                    Option("arxiv.org", value="arxiv.org"),
-                    Option("openreview.net", value="openreview.net"),
-                    Option("aclweb.org", value="aclweb.org"),
-                    id="domain_filter",
-                    name="domain_filter",
+                Div(
+                    Div(
+                        Label(
+                            "Source Domain ",
+                            EM("(optional)", style="color:#666; font-style:italic;"),
+                            ":",
+                            for_="include_domains",
+                        ),
+                        Span(
+                            "Cmd/Ctrl to select/deselect multiple",
+                            style="font-size:0.75em; color:#666; margin-top:4px;",
+                        ),
+                        BUTTON(
+                            "Clear",
+                            type="button",
+                            id="clear-domains-btn",
+                            style="margin-top:6px; width:48px;",
+                        ),
+                        style="display:flex; flex-direction:column; gap:4px; justify-content:flex-start;",
+                    ),
+                    Select(
+                        Option("arxiv.org", value="arxiv.org"),
+                        Option("biorxiv.org", value="biorxiv.org"),
+                        Option("medrxiv.org", value="medrxiv.org"),
+                        Option("ieeexplore.ieee.org", value="ieeexplore.ieee.org"),
+                        Option("dl.acm.org", value="dl.acm.org"),
+                        Option("openreview.net", value="openreview.net"),
+                        Option("aclanthology.org", value="aclanthology.org"),
+                        Option("aclweb.org", value="aclweb.org"),
+                        id="include_domains",
+                        name="include_domains",
+                        multiple=True,
+                        size="4",
+                        style="width:220px; min-height:88px; margin-left:8px;",
+                    ),
+                    style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;",
                 ),
-                Br(),
                 Label("Number of Results: ", for_="num_results"),
                 INPUT(
                     type="number",
@@ -768,9 +717,10 @@ def home_page(page_data: SharedPageData) -> Body:
                 id="results-and-report-form",
             ),
             # ---------------- Ask LLM block (standalone) ----------------
+            Br(),
             P(
                 I("Research assistant for independent or follow-up questions:"),
-                style="margin-top:-0.25rem;font-size:0.9rem;",
+                style="margin-top:0.75rem;font-size:0.9rem;",
                 _class="ask-llm-subtitle",
             ),
             FORM(

@@ -50,3 +50,41 @@ body.lux-dark input.paper-select-checkbox { accent-color:var(--lux-red); }
 @supports not (accent-color: red) {
   body.lux-dark input.paper-select-checkbox { filter:hue-rotate(330deg) saturate(4); }
 }
+
+/* ------------------------------------------------------------------ */
+/* Choices.js compact styling – make multi-select resemble native select */
+/* ------------------------------------------------------------------ */
+
+.choices[data-type*="select-multiple"] .choices__inner {
+  /* Match default select height */
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Hide chip-style selected items – keep the field single-line */
+.choices[data-type*="select-multiple"] .choices__list--multiple .choices__item {
+  display: none;
+}
+
+/* Preserve arrow indicator position */
+.choices[data-type*="select-multiple"]::after {
+  right: 8px;
+  top: calc(50% - 2px);
+}
+
+/* When list is open, ensure scrollbars are same width */
+.choices__list--dropdown {
+  max-height: 240px;
+}
+
+/* Dark-mode tweaks */
+body.lux-dark .choices__inner {
+  background: #2a2a2a;
+  border-color: #555;
+  color: var(--lux-red);
+}
+body.lux-dark .choices__list--dropdown {
+  background: #2a2a2a;
+  border-color: #555;
+}

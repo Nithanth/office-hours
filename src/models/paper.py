@@ -1,19 +1,13 @@
-"""
-models/paper.py
-
-This module defines the Pydantic model for a 'Paper'.
-It's used to structure and validate data related to research papers
-retrieved from various sources or created within the application.
-"""
+"""Canonical Pydantic model for research paper metadata used across services."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field, HttpUrl
 
 
 class Paper(BaseModel):
-    """Pydantic model to represent a research paper."""
+    """Lightweight value object representing a research paper."""
 
     id: str = Field(
         ...,
@@ -49,6 +43,7 @@ class Paper(BaseModel):
     )
 
     def __repr__(self) -> str:
+        """Return debug-friendly representation truncated for readability."""
         return (
             f"Paper(id='{self.id}', "
             f"title='{self.title[:50] + '...' if len(self.title) > 50 else self.title}', "
@@ -59,60 +54,11 @@ class Paper(BaseModel):
             f"source='{self.source}')"
         )
 
+    def __str__(self) -> str:  # noqa: D401 – simple string representation
+        """Return the paper title for a human-friendly `str()` call."""
+        return self.title
+
     class Config:
         """Pydantic model configuration."""
 
         from_attributes = True
-
-
-# Example Usage (for direct testing of this module):
-if __name__ == "__main__":
-    # Example 1: Paper with all fields
-    paper_data_exa: dict[str, Any] = {
-        "id": "exa_paper_123",
-        "title": "Sample Paper Title",
-        "url": "https://example.com/paper123",
-        "authors": ["Author A", "Author B"],
-        "text_content": "This is the main text content of the paper, which could be an abstract or the full text.",
-        "published_date": "2023-01-15T14:30:00",
-        "score": 0.95,
-        "source": "Exa Search",
-    }
-    try:
-        paper_exa = Paper(**paper_data_exa)
-        print("--- Example Paper from Exa Data ---")
-        print(paper_exa.model_dump_json(indent=2))
-        assert paper_exa.text_content is not None
-        print(f"Retrieved text content: {paper_exa.text_content[:100]}...")
-    except Exception as e:
-        print(f"Error creating paper_exa: {e}")
-
-    # Example 2: Paper with minimal fields
-    paper_data_minimal: dict[str, Any] = {
-        "id": "minimal_paper_456",
-        "title": "Another Paper",
-        "url": "https://example.com/paper456",
-        "text_content": None,  # Explicitly None
-    }
-    try:
-        paper_minimal = Paper(**paper_data_minimal)
-        print("\nMinimal Paper Object created successfully:")
-        print(paper_minimal.model_dump_json(indent=2))
-        print(f"\nMinimal paper authors (should be None): {paper_minimal.authors}")
-        print(f"Minimal paper text content (should be None): {paper_minimal.text_content}")
-    except Exception as e:
-        print(f"Error creating paper_minimal: {e}")
-
-    # Example 3: Invalid URL
-    paper_data_invalid_url: dict[str, Any] = {
-        "id": "invalid_url_789",
-        "title": "Paper with a bad URL",
-        "url": "htp:/badurl.com",  # Invalid URL scheme
-        "source": "Test Case",
-    }
-    print("\nAttempting to create paper with invalid URL:")
-    try:
-        paper_invalid = Paper(**paper_data_invalid_url)
-        print(paper_invalid.model_dump_json(indent=2))
-    except Exception as e:
-        print(f"Error (expected): {e}")

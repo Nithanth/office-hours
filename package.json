@@ -1,0 +1,12 @@
+{
+  "name": "lux-scholar-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Build scripts for CSS optimisation (PurgeCSS)",
+  "scripts": {
+    "purge:css": "mkdir -p static/css/dist && purgecss --config static/build/purgecss.config.cjs"
+  },
+  "devDependencies": {
+    "purgecss": "^6.0.0"
+  }
+}
