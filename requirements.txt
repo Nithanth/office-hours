@@ -1,6 +1,6 @@
 # Core Web Framework & Server
 python-fasthtml~=0.12  # Provides 'fasthtml' import namespace
-uvicorn~=0.34
+uvicorn~=0.35
 fastapi~=0.115  # Added for direct FastAPI imports
 # jinja2==3.1.6 # For HTML templating - REMOVED
 
