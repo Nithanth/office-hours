@@ -157,6 +157,7 @@ cython_debug/
 # paper cache
 data/
 .summary_cache/
+scripts/text_dumps/
 
 # node
 node_modules
