@@ -64,6 +64,15 @@ class PaperSummariser(_BaseSummariser):
             )
 
         snippet = (paper.text_content or "")[:snippet_char_limit]
+        total_chars = len(paper.text_content or "")
+        snippet_len = len(snippet)
+        logger.info(
+            "paper_snippet_stats",
+            paper_id=paper.id,
+            total_chars=total_chars,
+            snippet_chars=snippet_len,
+            snippet_limit=snippet_char_limit,
+        )
         fallback_note = (
             "NOTE: Full text was unavailable; summary must rely on limited context "
             "(abstract/metadata).\n\n"

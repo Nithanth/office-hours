@@ -13,18 +13,19 @@ import time
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from loguru import logger
-from pydantic import HttpUrl
 
 from api.deps import get_exa_client, get_llm_service, get_session_id
 from config import config
 from models.paper import Paper
 from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
 from services.core.exa_client import ExaClient
+from services.core.exa_utils import paper_utils as _paper_utils
 from services.core.llm_service import LLMService
 from services.report.report_generator import ReportGenerator
 from utils.observability import _METRICS_ENABLED, REPORT_BLOCKS, REPORT_LAT, REPORT_REQ
@@ -166,6 +167,38 @@ async def report_stream(
     main_input = papers_list[0] if papers_list else None
     similar_papers = papers_list[1:]
 
+    # Ensure we have full-text content for all papers (Exa only gives
+    # abstracts). Re-use the same TextExtractor logic as synchronous
+    # ReportGenerator so the char stats and summariser get full PDFs.
+    try:
+        from services.paper.text_extractor import (
+            TextExtractor,
+        )  # local import to avoid heavy dep if not needed
+
+        extractor = TextExtractor.instance()
+        sem = asyncio.Semaphore(3)
+
+        async def _fetch_full(p: Paper) -> None:
+            async with sem:
+                path = await extractor.ensure_cached(str(p.url), p.id, prefer_exa=False)
+                if path:
+                    try:
+                        txt = Path(path).read_text(encoding="utf-8")
+                    except Exception:
+                        txt = await extractor.read_full_text(p.id)  # fallback glob
+                    if txt and len(txt) > len(p.text_content or ""):
+                        p.text_content = txt
+                        logger.info(
+                            "full_text_cached",
+                            paper_id=p.id,
+                            chars=len(txt),
+                            prev_chars=len(p.text_content) if p.text_content else 0,
+                        )
+
+        await asyncio.gather(*[_fetch_full(p) for p in papers_list])
+    except Exception as _extract_err:  # pragma: no cover – robustness only
+        logger.debug("full_text_prefetch_failed", error=str(_extract_err))
+
     # Prepare ReportGenerator
     model_cfg = config.AVAILABLE_MODELS.get(selected_model_key)
     if model_cfg is None:
@@ -194,6 +227,7 @@ async def report_stream(
         actual_topic_size_key = prompt_len_label if prompt_len_label in ("S", "M", "L") else "M"
 
         overall_instr = rg.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_size_key]
+
         # Build a *brief* context - first ~150 chars from first 3 papers
         ctx_parts: list[str] = []
         for p in papers_list[:3]:
@@ -236,9 +270,19 @@ async def report_stream(
         start_ts = time.perf_counter()
         prompt_len_label = summary_size.upper()
         tok_target = rg._get_output_token_target(audience_type, prompt_len_label, False)
-        snippet = (paper.text_content or "")[
-            : rg._get_max_content_snippet_chars(audience_type, prompt_len_label, False)
-        ]
+        snippet_limit = rg._get_max_content_snippet_chars(audience_type, prompt_len_label, False)
+        full_text = paper.text_content or ""
+        snippet = full_text[:snippet_limit]
+
+        # Log char stats at INFO level (parity with full report generator)
+        logger.info(
+            f"report_paper_char_stats: id={paper.id} total={len(full_text)} used={len(snippet)}/{snippet_limit}",
+            paper_id=paper.id,
+            total_chars=len(full_text),
+            snippet_used=len(snippet),
+            snippet_limit=snippet_limit,
+        )
+
         active_paper_prompt_template = AUDIENCE_PROMPT_MAP.get(
             audience_type, AUDIENCE_PROMPT_MAP["technical"]
         )["paper"]
@@ -261,7 +305,7 @@ async def report_stream(
         html_block = (
             f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank'>{html.escape(paper.title or 'Paper')}</a></h4>"
             f"{rg._text_to_html_paragraphs(summary)}"
-            f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
+            f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
             "</div>"
         )
         return role, html_block
@@ -309,7 +353,7 @@ async def report_stream(
                         or Paper(
                             id="N/A",
                             title="Unknown",
-                            url=cast(HttpUrl, "https://example.com/unknown"),
+                            url=_paper_utils._coerce_http_url("https://example.com/unknown"),
                         )
                     ).title
                 )

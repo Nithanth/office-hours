@@ -106,13 +106,11 @@ def render_report_config_form(
             ),
             *hidden_paper_inputs,
             BUTTON("Generate Report", type="submit", style="margin-right:8px;"),
-            method="post",  # ensure fallback submission is POST, not GET
             hx_post="/generate-report-incremental",
             hx_target="#report-display-area",
             hx_swap="innerHTML",
             hx_indicator="#report-loading-indicator",
             hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden",
-            hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
         ),
     )
 
@@ -296,6 +294,9 @@ def render_search_results(
             )
         )
 
+        # Instead of injecting an inline <script>, update history in a CSP-compliant
+        # global JS listener (see static/js/main.js).
+
         # Shuffle / wildcard / reset controls (work for both URL & query searches)
         results_content.append(
             Div(
@@ -305,7 +306,6 @@ def render_search_results(
                     hx_post="/shuffle",
                     hx_target="#wild-card-item",
                     hx_swap="outerHTML",
-                    hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
                 ),
                 BUTTON(
                     "🔀 Shuffle All Papers",
@@ -313,7 +313,6 @@ def render_search_results(
                     hx_post="/shuffle_all",
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
-                    hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
                     style="margin-left:0.5rem;",
                 ),
                 BUTTON(
@@ -322,7 +321,6 @@ def render_search_results(
                     hx_post="/reset_results",
                     hx_target="#papers-list",
                     hx_swap="outerHTML",
-                    hx_on="htmx:beforeRequest: disableShuffle(); htmx:afterOnLoad: enableShuffle();",
                     style="margin-left:0.5rem;",
                 ),
                 style="margin-top:10px;",
@@ -350,24 +348,25 @@ def render_search_results(
                         value=original_query,
                         id="original_query_for_report_hidden",
                     ),
-                    # size dropdown
-                    Select(
-                        Option("Select Report Size", value="", disabled=True, selected=True),
-                        Option("S (Concise)", value="S"),
-                        Option("M (Standard)", value="M"),
-                        Option("L (Detailed)", value="L"),
-                        Option("XL (Comprehensive)", value="XL"),
-                        name="summary_size",
-                        id="summary_size_select",
-                        style="margin-right:0.5rem;",
+                    Br(),
+                    Div(
+                        Select(
+                            Option("Select Report Size", value="", disabled=True, selected=True),
+                            Option("S (Concise)", value="S"),
+                            Option("M (Standard)", value="M"),
+                            Option("L (Detailed)", value="L"),
+                            name="summary_size",
+                            id="summary_size_select",
+                            style="margin-right:0.5rem;",
+                        ),
+                        BUTTON(
+                            "Generate Report",
+                            type="submit",
+                            id="generate-report-btn",
+                            style="margin-left:0.25rem;",
+                        ),
+                        style="margin-top:0.25rem;",
                     ),
-                    BUTTON(
-                        "Generate Report",
-                        type="submit",
-                        id="generate-report-btn",
-                        style="margin-left:0.25rem;",
-                    ),
-                    method="post",
                     hx_post="/generate-report-incremental",
                     hx_target="#report-display-area",
                     hx_swap="innerHTML",
@@ -470,7 +469,6 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                     cls="modal-close-btn",
                     aria_label="Close modal",
                     tabindex="0",
-                    hx_on="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",
             ),
@@ -479,7 +477,6 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                 Div(
                     id=f"chat-log-{paper_id}",
                     cls="chat-log-container",
-                    hx_on=f"htmx:load: initChat('{session_id}', '{paper_id}')",
                 ),
                 # This container will receive the SSE connector from the POST response
                 Div(id=f"sse-connector-container-{paper_id}"),
@@ -495,7 +492,6 @@ def render_chat_modal(paper: Paper, session_id: str) -> Div:
                     hx_post="/chat",
                     hx_target=f"#chat-log-{paper_id}",
                     hx_swap="beforeend",
-                    hx_on="htmx:afterRequest: this.reset()",
                 ),
                 cls="modal-body",
             ),
@@ -530,14 +526,9 @@ def home_page(page_data: SharedPageData) -> Body:
     return Body(
         Head(
             Title(page_data.title),
-            # Font Awesome for icons (copy button etc.)
-            Link(
-                rel="stylesheet",
-                href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css",
-            ),
-            Script(src="https://unpkg.com/htmx.org@1.9.10"),
+            Script(src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js"),
             # HTMX SSE extension for Server-Sent Events support
-            Script(src="https://unpkg.com/htmx.org/dist/ext/sse.js"),
+            Script(src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"),
             # Flatpickr date picker CSS & JS (cross-browser calendar support)
             Link(
                 rel="stylesheet",
@@ -554,7 +545,10 @@ def home_page(page_data: SharedPageData) -> Body:
             Link(rel="stylesheet", href="/static/css/forms.css"),
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
+            # Font Awesome (self-hosted) – required for icon glyphs
+            Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
             Script(src="/static/js/settings.js"),
+            Script(src="/static/js/htmx-url-reset.js", defer=True),
             # Modular JS entry-points
             Script(src="/static/js/main.js", type="module"),
             # No inline init - handled in settings.js
@@ -619,7 +613,7 @@ def home_page(page_data: SharedPageData) -> Body:
                     required=True,
                     placeholder="e.g., 'transformer architecture overview', or 'https://www.arxiv.org/pdf/2506.08388'",
                     value=page_data.current_query or "",
-                    style="max-width:100%;width:100%;",
+                    style="width:40rem;max-width:100%;",
                 ),
                 Br(),
                 # Author input removed per new requirements
@@ -696,15 +690,17 @@ def home_page(page_data: SharedPageData) -> Body:
                     onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
                 ),
                 Br(),
+                loading_indicator_component(),
                 hx_post="/search",
-                hx_target="#search-results-container",  # Targets the Div below
+                hx_target="#search-results-container",
                 hx_swap="innerHTML",
                 hx_indicator="#loading-indicator",
+                hx_push_url="false",
+                **{"hx-indicator": "#loading-indicator"},
                 onsubmit="document.getElementById('report-display-area').innerHTML='';document.getElementById('report-config-area').innerHTML='';document.getElementById('ask-result-container').innerHTML='';",
                 id="paper-search-form",
                 style="background:inherit;padding:0.5rem 0;",
             ),
-            loading_indicator_component(),
             # Results and Report Form (wraps hidden inputs etc.)
             FORM(
                 # Search results are displayed here, targeted by the search form's hx_target
@@ -757,4 +753,5 @@ def home_page(page_data: SharedPageData) -> Body:
             P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
             style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ccc; text-align:center; font-size:0.8rem; color:#666;",
         ),
+        **{"hx-push-url": "false"},
     )  # Close Body

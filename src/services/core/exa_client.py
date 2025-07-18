@@ -11,12 +11,12 @@ network access or shared caches remains here.
 import asyncio
 import os
 import re
+import time
 from collections import Counter
 from datetime import datetime
 from typing import Any, Optional, cast
 
 from loguru import logger
-from pydantic import HttpUrl
 
 from models.paper import Paper
 from services.paper.cache.paper_cache import PaperCache
@@ -41,6 +41,9 @@ from services.query.cache import CachedSearch
 from .exa_adapter import ExaAdapter
 from .exa_utils import (
     author_utils as _author_utils,
+)
+from .exa_utils import (
+    filter_utils as _filter_utils,
 )
 from .exa_utils import (
     paper_utils as _paper_utils,
@@ -92,7 +95,9 @@ class ExaClient:
     logic that needs to coordinate network calls or caching remains here.
     """
 
-    MAX_RETURNED_PAPERS: int = 50  # Allow a larger internal fetch pool (UI still displays ≤10)
+    # Upper bound on the raw result pool fetched from Exa before local filtering.
+    # Keeping this modest is the single biggest win for latency.  Tunable via env.
+    MAX_RETURNED_PAPERS: int = int(os.getenv("EXA_POOL_SIZE", "35"))
 
     def __init__(self, api_key: str):
         if not api_key:
@@ -100,12 +105,7 @@ class ExaClient:
         # Raw SDK client kept for legacy uses but prefer adapter
         self.adapter = ExaAdapter(api_key=api_key)
         self.client = self.adapter.sync_client
-        # Legacy caches (still used elsewhere)
-        self._last_random_pool: list[Paper] = []
-        self._last_top_k: list[Paper] = []
-        self._last_display: list[Paper] = []
-        self._last_random_paper: Optional[Paper] = None
-
+        # Legacy per-request cache objects are now handled via CachedSearch.
         # SQLite paper metadata cache (no external service)
         self._cache = PaperCache()
 
@@ -287,12 +287,25 @@ class ExaClient:
                 if not authors_meta:
                     authors_meta = None  # treat as missing for fallback logic
 
-                meta = {
-                    "title": getattr(r, "title", None),
-                    "authors": authors_meta,
-                    "published_date": getattr(r, "published_date", None),
-                }
-                paper = cast(Paper, _paper_utils.update_paper_from_meta(paper, meta))
+                # ----------------------------------------------------------
+                # Only fill fields that are *still missing* after the higher
+                # trust arXiv / DOI enrichment.  This prevents Exa’s scraped
+                # metadata from overwriting clean values.
+                # ----------------------------------------------------------
+                meta: dict[str, Any] = {}
+                if not paper.title or paper.title == "No Title Provided":
+                    meta["title"] = getattr(r, "title", None)
+                if (
+                    (not paper.authors)
+                    or not any(_author_utils.is_plausible_author(a) for a in paper.authors)
+                ) and authors_meta:
+                    meta["authors"] = authors_meta
+                if not paper.published_date and getattr(r, "published_date", None):
+                    meta["published_date"] = getattr(r, "published_date", None)
+
+                # Skip update if Exa didn’t provide any *new* useful fields
+                if meta:
+                    paper = cast(Paper, _paper_utils.update_paper_from_meta(paper, meta))
 
                 # Fallback to arXiv API if critical fields still missing
                 if "arxiv.org" in str(paper.url).lower() and (
@@ -478,6 +491,11 @@ class ExaClient:
 
             prelim: list[Paper] = []
             for result in similar_response.results:
+                # Skip if the candidate URL is the same paper as the input URL
+                cand_url: str | None = getattr(result, "url", None) or getattr(result, "id", None)
+                if cand_url and _url_utils.url_equivalent(cand_url, paper_url_norm):
+                    continue  # duplicate of main paper – skip
+
                 p = _paper_utils.create_paper_from_exa_result(
                     result, f"Exa (similar to: {paper_url})"
                 )
@@ -501,7 +519,12 @@ class ExaClient:
                         try:
                             paper = fut.result()
                         except Exception as enrich_exc:
-                            logger.debug("enrich failed: {}", enrich_exc)
+                            failed_paper = fut_map.get(fut)
+                            logger.debug(
+                                "enrich failed",
+                                id=getattr(failed_paper, "id", None),
+                                err=str(enrich_exc),
+                            )
                             continue
 
                         # Date filter now that we have enriched metadata
@@ -629,41 +652,38 @@ class ExaClient:
             logger.info("Fetching content for main URL (safe): {}", normalized_url)
 
             main_res = self._safe_get_contents(normalized_url)
-            if main_res is not None:
-                snippet_main = (
-                    (main_res.text[:100] + "…") if getattr(main_res, "text", None) else ""
-                )
-                meta_main = {
-                    "title": getattr(main_res, "title", None),
-                    "authors": getattr(main_res, "authors", None),
-                    "published_date": getattr(main_res, "published_date", None),
-                    "url": getattr(main_res, "url", None)
-                    or getattr(main_res, "canonical_url", None),
-                    "id": getattr(main_res, "id", None),
-                    "text_snippet": snippet_main,
-                }
-                logger.info("main_res summary for {} → meta={}", normalized_url, meta_main)
-            else:
-                logger.info("main_res summary for {} → None", normalized_url)
             if main_res:
+                # Only construct a new Paper object from the Exa result when we
+                # *don’t already* have a high-quality object from the Metadata
+                # Enricher step.  Otherwise, merge in *only* missing fields so
+                # we never clobber the authoritative title / authors / date.
                 try:
-                    main_paper_object = _paper_utils.create_paper_from_exa_result(
-                        main_res, f"Exa (safe_get_contents: {normalized_url})"
-                    )
+                    if main_paper_object is None:
+                        main_paper_object = _paper_utils.create_paper_from_exa_result(
+                            main_res, f"Exa (safe_get_contents: {normalized_url})"
+                        )
+                    else:
+                        meta_patch: dict[str, Any] = {
+                            "text_content": getattr(main_res, "text", None),
+                        }
+                        # Only add title/authors/date if still missing.
+                        for fld in ("title", "authors", "published_date"):
+                            cur_val = getattr(main_paper_object, fld)
+                            new_val = getattr(main_res, fld, None)
+                            if (not cur_val) and new_val:
+                                meta_patch[fld] = new_val
+
+                        if meta_patch:
+                            main_paper_object = _paper_utils.update_paper_from_meta(
+                                main_paper_object, meta_patch
+                            )
                 except Exception as conv_exc:  # noqa: BLE001 – log and fall back
                     logger.warning(
-                        "create_paper_from_exa_result failed for {} - {}",
+                        "create/merge paper from Exa failed for {} - {}",
                         normalized_url,
                         conv_exc,
                         exc_info=True,
                     )
-                    main_paper_object = None
-
-            if main_paper_object and main_paper_object.url:
-                enriched_main = self.enrich_url(str(main_paper_object.url))
-                if enriched_main is not None:
-                    main_paper_object = enriched_main
-
         except StopIteration:
             # Skip Exa branch – already have quality metadata
             pass
@@ -681,6 +701,36 @@ class ExaClient:
             logger.info("fallback enrich_url result for {} → {}", normalized_url, fallback_paper)
             if fallback_paper is not None:
                 main_paper_object = fallback_paper
+
+        # ------------------------------------------------------------------
+        # Final URL canonicalisation: store upgraded PDF URL for consistency
+        # ------------------------------------------------------------------
+        if main_paper_object and main_paper_object.url:
+            upgraded_url = _url_utils.upgrade_to_pdf_url(str(main_paper_object.url))
+            if upgraded_url and upgraded_url != main_paper_object.url:
+                main_paper_object.url = _paper_utils._coerce_http_url(upgraded_url)
+                logger.debug("main_paper_url_upgraded", upgraded=upgraded_url)
+
+        # --------------------------------------------------------------
+        # Final authoritative pass: run MetadataEnricher again so any
+        # high-quality arXiv / DOI metadata we might have missed is
+        # merged in.  We *only* fill fields that remain empty to avoid
+        # clobbering data.
+        # --------------------------------------------------------------
+        if main_paper_object and main_paper_object.url:
+            try:
+                enriched_main = self.enrich_url(str(main_paper_object.url))
+                if enriched_main is not None:
+                    main_paper_object = _paper_utils.update_paper_from_meta(
+                        main_paper_object,
+                        enriched_main.dict(exclude_none=True),
+                    )
+            except Exception as enr_exc:  # noqa: BLE001
+                logger.warning(
+                    "secondary enrich_url failed for {} - {}",
+                    normalized_url,
+                    enr_exc,
+                )
 
         # 2. Find similar papers to the paper_url
         try:
@@ -706,13 +756,76 @@ class ExaClient:
         return {"main_paper": main_paper_object, "similar_papers": similar_papers_list}
 
     def _fetch_papers_from_exa(self, query: str, k: int, **kwargs: Any) -> list[Paper]:
-        """Fetches a pool of papers from the Exa API."""
-        request_count = min(k * 10, 50)
+        """Fetch a *fixed* pool of papers irrespective of display count, enrich metadata, then apply local filters."""
+        request_count = self.MAX_RETURNED_PAPERS
         logger.info("fetch pool", query=query, requested=request_count)
-        return self.search_papers(query, num_results=request_count, **kwargs)
+        t_start = time.perf_counter()
+
+        # 1. Fast metadata-only search (no full text)
+        raw_pool = self.search_papers(query, num_results=request_count, **kwargs)
+
+        # 1b. Cheap validity/domain/dedup before any network calls
+        pre_pool = _filter_utils.pre_filter_papers(
+            raw_pool,
+            include_domains=kwargs.get("include_domains"),
+            exclude_domains=kwargs.get("exclude_domains"),
+        )
+
+        # 2. Enrich metadata for the pruned pool only ----------------------
+        for p in pre_pool:
+            has_trusted_id = bool(
+                _url_utils.extract_arxiv_id(p.url)
+                or _url_utils.extract_doi(str(p.url) if p.url else None)
+            )
+
+            if not has_trusted_id and p.authors and p.published_date:
+                continue  # already complete enough for non-arXiv/DOI docs
+
+            try:
+                self._enrich_paper_metadata(p)
+            except Exception as exc:  # noqa: BLE001 – best-effort
+                failed_paper = p
+                logger.debug("enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc))
+
+        # 3. Adaptive score / breadth filter -------------------------------
+        filtered = _filter_utils.apply_score_threshold(pre_pool, k)
+        # Detailed pipeline stats -------------------------------------------
+        elapsed_ms = int((time.perf_counter() - t_start) * 1000)
+
+        # User-friendly one-liner at INFO level
+        logger.info(
+            "search_pipeline: query='{}' raw={} pre={} final={} k_display={} ms={}",
+            query,
+            len(raw_pool),
+            len(pre_pool),
+            len(filtered),
+            k,
+            elapsed_ms,
+        )
+
+        # Detailed metrics at DEBUG level
+        meta_missing_auth = sum(1 for p in pre_pool if not p.authors)
+        meta_missing_date = sum(1 for p in pre_pool if not p.published_date)
+        logger.debug(
+            "pipeline_stats",
+            query=query,
+            raw=len(raw_pool),
+            pre=len(pre_pool),
+            no_authors=meta_missing_auth,
+            no_date=meta_missing_date,
+            final=len(filtered),
+            k_display=k,
+            elapsed_ms=elapsed_ms,
+        )
+        return filtered
 
     def _build_cache(self, papers: list[Paper], k: int, query: str) -> CachedSearch | None:
-        """Builds and caches the search results."""
+        """Construct a CachedSearch object from *papers* if possible.
+
+        The helper converts the list into the dict/ordering structure required
+        by CachedSearch and primes its display slots.  Returns ``None`` if the
+        input list is empty or lacks IDs.
+        """
         if not papers:
             return None
 
@@ -759,7 +872,7 @@ class ExaClient:
         slots.
         """
         # Fetch details and similar papers (larger pool for caching)
-        request_count = min(k * 5, 50)
+        request_count = self.MAX_RETURNED_PAPERS
         url_results = self.get_paper_details_and_similar_from_url(
             paper_url,
             num_similar_results=request_count,
@@ -826,21 +939,40 @@ class ExaClient:
         cs = self._last_cached_search
         if cs is None:
             return None
-        return cast(Optional["Paper"], cs.replace_wildcard())
+        paper = cast(Optional["Paper"], cs.replace_wildcard())
+        logger.info(
+            "replace_wildcard: cached_pool={} returned_id={}",
+            len(cs.paper_by_id),
+            paper.id if paper else None,
+        )
+        return paper
 
     def shuffle_k(self) -> list[Paper]:
         """Randomly shuffle the current *k* display papers (excluding pinned)."""
         cs = self._last_cached_search
-        return cs.shuffle_k() if cs is not None else []
+        if cs is None:
+            return []
+        shuffled = cs.shuffle_k()
+        logger.info(
+            "shuffle_k: cached_pool={} k_display={}",
+            len(cs.paper_by_id),
+            len(shuffled),
+        )
+        return cast(list[Paper], shuffled)
 
     def reset_display(self) -> list[Paper]:
         """Restore the cached paper list to its original deterministic ordering."""
         cs = self._last_cached_search
-        return cs.reset_display() if cs is not None else []
+        return cast(list[Paper], cs.reset_display()) if cs is not None else []
 
     def clear_cache(self) -> None:
         """Drop all records from the on-disk PaperCache."""
         self._cache.clear()
+
+    def reset_cached_search(self) -> None:  # noqa: D401
+        """Clear the in-memory CachedSearch used for shuffle/reset UX."""
+        self._last_cached_search = None
+        logger.debug("cached_search_reset")
 
     def invalidate(self, doc_id: str) -> None:
         """Remove *doc_id* from cache so the next fetch is forced to hit the network."""
@@ -861,7 +993,7 @@ class ExaClient:
             cached_paper = Paper(
                 id=cache_id,
                 title=meta.get("title", "No Title Provided"),
-                url=cast(HttpUrl, url),
+                url=_paper_utils._coerce_http_url(url),
             )
             cached_paper = cast(Paper, _paper_utils.update_paper_from_meta(cached_paper, meta))
             return cached_paper
@@ -877,12 +1009,22 @@ class ExaClient:
                 logger.warning("enrich_url timed out for {} after {:.1f}s", url, timeout)
                 return None
 
-        try:
-            paper = asyncio.run(_runner())
-        except RuntimeError:
-            import concurrent.futures
+        import concurrent.futures
 
-            def _thread_runner() -> Paper | None:
+        # Determine if we're already inside an event loop.  Creating the coroutine only
+        # after this check prevents the "coroutine was never awaited" warning.
+        loop_running = True
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop_running = False
+
+        if not loop_running:
+            # Safe to spin up a fresh event loop in this thread.
+            paper = asyncio.run(_runner())
+        else:
+            # We are already inside an event loop; delegate execution to a worker thread.
+            def _thread_runner() -> Paper | None:  # noqa: D401 – simple helper
                 return asyncio.run(_runner())
 
             try:
@@ -890,7 +1032,7 @@ class ExaClient:
                     fut = pool.submit(_thread_runner)
                     paper = fut.result(timeout=timeout + 1.0)
             except Exception as exc:
-                logger.warning("enrich_url failed in nested loop for {} - {}", url, exc)
+                logger.warning("enrich_url failed in worker thread for {} - {}", url, exc)
                 return None
 
         if paper is None:
@@ -901,11 +1043,19 @@ class ExaClient:
         return paper
 
     def search_papers(self, query: str, num_results: int = 10, **kwargs: Any) -> list[Paper]:
-        """High-level helper: run Exa *search_and_contents* and convert to Paper list."""
+        """Run **metadata-only** Exa search and convert to :class:`Paper` list."""
+        # Exa SDK requires date parameters as ISO 8601 strings.
+        if "start_published_date" in kwargs and isinstance(
+            kwargs["start_published_date"], datetime
+        ):
+            kwargs["start_published_date"] = kwargs["start_published_date"].date().isoformat()
+        if "end_published_date" in kwargs and isinstance(kwargs["end_published_date"], datetime):
+            kwargs["end_published_date"] = kwargs["end_published_date"].date().isoformat()
+
         try:
-            sdk_res = self.adapter.search_and_contents(query, num_results=num_results, **kwargs)
+            sdk_res = self.adapter.search(query, num_results=num_results, **kwargs)
         except Exception as exc:
-            logger.error("Exa search_and_contents failed for {} - {}", query, exc)
+            logger.error("Exa search failed for {} - {}", query, exc)
             return []
 
         papers: list[Paper] = []
@@ -921,6 +1071,17 @@ class ExaClient:
             len(papers),
             num_results,
             dict(Counter(p.source or "(unknown)" for p in papers)),
+        )
+        logger.debug(
+            "search_papers fetched_list",
+            papers=[
+                {
+                    "id": p.id,
+                    "title": (p.title or "")[:120],
+                    "url": str(p.url) if p.url else None,
+                }
+                for p in papers
+            ],
         )
         return papers
 

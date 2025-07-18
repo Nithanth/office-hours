@@ -28,9 +28,27 @@ async def build_prompt(
     paper_id: str,
     audience_type: str = "semi_technical",
     max_history: int = 10,
-    excerpt_chars: int = int(os.getenv("EXCERPT_CHARS", "2000")),
+    excerpt_chars: int | None = None,
 ) -> str:
     """Construct prompt with recent chat + paper excerpt."""
+
+    # ------------------------------------------------------------------
+    # Determine excerpt length: prefer explicit argument, then app config,
+    # finally environment variable (legacy). This avoids hard-coding a stale
+    # default and lets users tweak the size via config.py or .env.
+    # ------------------------------------------------------------------
+    if excerpt_chars is None:
+        from config import config as _cfg  # late import to avoid cycles at startup
+
+        excerpt_chars = _cfg.EXCERPT_CHARS
+
+        # Legacy fallback – still honour env override if set explicitly.
+        env_override = os.getenv("EXCERPT_CHARS")
+        if env_override is not None:
+            try:
+                excerpt_chars = int(env_override)
+            except ValueError:
+                pass
 
     turns = chat_state.get_conversation(paper_id)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
@@ -45,15 +63,28 @@ async def build_prompt(
             full_text_path = loaded_path
             chat_state.paper_cache.setdefault(paper_id, {})["full_text_path"] = loaded_path
     excerpt = chat_state.paper_cache.setdefault(paper_id, {}).get("excerpt")
-    if excerpt is None and full_text_path and os.path.exists(full_text_path):
-        try:
-            with open(full_text_path, encoding="utf-8") as fh:
-                excerpt = fh.read(excerpt_chars)
-            chat_state.paper_cache[paper_id]["excerpt"] = excerpt  # cache
-            logger.debug("excerpt_loaded", paper_id=paper_id, chars=len(excerpt))
-        except (OSError, UnicodeDecodeError) as exc:
-            logger.warning("excerpt_load_failed", paper_id=paper_id, error=str(exc))
-            excerpt = ""
+    if full_text_path and os.path.exists(full_text_path):
+        need_reload = False
+        if excerpt is None:
+            need_reload = True  # never cached
+        elif len(excerpt) < int(excerpt_chars * 0.8):
+            # Cached excerpt is significantly shorter than desired target
+            need_reload = True
+
+        if need_reload:
+            try:
+                with open(full_text_path, encoding="utf-8") as fh:
+                    excerpt = fh.read(excerpt_chars)
+                chat_state.paper_cache.setdefault(paper_id, {})["excerpt"] = excerpt
+                logger.debug(
+                    "excerpt_loaded",
+                    paper_id=paper_id,
+                    chars=len(excerpt),
+                    target=excerpt_chars,
+                )
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.warning("excerpt_load_failed", paper_id=paper_id, error=str(exc))
+                excerpt = ""
 
     # Fallback to cached LLM summary when no excerpt or extremely short (<200 chars)
     if (not excerpt) or len(excerpt.strip()) < 200:

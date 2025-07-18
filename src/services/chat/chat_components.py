@@ -71,21 +71,18 @@ def ChatModal(
                     "×",
                     cls="modal-close-btn",
                     aria_label="Close modal",
-                    hx_on_click="htmx.find('#modal-container').innerHTML = ''",
+                    onclick="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",
             ),
             # Body
-            Div(id=chat_log_id, cls="chat-log-container"),
+            Div(id=chat_log_id, cls="chat-log-container modal-body"),
             Form(
                 Textarea(
                     name="message",
                     placeholder="Ask about this paper…",
                     rows="3",
                     style="width: 100%; border-radius: 4px; padding: 5px;",
-                    **{
-                        "hx-on:keydown": "if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); this.closest('form').requestSubmit();}",
-                    },
                 ),
                 BUTTON("→", type="submit", cls="send-btn", style="margin-left: 6px;"),
                 method="POST",

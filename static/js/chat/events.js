@@ -66,7 +66,7 @@ document.body.addEventListener("htmx:beforeRequest", (evt) => {
   form.dataset.lastSubmit = String(now);
 
   // If an SSE stream is still open, block.
-  const activeStream = modal?.querySelector("[sse-connect]");
+  const activeStream = modal?.querySelector("[data-stream-url]:not([data-finalised='1'])");
   if (activeStream) {
     if (typeof showToast === "function") showToast("Assistant is still replying…");
     evt.preventDefault();
@@ -169,7 +169,7 @@ export function initChat(sessionId, paperId, chatLogId) {
   }
 
   // Pick a stable cache key: explicit data-chat-key > data-chat-pid > paperId
-  const stableKey = chatLog.dataset.chatKey || chatLog.dataset.chatPid || paperId;
+  const stableKey = chatLog.dataset.chatPid || chatLog.dataset.chatKey || paperId;
   const html = loadTranscript(sessionId, stableKey);
   console.debug('[lux] initChat', { stableKey, cachedChars: (html || '').length });
   if (typeof html === "string" && html.trim()) {
@@ -228,7 +228,7 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
     const pid = log.dataset.chatKey || log.dataset.chatPid || (log.id ? log.id.replace("chat-log-", "") : "");
     if (!pid) return;
     try {
-      initChat(null, pid);
+      initChat(null, pid, log.id);
       log.dataset.initDone = "1";
     } catch (err) {
       console.error("initChat error", err);

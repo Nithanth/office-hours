@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # dev.sh – convenience script to start Lux Scholar in development mode.
 #
 # Features:
@@ -25,6 +24,11 @@ fi
 msg() { echo -e "${CYAN}▶ $*${RESET}"; }
 
 ###################################
+# Default logging level (Loguru & app)
+###################################
+export LOG_LEVEL="${LOG_LEVEL:-info}"
+
+###################################
 # Load environment variables
 ###################################
 if [[ -f .env ]]; then
@@ -44,7 +48,6 @@ fi
 
 ###################################
 # Start the server
-###################################
 ###################################
 export PYTHONPATH="$(pwd)/src${PYTHONPATH:+:$PYTHONPATH}"
 UVICORN_CMD=(uvicorn main:app --reload --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" --log-level debug "$@")

@@ -125,6 +125,21 @@ logger.add(
     serialize=config.config.LOG_FORMAT_JSON,
 )
 
+# ---------------------------------------------------------------------------
+# Optional persistent log file (enable by setting LOG_FILE env variable)
+# ---------------------------------------------------------------------------
+log_file = os.getenv("LOG_FILE")
+if log_file:  # user opted in to file logging
+    logger.add(
+        log_file,
+        level=config.config.LOG_LEVEL.upper(),
+        serialize=config.config.LOG_FORMAT_JSON,
+        rotation="20 MB",  # rotate to keep disk usage bounded
+        compression="gz",  # compress rotated files
+        enqueue=True,  # thread-safe with uvicorn reload workers
+        backtrace=True,
+    )
+
 llm_service_instance: Optional[LLMService] = None
 exa_client_instance: Optional[ExaClient] = None
 # Keep GC task handle so we can cancel cleanly on shutdown

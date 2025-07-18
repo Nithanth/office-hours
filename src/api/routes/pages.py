@@ -33,6 +33,15 @@ async def get_home(
     logger.info("home_request", query=search_query)
     page_data = SharedPageData(current_query=search_query)
 
+    # Always clear any previous in-memory search cache so hard refresh starts clean.
+    try:
+        exa_client = get_exa_client()
+        if exa_client:
+            exa_client.reset_cached_search()
+    except Exception:
+        # Safe best-effort – avoid failing page render if DI unavailable
+        pass
+
     # Perform initial search if query is provided
     if search_query and search_query.strip():
         if not settings.EXA_API_KEY:
@@ -46,12 +55,12 @@ async def get_home(
                     logger.info(
                         "home_initial_search",
                         query=search_query.strip(),
-                        num_results=settings.DEFAULT_PAPER_COUNT,
+                        k=settings.DEFAULT_PAPER_COUNT,
                     )
                     papers = await asyncio.to_thread(
-                        exa_client.search_papers,
+                        exa_client.search_and_cache,
                         query=search_query.strip(),
-                        num_results=settings.DEFAULT_PAPER_COUNT,
+                        k=settings.DEFAULT_PAPER_COUNT,
                     )
                     page_data.search_results = papers
                 except Exception as exc:  # log and fall back

@@ -9,6 +9,11 @@ import "./shuffle_controls.js";
 // Script is idempotent; importing here avoids separate <script> tag.
 import "./htmx-sse-pool.js";
 
+// Disable HTMX inline-eval to comply with strict CSP (avoids unsafe-eval errors)
+if (window.htmx) {
+  window.htmx.config.allowEval = false;
+}
+
 // Shared utilities (dbg, debounce, etc.) – side-effect free
 import "./util.js";
 
@@ -28,3 +33,21 @@ import "./report.js";
 
 window.__LUX_MODULES_ACTIVE = true;
 console.debug("[lux] main.js loaded (ESM)");
+
+// ---------------------------------------------------------------------------
+// Clear ?search_query param from URL after results render (was inline <script>)
+// ---------------------------------------------------------------------------
+
+document.body.addEventListener("htmx:afterSwap", (evt) => {
+  const tgt = evt.target;
+  if (tgt && tgt.id === "papers-list") {
+    try {
+      // Replace history without reloading
+      history.replaceState(null, "", "/");
+    } catch (_) {
+      // noop
+    }
+  }
+});
+
+console.debug("[lux] main.js history clean listener wired");

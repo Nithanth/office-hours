@@ -48,14 +48,27 @@ export function ensureHighlightLoaded() {
   _hlPromise = new Promise((resolve) => {
     const css = document.createElement("link");
     css.rel = "stylesheet";
-    css.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github${
+    css.href = `https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github${
       _isDarkMode ? "-dark" : ""
     }.min.css`;
     document.head.appendChild(css);
 
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js";
-    s.onload = () => resolve();
+    s.src = "https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js";
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    s.onload = done;
+    s.onerror = () => {
+      console.warn("[lux] highlight.js failed to load - continuing without syntax highlight");
+      done();
+    };
+    // Fallback: some browsers (e.g. Chrome with CORB) may block the response
+    // without triggering onload/onerror. Ensure we proceed regardless.
+    setTimeout(done, 3000);
     document.head.appendChild(s);
   });
   return _hlPromise;

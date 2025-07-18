@@ -134,8 +134,12 @@ export function enhanceModal(modal) {
     const msgs = Array.from(log.children || []);
     for (let i = 0; i < msgs.length; i++) {
       const el = msgs[i];
+      const isAssistant = el.classList.contains("assistant-message");
+      const inFlight = el.hasAttribute("sse-connect"); // still streaming
+
       if (
-        el.classList.contains("assistant-message") &&
+        isAssistant &&
+        !inFlight && // <-- KEEP active stream bubble
         (
           el.dataset.finalised !== "1" ||
           el.dataset.interrupted === "1" ||
@@ -302,5 +306,17 @@ export function enhanceModal(modal) {
   `;
   document.head.appendChild(style);
 })();
+
+// Submit on Enter (without Shift) inside any chat textarea
+document.body.addEventListener("keydown", (evt) => {
+  const ta = evt.target;
+  if (!(ta instanceof HTMLTextAreaElement)) return;
+  if (!ta.closest(".modal")) return; // only within chat modal
+  if (evt.key === "Enter" && !evt.shiftKey) {
+    evt.preventDefault();
+    const form = ta.closest("form");
+    if (form) form.requestSubmit();
+  }
+});
 
 console.debug("[lux] chat/ui.js loaded");

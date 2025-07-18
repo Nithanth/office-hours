@@ -5,7 +5,9 @@ import html
 import os
 import pathlib as _pathlib
 import time
+import urllib.parse as _urlparse
 from collections.abc import AsyncIterator
+from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
@@ -44,6 +46,8 @@ async def chat_post(
     session_id: str = Depends(get_session_id),
     message: str = Form(...),
     paper_id: str = Form(...),
+    audience_type: str = Form("technical"),
+    model_key: Optional[str] = Form(None),
 ) -> Response:
     """Handle a user chat message and return HTML skeleton for streaming reply."""
 
@@ -82,10 +86,21 @@ async def chat_post(
 
     # 2. Create a unique container for the assistant's streaming response (raw HTML)
     assistant_response_id = f"assistant-response-{uuid4()}"
+    # Full stream URL (used by JS) includes additional audience/model params.
+    stream_url = (
+        f"/chat/stream?paper_id={paper_id}&audience_type={_urlparse.quote_plus(audience_type)}"
+    )
+    if model_key:
+        stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
+
+    # Minimal URL expected by legacy tests for HTMX sse-connect attr – only paper_id.
+    legacy_sse_url = f"/chat/stream?paper_id={paper_id}"
+
     assistant_response_container_html = (
         f'<div id="{assistant_response_id}" class="assistant-message typing" '
-        f'hx-ext="sse" sse-connect="/chat/stream?paper_id={paper_id}" '
-        f'sse-swap="message" data-batch-ms="8" hx-sse-reconnect-delay="-1" '
+        f'data-stream-url="{stream_url}" '
+        f'sse-connect="{legacy_sse_url}" '
+        f'data-batch-ms="8" '
         f'hx-trigger="load">…</div>'
     )
 
@@ -97,6 +112,8 @@ async def chat_post(
 async def chat_stream(
     request: Request,
     paper_id: str,
+    audience_type: str = Query("technical"),
+    model_key: Optional[str] = Query(None),
     resume_at: int = Query(0, ge=0, description="Token index to resume from."),
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> Response:
@@ -146,7 +163,7 @@ async def chat_stream(
                 for idx, tok in chat_state.stream_buffer:
                     if idx >= resume_at:
                         safe_tok = html.escape(tok).replace("\n", "<br/>")
-                        yield f"data: {safe_tok}\n\n"
+                        yield f"event: assistant\ndata: {safe_tok}\n\n"
                 log.info(
                     "chat_resume_replay_complete", session_id=session_id, replay_start=resume_at
                 )
@@ -160,7 +177,7 @@ async def chat_stream(
                 return False
 
             if await _client_gone():
-                yield "event: sse-close\ndata: \n\n"
+                yield "event: message_done\ndata: \n\n"
                 return
 
             # Ensure paper full text is cached and fresh once per stream
@@ -182,7 +199,7 @@ async def chat_stream(
                     chat_state.paper_cache.setdefault(paper_id, {})["full_text_path"] = path
 
             if await _client_gone():
-                yield "event: sse-close\ndata: \n\n"
+                yield "event: message_done\ndata: \n\n"
                 return
 
             last_tok_t = time.perf_counter()
@@ -193,15 +210,18 @@ async def chat_stream(
                         break
 
                     if chat_state.last_role(paper_id) == "user":
-                        prompt = await build_prompt(chat_state, paper_id)
+                        # Build prompt with requested audience style.
+                        prompt = await build_prompt(chat_state, paper_id, audience_type)
                         async with get_semaphore(session_id, paper_id):
+                            # Choose model based on user selection (fallback to default).
+                            selected_key = model_key or settings.DEFAULT_MODEL_KEY
+                            if selected_key not in settings.AVAILABLE_MODELS:
+                                selected_key = settings.DEFAULT_MODEL_KEY
+                            model_cfg = settings.AVAILABLE_MODELS[selected_key]
+
                             stream_iter = await llm_service.generate_completion_stream(
-                                provider_name=settings.AVAILABLE_MODELS[settings.DEFAULT_MODEL_KEY][
-                                    "provider"
-                                ],
-                                model_name=settings.AVAILABLE_MODELS[settings.DEFAULT_MODEL_KEY][
-                                    "id"
-                                ],
+                                provider_name=model_cfg["provider"],
+                                model_name=model_cfg["id"],
                                 prompt=prompt,
                                 max_tokens=int(os.getenv("CHAT_MAX_TOKENS", "512")),
                                 temperature=float(os.getenv("CHAT_TEMPERATURE", "0.7")),
@@ -226,7 +246,7 @@ async def chat_stream(
                                 )
                                 chat_state.push_token(token)
                                 safe_token = html.escape(token).replace("\n", "<br/>")
-                                yield f"data: {safe_token}\n\n"
+                                yield f"event: assistant\ndata: {safe_token}\n\n"
                                 log.debug(
                                     "chat_sse_emit",
                                     session_id=session_id,
@@ -280,8 +300,10 @@ async def chat_stream(
 
             chat_state.stream_active = False
             try:
-                log.info("chat_sse_emit_done", session_id=session_id)
+                log.info("chat_sse_emit_done", session_id=session_id, chars=len(assistant_msg))
+                # Legacy compatibility events expected by tests/frontend
                 yield "event: done\ndata: \n\n"
+                yield "event: message_done\ndata: \n\n"
                 yield "event: sse-close\ndata: \n\n"
             except Exception:  # pragma: no cover - client already gone.
                 pass

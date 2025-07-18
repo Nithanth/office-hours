@@ -158,11 +158,10 @@
 
       if (!isReportForm) return; // ignore unrelated forms
 
-      // If report form is nested, switch reference to the real one so queries (e.g. #summary_size_select)
-      // work correctly.
-      if (form.getAttribute('hx-post') !== '/generate-report-incremental') {
-        form = form.querySelector('[hx-post="/generate-report-incremental"]');
-        if (!form) return;
+      // Reset per-page chat transcript cache so chats start fresh for this report.
+      if (window.__luxChatCache && typeof window.__luxChatCache.clear === 'function') {
+        console.debug('[lux] settings.js: clearing chat cache for new report');
+        window.__luxChatCache.clear();
       }
 
       // Ensure hidden inputs reflect latest toolbar state

@@ -166,6 +166,11 @@ document.addEventListener("htmx:afterSwap", () => {
         actions.classList.remove("hidden");
         actions.classList.add("lux-flex-end");
 
+        // Toast feedback – notify user that report is ready
+        if (window.showToast) {
+          window.showToast("Report ready! Click the copy button to grab the text.");
+        }
+
         // Add generic report heading if backend didn't provide one
         const reportEl = document.getElementById("report-content");
         if (reportEl && !reportEl.querySelector("h2")) {
@@ -189,6 +194,10 @@ document.addEventListener("DOMContentLoaded", () => {
     console.debug("[lux] report.js: fallback unhide actions (DOMContentLoaded)");
     actions.classList.remove("hidden");
     actions.classList.add("lux-flex-end");
+
+    if (window.showToast) {
+      window.showToast("Report ready! Click the copy button to grab the text.");
+    }
   }
 });
 

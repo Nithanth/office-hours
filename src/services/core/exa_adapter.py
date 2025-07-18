@@ -64,6 +64,31 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         return self._sync.search_and_contents(query, **params)
 
     # ------------------------------------------------------------------
+    # Faster metadata-only search (no full text) -----------------------
+    # ------------------------------------------------------------------
+
+    @retry(  # same retry policy as above
+        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def search(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 – SDK types
+        """Wrapper for :py:meth:`exa_py.Exa.search` (metadata only).
+
+        This variant is substantially faster because it skips the costly
+        *get_contents* stage.  We use it for the initial paper-search UI; full
+        text is fetched lazily later when the user selects papers for a report.
+        """
+
+        params = kwargs  # already snake_case in our codebase
+        logger.debug("Exa search (metadata-only)", query=query, params=params)
+        if _METRICS_ENABLED and EXA_LAT is not None:
+            with EXA_LAT.time():
+                return self._sync.search(query, **params)
+        return self._sync.search(query, **params)
+
+    # ------------------------------------------------------------------
     # Answer endpoint - short answers with supporting passages
     # ------------------------------------------------------------------
 

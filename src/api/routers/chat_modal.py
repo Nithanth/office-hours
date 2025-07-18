@@ -29,6 +29,7 @@ async def chat_modal(
     audience_type: str | None = Query(
         None, description="(Optional) Audience type key from toolbar"
     ),
+    model_key: str | None = Query(None, description="(Optional) Selected model key"),
 ) -> HTMLResponse:  # noqa: D401 - pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
@@ -96,7 +97,9 @@ async def chat_modal(
     )
 
     # Original snippet in ChatModal markup (no hx-on).
-    _search = f'id="{chat_log_id}" class="chat-log-container"'
+    # Note: ChatModal adds both "chat-log-container" and "modal-body" classes
+    # (in that order). Match the exact string so string.replace succeeds.
+    _search = f'id="{chat_log_id}" class="chat-log-container modal-body"'
 
     chat_log_repl = (
         f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden"'
@@ -107,7 +110,19 @@ async def chat_modal(
 
     # Inject hidden paper_id input and fix HX attribute names for HTMX
     hidden_input = f"<input type='hidden' id='hidden-paper-id' name='paper_id' value='{paper_id}'/>"
-    modal_html = modal_html.replace("<textarea", hidden_input + "<textarea")
+    hidden_aud = (
+        f"<input type='hidden' id='hidden-audience-type' name='audience_type' value='{html.escape(audience_type)}'/>"
+        if audience_type
+        else ""
+    )
+    hidden_model = (
+        f"<input type='hidden' id='hidden-model-key' name='model_key' value='{html.escape(model_key)}'/>"
+        if model_key
+        else ""
+    )
+    modal_html = modal_html.replace(
+        "<textarea", hidden_input + hidden_aud + hidden_model + "<textarea"
+    )
 
     # Replace underscored HX attributes with hyphenated versions expected by HTMX
     modal_html = (
@@ -120,7 +135,7 @@ async def chat_modal(
     # Add hx-include for hidden paper field on the chat form
     modal_html = modal_html.replace(
         'hx-post="/chat"',
-        'hx-post="/chat" hx-include="#hidden-paper-id"',
+        'hx-post="/chat" hx-include="#hidden-paper-id,#hidden-audience-type,#hidden-model-key"',
     )
 
     # If we have a URL, make the H2 title a hyperlink in the rendered HTML
@@ -129,9 +144,6 @@ async def chat_modal(
             f"<h2>{modal_title}</h2>",
             f'<h2><a href="{html.escape(link_url)}" target="_blank" rel="noopener noreferrer">{modal_title}</a></h2>',
         )
-
-    # Ensure hydration runs by injecting a small inline script after the modal.
-    modal_html += f"<script>initChat('{session_id}', '{paper_id}', '{chat_log_id}');</script>"
 
     dur_ms = int((time.perf_counter() - start_ts) * 1000)
     logger.info("chat_modal_ready", paper_id=paper_id, duration_ms=dur_ms)

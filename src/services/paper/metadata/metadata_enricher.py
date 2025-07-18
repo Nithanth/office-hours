@@ -1,8 +1,7 @@
 import asyncio
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from loguru import logger
-from pydantic import HttpUrl
 
 from models.paper import Paper
 from services.core.exa_client import ExaClient
@@ -70,7 +69,7 @@ class MetadataEnricher:
         paper = Paper(
             id=pid,
             title=meta_final.get("title") or "No Title Provided",
-            url=cast(HttpUrl, url),
+            url=_paper_utils._coerce_http_url(url),
         )
         paper = _paper_utils.update_paper_from_meta(paper, meta_final)
         return paper
@@ -96,7 +95,7 @@ class MetadataEnricher:
         async with self._exa_sem:
             logger.debug("[enrich] Exa fetch for {}", url)
             # Use new logic inside client (handles pdf→abs fallback)
-            tmp_paper = Paper(id=url, title="No Title", url=cast(HttpUrl, url))
+            tmp_paper = Paper(id=url, title="No Title", url=_paper_utils._coerce_http_url(url))
             tmp_paper = await asyncio.to_thread(self.client._enrich_paper_metadata, tmp_paper)
             # Convert to flat meta dict for merge
             return {

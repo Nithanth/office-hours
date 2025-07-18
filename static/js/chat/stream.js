@@ -14,6 +14,12 @@ const _pendingTokenBuffers = new Map();
  */
 function _startTypingIndicator(targetEl, batchMs) {
   dbg("typing-indicator →", { targetEl, batchMs });
+
+  // If HTMX has already swapped some early token content into the bubble
+  // before our listener took over, capture that text so we don't lose it
+  // when we replace the bubble's HTML with the caret span.
+  const preExisting = targetEl.textContent || "";
+
   const contentSpan = document.createElement("span");
   contentSpan.className = "caret";
   contentSpan.textContent = "."; // cycles through . .. ...
@@ -25,12 +31,12 @@ function _startTypingIndicator(targetEl, batchMs) {
     first: true,
     batchMs,
     typingTimer: null,
-    md: "", // accumulated markdown
+    md: "", // start fresh – ignore placeholder/ellipsis to avoid ".." prefix
     source: null, // EventSource reference
     contentEl: contentSpan,
   };
 
-  // Reset bubble & inject children
+
   targetEl.innerHTML = "";
   targetEl.appendChild(contentSpan);
 
@@ -58,7 +64,12 @@ function _startTypingIndicator(targetEl, batchMs) {
 /** Flush buffered markdown tokens into `entry.md`. */
 function _flushTokens(targetEl) {
   const entry = _pendingTokenBuffers.get(targetEl);
-  if (!entry || entry.buf.length === 0) return;
+  if (!entry) return;
+  // Allow first flush even when there are no new tokens so that any
+  // pre-existing text (captured before we inserted the caret) replaces the
+  // typing indicator. Skip only when we already flushed once and have no new
+  // tokens to add.
+  if (entry.buf.length === 0 && !entry.first) return;
   if (entry.first) {
     // First flush: remove caret and prepare container
     if (entry.typingTimer) clearInterval(entry.typingTimer);
@@ -68,6 +79,13 @@ function _flushTokens(targetEl) {
     entry.contentEl.replaceWith(newSpan);
     entry.contentEl = newSpan;
     entry.first = false;
+  } else {
+    // Subsequent flushes – if HTMX error handler wiped the bubble's innerHTML
+    // our contentEl span will have been removed from the DOM. Ensure it is
+    // re-attached so text becomes visible again.
+    if (!targetEl.contains(entry.contentEl)) {
+      targetEl.appendChild(entry.contentEl);
+    }
   }
   let tokenBatch = entry.buf.join("");
   entry.buf.length = 0;
@@ -79,6 +97,8 @@ function _flushTokens(targetEl) {
   // Keep viewport pinned to bottom as tokens flush
   const container = targetEl.closest(".chat-log-container");
   if (container) scrollToBottom(container);
+  console.debug('[lux]  flushTokens',
+    { id: targetEl.id, mdLen: entry.md.length, first: entry.first });
 }
 
 // ---------------------------------------------------------------------------
@@ -157,11 +177,19 @@ function _finalizeBubble(targetEl) {
     // Persist transcript *after* final HTML render so cache stays clean
     _debouncedSave(targetEl, true);
 
-    // Remove SSE attributes to stop reconnection attempts
-    ["sse-connect", "hx-sse-reconnect-delay", "hx-ext", "data-batch-ms"].forEach((attr) =>
-      targetEl.removeAttribute(attr)
-    );
+    // Do NOT close the EventSource here.  The server emits a final "sse-close"
+    // control event that instructs the HTMX SSE extension to shut down the
+    // connection cleanly.  Closing it manually right after we receive
+    // `message_done` races with that control event and results in an
+    // `htmx:sseError`, which incorrectly marks the bubble as interrupted.
+    // Setting a very long reconnect delay prevents htmx from attempting to
+    // re-establish the stream after we’ve closed it.
+    targetEl.setAttribute("hx-sse-reconnect-delay", "2147483647");
 
+    console.debug('[lux]  doneCleanup',
+      { id: targetEl.id,
+        htmlLen: targetEl.innerHTML.length,
+        textSample: targetEl.textContent.slice(0, 120) });
     // Persist transcript (debounced)
   }
 }
@@ -240,8 +268,11 @@ function _debouncedSave(bubbleEl, immediate = false) {
     // Skip if we ended up with an empty transcript (e.g., assistant still typing).
     if (!html.trim()) return;
 
+    // Always prefer stable paperId (data-chat-pid) so cached key survives across
+    // modal instances. Fallback to explicit chatKey or generated id when paperId
+    // is absent (edge cases).
     const chatKey =
-      container.dataset.chatKey || container.dataset.chatPid || container.id?.replace("chat-log-", "");
+      container.dataset.chatPid || container.dataset.chatKey || container.id?.replace("chat-log-", "");
     console.debug('[lux] saveTranscript', chatKey, {
       cleanedLen: cleaned.length,
       htmlChars: html.length,
@@ -259,97 +290,65 @@ function _debouncedSave(bubbleEl, immediate = false) {
 }
 
 // ---------------------------------------------------------------------------
-// SSE Event listeners
+// Manual EventSource handling for chat bubbles (bypass HTMX SSE extension)
 // ---------------------------------------------------------------------------
-// Intercept messages so we can batch tokens before HTMX swaps default.
-document.body.addEventListener("htmx:sseBeforeMessage", (evt) => {
-  const target = evt.target; // element with sse-swap attr
-  if (!(target instanceof HTMLElement)) return;
+function _attachEventSource(bubbleEl) {
+  if (bubbleEl.dataset.streamAttached === "1") return; // already attached
+  const url = bubbleEl.dataset.streamUrl;
+  if (!url) return;
 
-  // Log every SSE message before we decide what to do with it.
-  const dbgType = evt.detail?.type ?? "token";
-  const dbgData = typeof evt.detail?.data === "string" ? evt.detail.data.slice(0, 80) : "";
-  console.debug('[lux] sseBeforeMessage', { id: target.id, type: dbgType, preview: dbgData });
+  bubbleEl.dataset.streamAttached = "1";
 
-  // Only intercept and batch messages for chat bubbles that opted-in via data-batch-ms.
-  const batchMsAttr = target.dataset.batchMs;
-  if (batchMsAttr === undefined) {
-    return; // Allow HTMX to handle normally (e.g. report streams)
-  }
+  const es = new EventSource(url, { withCredentials: true });
+  let entry = null;
+  const batchMs = parseInt(bubbleEl.dataset.batchMs || "20", 10);
 
-  // Cancel default swap – we'll batch and flush ourselves.
-  evt.preventDefault();
-
-  if (evt.detail?.type === "error") {
-    target.classList.add("failed");
-    target.innerHTML += "<br><em>(stream aborted)</em>";
-    return;
-  }
-
-  if (evt.detail?.type === "done") {
-    _finalizeBubble(target);
-    return;
-  }
-
-  const token = typeof evt.detail?.data === "string" ? evt.detail.data : "";
-  if (!token) return;
-  let entry = _pendingTokenBuffers.get(target);
-  if (!entry) {
-    entry = _startTypingIndicator(target, parseInt(batchMsAttr || "20", 10));
-    entry.source = evt.detail?.source || null;
-  }
-  entry.buf.push(token);
-
-  const now = performance.now();
-  if (now - entry.lastFlush > 120) {
-    _flushTokens(target);
-    return;
-  }
-  if (!entry.flushTimer) {
-    entry.flushTimer = setTimeout(() => {
-      _flushTokens(target);
-      entry.flushTimer = null;
-    }, entry.batchMs);
-  }
-});
-
-// On close/done events: ensure bubble finalises
-["sseDone", "sseClose"].forEach((evtName) => {
-  document.body.addEventListener(`htmx:${evtName}`, (ev) => {
-    const el = ev.detail?.elt;
-    console.debug(`[lux] event:hx-${evtName}`, { id: el?.id, finalised: el?.dataset?.finalised });
-    if (el?.classList.contains("assistant-message")) _finalizeBubble(el);
-  }, true);
-});
-
-// Close EventSource on error & mark interrupted
-document.body.addEventListener("htmx:sseError", (evt) => {
-  const el = evt.detail?.elt;
-  // If bubble already completed, treat as normal close not error.
-  if (el?.dataset?.finalised === "1") return;
-
-  const src = evt.detail?.source;
-  if (src?.close) setTimeout(() => src.close(), 50);
-
-  if (el?.classList.contains("assistant-message")) {
-    console.warn('[lux] sseError for bubble', { id: el.id, textLen: el.textContent.length });
-    // If we actually received some tokens, treat this as a graceful close
-    // (Gemini sometimes closes the stream which HTMX surfaces as sseError).
-    const hasContent = el.textContent.trim().length > 0;
-
-    if (!hasContent) {
-      el.dataset.interrupted = "1";
-      el.classList.add("interrupted");
-
-      if (!el.querySelector(".response-stopped")) {
-        el.innerHTML =
-          '<span class="response-stopped"><span class="stopped-x">✖</span> response stopped</span>';
-      }
+  const onAssistant = (evt) => {
+    if (!entry) {
+      entry = _startTypingIndicator(bubbleEl, batchMs);
+      entry.source = es;
     }
+    entry.buf.push(evt.data);
+    const now = performance.now();
+    if (now - entry.lastFlush > entry.batchMs) {
+      _flushTokens(bubbleEl);
+    }
+  };
 
-    _finalizeBubble(el);
-  }
-});
+  es.addEventListener("assistant", onAssistant);
+  es.addEventListener("message_done", () => {
+    // flush remaining and finalise
+    _finalizeBubble(bubbleEl);
+  });
+  es.addEventListener("sse-close", () => {
+    es.close();
+  });
+  es.addEventListener("error", () => {
+    // mark interrupted & finalise gracefully
+    bubbleEl.dataset.interrupted = "1";
+    if (entry) entry.buf.push("\n");
+    _finalizeBubble(bubbleEl);
+    es.close();
+  });
+}
+
+// Observe DOM swaps to start streams for new assistant bubbles
+function _setupBubbleObserver() {
+  const observe = (root) => {
+    root.querySelectorAll(".assistant-message.typing[data-stream-url]").forEach(_attachEventSource);
+  };
+
+  // Initial scan (page load)
+  observe(document);
+
+  // After each HTMX swap
+  document.body.addEventListener("htmx:afterSwap", (evt) => {
+    const tgt = evt.detail?.target;
+    if (tgt) observe(tgt);
+  });
+}
+
+_setupBubbleObserver();
 
 console.debug("[lux] chat/stream.js loaded");
 
@@ -358,6 +357,3 @@ export const pendingBuffers = _pendingTokenBuffers;
 export const startTypingIndicator = _startTypingIndicator;
 export const flushTokens = _flushTokens;
 export const finalizeBubble = _finalizeBubble;
-export const _loadTranscriptCompat = loadTranscript;
-
-console.debug("[lux] chat/stream.js loaded (placeholder)");

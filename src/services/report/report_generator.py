@@ -43,7 +43,7 @@ class ReportGenerator:
         selected_model_api_id: str,
         selected_model_provider: ProviderName,
         selected_model_input_token_limit: int,
-    ):
+    ) -> None:
         self.llm_service = llm_service
         self.exa_client = exa_client
         self.selected_model_api_id = selected_model_api_id
@@ -109,6 +109,7 @@ class ReportGenerator:
         try:
             return datetime.strptime(date_input, "%Y-%m-%d").strftime("%Y-%m-%d")
         except ValueError:
+            logger.error("unrecognized date string format", date_str=date_input, exc_info=True)
             return date_input
 
     def _paper_cache_key(
@@ -156,20 +157,27 @@ class ReportGenerator:
             return cast(str, cached)
 
         async def _call_llm() -> str:
+            # Build final prompt (custom user instructions feature removed)
+            composed_prompt = prompt
+
             result = await self.llm_service.generate_completion_safe(
                 provider_name=self.selected_model_provider,
                 model_name=self.selected_model_api_id,
-                prompt=prompt,
+                prompt=composed_prompt,
                 max_tokens=max_tokens,
                 system_prompt=system_prompt,
             )
+
             if not result["ok"]:
                 logger.error("LLM generation failed", error=result["content"])
+
             content = cast(str, result["content"])
+
             # Store in cache (best-effort)
-            SummaryCache.set(self.selected_model_api_id, prompt, system_prompt, content)
+            SummaryCache.set(self.selected_model_api_id, composed_prompt, system_prompt, content)
             if cache_key:
                 SummaryCache.set_generic(cache_key, content)
+
             return content
 
         timeout_sec = config.LLM_TIMEOUT_SECONDS
@@ -253,13 +261,17 @@ class ReportGenerator:
                     # If we managed to cache and paper lacks text_content, load first chunk
                     if path:
                         paper_obj = next((pp for pp in unique_papers if pp.id == pid), None)
-                        if paper_obj and (
-                            not paper_obj.text_content or len(paper_obj.text_content) < 200
-                        ):
+                        if paper_obj:
                             try:
                                 txt = await extractor.read_full_text(pid)
-                                if txt:
+                                if txt and len(txt) > len(paper_obj.text_content or ""):
                                     paper_obj.text_content = txt
+                                    logger.info(
+                                        "full_text_cached",
+                                        paper_id=pid,
+                                        chars=len(txt),
+                                        prev_chars=len(paper_obj.text_content),
+                                    )
                             except (OSError, UnicodeDecodeError) as extract_err:
                                 logger.debug("extractor_read_failed", error=str(extract_err))
 
@@ -270,6 +282,7 @@ class ReportGenerator:
                 cached_path = await extractor.load_full_text(p.id)
                 if cached_path:
                     p.full_text_path = cached_path
+
         except (OSError, RuntimeError, asyncio.CancelledError) as prep_exc:
             logger.warning("pre-fetch full text failed", error=str(prep_exc), exc_info=True)
 
@@ -340,6 +353,26 @@ class ReportGenerator:
                 "<p>No specific papers were selected or provided for summary based on the input URL.</p>"
             )
 
+        # Log total vs snippet chars per paper once per report
+        papers_for_stats: list[Paper] = []
+        if main_input_paper is not None:
+            papers_for_stats.append(main_input_paper)
+        papers_for_stats.extend(similar_papers_data)
+        if not is_url_input:
+            papers_for_stats.extend(papers_for_topic_report)
+
+        for p in papers_for_stats:
+            total_chars = len(p.text_content or "")
+            snippet_limit = paper_max_content_snippet_chars
+            snippet_used = min(total_chars, snippet_limit)
+            logger.info(
+                f"report_paper_char_stats: id={p.id} total={total_chars} used={snippet_used}/{snippet_limit}",
+                paper_id=p.id,
+                total_chars=total_chars,
+                snippet_used=snippet_used,
+                snippet_limit=snippet_limit,
+            )
+
         # -------------------- Concurrent main + similar paper summaries --------------------
         # Use tasks to satisfy mypy (coroutines wrapped via create_task)
         summary_tasks: list[asyncio.Task[str]] = []
@@ -401,7 +434,8 @@ class ReportGenerator:
                 task_infos.append((paper, "similar"))
 
         # Topic overview - queue BEFORE similar paper summaries so the overview appears first
-        if papers_for_topic_report:
+        # Skip generating a topic overview for direct URL workflow to avoid hallucinating a "common topic".
+        if papers_for_topic_report and not is_url_input:
             (system_prompt_topic, user_prompt_topic), tok_target_topic = (
                 self._topic_summariser.build_prompts_and_target(
                     original_query=original_query,
@@ -493,69 +527,15 @@ class ReportGenerator:
         clean_title = cast(str, clean_title).strip('* "')
 
         # --- Copy-text utility only (works even on non-secure origins) -----------
-        script_html = """
-<script>
-function copyReportText() {
-    try {
-        const reportEl = document.getElementById('lux-report');
-        if (!reportEl) {
-            alert('Copy failed: Report element not found.');
-            return;
-        }
-        const text = reportEl.innerText;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(() => alert('Report text copied!'))
-                .catch(() => fallbackCopy(text));
-        } else {
-            fallbackCopy(text);
-        }
-    } catch (err) {
-        console.error('copyReportText unexpected error', err);
-        alert('Could not copy text.');
-    }
-}
-
-function fallbackCopy(text) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.top = '-1000px';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try {
-        const successful = document.execCommand('copy');
-        if (successful) {
-            alert('Report text copied!');
-        } else {
-            alert('Copy failed. Select text manually.');
-        }
-    } catch (e) {
-        alert('Copy failed. Select text manually.');
-    }
-    document.body.removeChild(ta);
-}
-</script>
-"""
-
-        # Action buttons (appear before report content)
         buttons_html = (
-            "<div class='report-actions' style='margin:1em 0;'>"
-            "<button type='button' onclick='copyReportText()'>Copy&nbsp;Text</button>"
+            "<div class='report-actions hidden' style='margin:1em 0;' id='report-actions'>"
+            "<button type='button' id='copy-report-btn'>Copy&nbsp;Text</button>"
             "</div>"
         )
 
-        # Assemble full report body with headings in correct order
-        full_body = (
-            f"<h1>Research Report</h1>"
-            f"<h2 style='margin-top:0'>{html.escape(clean_title)}</h2>"
-            f"{report_body}"
-        )
-
-        wrapped_report = f"<div id='lux-report'>{full_body}</div>"
-
-        # script first (hidden), then copy button, then report
-        return script_html + buttons_html + wrapped_report
+        # Action buttons (appear before report content)
+        # Return action buttons then report body. (Copy logic lives in static/js/report.js)
+        return buttons_html + report_body
 
     async def _generate_report_title(self, report_content: str, model_key: str) -> str:
         """Generates a concise, intelligent title for the report content."""

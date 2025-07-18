@@ -21,6 +21,31 @@ except ImportError:  # pragma: no cover – fallback when src/ not on PYTHONPATH
         sys.path.append(PROJECT_ROOT)
     from models.paper import Paper
 
+from pydantic import HttpUrl, parse_obj_as
+
+_PDF_TITLE_PATTERNS = [
+    re.compile(r"\s*(?:-|\||:)\s*pdf\s*$", re.IGNORECASE),
+    re.compile(r"\s*\[?\(?pdf\)?\]?\s*$", re.IGNORECASE),
+    re.compile(r"\.pdf\s*$", re.IGNORECASE),
+    re.compile(r"\s*-\s*arxiv\s*$", re.IGNORECASE),
+]
+
+# Leading patterns (e.g., "[2502.09992] " or "[123456] ") to remove
+_ARXIV_PREFIX_PATTERN = re.compile(r"^\s*\[?(\d{4}\.\d{4,5})(?:v\d+)?\]?\s*", re.IGNORECASE)
+
+
+def _clean_title(raw_title: str | None) -> str:
+    """Return *raw_title* cleaned of common noise (PDF, arXiv ID, etc.)."""
+    if not raw_title:
+        return ""
+
+    title = str(raw_title).strip()
+    # Remove leading arXiv identifier like "[2502.09992] "
+    title = _ARXIV_PREFIX_PATTERN.sub("", title)
+    for pat in _PDF_TITLE_PATTERNS:
+        title = pat.sub("", title)
+    return title.strip()
+
 
 def is_valid_paper(paper: Paper | None) -> bool:
     """Heuristic sanity-check for *paper* metadata."""
@@ -44,17 +69,38 @@ def is_valid_paper(paper: Paper | None) -> bool:
     )
 
 
+def _coerce_http_url(raw: str) -> HttpUrl | str:
+    """Ensure *raw* is an absolute HTTP(S) URL and return a validated HttpUrl.
+
+    When validation fails, the original string is returned and a debug log is
+    emitted. This centralises URL normalisation so every Paper instance sees
+    consistent, Pydantic-friendly values.
+    """
+    if not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw.lstrip("/")
+    try:
+        return parse_obj_as(HttpUrl, raw)
+    except Exception as exc:  # noqa: BLE001 – keep raw str on failure
+        logger.debug("url_validation_failed", raw=raw, err=str(exc))
+        return raw
+
+
 def create_paper_from_exa_result(result: Any, source_description: str) -> Optional[Paper]:
     """Convert a raw Exa SDK `result` into a `Paper` object."""
     try:
-        title_val: str = getattr(result, "title", None) or "No Title Provided"
+        raw_title: str | None = getattr(result, "title", None)
+        title_val: str = _clean_title(raw_title) or "No Title Provided"
         raw_url: str = getattr(result, "url", "")
         url_val: str = _url_utils.upgrade_to_pdf_url(raw_url) or raw_url
+
+        url_val_typed = _coerce_http_url(url_val)
 
         raw_authors_any = getattr(result, "authors", None) or getattr(result, "author", None)
         authors_list: list[str] = []
         if authors_attr := getattr(result, "authors", None):
-            authors_list = [str(a).strip() for a in authors_attr if str(a).strip()]
+            # Exa sometimes returns garbage strings like "Senior Author"; clean.
+            _authors_cleaned = [str(a).strip() for a in authors_attr if str(a).strip()]
+            authors_list = _author_utils.filter_plausible_authors(_authors_cleaned)
         elif author_str := getattr(result, "author", None):
             tokens = re.split(r",|;|\band\b", str(author_str))
             authors_list = [t.strip() for t in tokens if _author_utils.is_plausible_author(t)]
@@ -89,7 +135,7 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
         paper = Paper(
             id=getattr(result, "id", None),
             title=title_val,
-            url=url_val,
+            url=url_val_typed,
             authors=_author_utils.filter_plausible_authors(authors_list) or None,
             abstract=getattr(result, "abstract", None),
             published_date=published_date,

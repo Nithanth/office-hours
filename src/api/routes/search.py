@@ -49,7 +49,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     request: Request,
     search_query: str = Form(...),
     start_published_date: str | None = Form(None),
-    num_results: int | None = Form(None),  # default resolved via settings below
+    num_results: int | None = Form(None),  # display count (1–10)
     mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
     include_domains: list[str] | None = Form(None),  # noqa: B008
     settings: AppConfig = Depends(get_settings),  # noqa: B008
@@ -80,8 +80,19 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         )
         return HTMLResponse(
             content=error_html,
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+                "HX-Push-Url": "/",
+            },
         )
+
+    # Normalise display count ----------------------------------------------------
+    if num_results is None:
+        num_results_display = settings.DEFAULT_PAPER_COUNT
+    else:
+        # Clamp to 1–10
+        num_results_display = max(1, min(num_results, 10))
 
     input_query_stripped = clean_query(search_query.strip())
 
@@ -124,7 +135,14 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             current_direct_query_task = this_task
 
             answer_html = await this_task
-            return HTMLResponse(content=answer_html)
+            return HTMLResponse(
+                content=answer_html,
+                headers={
+                    "HX-Retarget": "#search-results-container",
+                    "HX-Reswap": "innerHTML",
+                    "HX-Push-Url": "/",
+                },
+            )
         except asyncio.CancelledError:
             return HTMLResponse("<p><i>LLM query cancelled.</i></p>")
         except Exception as exc:  # noqa: BLE001 - bubble unexpected errors
@@ -154,7 +172,11 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 error_html = "<div class='error-banner'>Invalid date format. Use YYYY-MM-DD.</div>"
                 return HTMLResponse(
                     content=error_html,
-                    headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+                    headers={
+                        "HX-Retarget": "#search-results-container",
+                        "HX-Reswap": "innerHTML",
+                        "HX-Push-Url": "/",
+                    },
                 )
 
         # Shared Exa filters -------------------------------------------------------
@@ -172,7 +194,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         if is_url_search:
             exa_results = client.url_search_and_cache(
                 paper_url=input_query_stripped,
-                k=num_results or settings.DEFAULT_PAPER_COUNT,
+                k=num_results_display,
                 **shared_kwargs,
             )
         else:
@@ -180,7 +202,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             search_kwargs.update(shared_kwargs)
             exa_results = client.search_and_cache(
                 query=input_query_stripped,
-                k=num_results or settings.DEFAULT_PAPER_COUNT,
+                k=num_results_display,
                 **search_kwargs,
             )
 
@@ -195,13 +217,24 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         for paper in exa_results[:5]:
             asyncio.create_task(_prewarm_cached(str(paper.url), paper.id))
 
-        return HTMLResponse(content=str(results_component))
+        return HTMLResponse(
+            content=str(results_component),
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+                "HX-Push-Url": "/",
+            },
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("search_flow_failed", error=str(exc))
         error_html = "<div class='error-banner'>Could not retrieve results. Try again later.</div>"
         return HTMLResponse(
             content=error_html,
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+                "HX-Push-Url": "/",
+            },
         )
 
 

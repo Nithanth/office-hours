@@ -32,6 +32,11 @@ COPY --from=builder /install /usr/local
 # Copy application code (only runtime files)
 COPY --from=builder /app /app
 
+# Install Tesseract OCR for optional PDF image extraction
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 USER lux
 
 EXPOSE 8000

@@ -88,6 +88,7 @@ class Config:
     PORT: int = int(os.getenv("PORT", 8000))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
     LOG_FORMAT_JSON: bool = os.getenv("LUX_LOG_FORMAT_JSON", "False").lower() == "true"
+    # Default number of papers shown in initial search results
     DEFAULT_PAPER_COUNT: int = int(os.getenv("DEFAULT_PAPER_COUNT", 3))
     DEFAULT_SIMILAR_PAPER_COUNT: int = int(
         os.getenv("DEFAULT_SIMILAR_PAPER_COUNT", 3)
@@ -104,6 +105,22 @@ class Config:
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
     # Optional UX pause when serving cached summaries – set to 0 to disable.
     CACHED_SUMMARY_DELAY_SECONDS: float = float(os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5"))
+
+    # --- PDF extraction ---
+    # Maximum size (in megabytes) of a PDF we attempt to download & parse.
+    # Increased from 30 → 50 MB to accommodate larger arXiv PDFs without manual
+    # env overrides. Set the `MAX_PDF_MB` env-var to a different value at
+    # runtime if needed.
+    MAX_PDF_MB: int = int(os.getenv("MAX_PDF_MB", 50))
+    # Minimum characters for a full-text extract to be considered good quality.
+    MIN_FULL_TEXT_CHARS: int = int(os.getenv("MIN_FULL_TEXT_CHARS", 3000))
+    # Minimum characters to accept as *partial* fallback (e.g. abstract).
+    MIN_PARTIAL_TEXT_CHARS: int = int(os.getenv("MIN_PARTIAL_TEXT_CHARS", 400))
+
+    # OCR fallback – enable only when `tesseract` binary is present.
+    ENABLE_PDF_OCR: bool = os.getenv("ENABLE_PDF_OCR", "False").lower() == "true"
+    # Maximum PDF size (MB) we attempt OCR on (avoid huge scans).
+    OCR_MAX_PDF_MB: int = int(os.getenv("OCR_MAX_PDF_MB", 10))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
         "S": "brief and concise, summarizing only the absolute key takeaways",
@@ -144,7 +161,7 @@ class Config:
 
     # --- Chat prompt sizing ---
     CHAT_MAX_TOKENS: int = int(os.getenv("CHAT_MAX_TOKENS", 512))
-    EXCERPT_CHARS: int = int(os.getenv("EXCERPT_CHARS", 2000))
+    EXCERPT_CHARS: int = 15000
 
     # --- Exa API back-off ---
     EXA_MAX_RETRIES: int = int(os.getenv("EXA_MAX_RETRIES", 3))

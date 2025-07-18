@@ -50,10 +50,10 @@ def base_layout(title_text: str, *content: Any) -> str:
             Script(src="/static/js/htmx-sse-pool.js"),
             # Optional utilities
             Script(src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"),
-            # Icon set
+            # Icon set (self-hosted Font Awesome – see static/vendor/fontawesome/README.md)
             Link(
                 rel="stylesheet",
-                href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css",
+                href="/static/vendor/fontawesome/css/all.min.css",
             ),
         ),
         Body(
