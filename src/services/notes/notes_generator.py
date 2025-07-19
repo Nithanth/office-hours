@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+import json
 from typing import Any, Literal, cast
 
 from loguru import logger
@@ -73,9 +74,43 @@ def _render_txt(md_text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Markdown → DOCX converter (optional)
+# JSON → markdown bullet converter (handles NotesDoc schema)
 # ---------------------------------------------------------------------------
 
+def _json_to_md(parsed: NotesDoc | dict | list) -> str:
+    """Convert a parsed NotesDoc (or compatible dict/list) to markdown bullets."""
+
+    # Allow dict/list directly; wrap in NotesDoc if possible.
+    if not isinstance(parsed, NotesDoc):
+        try:
+            parsed = NotesDoc.model_validate(parsed)  # type: ignore[arg-type]
+        except Exception:  # noqa: BLE001 – fallback trivial stringify
+            return str(parsed)
+
+    lines: list[str] = []
+
+    def _walk_bullet(b, level: int) -> None:  # noqa: ANN001
+        indent = "  " * level
+        prefix = f"{_PLAIN_BULLETS[min(level, 2)]} "
+        if b.ordered:
+            prefix = "1. "
+        lines.append(f"{indent}{prefix}{b.text.strip()}")
+        if b.sub:
+            for sub_b in b.sub:
+                _walk_bullet(sub_b, level + 1)
+
+    for sec in parsed.sections:
+        lines.append(sec.heading.upper())
+        for bullet in sec.bullets:
+            _walk_bullet(bullet, 0)
+        lines.append("")  # blank line between sections
+
+    return "\n".join(lines).strip()
+
+
+# ---------------------------------------------------------------------------
+# Markdown → DOCX converter (optional)
+# ---------------------------------------------------------------------------
 
 def _render_docx(md_text: str) -> bytes:
     """Return a minimal Word document with list indentation preserved."""
@@ -133,7 +168,6 @@ def _render_docx(md_text: str) -> bytes:
 # Public API
 # ---------------------------------------------------------------------------
 
-
 class NotesGenerator:  # pylint: disable=too-few-public-methods
     """Generate study notes and return bytes / text + HTTP meta."""
 
@@ -150,6 +184,7 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
         provider: str,
         model_id: str,
         output_format: Literal["txt", "docx"] = "txt",
+        paper_ids: list[str] | None = None,
     ) -> tuple[bytes | str, str, str]:
         """Return *(content, mime_type, filename)* for the generated notes."""
 
@@ -163,22 +198,75 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
             fmt=output_format,
             report_chars=len(report_text),
             chat_chars=len(chat_digest_clean),
+            paper_ids=paper_ids,
+        )
+
+        # ----------------------------------------------------------
+        # Build the final user prompt given to the LLM
+        # ----------------------------------------------------------
+        # We prepend explicit instructions so the model never defaults to JSON.
+        instr_block = (
+            "You are preparing STUDY NOTES for the user. "
+            "Follow the OUTPUT FORMAT rules given in the system prompt. "
+            "Summarise each major section of the REPORT and then each PAPER discussed, "
+            "weaving in *non-redundant* CHAT insights."
         )
 
         user_prompt = (
-            "REPORT TEXT:\n"
+            instr_block
+            + "\n\nREPORT TEXT:\n"  # keep exact marker for easy future parsing
             + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
             + "\n\nCHAT TRANSCRIPT (may be empty):\n"
-            + chat_digest_clean
+            + (chat_digest_clean or "(no chat messages)")
         )
 
-        notes_text = await llm_service.generate_completion(
+        # ------------------------------------------------------------------
+        # Optional: inject top-k evidence chunks so the LLM can add missing
+        # key takeaways if the report overlooked something.
+        # ------------------------------------------------------------------
+
+        if paper_ids:
+            rag_blocks: list[str] = []
+            from services.paper.vector_store import index_exists, search as vs_search
+            from services.paper.embedding import embed_query as _embed_q
+
+            q_vec = _embed_q("What are the key takeaways of this paper?")
+
+            for _pid in paper_ids:
+                try:
+                    if index_exists(_pid):
+                        matches = vs_search(_pid, q_vec, top_k=config.RAG_TOP_K)
+                        if matches:
+                            rag_blocks.append(
+                                f"## Paper {_pid}\n" + "\n\n".join(m["text"] for m in matches)
+                            )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("notes_rag_failed", paper_id=_pid, error=str(exc))
+
+            if rag_blocks:
+                user_prompt += "\n\nTOP-K RAG CHUNKS (by paper):\n" + "\n\n".join(rag_blocks)
+                logger.debug("notes_rag_added", papers=len(rag_blocks))
+
+        # --------------------------------------------------
+        # LLM call and structured-output handling
+        # --------------------------------------------------
+
+        notes_raw = await llm_service.generate_completion(
             provider_name=provider,
             model_name=model_id,
             prompt=user_prompt,
-            max_tokens=2048,
+            max_tokens=config.NOTES_MAX_TOKENS,
             system_prompt=NotesGenerator._SYSTEM_PROMPT,
         )
+
+        # Try to parse JSON first; fall back to raw text.
+        try:
+            parsed_obj = json.loads(notes_raw)
+            notes_doc = NotesDoc.model_validate(parsed_obj)
+            logger.debug("notes_json_validated", sections=len(notes_doc.sections))
+            notes_text = _json_to_md(notes_doc)
+        except Exception:
+            notes_text = str(notes_raw)
 
         if output_format == "docx":
             doc_bytes = _render_docx(notes_text)

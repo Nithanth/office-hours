@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from pathlib import Path
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -88,6 +89,13 @@ class Config:
     PORT: int = int(os.getenv("PORT", 8000))
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
     LOG_FORMAT_JSON: bool = os.getenv("LUX_LOG_FORMAT_JSON", "False").lower() == "true"
+
+    # --- Cache directories ---
+    # All on-disk caches live under a single root to simplify deployment and cleanup.
+    CACHE_DIR: Path = Path(os.getenv("CACHE_DIR", ".cache")).expanduser()
+    VECTOR_CACHE_DIR: Path = CACHE_DIR / "vector"
+    SUMMARY_CACHE_DIR: Path = CACHE_DIR / "summaries"
+
     # Default number of papers shown in initial search results
     DEFAULT_PAPER_COUNT: int = int(os.getenv("DEFAULT_PAPER_COUNT", 3))
     DEFAULT_SIMILAR_PAPER_COUNT: int = int(
@@ -240,6 +248,17 @@ class Config:
 
     # Fallback TogetherAI model if primary fails
     TOGETHER_FALLBACK_MODEL: Optional[str] = "gpt-4o"
+
+    # --- RAG / retrieval parameters ---
+    RAG_CHUNK_TOKENS: int = int(os.getenv("RAG_CHUNK_TOKENS", 512))
+    RAG_CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", 64))
+    RAG_MIN_CHARS: int = int(os.getenv("RAG_MIN_CHARS", 300))
+    RAG_DISTANCE_L2: float = float(os.getenv("RAG_DISTANCE_L2", 2.0))
+    RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", 4))
+
+    # --- Chat / notes parameters ---
+    CHAT_DEDUPE_SIM_THRESHOLD: float = float(os.getenv("CHAT_DEDUPE_SIM_THRESHOLD", 0.9))
+    NOTES_MAX_TOKENS: int = int(os.getenv("NOTES_MAX_TOKENS", 2048))
 
     __all__: list[str] = ["Config", "config"]
 

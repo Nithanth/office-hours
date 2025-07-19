@@ -231,6 +231,16 @@ class TextExtractor:
                 final_path = cache_path.with_suffix(".partial.txt")
 
             final_path.write_text(extracted, encoding="utf-8")
+            # Build RAG vector index asynchronously (best-effort, non-blocking).
+            try:
+                if paper_id:
+                    from services.paper import vector_store as _vs  # local import to avoid cycles
+
+                    if not _vs.index_exists(paper_id):
+                        _vs.build_index_from_text(paper_id, extracted)
+            except Exception as _exc:  # pragma: no cover
+                logger.warning("vector_index_error", paper_id=paper_id, error=str(_exc))
+
             logger.info(
                 "full_text_cached",
                 path=str(final_path),

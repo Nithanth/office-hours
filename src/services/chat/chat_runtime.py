@@ -1,10 +1,12 @@
 """Chat helpers: per-paper semaphores and prompt builder."""
 
 import asyncio
+import contextlib
 import os
 from collections import defaultdict
 
 from loguru import logger
+from config import config
 
 from services.chat.chat_state import ChatState
 from services.paper.text_extractor import TextExtractor
@@ -38,20 +40,47 @@ async def build_prompt(
     # default and lets users tweak the size via config.py or .env.
     # ------------------------------------------------------------------
     if excerpt_chars is None:
-        from config import config as _cfg  # late import to avoid cycles at startup
-
-        excerpt_chars = _cfg.EXCERPT_CHARS
+        excerpt_chars = config.EXCERPT_CHARS
 
         # Legacy fallback – still honour env override if set explicitly.
         env_override = os.getenv("EXCERPT_CHARS")
         if env_override is not None:
-            try:
+            with contextlib.suppress(ValueError):
                 excerpt_chars = int(env_override)
-            except ValueError:
-                pass
 
     turns = chat_state.get_conversation(paper_id)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
+
+    # ------------------------------------------------------------------
+    # RAG retrieval: if a vector index exists for this paper, use the user's
+    # latest question to fetch the most relevant chunks and build *context*.
+    # ------------------------------------------------------------------
+    context_chunks = ""
+    try:
+        from services.paper import vector_store as _vs  # local import avoid cycles
+
+        if _vs.index_exists(paper_id) and turns and turns[-1].role == "user":
+            from services.paper.embedding import embed_query as _embed_q
+
+            query_vec = _embed_q(turns[-1].content)
+            matches = _vs.search(paper_id, query_vec, top_k=config.RAG_TOP_K)
+            if matches:
+                context_chunks = "\n\n".join(m["text"] for m in matches)
+                logger.debug(
+                    "rag_retrieval",
+                    paper_id=paper_id,
+                    chunks=len(matches),
+                    chars=len(context_chunks),
+                )
+    except Exception as _e:  # pragma: no cover
+        logger.warning("rag_failed", paper_id=paper_id, error=str(_e))
+
+    excerpt = chat_state.paper_cache.setdefault(paper_id, {}).get("excerpt")
+
+    # If retrieval returned results, prepend them **after** the abstract/excerpt so
+    # the model first sees the global overview and then the supporting evidence.
+    if context_chunks:
+        excerpt = ((excerpt + "\n\n") if excerpt else "") + context_chunks
 
     # Full-text excerpt
     full_text_path = chat_state.paper_cache.get(paper_id, {}).get("full_text_path")
@@ -62,7 +91,6 @@ async def build_prompt(
         if loaded_path:
             full_text_path = loaded_path
             chat_state.paper_cache.setdefault(paper_id, {})["full_text_path"] = loaded_path
-    excerpt = chat_state.paper_cache.setdefault(paper_id, {}).get("excerpt")
     if full_text_path and os.path.exists(full_text_path):
         need_reload = False
         if excerpt is None:
