@@ -9,25 +9,40 @@ import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } 
 import { getModalParts, setControlsEnabled, scrollToBottom, enhanceModal } from "./ui.js";
 import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js";
 
-// Flag so we only fire the clear-session beacon once (some browsers trigger
-// multiple beforeunload/unload events which would spam the backend).
-let _sentClearBeacon = false;
-
 // ---------------------------------------------------------------------------
-// Session cleanup – tell backend to drop ChatState when the page unloads.
+// Chat session lifecycle
+//   • Keep chat across a *simple reload* (navigation type === "reload").
+//   • Purge chat when the user opens a new tab/window, navigates away, or
+//     performs a hard refresh (navigation type === "navigate").
+//
+// We detect the navigation type on page load via the PerformanceNavigationTiming
+// entry. If it's not "reload" we immediately send a beacon asking the backend
+// to clear the ChatState for the existing session cookie.
 // ---------------------------------------------------------------------------
 
-window.addEventListener("beforeunload", () => {
-  if (_sentClearBeacon) return;
-  try {
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon("/chat/clear_session");
-      _sentClearBeacon = true;
+(() => {
+  const navEntry = performance.getEntriesByType("navigation")[0];
+  const navType = navEntry && navEntry.type ? navEntry.type : "navigate";
+  const hardFlag = sessionStorage.getItem("luxHardReload") === "1";
+
+  // Conditions that SHOULD wipe the ChatState:
+  //   • Fresh navigate (new tab, link, back/forward) → navType !== "reload"
+  //   • Hard reload indicated by shift-key snapshot flag
+  if (navType !== "reload" || hardFlag) {
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/chat/clear_session");
+      } else {
+        fetch("/chat/clear_session", { method: "POST", keepalive: true });
+      }
+    } catch (_) {
+      /* no-op */
     }
-  } catch (_) {
-    /* noop */
   }
-});
+
+  // Clear flag so next soft reload can restore state again.
+  if (hardFlag) sessionStorage.removeItem("luxHardReload");
+})();
 
 // Submit on Enter, Shift+Enter for newline
 document.addEventListener("keydown", (ev) => {

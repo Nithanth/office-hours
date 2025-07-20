@@ -6,16 +6,16 @@ package.  Import with::
     from models.notes import NotesDoc, Section, Bullet
 """
 
-from typing import List, Optional
+from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Bullet(BaseModel):
     """A single bullet item, optionally with nested children."""
 
     text: str
-    sub: Optional[List["Bullet"]] = None  # Nested bullets (depth +1)
+    sub: Optional[list["Bullet"]] = None  # Nested bullets (depth +1)
     ordered: bool = False  # True → render as a numbered list instead of a bullet
 
     # Silently ignore unknown keys so the schema can evolve without hard breaks.
@@ -30,7 +30,7 @@ class Section(BaseModel):
     """High-level section such as HIGH-LEVEL OVERVIEW or PAPER 1."""
 
     heading: str = Field(..., min_length=1)
-    bullets: List[Bullet] = Field(default_factory=list)
+    bullets: list[Bullet] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -38,6 +38,6 @@ class Section(BaseModel):
 class NotesDoc(BaseModel):
     """Root document consisting of multiple sections."""
 
-    sections: List[Section] = Field(default_factory=list)
+    sections: list[Section] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")

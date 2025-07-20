@@ -110,7 +110,7 @@ def render_report_config_form(
             hx_target="#report-display-area",
             hx_swap="innerHTML",
             hx_indicator="#report-loading-indicator",
-            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden",
+            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden, [name='is_url_input']",
         ),
     )
 
@@ -185,7 +185,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
             ),
         ]
         selection_label = Span(
-            "📌 pinned",
+            "⭐",
             cls="pinned-label",
             style="font-size:0.85em;",
         )
@@ -211,7 +211,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
         else None
     )
 
-    li_attrs = {"style": item_style, "id": f"paper-{paper.id}"}
+    li_attrs = {"style": item_style, "id": f"paper-{paper.id}", "data-paper-id": paper.id}
     if wildcard:
         li_attrs["id"] = "wild-card-item"
         li_attrs["class"] = "wildcard-paper"
@@ -297,35 +297,8 @@ def render_search_results(
         # Instead of injecting an inline <script>, update history in a CSP-compliant
         # global JS listener (see static/js/main.js).
 
-        # Shuffle / wildcard / reset controls (work for both URL & query searches)
-        results_content.append(
-            Div(
-                BUTTON(
-                    "🎲 Wildcard Paper",
-                    id="shuffle-btn",
-                    hx_post="/shuffle",
-                    hx_target="#wild-card-item",
-                    hx_swap="outerHTML",
-                ),
-                BUTTON(
-                    "🔀 Shuffle All Papers",
-                    id="shuffle-all-btn",
-                    hx_post="/shuffle_all",
-                    hx_target="#papers-list",
-                    hx_swap="outerHTML",
-                    style="margin-left:0.5rem;",
-                ),
-                BUTTON(
-                    "↩️ Reset Order",
-                    id="reset-btn",
-                    hx_post="/reset_results",
-                    hx_target="#papers-list",
-                    hx_swap="outerHTML",
-                    style="margin-left:0.5rem;",
-                ),
-                style="margin-top:10px;",
-            )
-        )
+        # Pager placeholder – client-side JS populates controls
+        results_content.append(Div(id="pager", cls="pager", style="margin-top:10px;"))
         has_results = True
     else:
         pass
@@ -371,7 +344,7 @@ def render_search_results(
                     hx_target="#report-display-area",
                     hx_swap="innerHTML",
                     hx_indicator="#report-loading-indicator",
-                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden",
+                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden, [name='is_url_input']",
                 ),
             ]
         )
@@ -671,15 +644,7 @@ def home_page(page_data: SharedPageData) -> Body:
                     ),
                     style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;",
                 ),
-                Label("Number of Results: ", for_="num_results"),
-                INPUT(
-                    type="number",
-                    id="num_results",
-                    name="num_results",
-                    min="1",
-                    max="10",
-                    value=str(config.config.DEFAULT_PAPER_COUNT),
-                ),
+                # Number of Results input removed – page size handled internally.
                 Br(),
                 # Buttons choose workflow (paper search)
                 BUTTON(

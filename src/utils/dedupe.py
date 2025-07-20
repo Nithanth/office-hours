@@ -2,9 +2,9 @@
 
 from typing import cast
 
-import nltk
 from loguru import logger
 from sentence_transformers import SentenceTransformer, util
+
 from config import config
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -46,7 +46,9 @@ def _sentences(text: str) -> list[str]:
     return [s for s in rough if s]
 
 
-def deduplicate_chat(chat_text: str, report_text: str, threshold: float = _DEFAULT_THRESHOLD) -> str:
+def deduplicate_chat(
+    chat_text: str, report_text: str, threshold: float = _DEFAULT_THRESHOLD
+) -> str:
     """Return `chat_text` with sentences removed that overlap strongly with the report.
 
     Args:

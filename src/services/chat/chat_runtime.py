@@ -6,8 +6,8 @@ import os
 from collections import defaultdict
 
 from loguru import logger
-from config import config
 
+from config import config
 from services.chat.chat_state import ChatState
 from services.paper.text_extractor import TextExtractor
 

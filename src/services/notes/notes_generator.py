@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import io
-import re
 import json
+import re
 from typing import Any, Literal, cast
 
 from loguru import logger
 
 from config import config
+
+# Pydantic schema for structured notes
+from models.notes import Bullet, NotesDoc
 from prompts.prompt_builder import _load_template as _load_prompt
 from services.core.llm_service import LLMService
 from utils.dedupe import deduplicate_chat
@@ -77,19 +80,20 @@ def _render_txt(md_text: str) -> str:
 # JSON → markdown bullet converter (handles NotesDoc schema)
 # ---------------------------------------------------------------------------
 
+
 def _json_to_md(parsed: NotesDoc | dict | list) -> str:
     """Convert a parsed NotesDoc (or compatible dict/list) to markdown bullets."""
 
     # Allow dict/list directly; wrap in NotesDoc if possible.
     if not isinstance(parsed, NotesDoc):
         try:
-            parsed = NotesDoc.model_validate(parsed)  # type: ignore[arg-type]
+            parsed = NotesDoc.model_validate(parsed)
         except Exception:  # noqa: BLE001 – fallback trivial stringify
             return str(parsed)
 
     lines: list[str] = []
 
-    def _walk_bullet(b, level: int) -> None:  # noqa: ANN001
+    def _walk_bullet(b: Bullet, level: int) -> None:
         indent = "  " * level
         prefix = f"{_PLAIN_BULLETS[min(level, 2)]} "
         if b.ordered:
@@ -111,6 +115,7 @@ def _json_to_md(parsed: NotesDoc | dict | list) -> str:
 # ---------------------------------------------------------------------------
 # Markdown → DOCX converter (optional)
 # ---------------------------------------------------------------------------
+
 
 def _render_docx(md_text: str) -> bytes:
     """Return a minimal Word document with list indentation preserved."""
@@ -167,6 +172,7 @@ def _render_docx(md_text: str) -> bytes:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 class NotesGenerator:  # pylint: disable=too-few-public-methods
     """Generate study notes and return bytes / text + HTTP meta."""
@@ -227,8 +233,9 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
 
         if paper_ids:
             rag_blocks: list[str] = []
-            from services.paper.vector_store import index_exists, search as vs_search
             from services.paper.embedding import embed_query as _embed_q
+            from services.paper.vector_store import index_exists
+            from services.paper.vector_store import search as vs_search
 
             q_vec = _embed_q("What are the key takeaways of this paper?")
 
@@ -264,6 +271,31 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
             parsed_obj = json.loads(notes_raw)
             notes_doc = NotesDoc.model_validate(parsed_obj)
             logger.debug("notes_json_validated", sections=len(notes_doc.sections))
+
+            # ------------------------------------------------------------------
+            # Post-process: drop duplicate bullets **within each section**
+            # ------------------------------------------------------------------
+
+            def _dedup_section(sec: NotesDoc.sections.__class__[0]) -> None:
+                seen: set[str] = set()
+
+                def _dedup_list(bullets: list[Bullet]) -> list[Bullet]:
+                    deduped: list[Bullet] = []
+                    for blt in bullets:
+                        key = blt.text.strip().lower()
+                        if key in seen:
+                            continue  # skip duplicate
+                        seen.add(key)
+                        if blt.sub:
+                            blt.sub = _dedup_list(blt.sub)
+                        deduped.append(blt)
+                    return deduped
+
+                sec.bullets = _dedup_list(sec.bullets)
+
+            for _sec in notes_doc.sections:
+                _dedup_section(_sec)
+
             notes_text = _json_to_md(notes_doc)
         except Exception:
             notes_text = str(notes_raw)

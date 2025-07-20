@@ -253,7 +253,7 @@ class ReportGenerator:
                     seen_ids.add(p.id)
 
             # Launch extraction tasks with concurrency guard
-            sem = asyncio.Semaphore(3)
+            sem = asyncio.Semaphore(config.PDF_EXTRACTION_CONCURRENCY)
 
             async def _bounded_extract(url: str, pid: str) -> None:
                 async with sem:
@@ -433,9 +433,57 @@ class ReportGenerator:
                 )
                 task_infos.append((paper, "similar"))
 
-        # Topic overview - queue BEFORE similar paper summaries so the overview appears first
-        # Skip generating a topic overview for direct URL workflow to avoid hallucinating a "common topic".
+        # Topic overview / common theme --------------------------------------------------
+        # 1) Query workflow → normal topic overview (is_url_input is False)
+        # 2) URL workflow → optional common theme across *selected similar papers* when
+        #    the feature flag is on and we have enough papers to synthesise.
+
+        if (
+            is_url_input
+            and config.ENABLE_URL_SIMILAR_OVERVIEW
+            and len(similar_papers_data) >= config.URL_THEME_MIN_PAPERS
+        ):
+            # Build a concise theme overview from the selected similar papers.
+            report_parts.insert(0, "<h3>Common Theme Across Selected Papers</h3>")
+
+            (system_prompt_url_theme, user_prompt_url_theme), tok_target_theme = (
+                self._topic_summariser.build_prompts_and_target(
+                    original_query=original_query,
+                    papers=similar_papers_data,
+                    audience_type=audience_type,
+                    summary_size_key=user_summary_size_key,
+                    length_guidance=topic_length_guidance,
+                    snippet_char_limit=topic_max_content_snippet_chars,
+                )
+            )
+
+            summary_tasks.insert(
+                0,
+                asyncio.create_task(
+                    self._generate_single_summary(
+                        user_prompt_url_theme,
+                        tok_target_theme,
+                        semaphore=paper_summary_semaphore,
+                        system_prompt=system_prompt_url_theme,
+                        cache_key=self._topic_cache_key(
+                            f"url_theme:{'|'.join(p.id for p in similar_papers_data)}",
+                            user_summary_size_key,
+                            audience_type,
+                        ),
+                    )
+                ),
+            )
+            task_infos.insert(0, (None, "url_theme"))
+
+        # Query workflow topic overview
+        logger.debug(
+            "topic_overview_check",
+            papers_for_topic_report_count=len(papers_for_topic_report),
+            is_url_input=is_url_input,
+            will_trigger=bool(papers_for_topic_report and not is_url_input),
+        )
         if papers_for_topic_report and not is_url_input:
+            logger.info("topic_overview_triggered", papers_count=len(papers_for_topic_report))
             (system_prompt_topic, user_prompt_topic), tok_target_topic = (
                 self._topic_summariser.build_prompts_and_target(
                     original_query=original_query,
@@ -452,6 +500,7 @@ class ReportGenerator:
                     self._generate_single_summary(
                         user_prompt_topic,
                         tok_target_topic,
+                        semaphore=paper_summary_semaphore,
                         system_prompt=system_prompt_topic,
                         cache_key=self._topic_cache_key(
                             original_query,

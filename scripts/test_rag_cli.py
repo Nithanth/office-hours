@@ -22,11 +22,11 @@ Example usage:
 import argparse
 import logging
 import sys
-from pathlib import Path
-from typing import Optional
 import tempfile
-import requests
+from pathlib import Path
 from urllib.parse import urlparse
+
+import requests
 
 # Ensure project and src directories are on PYTHONPATH so `import services.*` works
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -46,10 +46,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Now import our modules
-from services.paper.vector_store import build_index_from_text, index_exists, search, index_path
+from pdfminer.high_level import extract_text as _pdfminer_extract
+
 from services.paper.embedding import embed_query
 from services.paper.text_extractor import _clean_text
-from pdfminer.high_level import extract_text as _pdfminer_extract
+from services.paper.vector_store import build_index_from_text, index_exists, index_path, search
 
 try:
     import fitz  # PyMuPDF
@@ -60,14 +61,16 @@ try:
 
 except ModuleNotFoundError:  # fallback to pdfminer
 
-    def _extract_pdf_text(pdf_path: Path) -> str:  # type: ignore[misc]
+    def _extract_pdf_text(pdf_path: Path) -> str:
         return _pdfminer_extract(str(pdf_path))
 
 
 def index_pdf(pdf_path: Path, paper_id: str) -> None:
     """Index a PDF file with the given paper ID."""
     if index_exists(paper_id):
-        logger.warning(f"Index for {paper_id} already exists. Delete it first if you want to re-index.")
+        logger.warning(
+            f"Index for {paper_id} already exists. Delete it first if you want to re-index."
+        )
         return
 
     if not pdf_path.exists():
@@ -99,17 +102,17 @@ def search_index(paper_id: str, query: str, top_k: int = 3) -> None:
     try:
         query_embedding = embed_query(query)
         results = search(paper_id, query_embedding, top_k=top_k)
-        
+
         if not results:
             logger.info("No results found.")
             return
 
-        logger.info(f"\n{'='*80}\nTop {len(results)} results:\n{'='*80}")
+        logger.info(f"\n{'=' * 80}\nTop {len(results)} results:\n{'=' * 80}")
         for i, result in enumerate(results, 1):
-            full = result['text'].replace('\n', ' ').strip()
-            score = result.get('_distance', 0.0)
+            full = result["text"].replace("\n", " ").strip()
+            score = result.get("_distance", 0.0)
             is_trunc = len(full) > 500
-            preview = full[:500] + (' …' if is_trunc else '')
+            preview = full[:500] + (" …" if is_trunc else "")
             print(f"\n[Result {i}, Score: {score:.3f}]\n{preview}\n{'─' * 80}")
     except Exception as e:
         logger.error(f"Search failed: {e}", exc_info=True)
@@ -118,7 +121,7 @@ def search_index(paper_id: str, query: str, top_k: int = 3) -> None:
 def list_indices() -> None:
     """List all available vector indices."""
     from config import config
-    
+
     if not config.VECTOR_CACHE_DIR.exists():
         logger.info("No vector cache directory found.")
         return
@@ -141,6 +144,7 @@ def delete_index_cli(paper_id: str) -> None:
 
     try:
         import shutil
+
         path = index_path(paper_id)
         if path.exists():
             if path.is_dir():
@@ -156,13 +160,16 @@ def delete_index_cli(paper_id: str) -> None:
 
 def _download_pdf(url: str) -> Path:
     """Download a PDF to a temporary file and return its path."""
-    
+
     logger.info(f"Downloading PDF from {url} …")
     response = requests.get(url, timeout=30)
     response.raise_for_status()
 
     if "application/pdf" not in response.headers.get("content-type", ""):
-        logger.warning("URL does not appear to be a PDF (content-type %s)", response.headers.get("content-type"))
+        logger.warning(
+            "URL does not appear to be a PDF (content-type %s)",
+            response.headers.get("content-type"),
+        )
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     tmp.write(response.content)
@@ -173,7 +180,7 @@ def _download_pdf(url: str) -> Path:
 
 def _derive_paper_id(source: str) -> str:
     """Derive a paper_id from a file path or URL if not provided by user."""
-    
+
     name = Path(urlparse(source).path if source.startswith("http") else source).stem
     # Simple slug: strip spaces, special chars
     return "".join(c for c in name if c.isalnum() or c in ("-", "_"))[:64]
@@ -181,7 +188,7 @@ def _derive_paper_id(source: str) -> str:
 
 def chat_loop(paper_id: str, top_k: int = 4) -> None:
     """Simple interactive retrieval loop."""
-    
+
     if not index_exists(paper_id):
         logger.error("No index found for %s", paper_id)
         return
@@ -207,13 +214,13 @@ def chat_loop(paper_id: str, top_k: int = 4) -> None:
             print("No matching chunks found.\n")
             continue
 
-        print(f"\nTop {len(results)} chunks:\n{'='*80}")
+        print(f"\nTop {len(results)} chunks:\n{'=' * 80}")
         for i, res in enumerate(results, 1):
             full = res["text"].replace("\n", " ").strip()
             score = res.get("_distance", 0.0)
             is_trunc = len(full) > 350
             snippet = full[:350] + (" …" if is_trunc else "")
-            print(f"[{i} | {score:.3f}] {snippet}\n{'─'*80}")
+            print(f"[{i} | {score:.3f}] {snippet}\n{'─' * 80}")
 
 
 def main() -> None:
@@ -249,7 +256,9 @@ def main() -> None:
     chat_parser.add_argument("--top-k", type=int, default=4, help="Chunks per response")
 
     # Chat directly from URL (download, index if needed, then open chat)
-    chat_url_parser = subparsers.add_parser("chat-url", help="Download a PDF and chat with it interactively")
+    chat_url_parser = subparsers.add_parser(
+        "chat-url", help="Download a PDF and chat with it interactively"
+    )
     chat_url_parser.add_argument("pdf_url", help="URL to a PDF")
     chat_url_parser.add_argument("--paper-id", help="Optional paper id")
     chat_url_parser.add_argument("--top-k", type=int, default=4, help="Chunks per response")

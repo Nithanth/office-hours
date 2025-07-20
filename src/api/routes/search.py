@@ -276,7 +276,7 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
             "<input type='checkbox' class='paper-select-checkbox pinned-checkbox' checked "
             "style='margin-right:5px; pointer-events:none;'>"
             f"<input type='hidden' name='selected_papers_json' value='{paper_json_escaped}'>"
-            "<span class='pinned-label' style='font-size:0.85em;'>📌 pinned</span>"
+            "<span class='pinned-label' style='font-size:0.85em;'>⭐</span>"
         )
     else:
         # Regular paper - user-selectable checkbox

@@ -301,3 +301,23 @@ function handleNotesClick(ev) {
 }
 
 document.addEventListener("click", handleNotesClick);
+
+(function () {
+  // simple toast fallback if settings.js not loaded
+  if (typeof window.showToast !== "function") {
+    window.showToast = function (msg, ms = 3500) {
+      const t = document.createElement("div");
+      t.textContent = msg;
+      t.style.cssText =
+        "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);" +
+        "background:#333;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;" +
+        "font-size:14px;opacity:0;transition:opacity .2s";
+      document.body.appendChild(t);
+      requestAnimationFrame(() => (t.style.opacity = "1"));
+      setTimeout(() => {
+        t.style.opacity = "0";
+        setTimeout(() => t.remove(), 300);
+      }, ms);
+    };
+  }
+})();

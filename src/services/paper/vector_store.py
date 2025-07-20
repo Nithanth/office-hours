@@ -20,7 +20,7 @@ from loguru import logger
 from config import config
 from services.paper.embedding import embed_texts
 
-_VECTOR_ROOT = config.VECTOR_CACHE_DIR
+_VECTOR_ROOT: Path = cast(Path, config.VECTOR_CACHE_DIR)
 _VECTOR_ROOT.mkdir(parents=True, exist_ok=True)
 
 _TOKENIZER = tiktoken.get_encoding("cl100k_base")  # good default for GPT models
@@ -28,8 +28,8 @@ _MAX_TOKENS = config.RAG_CHUNK_TOKENS
 _OVERLAP = config.RAG_CHUNK_OVERLAP
 
 # Retrieval filtering thresholds (configurable via config.py)
-_MIN_CHARS = config.RAG_MIN_CHARS           # ignore short chunks
-_DISTANCE_THRESH = config.RAG_DISTANCE_L2    # max L2 distance to keep
+_MIN_CHARS = config.RAG_MIN_CHARS  # ignore short chunks
+_DISTANCE_THRESH = config.RAG_DISTANCE_L2  # max L2 distance to keep
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +45,8 @@ def _safe_name(paper_id: str) -> str:
 
 
 def index_path(paper_id: str) -> Path:
-    return _VECTOR_ROOT / f"{_safe_name(paper_id)}.lance"
+    """Return absolute path to Lance index for *paper_id*."""
+    return Path(_VECTOR_ROOT) / f"{_safe_name(paper_id)}.lance"
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,9 @@ def save_index(paper_id: str, embeddings: np.ndarray, chunks: list[str]) -> None
     logger.info("vector_index_built", paper_id=paper_id, chunks=len(chunks))
 
 
-def search(paper_id: str, query_embedding: np.ndarray, *, top_k: int = config.RAG_TOP_K) -> list[dict]:
+def search(
+    paper_id: str, query_embedding: np.ndarray, *, top_k: int = config.RAG_TOP_K
+) -> list[dict]:
     """Return *top_k* records with highest similarity."""
 
     db = lancedb.connect(str(_VECTOR_ROOT))
@@ -83,12 +86,15 @@ def search(paper_id: str, query_embedding: np.ndarray, *, top_k: int = config.RA
     if name not in db.table_names():
         return []
 
-    table = db.open_table(name)
+    table = db.open_table(
+        name, mode="r"
+    )  # Use read-only mmap mode for faster cold reads and lower RAM.
     # Ask for a few more to allow post-filter pruning
     candidates = table.search(query_embedding.tolist()).limit(top_k * 3).to_list()
 
     filtered = [
-        r for r in candidates
+        r
+        for r in candidates
         if len(r["text"]) >= _MIN_CHARS and r.get("_distance", 9e9) <= _DISTANCE_THRESH
     ]
 
