@@ -3,13 +3,13 @@
 # ---------------------------------------------------------------------------
 # Generic template loader (importlib.resources keeps paths portable)
 # ---------------------------------------------------------------------------
-import os
 from importlib.resources import files
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
+
+import config as _cfg
 
 # Optional directory where operators can mount custom prompt overrides
-PROMPT_OVERRIDE_DIR = Path(os.getenv("PROMPT_OVERRIDE_DIR", "")).expanduser()
+PROMPT_OVERRIDE_DIR = _cfg.config.PROMPT_OVERRIDE_DIR
 
 
 def _load_template(rel_path: str) -> str:
@@ -24,11 +24,11 @@ def _load_template(rel_path: str) -> str:
     if PROMPT_OVERRIDE_DIR:
         override_path = PROMPT_OVERRIDE_DIR / rel_path
         if override_path.is_file():
-            return override_path.read_text(encoding="utf-8").strip()
+            return cast(str, override_path.read_text(encoding="utf-8").strip())
 
     # 2. Built-in templates packaged with the codebase
     tmpl_path = files("prompts").joinpath("templates").joinpath(rel_path)
-    return tmpl_path.read_text(encoding="utf-8").strip()
+    return cast(str, tmpl_path.read_text(encoding="utf-8").strip())
 
 
 # -------------------------------
@@ -39,6 +39,28 @@ def _load_template(rel_path: str) -> str:
 # so non-devs can tweak wording without a deployment.
 
 DEFAULT_SYSTEM_PROMPT: str = _load_template("system/default.md")
+
+# ---------------------------------------------------------------------------
+# RAG workflow instruction blocks (used across multiple services)
+# ---------------------------------------------------------------------------
+
+# Preface for the direct query flow – appended before the question + evidence.
+DIRECT_QUERY_USER_PREFIX: str = (
+    "You are answering a direct research question for a user. "
+    "Provide the best possible answer grounded in the provided source passages if they are relevant. "
+    "If the passages are not relevant you may rely on your own knowledge. "
+    "Answer in no more than 250 words (≈ one to two short paragraphs)."
+)
+
+# Instruction header for the study-notes generator.  This stays separate from
+# the bulky report/chat text that follows, making the generator code cleaner.
+STUDY_NOTES_INSTR_BLOCK: str = (
+    "You are preparing STUDY NOTES for the user. "
+    "Follow the bullet-list OUTPUT FORMAT rules given in the system prompt. "
+    "Use bullets only (no paragraphs) with ≤3 levels of nesting. "
+    "Summarise each major section of the REPORT and then each PAPER discussed, "
+    "weaving in *non-redundant* CHAT insights."
+)
 
 
 # ---------------------------------------------------------------------------

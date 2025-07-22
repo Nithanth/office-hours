@@ -46,14 +46,22 @@ async def chat_modal(
         paper_service = None
 
     paper = None
-    if paper_service:  # Attempt to fetch metadata for nicer header
-        try:
-            paper = await paper_service.get_paper_metadata(paper_id)
-        except Exception as exc:  # noqa: BLE001 - best effort
-            logger.warning(f"chat_modal: metadata lookup failed for {paper_id}: {exc}")
+
+    # Special un-grounded assistant modal
+    if paper_id == "global":
+        modal_title = "Research Assistant"
+        link_url = None
+        history = []  # force blank history later – separate key anyway
+    else:
+        if paper_service:  # Attempt to fetch metadata for nicer header
+            try:
+                paper = await paper_service.get_paper_metadata(paper_id)
+            except Exception as exc:  # noqa: BLE001 - best effort
+                logger.warning(f"chat_modal: metadata lookup failed for {paper_id}: {exc}")
 
     # Default title if no metadata is found
-    modal_title = paper_id
+    if paper_id != "global":
+        modal_title = paper_id
 
     if title:
         modal_title = html.escape(title)

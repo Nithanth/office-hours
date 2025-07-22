@@ -2,7 +2,6 @@
 
 import asyncio
 import html
-import os
 from datetime import datetime
 from typing import Any, cast
 
@@ -10,6 +9,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
+import config as _cfg
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
@@ -24,7 +24,7 @@ from utils.search_utils import clean_query
 router = APIRouter()
 
 # Concurrency guard for background text prewarm tasks
-_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
+_PREWARM_SEMA = asyncio.Semaphore(_cfg.config.TEXT_PREWARM_CONCURRENCY)
 
 
 async def _prewarm_cached(url: str, paper_id: str) -> None:

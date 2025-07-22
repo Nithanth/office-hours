@@ -3,7 +3,7 @@
 import datetime
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -96,6 +96,32 @@ class Config:
     VECTOR_CACHE_DIR: Path = CACHE_DIR / "vector"
     SUMMARY_CACHE_DIR: Path = CACHE_DIR / "summaries"
 
+    # --- Embedding / Vector store optimisations ---
+    # Persist embeddings as float16 instead of float32 to halve disk usage.
+    EMB_FLOAT16: bool = os.getenv("EMB_FLOAT16", "0") == "1"
+    # Override the batch size used during SentenceTransformer.encode when building indexes.
+    EMB_BATCH_SIZE: int = int(os.getenv("EMB_BATCH_SIZE", 32))
+
+    # When enabled, store query embeddings on disk so they persist across restarts.
+    DISK_QUERY_CACHE: bool = os.getenv("DISK_QUERY_CACHE", "0") == "1"
+
+    # --- PDF download ---
+    # Send If-Modified-Since headers on repeat PDF fetches to avoid re-downloading unchanged files.
+    USE_COND_FETCH: bool = os.getenv("USE_COND_FETCH", "0") == "1"
+
+    # --- Chat behaviour ---
+    # Max tokens per assistant chunk (UI override)
+    CHAT_MAX_TOKENS: int = int(os.getenv("CHAT_MAX_TOKENS", 512))
+    # Temperature when chat endpoint is used directly (falls back to LLM_TEMPERATURE)
+    CHAT_TEMPERATURE: float = float(
+        os.getenv("CHAT_TEMPERATURE", os.getenv("LLM_TEMPERATURE", 0.7))
+    )
+
+    # Optional manual worker count (warn-only)
+    UVICORN_WORKERS: int | None = (
+        int(cast(str, os.getenv("UVICORN_WORKERS"))) if os.getenv("UVICORN_WORKERS") else None
+    )
+
     # How many candidates we ask Exa for per search before post-filtering.
     # UI paginates these in blocks of 5, so 60 gives up to 12 pages.
     DEFAULT_PAPER_COUNT: int = int(os.getenv("DEFAULT_PAPER_COUNT", 60))
@@ -105,12 +131,43 @@ class Config:
     RELOAD_APP: bool = os.getenv("RELOAD_APP", "True").lower() == "true"
     MAX_AUTHORS_DISPLAY: int = 5  # Max authors to display before 'et al.'
 
+    # --- Runtime & chat stream ---
+    CHAT_STREAM_BUFFER: int = int(os.getenv("CHAT_STREAM_BUFFER", 100))
+    CHAT_KEEPALIVE_SEC: int = int(os.getenv("CHAT_KEEPALIVE_SEC", 1))
+
+    # Concurrency for warming full-text caches on startup/search
+    TEXT_PREWARM_CONCURRENCY: int = int(os.getenv("TEXT_PREWARM_CONCURRENCY", 8))
+
+    # Logging & observability
+    LOG_FILE: str | None = os.getenv("LOG_FILE")
+    ENABLE_METRICS: bool = os.getenv("ENABLE_METRICS", "0") == "1"
+
+    # Vector store & RAG fine-tuning
+    RAG_SEARCH_MULTIPLIER: int = int(os.getenv("RAG_SEARCH_MULTIPLIER", 25))
+    CE_RERANK_POOL: int = int(os.getenv("CE_RERANK_POOL", 40))
+    ENABLE_CE_RERANK: bool = os.getenv("ENABLE_CE_RERANK", "0") == "1"
+
+    EXA_POOL_SIZE: int = int(os.getenv("EXA_POOL_SIZE", 35))
+
+    # PDF/Text processing
+    STRIP_REFERENCES: bool = os.getenv("STRIP_REFERENCES", "0") in {"1", "true", "yes", "True"}
+
+    # Caching layer
+    PAPER_CACHE_DB: str | None = os.getenv("PAPER_CACHE_DB")
+
+    # Prompt builder
+    PROMPT_OVERRIDE_DIR: Path = Path(os.getenv("PROMPT_OVERRIDE_DIR", "")).expanduser()
+
+    # Admin & session security – no defaults, must be set in prod
+    ADMIN_API_KEY: str | None = os.getenv("ADMIN_API_KEY")
+    LUX_SESSION_SECRET: str = os.getenv("LUX_SESSION_SECRET", "dev-insecure-secret")
+
     # --- Paper/report tuning ---
     MAX_PAPERS_PER_SEARCH: int = 20
     SUMMARY_MAX_LENGTH: int = 300  # words
     MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4))
     # Hard cap on characters passed from a paper into any LLM prompt (≈15k tokens).
-    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 80000))
+    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 150000))
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
     # Optional UX pause when serving cached summaries – set to 0 to disable.
     CACHED_SUMMARY_DELAY_SECONDS: float = float(os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5"))
@@ -123,7 +180,7 @@ class Config:
     # Increased from 30 → 50 MB to accommodate larger arXiv PDFs without manual
     # env overrides. Set the `MAX_PDF_MB` env-var to a different value at
     # runtime if needed.
-    MAX_PDF_MB: int = int(os.getenv("MAX_PDF_MB", 50))
+    MAX_PDF_MB: int = int(os.getenv("MAX_PDF_MB", 100))
     # Minimum characters for a full-text extract to be considered good quality.
     MIN_FULL_TEXT_CHARS: int = int(os.getenv("MIN_FULL_TEXT_CHARS", 3000))
     # Minimum characters to accept as *partial* fallback (e.g. abstract).
@@ -135,9 +192,9 @@ class Config:
     OCR_MAX_PDF_MB: int = int(os.getenv("OCR_MAX_PDF_MB", 10))
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
-        "S": "brief and concise, summarizing only the absolute key takeaways",
-        "M": "moderately detailed, covering the main points comprehensively but without excessive depth on any single one",
-        "L": "detailed and thorough, exploring the nuances and providing substantial supporting information for each key aspect",
+        "S": "brief and concise (≈ 300 words), summarizing only the absolute key takeaways",
+        "M": "moderately detailed (≈ 600 words), covering the main points comprehensively but without excessive depth on any single one",
+        "L": "detailed and thorough (≈ 900 words), exploring nuances and providing substantial supporting information for each key aspect",
         # XL removed – we now standardise on S, M, L only.
     }
 
@@ -158,6 +215,16 @@ class Config:
             "L": 6000,
         },
     }
+
+    # Hybrid summarisation ---------------------------------------------------
+    # Papers shorter than this many characters include **full text** in the prompt;
+    # longer ones fall back to RAG-based evidence snippets to save tokens.
+    HYBRID_FULL_CONTEXT_CHAR_THRESHOLD: int = int(
+        os.getenv("HYBRID_FULL_CONTEXT_CHAR_THRESHOLD", 50_000)
+    )
+
+    # How many chunks per themed query to inject for the hybrid path.
+    HYBRID_RAG_TOPK: int = int(os.getenv("HYBRID_RAG_TOPK", 3))
 
     # --- LLM request defaults ---
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
@@ -183,7 +250,6 @@ class Config:
     MAX_TOPIC_SUMMARY_TOKENS: int = int(os.getenv("MAX_TOPIC_SUMMARY_TOKENS", 2048))
 
     # --- Chat prompt sizing ---
-    CHAT_MAX_TOKENS: int = int(os.getenv("CHAT_MAX_TOKENS", 512))
     EXCERPT_CHARS: int = 15000
 
     # --- Exa API back-off ---
@@ -269,7 +335,7 @@ class Config:
     RAG_CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", 64))
     RAG_MIN_CHARS: int = int(os.getenv("RAG_MIN_CHARS", 300))
     RAG_DISTANCE_L2: float = float(os.getenv("RAG_DISTANCE_L2", 2.0))
-    RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", 4))
+    RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", 12))
 
     # --- Chat / notes parameters ---
     CHAT_DEDUPE_SIM_THRESHOLD: float = float(os.getenv("CHAT_DEDUPE_SIM_THRESHOLD", 0.9))

@@ -43,13 +43,29 @@ async def build_prompt(
         excerpt_chars = config.EXCERPT_CHARS
 
         # Legacy fallback – still honour env override if set explicitly.
-        env_override = os.getenv("EXCERPT_CHARS")
+        env_override = str(config.EXCERPT_CHARS)
         if env_override is not None:
             with contextlib.suppress(ValueError):
                 excerpt_chars = int(env_override)
 
     turns = chat_state.get_conversation(paper_id)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
+
+    # --------------------------------------------------------------
+    # Global assistant (paper_id == "global") – no paper context / RAG.
+    # --------------------------------------------------------------
+    if paper_id == "global":
+        from prompts.prompt_builder import CHAT_SYSTEM_PROMPT, AUDIENCE_PROMPT_MAP
+
+        sys_prompt = (
+            CHAT_SYSTEM_PROMPT
+            + " Answer the user's latest question clearly and concisely."
+        )
+        if audience_type in AUDIENCE_PROMPT_MAP:
+            sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]
+
+        prompt = f"{sys_prompt}\n\nConversation:\n{history_txt}\n\nAssistant:"
+        return prompt
 
     # ------------------------------------------------------------------
     # RAG retrieval: if a vector index exists for this paper, use the user's
@@ -62,10 +78,25 @@ async def build_prompt(
         if _vs.index_exists(paper_id) and turns and turns[-1].role == "user":
             from services.paper.embedding import embed_query as _embed_q
 
-            query_vec = _embed_q(turns[-1].content)
-            matches = _vs.search(paper_id, query_vec, top_k=config.RAG_TOP_K)
+            user_q = turns[-1].content
+            query_vec = _embed_q(user_q)
+            matches = _vs.search(
+                paper_id,
+                query_vec,
+                query_text=user_q,
+                top_k=config.RAG_TOP_K,
+            )
             if matches:
-                context_chunks = "\n\n".join(m["text"] for m in matches)
+                # Prefix each chunk with its section heading (if available).
+                from typing import Any, cast
+
+                def _format_row(r: dict[str, Any]) -> str:
+                    sec = r.get("section", "")
+                    if sec:
+                        return f"[{sec}]\n{cast(str, r['text'])}"
+                    return cast(str, r["text"])
+
+                context_chunks = "\n\n".join(_format_row(m) for m in matches)
                 logger.debug(
                     "rag_retrieval",
                     paper_id=paper_id,
@@ -75,12 +106,28 @@ async def build_prompt(
     except Exception as _e:  # pragma: no cover
         logger.warning("rag_failed", paper_id=paper_id, error=str(_e))
 
+    # ---------------- metadata load ----------------
+    extractor = TextExtractor.instance()
+    metadata_block: str = ""
+    try:
+        meta = await extractor.load_metadata(paper_id)
+        if meta:
+            parts: list[str] = []
+            if title := meta.get("title"):
+                parts.append(f"Title: {title}")
+            if auth := meta.get("authors"):
+                parts.append(f"Authors: {auth}")
+            if yr := meta.get("year"):
+                parts.append(f"Year: {yr}")
+            metadata_block = "\n".join(parts)
+    except Exception as _me:
+        logger.debug("metadata_load_failed", paper_id=paper_id, err=str(_me))
+
     excerpt = chat_state.paper_cache.setdefault(paper_id, {}).get("excerpt")
 
-    # If retrieval returned results, prepend them **after** the abstract/excerpt so
-    # the model first sees the global overview and then the supporting evidence.
-    if context_chunks:
-        excerpt = ((excerpt + "\n\n") if excerpt else "") + context_chunks
+    # Note: we defer combining *excerpt* and *context_chunks* until **after** the
+    # optional full-text reload below; otherwise the reload can overwrite the
+    # retrieval evidence we just fetched.
 
     # Full-text excerpt
     full_text_path = chat_state.paper_cache.get(paper_id, {}).get("full_text_path")
@@ -121,9 +168,15 @@ async def build_prompt(
             logger.debug("using_summary_fallback", paper_id=paper_id)
             excerpt = f"[LLM summary]\n{summary_fallback}"
 
-    # Ensure excerpt is a string for subsequent operations
+    # Finalise excerpt and append retrieval evidence (table/figure chunks, etc.).
     if excerpt is None:
         excerpt = ""
+
+    if context_chunks:
+        excerpt = ((excerpt + "\n\n") if excerpt else "") + context_chunks
+
+    if metadata_block != "":
+        excerpt = metadata_block + "\n\n" + excerpt
 
     limited_ctx = len(excerpt.strip()) < 500
     if limited_ctx:
@@ -137,7 +190,8 @@ async def build_prompt(
     # Append dynamic instructions specific to the chat context.
     sys_prompt += (
         " Answer the user's latest question clearly and concisely."
-        " Where relevant, ground your answer in the paper excerpt silently—do NOT state 'based on the excerpt' or similar phrases."
+        " Use information from the *Context* below; do NOT mention the context explicitly."
+        " If the context contains lines starting with '=== TABLE', render them as markdown tables in your answer."
     )
 
     # Adjust tone suffix based on audience type
@@ -154,9 +208,5 @@ async def build_prompt(
             " If the answer cannot be derived, respond with 'Information unavailable'."
         )
 
-    prompt = (
-        f"{sys_prompt}\n\n"
-        f"Conversation:\n{history_txt}\n\n"
-        f"Paper excerpt (first {excerpt_chars} chars):\n{excerpt}\n\nAssistant:"
-    )
+    prompt = f"{sys_prompt}\n\nConversation:\n{history_txt}\n\nContext:\n{excerpt}\n\nAssistant:"
     return prompt

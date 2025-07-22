@@ -19,6 +19,10 @@ from prompts.prompt_utils import max_content_snippet_chars as _calc_snippet_char
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMService
 from services.core.llm_utils.types import ProviderName
+
+# RAG helpers
+from services.paper import vector_store
+from services.paper.embedding import embed_query
 from services.report.report_utils import PaperSummariser, SummaryCache, TopicSummariser
 from utils.html_builder import text_to_html_paragraphs
 
@@ -381,6 +385,18 @@ class ReportGenerator:
         if main_input_paper:
             if include_section_headings:
                 report_parts.append("<h3>Summary of Input Paper</h3>")
+            # Decide between full-context vs hybrid RAG snippet
+            hybrid_needed = (
+                len(main_input_paper.text_content or "") > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
+            )
+
+            snippet_override_main: str | None = None
+            if hybrid_needed:
+                snippet_override_main = self._build_hybrid_snippet(
+                    main_input_paper,
+                    char_limit=paper_max_content_snippet_chars,
+                )
+
             main_prompt, main_tok_target = self._paper_summariser.build_prompt_and_target(
                 main_input_paper,
                 audience_type=audience_type,
@@ -388,6 +404,7 @@ class ReportGenerator:
                 length_guidance=paper_length_guidance,
                 prompt_template=active_paper_prompt_template,
                 snippet_char_limit=paper_max_content_snippet_chars,
+                snippet_override=snippet_override_main,
             )
             summary_tasks.append(
                 asyncio.create_task(
@@ -409,6 +426,16 @@ class ReportGenerator:
             if include_section_headings:
                 report_parts.append("<h3>Summaries of Similar Papers</h3>")
             for paper in similar_papers_data:
+                hybrid_needed = (
+                    len(paper.text_content or "") > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
+                )
+                snippet_override_sim: str | None = None
+                if hybrid_needed:
+                    snippet_override_sim = self._build_hybrid_snippet(
+                        paper,
+                        char_limit=paper_max_content_snippet_chars,
+                    )
+
                 paper_prompt, tok_target = self._paper_summariser.build_prompt_and_target(
                     paper,
                     audience_type=audience_type,
@@ -416,6 +443,7 @@ class ReportGenerator:
                     length_guidance=paper_length_guidance,
                     prompt_template=active_paper_prompt_template,
                     snippet_char_limit=paper_max_content_snippet_chars,
+                    snippet_override=snippet_override_sim,
                 )
                 summary_tasks.append(
                     asyncio.create_task(
@@ -659,3 +687,53 @@ class ReportGenerator:
                 except ValueError:
                     logger.warning("unrecognized date string format", date_str=date_str)
                     return date_str
+
+    # ---------------------------------------------------------------------
+    # Hybrid snippet preparation
+    # ---------------------------------------------------------------------
+
+    def _build_hybrid_snippet(self, paper: Paper, *, char_limit: int) -> str:
+        """Return RAG-driven evidence snippet (abstract + themed chunks)."""
+
+        themes: dict[str, str] = {
+            "Motivation": "What problem does the paper solve and why is it important?",
+            "Method": "How does the paper’s method work?",
+            "Results": "What are the key results and limitations?",
+        }
+
+        parts: list[str] = []
+
+        # -------- abstract extraction (very naive) --------
+        abstract_text = ""
+        if paper.text_content:
+            m = re.search(r"(?is)abstract[:\s]*(.+?)(?:\n\s*\n|$)", paper.text_content[:8000])
+            abstract_text = m.group(1).strip() if m else paper.text_content[:1200].strip()
+
+        if abstract_text:
+            parts.append("ABSTRACT:\n" + abstract_text)
+
+        # Ensure vector index exists
+        try:
+            if paper.text_content and not vector_store.index_exists(paper.id):
+                vector_store.build_index_from_text(paper.id, paper.text_content)
+        except Exception as exc:
+            logger.error("vector_index_build_failed", paper_id=paper.id, err=str(exc))
+
+        # RAG retrieval per theme
+        for theme, q in themes.items():
+            try:
+                q_vec = embed_query(q)
+                hits = vector_store.search(
+                    paper.id,
+                    q_vec,
+                    query_text=q,
+                    top_k=config.HYBRID_RAG_TOPK,
+                )
+                if hits:
+                    joined = "\n".join(h["text"].strip() for h in hits)
+                    parts.append(f"{theme.upper()}:\n" + joined)
+            except Exception as exc:
+                logger.error("hybrid_rag_error", theme=theme, paper_id=paper.id, err=str(exc))
+
+        snippet = "\n\n".join(parts)
+        return snippet[:char_limit]

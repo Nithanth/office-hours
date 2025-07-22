@@ -2,7 +2,6 @@
 
 import asyncio
 import html
-import os
 import pathlib as _pathlib
 import time
 import urllib.parse as _urlparse
@@ -27,10 +26,13 @@ try:
 except ImportError:  # pragma: no cover - metrics disabled in dev
     CHAT_TOKEN_LAT = None
 
+
 from loguru import logger as log
 
+import config as _cfg
+
 # Interval between SSE keep-alive pings (seconds)
-KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
+KEEP_ALIVE_SEC = _cfg.config.CHAT_KEEPALIVE_SEC
 
 # Watermark for when a cached full-text file must be refreshed (7 days).
 _PAPER_CACHE_TTL_SEC = 60 * 60 * 24 * 7
@@ -45,7 +47,9 @@ async def chat_post(
     request: Request,  # noqa: D401 - FastAPI signature style
     session_id: str = Depends(get_session_id),
     message: str = Form(...),
-    paper_id: str = Form(...),
+    # Use special sentinel "global" when the assistant is not grounded to a specific paper.
+    paper_id: str = Form("global"),
+    with_sources: str | None = Form(None),
     audience_type: str = Form("technical"),
     model_key: Optional[str] = Form(None),
 ) -> Response:
@@ -182,6 +186,9 @@ async def chat_stream(
 
             # Ensure paper full text is cached and fresh once per stream
             def _needs_refresh() -> bool:
+                # Global (un-grounded) chat has no associated paper file.
+                if paper_id == "global":
+                    return False
                 if paper_id not in chat_state.paper_cache:
                     return True
                 path = chat_state.paper_cache.get(paper_id, {}).get("full_text_path")
@@ -223,8 +230,8 @@ async def chat_stream(
                                 provider_name=model_cfg["provider"],
                                 model_name=model_cfg["id"],
                                 prompt=prompt,
-                                max_tokens=int(os.getenv("CHAT_MAX_TOKENS", "512")),
-                                temperature=float(os.getenv("CHAT_TEMPERATURE", "0.7")),
+                                max_tokens=_cfg.config.CHAT_MAX_TOKENS,
+                                temperature=_cfg.config.CHAT_TEMPERATURE,
                                 system_prompt=None,
                             )
                             async for token in stream_iter:

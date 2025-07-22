@@ -13,6 +13,7 @@ from config import config
 
 # Pydantic schema for structured notes
 from models.notes import Bullet, NotesDoc
+from prompts.prompt_builder import STUDY_NOTES_INSTR_BLOCK
 from prompts.prompt_builder import _load_template as _load_prompt
 from services.core.llm_service import LLMService
 from utils.dedupe import deduplicate_chat
@@ -43,7 +44,8 @@ _PLAIN_BULLETS = ["•", "◦", "▪"]
 def _render_txt(md_text: str) -> str:
     """Convert simple markdown-ish bullets/headings to hierarchical plain text."""
 
-    bullet_pat = re.compile(r"^(?P<indent>\s*)([•\-*])\s+(?P<txt>.+)")
+    # Accept the three canonical bullet symbols we instruct the LLM to use.
+    bullet_pat = re.compile(r"^(?P<indent>\s*)([•◦▪\-*])\s+(?P<txt>.+)")
     num_pat = re.compile(r"^(?P<indent>\s*)(\d+[.)])\s+(?P<txt>.+)")
 
     out_lines: list[str] = []
@@ -211,12 +213,7 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
         # Build the final user prompt given to the LLM
         # ----------------------------------------------------------
         # We prepend explicit instructions so the model never defaults to JSON.
-        instr_block = (
-            "You are preparing STUDY NOTES for the user. "
-            "Follow the OUTPUT FORMAT rules given in the system prompt. "
-            "Summarise each major section of the REPORT and then each PAPER discussed, "
-            "weaving in *non-redundant* CHAT insights."
-        )
+        instr_block = STUDY_NOTES_INSTR_BLOCK
 
         user_prompt = (
             instr_block

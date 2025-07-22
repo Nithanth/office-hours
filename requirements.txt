@@ -27,6 +27,8 @@ tiktoken~=0.6
 prometheus_client~=0.22
 slowapi~=0.1
 aiohttp
+pdfplumber
+pandas
 
 # Data Validation & Modeling
 pydantic~=2.11

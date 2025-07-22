@@ -1,11 +1,10 @@
 """Health-check and small admin utilities (cache flush, metadata recheck)."""
 
-import os
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 
+import config as _cfg
 from api.deps import get_exa_client
 from services.report.report_utils import SummaryCache
 
@@ -26,7 +25,7 @@ async def flush_summary_cache(  # noqa: B008 - Depends used as default per FastA
     creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
 ) -> dict[str, bool]:
     """Clear all cached LLM summaries."""
-    secret = os.getenv("ADMIN_API_KEY")
+    secret = _cfg.config.ADMIN_API_KEY
     if secret and (creds is None or creds.credentials != secret):
         logger.warning("flush_cache_forbidden")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
@@ -43,7 +42,7 @@ async def recheck_paper_metadata(
 ) -> dict[str, int]:
     """Manually trigger a batch re-enrichment of incomplete paper metadata."""
 
-    secret = os.getenv("ADMIN_API_KEY")
+    secret = _cfg.config.ADMIN_API_KEY
     if secret and (creds is None or creds.credentials != secret):
         logger.warning("metadata_recheck_forbidden")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
