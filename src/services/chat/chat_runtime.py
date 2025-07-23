@@ -55,11 +55,10 @@ async def build_prompt(
     # Global assistant (paper_id == "global") – no paper context / RAG.
     # --------------------------------------------------------------
     if paper_id == "global":
-        from prompts.prompt_builder import CHAT_SYSTEM_PROMPT, AUDIENCE_PROMPT_MAP
+        from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, CHAT_SYSTEM_PROMPT
 
         sys_prompt = (
-            CHAT_SYSTEM_PROMPT
-            + " Answer the user's latest question clearly and concisely."
+            CHAT_SYSTEM_PROMPT + " Answer the user's latest question clearly and concisely."
         )
         if audience_type in AUDIENCE_PROMPT_MAP:
             sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]

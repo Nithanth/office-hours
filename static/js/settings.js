@@ -317,6 +317,9 @@
       // Re-apply saved report size after new form injected
       restoreSummarySize();
 
+      // Retain the card border after dynamic content loads – previously removed for full-width expansion.
+      // If you need to expand content in the future, consider toggling specific width classes instead.
+
       // Convert any injected error blocks to toasts and clean them up.
       document.querySelectorAll('.alert-error, .error-message').forEach(el => {
         console.debug('[lux] converted server error to toast:', el.textContent.trim());

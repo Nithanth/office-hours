@@ -27,6 +27,7 @@ function buildPager() {
   pager.innerHTML = ""; // reset
   const btn = (label, page, disabled = false) => {
     const b = document.createElement("button");
+    b.className = "pager-btn";
     b.textContent = label;
     if (disabled) {
       b.disabled = true;

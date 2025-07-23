@@ -109,8 +109,7 @@ def render_report_config_form(
             hx_post="/generate-report-incremental",
             hx_target="#report-display-area",
             hx_swap="innerHTML",
-            hx_indicator="#report-loading-indicator",
-            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden, [name='is_url_input']",
+            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input']",
         ),
     )
 
@@ -294,9 +293,6 @@ def render_search_results(
             )
         )
 
-        # Instead of injecting an inline <script>, update history in a CSP-compliant
-        # global JS listener (see static/js/main.js).
-
         # Pager placeholder – client-side JS populates controls
         results_content.append(Div(id="pager", cls="pager", style="margin-top:10px;"))
         has_results = True
@@ -343,8 +339,7 @@ def render_search_results(
                     hx_post="/generate-report-incremental",
                     hx_target="#report-display-area",
                     hx_swap="innerHTML",
-                    hx_indicator="#report-loading-indicator",
-                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, #is_url_input_source_hidden, [name='is_url_input']",
+                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input']",
                 ),
             ]
         )
@@ -353,10 +348,6 @@ def render_search_results(
         *clearing_divs,  # first ensure old report UI cleared
         *hidden_input_fields,
         *results_content,
-        # The ID "search-results-content" was on the Div returned by the *newer* render_search_results.
-        # The old home_page.py targets "#search-results-container" for hx_target.
-        # The old home_page.py targets "#search-results-container" for hx-target.
-        # So this returned Div doesn't need an ID unless specifically targeted by something else.
     )
 
 
@@ -364,9 +355,10 @@ def loading_indicator_component() -> Div:
     """Spinner visible while search requests are in-flight."""
     return Div(
         Div(cls="lux-spinner"),
-        Span("", id="lux-loading-text", style="display:inline-block; margin-left:4px;"),
+        Span("Searching the PaperVerse…", id="lux-loading-text", style="display:inline-block; margin-left:6px;"),
         id="loading-indicator",
         cls="htmx-indicator",
+        style="display:flex; align-items:center; gap:6px; margin-top:6px;",
     )
 
 
@@ -526,7 +518,7 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src="/static/js/main.js", type="module"),
             # No inline init - handled in settings.js
         ),
-        # Global toolbar
+        # Comma added above to separate Head component from next Body child
         Div(
             Link("█▓▒░ Lux Scholar ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
             Div("", style="flex:1"),
@@ -574,130 +566,121 @@ def home_page(page_data: SharedPageData) -> Body:
             cls="top-bar",
             style="display:flex;align-items:center;padding:4px 8px;",
         ),
+        # Comma added above after top-bar Div
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
-            P(I("Enter a research topic, query, or paper link:")),
-            FORM(  # Search Form
-                Label(for_="search_query"),
-                INPUT(
-                    type="search",
-                    id="search_query",
-                    name="search_query",
-                    required=True,
-                    placeholder="e.g., 'transformer architecture overview', or 'https://www.arxiv.org/pdf/2506.08388'",
-                    value=page_data.current_query or "",
-                    style="width:40rem;max-width:100%;",
-                ),
-                Br(),
-                # Author input removed per new requirements
-                Br(),
-                Div(
-                    Label(
-                        "Published After ",
-                        EM("(optional)", style="color:#666; font-style:italic;"),
-                        ":",
-                        for_="start_published_date",
-                    ),
+            Div(
+                P(I("Enter a research topic, query, or paper link:")),
+                FORM(  # Search Form
+                    Label(for_="search_query"),
                     INPUT(
-                        type="date",
-                        id="start_published_date",
-                        name="start_published_date",
-                        placeholder="YYYY-MM-DD",
-                        style="margin-left:6px;",
+                        type="search",
+                        id="search_query",
+                        name="search_query",
+                        required=True,
+                        placeholder="e.g., 'transformer architecture overview', or 'https://www.arxiv.org/pdf/2506.08388'",
+                        value=page_data.current_query or "",
+                        style="width:40rem;max-width:100%;",
                     ),
-                    style="display:flex; align-items:center; gap:6px; margin-bottom:6px;",
-                ),
-                Div(
+                    Br(),
+                    # Author input removed per new requirements
+                    Br(),
+                    Div(
+                        Label(
+                            "Published After ",
+                            EM("(optional)", style="color:#666; font-style:italic;"),
+                            ":",
+                            for_="start_published_date",
+                            style="font-size:0.9rem;",
+                        ),
+                        INPUT(
+                            type="date",
+                            id="start_published_date",
+                            name="start_published_date",
+                            placeholder="YYYY-MM-DD",
+                            style="margin-left:6px;",
+                        ),
+                        style="display:flex; align-items:center; gap:6px; margin-bottom:6px;",
+                    ),
                     Div(
                         Label(
                             "Source Domain ",
                             EM("(optional)", style="color:#666; font-style:italic;"),
                             ":",
                             for_="include_domains",
+                            style="font-size:0.9rem;",
                         ),
-                        Span(
-                            "Cmd/Ctrl to select/deselect multiple",
-                            style="font-size:0.75em; color:#666; margin-top:4px;",
+                        Div(
+                            *[
+                                Div(
+                                    Span(dom, style="flex:1;"),
+                                    INPUT(type="checkbox", name="include_domains", value=dom),
+                                    style="display:flex; align-items:center; justify-content:space-between; padding:2px 4px;",
+                                )
+                                for dom in [
+                                    "arxiv.org",
+                                    "biorxiv.org",
+                                    "medrxiv.org",
+                                    "ieeexplore.ieee.org",
+                                    "dl.acm.org",
+                                    "openreview.net",
+                                    "aclanthology.org",
+                                    "aclweb.org",
+                                ]
+                            ],
+                            # Let CSS control width; only other layout props here
+                            style="max-height:88px; overflow-y:auto; border:1px solid #ccc; border-radius:4px; margin-left:8px; font-size:0.8rem;",
+                            id="domain-filter-container",
                         ),
-                        BUTTON(
-                            "Clear",
-                            type="button",
-                            id="clear-domains-btn",
-                            style="margin-top:6px; width:48px;",
-                        ),
-                        style="display:flex; flex-direction:column; gap:4px; justify-content:flex-start;",
+                        style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;",
                     ),
-                    Select(
-                        Option("arxiv.org", value="arxiv.org"),
-                        Option("biorxiv.org", value="biorxiv.org"),
-                        Option("medrxiv.org", value="medrxiv.org"),
-                        Option("ieeexplore.ieee.org", value="ieeexplore.ieee.org"),
-                        Option("dl.acm.org", value="dl.acm.org"),
-                        Option("openreview.net", value="openreview.net"),
-                        Option("aclanthology.org", value="aclanthology.org"),
-                        Option("aclweb.org", value="aclweb.org"),
-                        id="include_domains",
-                        name="include_domains",
-                        multiple=True,
-                        size="4",
-                        style="width:220px; min-height:88px; margin-left:8px;",
+                    Br(),
+                    # Buttons choose workflow (paper search)
+                    BUTTON(
+                        "Search Papers",
+                        type="submit",
+                        name="mode",
+                        value="auto",
+                        onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
                     ),
-                    style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;",
+                    loading_indicator_component(),
+                    hx_post="/search",
+                    hx_target="#search-results-container",
+                    hx_swap="innerHTML",
+                    hx_push_url="false",
+                    **{"hx-trigger": "submit", "hx-indicator": "#loading-indicator"},
+                    onsubmit="['report-display-area','report-config-area','ask-result-container'].forEach(function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});",
+                    id="paper-search-form",
+                    style="background:inherit;padding:0.5rem 0;",
                 ),
-                # Number of Results input removed – page size handled internally.
-                Br(),
-                # Buttons choose workflow (paper search)
+                # Results and Report Form (wraps hidden inputs etc.)
+                FORM(
+                    # Search results are displayed here, targeted by the search form's hx_target
+                    Div(
+                        results_display_content,
+                        id="search-results-container",
+                    ),  # Corrected: child directly passed
+                    # Report configuration form will be loaded here
+                    Div(id="report-config-area"),
+                    report_loading_indicator_component(),  # For when report is generating
+                    # Actual report will be displayed here
+                    Div(id="report-display-area"),
+                    id="results-and-report-form",
+                ),
+                # ---------------- Global Chat Assistant button ----------------
                 BUTTON(
-                    "Search Papers",
-                    type="submit",
-                    name="mode",
-                    value="auto",
-                    onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
+                    "💬 Research Assistant",
+                    id="open-global-chat",
+                    hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
+                    hx_target="#modal-container",
+                    hx_swap="innerHTML",
+                    _class="ask-assistant-btn",
+                    style="",
                 ),
-                Br(),
-                loading_indicator_component(),
-                hx_post="/search",
-                hx_target="#search-results-container",
-                hx_swap="innerHTML",
-                hx_indicator="#loading-indicator",
-                hx_push_url="false",
-                **{"hx-indicator": "#loading-indicator"},
-                onsubmit="document.getElementById('report-display-area').innerHTML='';document.getElementById('report-config-area').innerHTML='';document.getElementById('ask-result-container').innerHTML='';",
-                id="paper-search-form",
-                style="background:inherit;padding:0.5rem 0;",
+                Div(id="modal-container"),
+                # no extra class – outer search-card handles border
             ),
-            # Results and Report Form (wraps hidden inputs etc.)
-            FORM(
-                # Search results are displayed here, targeted by the search form's hx_target
-                Div(
-                    results_display_content,
-                    id="search-results-container",
-                ),  # Corrected: child directly passed
-                # Report configuration form will be loaded here
-                Div(id="report-config-area"),
-                report_loading_indicator_component(),  # For when report is generating
-                # Actual report will be displayed here
-                Div(id="report-display-area"),
-                id="results-and-report-form",
-            ),
-            # ---------------- Global Chat Assistant button ----------------
-            Br(),
-            P(
-                I("Research assistant for independent or follow-up questions:"),
-                style="margin-top:0.75rem;font-size:0.9rem;",
-                _class="ask-llm-subtitle",
-            ),
-            BUTTON(
-                "💬 Ask Assistant",
-                id="open-global-chat",
-                hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
-                hx_target="#modal-container",
-                hx_swap="innerHTML",
-                _class="btn",
-                style="margin:0.25rem 0;",
-            ),
-            Div(id="modal-container"),
-            cls="container",
+            cls="search-card",
         ),
         Footer(
             P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
@@ -705,3 +688,4 @@ def home_page(page_data: SharedPageData) -> Body:
         ),
         **{"hx-push-url": "false"},
     )  # Close Body
+  # Close HTML

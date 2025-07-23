@@ -47,11 +47,12 @@ async def chat_modal(
 
     paper = None
 
+    # Single declaration to satisfy type checker; will be updated later.
+    link_url: str | None = None
+
     # Special un-grounded assistant modal
     if paper_id == "global":
         modal_title = "Research Assistant"
-        link_url = None
-        history = []  # force blank history later – separate key anyway
     else:
         if paper_service:  # Attempt to fetch metadata for nicer header
             try:
@@ -67,8 +68,6 @@ async def chat_modal(
         modal_title = html.escape(title)
 
     provided_url = paper_url
-
-    link_url: str | None = None
 
     # If caller didn't provide title, try service lookup
     if not title and paper and (svc_title := getattr(paper, "title", None)):
@@ -100,7 +99,7 @@ async def chat_modal(
             modal_id=modal_id,
             title=modal_title,
             chat_log_id=chat_log_id,
-            audience_type=audience_type,
+            paper_id=paper_id,
         )
     )
 

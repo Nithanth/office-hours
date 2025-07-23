@@ -18,10 +18,11 @@ body.lux-dark .modal {
 }
 
 .modal-content {
+  position: relative;           /* anchor abs-pos children */
   background: #fff;
-  padding: 1rem;
-  border-radius: 8px;
-  max-width: 800px;
+  padding: 1.5rem;
+  border-radius: 6px;
+  max-width: 640px;
   width: 90%;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }

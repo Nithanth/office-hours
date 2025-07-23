@@ -8,8 +8,12 @@
 
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator {
-  display: inline-block;
+  display: block;
   opacity: 1;
+}
+
+#loading-indicator {
+  margin-top: 6px;
 }
 
 @keyframes lux-spin {

@@ -19,11 +19,6 @@ from sentence_transformers import SentenceTransformer
 
 import config as _cfg
 
-__all__ = [
-    "embed_texts",
-    "embed_query",
-]
-
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 # ---------------------------------------------------------------------------
