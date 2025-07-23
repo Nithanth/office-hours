@@ -39,6 +39,9 @@ REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
 # Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars
 
+# Name of the extra SSE event carrying JSON envelope of each block.
+_JSON_EVENT = "report-block-json"
+
 
 def _format_sse_event(event_name: str, payload: str = "") -> str:
     """Return a browser-safe SSE event string (newline & length-sanitised)."""
@@ -99,6 +102,19 @@ async def generate_report_incremental(  # noqa: PLR0913
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
     }
+
+    # --- Logging breadcrumbs ---
+    logger.info(
+        "stage1_incremental_received",
+        token=token,
+        is_url_input_form=is_url_input,
+    )
+
+    logger.info(
+        "stage2_cached",
+        token=token,
+        cached_flag=REPORT_REQUEST_CACHE[token]["is_url_input"],
+    )
 
     sse_url = f"/report/stream?token={token}"
 
@@ -320,12 +336,30 @@ async def report_stream(
         # --- Emit heading block first so it appears above all summaries ---
         heading_html = "<h2 class='report-title text-xl font-bold mb-4'>Report</h2>"
         yield _format_sse_event("report-block", heading_html)
+        # JSON envelope for clients needing structured stream (non-breaking)
+        heading_meta = json.dumps(
+            {
+                "block_type": "heading",
+                "html": heading_html,
+                "timestamp": int(time.time()),
+            },
+            separators=(",", ":"),
+        )
+        yield _format_sse_event(_JSON_EVENT, heading_meta)
 
         # Derive a reliable boolean - form fields come through as strings.
         is_url_input_flag = str(payload.get("is_url_input", "false")).lower() == "true"
 
+        logger.debug(
+            "stream_report_flags",
+            is_url_input_raw=payload.get("is_url_input"),
+            is_url_input_flag=is_url_input_flag,
+            will_add_topic_overview=not is_url_input_flag,
+        )
+
         # 1) Topic overview first (queries only)
         if not is_url_input_flag:
+            logger.info("stream_adding_topic_overview")
             coros.append(asyncio.create_task(_topic_overview_task()))
 
         # 2) Main paper summary
@@ -362,7 +396,22 @@ async def report_stream(
             # Successful - stream block
             if _METRICS_ENABLED and REPORT_BLOCKS is not None:
                 REPORT_BLOCKS.inc()
+            # Send HTML block for existing HTMX swap
             yield _format_sse_event("report-block", block_html)
+            # Send JSON envelope alongside for consumers needing structure
+            block_meta = json.dumps(
+                {
+                    "block_type": _role_label if _role_label != "main" else "paper_summary",
+                    "paper_id": getattr(task_paper_map.get(t), "id", None),
+                    "source": "url_input"
+                    if (_role_label == "main" and is_url_input_flag)
+                    else _role_label,
+                    "html": block_html,
+                    "timestamp": int(time.time()),
+                },
+                separators=(",", ":"),
+            )
+            yield _format_sse_event(_JSON_EVENT, block_meta)
 
         # Inform client of any failures via a dedicated event **before** done
         if failed_titles:
@@ -370,10 +419,19 @@ async def report_stream(
 
         # Finalise - send empty payload
         yield _format_sse_event("done", "")
+        # Also signal done for JSON stream so any listener can clean up.
+        yield _format_sse_event(f"{_JSON_EVENT}-done", "")
 
         # Observe overall latency once all blocks sent
         if _METRICS_ENABLED and REPORT_LAT is not None:
             REPORT_LAT.observe(time.perf_counter() - _start_time)
+
+        # Log after payload retrieval (stage-3)
+        logger.info(
+            "stage3_event_gen_loaded",
+            token=token,
+            loaded_flag=payload.get("is_url_input"),
+        )
 
         await _del_cache_later(token)
 

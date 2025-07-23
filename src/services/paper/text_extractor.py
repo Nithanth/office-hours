@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import io
+import json
 import os
 import re
 import textwrap
@@ -70,9 +71,33 @@ try:
     import fitz
 
     def _extract_with_pymupdf(pdf_bytes: bytes) -> str:
-        """Return plaintext extracted via PyMuPDF (fast, robust)."""
+        """Return plaintext extracted via PyMuPDF with simple two-column fix.
+
+        PyMuPDF sometimes interleaves left/right columns when reading newspaper-style
+        layouts.  To reduce this we fetch *blocks* for each page, then sort primarily
+        by the *y* coordinate and secondarily by *x* (so left column lines precede
+        right column lines on the same row).
+        """
+        all_pages: list[str] = []
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-            return "\n".join(page.get_text("text") for page in doc)
+            for page in doc:
+                try:
+                    blocks = page.get_text("blocks")  # (x0, y0, x1, y1, text, ...)
+                except Exception:
+                    # Fall back to default ordering when blocks extraction fails.
+                    all_pages.append(page.get_text("text"))
+                    continue
+
+                # Sort by rounded y (to bucket lines) then x.
+                blocks_sorted = sorted(blocks, key=lambda b: (round(b[1], 1), b[0]))
+                page_lines: list[str] = []
+                for b in blocks_sorted:
+                    txt = b[4].rstrip()
+                    if txt:
+                        page_lines.append(txt)
+                all_pages.append("\n".join(page_lines))
+
+        return "\n".join(all_pages)
 
 except ModuleNotFoundError:  # pragma: no cover – optional dep
     fitz = None
@@ -80,6 +105,126 @@ except ModuleNotFoundError:  # pragma: no cover – optional dep
     def _extract_with_pymupdf(pdf_bytes: bytes) -> str:  # noqa: D401 – same sig
         """No-op when PyMuPDF missing (caller falls back)."""
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Optional table extraction support via *pdfplumber* (pure-Python, lightweight).
+# We try to import it lazily; if unavailable, table extraction is skipped
+# without breaking the main text flow.
+# ---------------------------------------------------------------------------
+try:
+    import pandas as _pd  # noqa: N812 – keep short alias
+    import pdfplumber
+
+    def _extract_tables(pdf_bytes: bytes) -> str:
+        """Return all detected tables as Markdown concatenated with blank lines.
+
+        Each table is prefixed with a sentinel so RAG consumers can identify
+        them easily.  We keep the conversion lightweight (Markdown) so the
+        chunks render nicely in chat UIs.
+        """
+
+        import io
+        import textwrap as _tw
+
+        out: list[str] = []
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as _pdf:
+            for page_idx, page in enumerate(_pdf.pages, start=1):
+                try:
+                    tables = page.extract_tables()
+                except Exception:  # pragma: no cover – rare parsing errors
+                    continue
+
+                for tbl_idx, tbl in enumerate(tables, start=1):
+                    try:
+                        df = _pd.DataFrame(tbl)
+                    except Exception:
+                        continue
+                    md = df.to_markdown(index=False)
+                    header = f"=== TABLE page {page_idx} #{tbl_idx} ==="
+                    out.append(f"{header}\n{_tw.dedent(md)}")
+
+        return "\n\n".join(out)
+
+except ModuleNotFoundError:  # pragma: no cover – optional dep missing
+
+    def _extract_tables(pdf_bytes: bytes) -> str:
+        """Dummy fallback when *pdfplumber* not installed."""
+
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Figure caption extraction – lightweight regex over raw text
+# ---------------------------------------------------------------------------
+FIGURE_CAP_RE = re.compile(r"^(?:Figure|Fig\.)\s*\d+[:\.\-]?", re.IGNORECASE)
+
+
+def _extract_fig_captions(raw_text: str) -> str:
+    """Return figure captions as Markdown-prefixed blocks.
+
+    We scan the *raw* (pre-clean) text for lines starting with
+    "Figure 3:" / "Fig. 4." etc.  For each hit we grab the caption line plus
+    up to two subsequent non-blank lines (authors often wrap captions).
+    Each block is prefixed with `=== FIGURE ===` so downstream RAG steps can
+    identify and boost them.
+    """
+
+    out: list[str] = []
+    lines = raw_text.splitlines()
+    i = 0
+    while i < len(lines):
+        ln = lines[i].strip()
+        if FIGURE_CAP_RE.match(ln):
+            cap_lines = [ln]
+            for j in range(1, 3):
+                if i + j >= len(lines):
+                    break
+                nxt = lines[i + j].strip()
+                if not nxt or FIGURE_CAP_RE.match(nxt):
+                    break
+                cap_lines.append(nxt)
+            out.append("=== FIGURE ===\n" + " ".join(cap_lines))
+        i += 1
+    return "\n\n".join(out)
+
+
+def _extract_pdf_metadata(pdf_bytes: bytes) -> dict[str, str]:
+    """Return minimal metadata dict {title, authors, year} (best-effort)."""
+
+    meta: dict[str, str] = {}
+
+    # Prefer PyMuPDF XMP metadata when available.
+    if fitz is not None:
+        try:
+            with fitz.open(stream=pdf_bytes, filetype="pdf") as _doc:
+                info = _doc.metadata or {}
+                if info.get("title"):
+                    meta["title"] = info["title"].strip()
+                if info.get("author"):
+                    meta["authors"] = info["author"].strip()
+                if info.get("creationDate") and info["creationDate"].startswith("D:"):
+                    meta["year"] = info["creationDate"][2:6]
+        except Exception:
+            pass
+
+    # Fallback heuristic: use first 20 lines of extracted text
+    if not meta.get("title") or not meta.get("authors"):
+        try:
+            raw_first_page = _extract_with_pymupdf(pdf_bytes)[:4000]
+            lines = [ln.strip() for ln in raw_first_page.splitlines() if ln.strip()]
+            if not meta.get("title") and lines:
+                meta["title"] = lines[0][:300]
+            # Authors line often contains commas and no longer than 200 chars
+            if not meta.get("authors"):
+                for ln in lines[1:6]:
+                    if "," in ln and len(ln) < 200:
+                        meta["authors"] = ln
+                        break
+        except Exception:
+            pass
+
+    return meta
 
 
 def _sha256(text: str) -> str:
@@ -108,28 +253,34 @@ def _clean_text(raw: str) -> str:
     n = len(lines)
 
     ref_idx: int | None = None
-    appendix_idx: int | None = None
 
-    for idx, line in enumerate(lines):
-        # Heading heuristics apply only in the last half of the doc.
-        if idx < n * 0.5:
-            continue
+    # ---------------------------------------------------------------
+    # Simple & safe bibliography detection:
+    #   1. Scan upward through the bottom 40 % of the document for a line
+    #      that starts with "References" or "Bibliography" (case-insensitive).
+    #   2. Verify that at least 3 of the next 10 lines look like citation
+    #      entries (numbered + author/year). If so, drop everything from the
+    #      heading onward. Otherwise ignore the heading (likely a false hit).
+    # ---------------------------------------------------------------
+    heading_re = re.compile(r"^\s*(references|bibliography)\b", re.I)
+    cite_re = re.compile(r"^\s*(\[?\d+\]?|\d+\.)\s+")
 
-        if ref_idx is None and re.match(r"^\s*(references|bibliography)\b[:\s]*$", line, re.I):
-            ref_idx = idx
-            continue
+    # Honour environment flag – default *false* so we keep references unless
+    # explicitly opted-in.  This avoids losing body text and lets the RAG layer
+    # filter citations later.
+    strip_refs = getattr(app_config, "STRIP_REFERENCES", False) if app_config else False
 
-        # Keep track of an appendix heading *after* references.
-        if appendix_idx is None and re.match(r"^\s*(appendix|supplementary)\b", line, re.I):
-            appendix_idx = idx
+    scan_start = int(n * 0.6)  # bottom 40 %
+    for idx in range(n - 1, scan_start - 1, -1):
+        if heading_re.match(lines[idx]):
+            sample = lines[idx + 1 : idx + 11]
+            cites = sum(1 for line in sample if cite_re.match(line))
+            if cites >= 3:
+                ref_idx = idx
+                break
 
-    if ref_idx is not None:
-        if appendix_idx is not None and appendix_idx > ref_idx:
-            # Drop only the bibliography block between the two headings.
-            txt = "\n".join(lines[:ref_idx] + lines[appendix_idx:])
-        else:
-            # No appendix after references – drop everything from references onward.
-            txt = "\n".join(lines[:ref_idx])
+    if strip_refs and ref_idx is not None:
+        txt = "\n".join(lines[:ref_idx])
 
     return txt.strip()
 
@@ -164,6 +315,28 @@ class TextExtractor:
         cache_path = self._cache_path(url, paper_id)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         if cache_path.exists() and not force:
+            # Fast path: text already cached. Ensure the vector index exists;
+            # it may have been purged separately via `flush_caches --vector`.
+            if paper_id:
+                try:
+                    from services.paper import vector_store as _vs  # local import to avoid cycles
+
+                    if not _vs.index_exists(paper_id):
+                        try:
+                            cached_text = cache_path.read_text(encoding="utf-8")
+                        except OSError:
+                            cached_text = ""
+
+                        if cached_text:
+                            _vs.build_index_from_text(paper_id, cached_text)
+                            if url != paper_id and not _vs.index_exists(url):
+                                _vs.build_index_from_text(url, cached_text)
+                            logger.info(
+                                "vector_index_rebuilt", paper_id=paper_id, chars=len(cached_text)
+                            )
+                except Exception as _exc:  # pragma: no cover
+                    logger.warning("vector_index_error", paper_id=paper_id, error=str(_exc))
+
             return str(cache_path)
 
         layers = [
@@ -195,8 +368,20 @@ class TextExtractor:
             if not extracted:
                 continue
 
-            # Full-length success → stop searching.
+            # Full-length success
             if len(extracted) >= _MIN_FULL_TEXT:
+                # Exa get_contents can exceed _MIN_FULL_TEXT (~7k chars) but is still
+                # much shorter than the full PDF. Treat it as *partial* so the
+                # extractor keeps looking for richer sources that may follow.
+                if layer.__name__ == "_layer_exa_contents":
+                    # Track as best partial and continue to next layer.
+                    if best_partial is None or len(extracted) > len(best_partial):
+                        best_partial = extracted
+                    extracted = None
+                    # Do NOT update is_partial here; we may still find full text.
+                    continue
+
+                # Any other layer reaching the threshold counts as full text.
                 is_partial = False
                 break
 
@@ -231,6 +416,45 @@ class TextExtractor:
                 final_path = cache_path.with_suffix(".partial.txt")
 
             final_path.write_text(extracted, encoding="utf-8")
+
+            # ------- save metadata JSON (best-effort) -------
+            try:
+                meta: dict[str, str] = {}
+                if url.lower().endswith(".pdf"):
+
+                    async def _meta_task() -> None:
+                        """Background task to download the PDF and parse metadata."""
+                        import requests  # type: ignore[import-untyped]  # local import to avoid mandatory dep
+
+                        nonlocal meta
+                        try:
+                            resp = requests.get(url, timeout=15)
+                            if resp.ok and resp.headers.get("content-type", "").startswith(
+                                "application/pdf"
+                            ):
+                                meta = _extract_pdf_metadata(resp.content)
+                        except Exception as _req_exc:  # pragma: no cover – best-effort
+                            logger.debug("meta_dl_failed", err=str(_req_exc))
+
+                    await _meta_task()
+                if meta:
+                    meta_path = Path(str(final_path).replace(".txt", ".meta.json"))
+                    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+            except Exception as _meta_exc:
+                logger.debug("metadata_write_failed", err=str(_meta_exc))
+
+            # Build RAG vector index asynchronously (best-effort, non-blocking).
+            try:
+                if paper_id:
+                    from services.paper import vector_store as _vs  # local import to avoid cycles
+
+                    if not _vs.index_exists(paper_id):
+                        _vs.build_index_from_text(paper_id, extracted)
+                    if url != paper_id and not _vs.index_exists(url):
+                        _vs.build_index_from_text(url, extracted)
+            except Exception as _exc:  # pragma: no cover
+                logger.warning("vector_index_error", paper_id=paper_id, error=str(_exc))
+
             logger.info(
                 "full_text_cached",
                 path=str(final_path),
@@ -339,10 +563,37 @@ class TextExtractor:
     async def _layer_pdf(self, url: str) -> str | None:
         if not (url.lower().endswith(".pdf") or "/pdf/" in url.lower()):
             return None
+
+        # ---------------- conditional fetch ----------------
+        headers: dict[str, str] | None = None
+        import config as _cfg
+
+        if _cfg.config.USE_COND_FETCH:
+            import hashlib as _hashlib
+            from email.utils import formatdate
+
+            # Use mtime of previously cached text (if any) to build HTTP-date.
+            h = _hashlib.sha1(url.encode()).hexdigest()[:16]
+            try:
+                existing = next(CACHE_ROOT.glob(f"*_{h}.txt"))
+                mtime = existing.stat().st_mtime
+                headers = {"If-Modified-Since": formatdate(mtime, usegmt=True)}
+            except StopIteration:
+                pass  # no existing file ⇒ full download
+
         async with (
             aiohttp.ClientSession() as session,
-            session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp,
+            session.get(
+                url,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers=headers,  # may be None
+            ) as resp,
         ):
+            # Short-circuit when server signals resource unchanged.
+            if resp.status == 304:
+                logger.debug("pdf_not_modified", url=url)
+                return None
+
             header_bytes = int(resp.headers.get("content-length", 0))
             if header_bytes and header_bytes > MAX_PDF_BYTES * 2:
                 logger.info(
@@ -369,9 +620,8 @@ class TextExtractor:
         if fitz is not None:
             try:
                 text = await asyncio.to_thread(_extract_with_pymupdf, pdf_bytes)
-                print(f"pymu_text_len: {len(text)}")
+                logger.debug("pymu_text_len", chars=len(text))
             except Exception as pymu_exc:  # pragma: no cover – robustness
-                print(f"pymupdf_failed: {pymu_exc}")  # DEBUG
                 logger.debug("pymupdf_failed", url=url, err=str(pymu_exc))
 
         # Fallback to pdfminer if PyMuPDF unavailable or returned empty.
@@ -393,8 +643,26 @@ class TextExtractor:
             except Exception as ocr_exc:
                 logger.debug("ocr_failed", url=url, err=str(ocr_exc))
 
+        # Append any tables we can extract (if pdfplumber present).
+        try:
+            tables_md = await asyncio.to_thread(_extract_tables, pdf_bytes)
+            if tables_md.strip():
+                text = f"{text}\n\n{tables_md}"
+                logger.debug("tables_extracted", count=tables_md.count("=== TABLE"))
+        except Exception as _tbl_exc:  # pragma: no cover – table extraction is best-effort
+            logger.debug("table_extract_failed", err=str(_tbl_exc))
+
+        # Append detected figure captions (best-effort).
+        try:
+            figs_md = _extract_fig_captions(text)
+            if figs_md.strip():
+                text = f"{text}\n\n{figs_md}"
+                logger.debug("figures_extracted", count=figs_md.count("=== FIGURE"))
+        except Exception as _fig_exc:  # pragma: no cover – robustness first
+            logger.debug("figure_extract_failed", err=str(_fig_exc))
+
         cleaned_text = _clean_text(text)
-        print(f"cleaned_len: {len(cleaned_text)}")
+        logger.debug("pdf_cleaned_text_chars", chars=len(cleaned_text))
         return cleaned_text or None
 
     @staticmethod
@@ -451,3 +719,17 @@ class TextExtractor:
         if len(text) >= _MIN_FULL_TEXT:
             return True
         return partial_ok and len(text) >= _MIN_PARTIAL
+
+    async def load_metadata(self, paper_id: str) -> dict[str, Any] | None:
+        """Return cached metadata dict for *paper_id* if present."""
+
+        path_str = await self.load_full_text(paper_id)
+        if not path_str:
+            return None
+        meta_path = Path(path_str).with_suffix(".meta.json")
+        if not meta_path.exists():
+            return None
+        try:
+            return cast(dict[str, Any], json.loads(meta_path.read_text(encoding="utf-8")))
+        except Exception:
+            return None

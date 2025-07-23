@@ -54,6 +54,7 @@ class PaperSummariser(_BaseSummariser):
         length_guidance: str,
         prompt_template: str,
         snippet_char_limit: int | None = None,
+        snippet_override: str | None = None,
     ) -> tuple[str, int]:
         if snippet_char_limit is None:
             snippet_char_limit = max_content_snippet_chars(
@@ -63,7 +64,12 @@ class PaperSummariser(_BaseSummariser):
                 is_topic_summary=False,
             )
 
-        snippet = (paper.text_content or "")[:snippet_char_limit]
+        if snippet_override is not None:
+            snippet = (
+                snippet_override[:snippet_char_limit] if snippet_char_limit else snippet_override
+            )
+        else:
+            snippet = (paper.text_content or "")[:snippet_char_limit]
         total_chars = len(paper.text_content or "")
         snippet_len = len(snippet)
         logger.info(

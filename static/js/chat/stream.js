@@ -22,7 +22,7 @@ function _startTypingIndicator(targetEl, batchMs) {
 
   const contentSpan = document.createElement("span");
   contentSpan.className = "caret";
-  contentSpan.textContent = "."; // cycles through . .. ...
+  contentSpan.textContent = "●"; // cycles through ● ●● ●●●
 
   const entry = {
     buf: [],
@@ -45,7 +45,7 @@ function _startTypingIndicator(targetEl, batchMs) {
   if (container) scrollToBottom(container);
 
   entry.typingTimer = setInterval(() => {
-    const states = [".", "..", "..."];
+    const states = ["●", "●●", "●●●"];
     const current = contentSpan.textContent;
     contentSpan.textContent = states[(states.indexOf(current) + 1) % states.length];
   }, 500);

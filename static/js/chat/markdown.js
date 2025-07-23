@@ -75,6 +75,43 @@ export function ensureHighlightLoaded() {
 }
 
 // ---------------------------------------------------------------------------
+// KaTeX loader – lazy-load CSS, core, and auto-render helper.
+// ---------------------------------------------------------------------------
+let _katexPromise = null;
+export function ensureKatexLoaded() {
+  if (window.katex && window.renderMathInElement) return Promise.resolve();
+  if (_katexPromise) return _katexPromise;
+
+  _katexPromise = new Promise((resolve) => {
+    // Inject CSS first so equations don’t flash unstyled
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css";
+    document.head.appendChild(css);
+
+    // Helper to track both script loads
+    let loaded = 0;
+    const done = () => {
+      if (++loaded === 2) resolve();
+    };
+
+    // Core KaTeX
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
+    s.onload = done; s.onerror = done; // best-effort
+    document.head.appendChild(s);
+
+    // Auto-render
+    const auto = document.createElement("script");
+    auto.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js";
+    auto.onload = done; auto.onerror = done;
+    document.head.appendChild(auto);
+  });
+
+  return _katexPromise;
+}
+
+// ---------------------------------------------------------------------------
 // Render helpers
 // ---------------------------------------------------------------------------
 export async function renderMarkdownPartial(el) {
@@ -82,7 +119,7 @@ export async function renderMarkdownPartial(el) {
     await ensureMarkdownLibs();
 
     let rawMd = el.textContent ?? "";
-    // Close any still-open code block fence so marked won't choke.
+    // Close any still-open code block fence so marked won’t choke.
     const fenceCount = (rawMd.match(/```/g) || []).length;
     if (fenceCount % 2 === 1) rawMd += "\n```";
 
@@ -93,6 +130,18 @@ export async function renderMarkdownPartial(el) {
     });
     const safeHtml = window.DOMPurify ? window.DOMPurify.sanitize(dirtyHtml) : dirtyHtml;
     el.innerHTML = safeHtml;
+
+    // Render LaTeX expressions with KaTeX (lazy-loaded)
+    await ensureKatexLoaded();
+    if (window.renderMathInElement) {
+      window.renderMathInElement(el, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+        ],
+        throwOnError: false,
+      });
+    }
 
     await ensureHighlightLoaded();
     el.querySelectorAll("pre code").forEach((block) => window.hljs?.highlightElement(block));

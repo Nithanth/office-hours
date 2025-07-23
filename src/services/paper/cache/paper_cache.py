@@ -2,7 +2,6 @@
 
 # stdlib
 import json
-import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,6 +10,8 @@ from typing import Any, Literal, Optional, cast
 
 # external
 from loguru import logger
+
+import config as _cfg
 
 
 class PaperCache:
@@ -46,7 +47,7 @@ class PaperCache:
 
     def __init__(self, db_path: str | None = None, freshness_hours: int = 24):
         # Resolve DB path early so subsequent ops use a concrete str
-        env_path = os.getenv("PAPER_CACHE_DB")
+        env_path = _cfg.config.PAPER_CACHE_DB
         self.db_path: str = str(db_path or env_path or "data/paper_cache.sqlite3")
 
         # Ensure parent directory exists

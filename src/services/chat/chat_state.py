@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
+import config as _cfg
+
 
 @dataclass
 class ChatMessage:
@@ -47,7 +49,7 @@ class ChatState:
     # Per-paper scratch space (e.g., cached full-text paths)
     paper_cache: dict[str, dict[str, str]] = field(default_factory=dict)
     # Ring buffer of last tokens for stream-resume (Phase 6)
-    _buf_cap: int = int(os.getenv("CHAT_STREAM_BUFFER", "100"))
+    _buf_cap: int = _cfg.config.CHAT_STREAM_BUFFER
     stream_buffer: list[tuple[int, str]] = field(default_factory=list)
     next_token_idx: int = 0
     # True while an SSE stream is actively generating tokens for this session.
@@ -93,7 +95,7 @@ try:  # Sched affinity not available on macOS; fallback gracefully
 except Exception:  # noqa: BLE001 - any failure → assume single worker
     _cpu_count = os.cpu_count() or 1
 
-_uvicorn_workers_env = os.getenv("UVICORN_WORKERS")
+_uvicorn_workers_env = _cfg.config.UVICORN_WORKERS
 try:
     _declared_workers = int(_uvicorn_workers_env) if _uvicorn_workers_env else 1
 except ValueError:

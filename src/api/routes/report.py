@@ -17,6 +17,23 @@ from utils.rate_limit import limiter
 
 # Services are obtained per-request via dependency helpers to avoid stale instances.
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _looks_like_url(text: str) -> bool:
+    """Return True if *text* resembles an HTTP(S) URL."""
+
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(text.strip())
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
+
+
 router = APIRouter()
 
 
@@ -48,6 +65,11 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
     }
+    # Auto-detect URL inputs to avoid relying solely on the form checkbox.
+    if not is_url_input and _looks_like_url(original_query_for_report):
+        is_url_input = True
+        log_params["is_url_input"] = True
+
     logger.info("report_request", **log_params)
 
     if llm_service is None or not llm_service._initialized:
@@ -199,7 +221,7 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         return HTMLResponse(content=error_html)
 
 
-@router.get("/papers/{paper_id}/card")
+@router.get("/papers/{paper_id:path}/card")
 async def citation_card(paper_id: str) -> Response:
     """Return the small hover-card HTML for a citation link."""
 

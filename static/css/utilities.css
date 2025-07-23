@@ -121,3 +121,49 @@ html, body { overflow-x: hidden; }
   pointer-events:none;
   color: transparent !important;
 }
+
+/* --- Pin button & pinned item ------------------------------------------------ */
+/* Paper list items need relative positioning for pin button */
+#papers-list li {
+  position: relative;
+}
+
+/* Optional hover tint for clarity */
+
+.pager button {
+  background: none;
+  border: none;
+  color: var(--lux-blue, #0074d9);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 0.95rem;
+}
+.pager button.active {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.pager button:disabled {
+  color: #888;
+  cursor: default;
+}
+
+/* Remove browser focus ring/yellow shadow on pager buttons */
+.pager button:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Remove focus flash on paper titles and list items */
+#papers-list a:focus,
+#papers-list a:focus-visible,
+#papers-list a:active,
+#papers-list li:focus,
+#papers-list li:focus-visible,
+#papers-list li:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+#papers-list * {
+  -webkit-tap-highlight-color: transparent;
+}

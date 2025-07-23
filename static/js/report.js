@@ -155,20 +155,27 @@ actionsObserver.observe(document.body, { childList: true, subtree: true });
 // ---------------------------------------------------------------------------
 // Reveal action buttons when report streaming finishes (HTMX/SSE)
 // ---------------------------------------------------------------------------
-document.addEventListener("htmx:afterSwap", () => {
+document.addEventListener("htmx:afterSwap", (evt) => {
+  // Only trigger when the swap pertains to the report progress element (i.e. final "done" SSE swap).
+  const tgt = evt?.detail?.target;
+  if (!tgt || tgt.id !== "report-progress") {
+    return;
+  }
+
   try {
     // If the progress spinner has been removed, show the actions
     const progressGone = !document.getElementById("report-progress");
     if (progressGone) {
-      console.debug("[lux] report.js: afterSwap – progress gone, unhide actions");
+      console.debug("[lux] report.js: afterSwap - progress gone, unhide actions");
       const actions = document.getElementById("report-actions");
       if (actions) {
         actions.classList.remove("hidden");
         actions.classList.add("lux-flex-end");
 
         // Toast feedback – notify user that report is ready
-        if (window.showToast) {
+        if (window.showToast && !window._luxReportToastShown) {
           window.showToast("Report ready! Click the copy button to grab the text.");
+          window._luxReportToastShown = true;
         }
 
         // Add generic report heading if backend didn't provide one
@@ -195,8 +202,9 @@ document.addEventListener("DOMContentLoaded", () => {
     actions.classList.remove("hidden");
     actions.classList.add("lux-flex-end");
 
-    if (window.showToast) {
+    if (window.showToast && !window._luxReportToastShown) {
       window.showToast("Report ready! Click the copy button to grab the text.");
+      window._luxReportToastShown = true;
     }
   }
 });
@@ -293,3 +301,23 @@ function handleNotesClick(ev) {
 }
 
 document.addEventListener("click", handleNotesClick);
+
+(function () {
+  // simple toast fallback if settings.js not loaded
+  if (typeof window.showToast !== "function") {
+    window.showToast = function (msg, ms = 3500) {
+      const t = document.createElement("div");
+      t.textContent = msg;
+      t.style.cssText =
+        "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);" +
+        "background:#333;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;" +
+        "font-size:14px;opacity:0;transition:opacity .2s";
+      document.body.appendChild(t);
+      requestAnimationFrame(() => (t.style.opacity = "1"));
+      setTimeout(() => {
+        t.style.opacity = "0";
+        setTimeout(() => t.remove(), 300);
+      }, ms);
+    };
+  }
+})();

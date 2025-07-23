@@ -1,7 +1,8 @@
 /* misc.css – small leftovers */
 @import url("variables.css");
 
-html, body { height:100%; }
+/* Let page grow vertically – only guarantee *minimum* viewport height */
+html, body { min-height: 100%; height: auto; }
 
 body.lux-dark footer { border-top:1px solid rgba(255,255,255,0.227) !important; color:#aaa; }
 
@@ -32,4 +33,121 @@ body.lux-dark .copy-icon-btn.copied { color:#16a34a !important; }
 body.lux-dark .lux-modal label,
 body.lux-dark .lux-modal legend {
   color: var(--lux-red);
+}
+
+/* Pager buttons dark-mode blend */
+body.lux-dark .pager-btn {
+  background: var(--container-bg) !important;
+  border: 1px solid var(--container-bg) !important;
+  color: var(--lux-red);
+}
+body.lux-dark .pager-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* Initial compact search card */
+.search-card {
+  max-width: 2000px; /* even wider card */
+  width: 75%; /* force card to fill most of viewport */
+  /* move card downward so gap above equals combined gap below (card margin + footer spacing) */
+  margin: 4rem auto 1rem; /* top 4rem, horizontal auto, bottom 1rem */
+  padding: 2rem 2rem 3rem; /* more spacious */
+  border: 1px solid #ccc;
+  background: #fff;
+  /* Slightly deeper, softer shadow */
+  box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+  border-radius: 6px;
+  position: relative;
+  min-height: 550px; /* taller card */
+  /* Flex column so we can push RA button to bottom */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Remove fixed pseudo bottom border so card border follows content height */
+.search-card::after,
+body.lux-dark .search-card::after {
+  display: none;
+}
+
+body.lux-dark .search-card {
+  background: #1e1e1e;
+  border-color: #555;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+}
+
+/* Override any inline margins */
+.search-card #modal-container { position: relative; z-index: 2; }
+.search-card .ask-assistant-btn {
+  position: absolute;
+  bottom: 1.5rem;      /* keep bottom padding gap */
+  left: 2rem;          /* align with card side padding */
+  margin: 0;
+
+  /* Match neutral Search Papers button style */
+  background: buttonface;
+  color: buttontext;
+  border: 1px solid #a9a9a9;
+  border-radius: 4px;
+  padding: 2px 6px;              /* default UA padding */
+  font: inherit;                 /* inherit font to match */
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.search-card .ask-assistant-btn:hover {
+  filter: brightness(0.95);
+}
+
+/* Dark-mode variant */
+body.lux-dark .search-card .ask-assistant-btn {
+  background: #444;
+  color: #eee;
+  border: 1px solid #666;
+}
+
+body.lux-dark .search-card .ask-assistant-btn:hover {
+  background: #555;
+}
+
+/* Ensure results+report form stretches so button gets pushed */
+.search-card #results-and-report-form {
+  flex: 1 1 auto;
+}
+
+/* Ensure main content wrapper inside search-card grows */
+.search-card > div:first-child {
+  flex: 1 1 auto;
+}
+
+/* Paper result items – keep readable margins & wrap long text */
+.search-card li[data-paper-id] {
+  margin: 0 0.75rem 1rem; /* side gap so borders don’t hug card edge */
+  overflow-wrap: anywhere; /* long titles/urls wrap instead of overflowing */
+}
+
+/* Results list spacing */
+.search-card ul {
+  margin: 0;              /* reset default top margin */
+  padding: 0 0.25rem;     /* small side padding inside card */
+  list-style: none;       /* remove bullets */
+}
+
+/* ------- Domain filter sizing tweaks ------- */
+#domain-filter-container {
+  font: inherit;          /* match button font-family & size */
+  font-size: 0.8rem;      /* same size as buttons */
+  line-height: 1.1;
+  padding: 4px 4px;       /* slight inner padding */
+  width: 140px;           /* further shrink width */
+  font-family: Arial, sans-serif; /* ensure sans font */
+ }
+
+#domain-filter-container span {
+  font-family: inherit;
+}
+
+/* ---------- KaTeX tweaks ---------- */
+body.lux-dark .katex {
+  color: #eee; /* lighten math text in dark theme */
 }

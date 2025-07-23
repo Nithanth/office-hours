@@ -158,7 +158,11 @@ cython_debug/
 data/
 .summary_cache/
 scripts/text_dumps/
-
+# vector indices
++.vector_cache/
++*.faiss
++.lance/
++
 # node
 node_modules
 

@@ -13,7 +13,6 @@ Main responsibilities:
 import asyncio
 import html
 import logging
-import os
 import pathlib as _pathlib
 import sys
 import time
@@ -45,7 +44,7 @@ except ImportError:  # pragma: no cover
 
 # --- Tunables --------------------------------------------------------------
 _IDLE_SESSION_TTL_SEC = 3600  # ChatState eviction window (seconds)
-_TEXT_PREWARM_SEMA = asyncio.Semaphore(int(os.getenv("TEXT_PREWARM_CONCURRENCY", "8")))
+_TEXT_PREWARM_SEMA = asyncio.Semaphore(config.config.TEXT_PREWARM_CONCURRENCY)
 
 # ---------------------------------------------------------------------------
 # Background warm-cache helper (triggered by search route)
@@ -128,7 +127,7 @@ logger.add(
 # ---------------------------------------------------------------------------
 # Optional persistent log file (enable by setting LOG_FILE env variable)
 # ---------------------------------------------------------------------------
-log_file = os.getenv("LOG_FILE")
+log_file = config.config.LOG_FILE
 if log_file:  # user opted in to file logging
     logger.add(
         log_file,
@@ -145,7 +144,7 @@ exa_client_instance: Optional[ExaClient] = None
 # Keep GC task handle so we can cancel cleanly on shutdown
 _gc_task: Optional[asyncio.Task[None]] = None
 
-KEEP_ALIVE_SEC = int(os.getenv("CHAT_KEEPALIVE_SEC", "1"))
+KEEP_ALIVE_SEC = config.config.CHAT_KEEPALIVE_SEC
 
 # --- FastAPI lifespan: startup → shutdown ---------------------------------
 

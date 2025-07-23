@@ -39,12 +39,14 @@ def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
     return digest[:char_cap]
 
 
+# paper_id optional – helps fetch RAG snippets for extra key takeaways
 @limiter.limit("20/5minute")
 @router.post("/generate-report-notes")
 async def generate_report_notes(
     request: Request,
     report_text: str = Form(...),
     output_format: Literal["txt", "docx"] = Form("txt"),
+    paper_id: str | None = Form(None),  # deprecated, kept for backward compat
 ) -> Response:
     """Generate study notes from *report_text* and recent chat history.
 
@@ -61,6 +63,14 @@ async def generate_report_notes(
     chat_state = get_chat_state(session_id)
 
     chat_digest = _gather_chat_digest(chat_state)
+
+    # Build list of paper IDs to include RAG evidence.
+    paper_ids: list[str] | None
+
+    if paper_id:
+        paper_ids = [paper_id]
+    else:
+        paper_ids = list(chat_state._histories.keys()) if chat_state._histories else None
 
     llm_service: LLMService | None = get_llm_service()
     if llm_service is None:
@@ -81,6 +91,7 @@ async def generate_report_notes(
             provider=provider,
             model_id=model_id,
             output_format=output_format,
+            paper_ids=paper_ids,
         )
     except RuntimeError as err:
         logger.error("notes_generation_error", error=str(err))

@@ -18,6 +18,7 @@ from typing import Any, Optional, cast
 
 from loguru import logger
 
+import config as _cfg
 from models.paper import Paper
 from services.paper.cache.paper_cache import PaperCache
 
@@ -97,7 +98,7 @@ class ExaClient:
 
     # Upper bound on the raw result pool fetched from Exa before local filtering.
     # Keeping this modest is the single biggest win for latency.  Tunable via env.
-    MAX_RETURNED_PAPERS: int = int(os.getenv("EXA_POOL_SIZE", "35"))
+    MAX_RETURNED_PAPERS: int = _cfg.config.EXA_POOL_SIZE
 
     def __init__(self, api_key: str):
         if not api_key:

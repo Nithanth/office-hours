@@ -1,6 +1,5 @@
 """Observability helpers: request-ID middleware and optional Prometheus metrics."""
 
-import os
 import time
 import uuid
 from typing import Any, Callable
@@ -9,6 +8,8 @@ from fastapi import FastAPI, Request, Response
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
+import config as _cfg
+
 # Component-level logger
 logger = logger.bind(component="Observability")
 
@@ -16,7 +17,7 @@ logger = logger.bind(component="Observability")
 # Prometheus setup (optional)
 # ---------------------------------------------------------------------------
 
-_METRICS_ENABLED = bool(os.getenv("ENABLE_METRICS"))
+_METRICS_ENABLED = _cfg.config.ENABLE_METRICS
 
 if _METRICS_ENABLED:
     try:

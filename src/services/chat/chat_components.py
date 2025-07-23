@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from fasthtml.components import BUTTON, H2, A, Div, Form, P, Textarea
+from fasthtml.components import BUTTON, H2, INPUT, A, Div, Form, P, Span, Textarea
 
 
 # Leaf components
@@ -51,6 +51,7 @@ def ChatModal(
     modal_id: str,
     title: str,
     chat_log_id: str,
+    paper_id: str,
     form_action: str = "/chat",
     oob_slot: str | None = None,
     **attrs: Any,
@@ -78,9 +79,23 @@ def ChatModal(
             # Body
             Div(id=chat_log_id, cls="chat-log-container modal-body"),
             Form(
+                (
+                    Div(
+                        INPUT(type="checkbox", name="with_sources", value="1"),
+                        Span(
+                            "Use sources",
+                            style="font-size:0.8rem;margin-left:4px;",
+                        ),
+                        style="display:flex;align-items:center;position:absolute;top:6px;left:20px;",
+                    )
+                    if paper_id == "global"
+                    else (),
+                ),
                 Textarea(
                     name="message",
-                    placeholder="Ask about this paper…",
+                    placeholder="Ask about this paper…"
+                    if paper_id != "global"
+                    else "Ask anything…",
                     rows="3",
                     style="width: 100%; border-radius: 4px; padding: 5px;",
                 ),

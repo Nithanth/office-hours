@@ -15,7 +15,11 @@ from typing import Any
 
 from loguru import logger
 
-from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, DEFAULT_SYSTEM_PROMPT
+from prompts.prompt_builder import (
+    AUDIENCE_PROMPT_MAP,
+    DEFAULT_SYSTEM_PROMPT,
+    DIRECT_QUERY_USER_PREFIX,
+)
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMService
 from services.core.llm_utils.types import ProviderName
@@ -74,13 +78,7 @@ class DirectQueryService:
         passages_block = await self._fetch_supporting_passages(query, num_supporting_papers)
 
         # 3) Build user prompt -------------------------------------------------------
-        user_prompt = (
-            "You are answering a direct research question for a user. "
-            "Provide the best possible answer grounded in the provided source passages if they are relevant. "
-            "If the passages are not relevant you may rely on your own knowledge. "
-            "Answer in no more than 250 words (≈ one to two short paragraphs).\n\n"
-            f"Question: {query.strip()}" + passages_block
-        )
+        user_prompt = DIRECT_QUERY_USER_PREFIX + "\n\nQuestion: " + query.strip() + passages_block
 
         # 4) Call LLM ---------------------------------------------------------------
         max_tokens = (

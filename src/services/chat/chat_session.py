@@ -1,6 +1,5 @@
 """Injects a signed, HTTP-only session cookie and stores its ID on ``request.state``."""
 
-import os
 import secrets
 from typing import cast
 
@@ -9,10 +8,12 @@ from itsdangerous import BadData, URLSafeSerializer
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+import config as _cfg
+
 COOKIE_NAME = "luxsid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
-_SIGN_SECRET = os.getenv("LUX_SESSION_SECRET", "dev-insecure-secret")
+_SIGN_SECRET = _cfg.config.LUX_SESSION_SECRET
 serializer = URLSafeSerializer(_SIGN_SECRET, salt="lux-chat")
 
 

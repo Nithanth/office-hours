@@ -20,7 +20,14 @@
   line-height: 1.45;
 }
 
-.user-message { background: var(--bg); margin-left:auto; white-space: pre-wrap; }
+.user-message {
+  background: var(--bg);
+  margin-left: auto;
+  white-space: pre-wrap;
+  max-width: 70%;            /* wrap after ~70% of modal width */
+  word-break: break-word;    /* break very long tokens */
+}
+
 .assistant-message { background: transparent; margin-right:auto; white-space: normal; }
 
 .assistant-message p,

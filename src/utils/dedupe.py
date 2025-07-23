@@ -2,11 +2,13 @@
 
 from typing import cast
 
-import nltk
 from loguru import logger
 from sentence_transformers import SentenceTransformer, util
 
+from config import config
+
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+_DEFAULT_THRESHOLD = config.CHAT_DEDUPE_SIM_THRESHOLD
 _model: SentenceTransformer | None = None
 
 
@@ -22,12 +24,31 @@ def _get_model() -> SentenceTransformer:
 
 
 def _sentences(text: str) -> list[str]:
-    """Split *text* into sentences using NLTK's punkt tokenizer."""
-    nltk.download("punkt", quiet=True)
-    return cast(list[str], nltk.sent_tokenize(text))
+    """Return a list of sentences.
+
+    Primary approach = NLTK *punkt*.  If the resource is missing and cannot be
+    fetched (e.g. offline container), fall back to a naive regex splitter that
+    is "good enough" for similarity‐dedupe purposes.
+    """
+
+    try:
+        from nltk.tokenize import sent_tokenize  # lazy import so nltk is optional
+
+        # Attempt to use punkt; don't auto-download to avoid blocking.
+        return cast(list[str], sent_tokenize(text))
+    except LookupError as err:
+        logger.warning("punkt_missing_fallback", error=str(err))
+
+    # Fallback: split on period/question/exclamation followed by whitespace.
+    import re
+
+    rough = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [s for s in rough if s]
 
 
-def deduplicate_chat(chat_text: str, report_text: str, threshold: float = 0.9) -> str:
+def deduplicate_chat(
+    chat_text: str, report_text: str, threshold: float = _DEFAULT_THRESHOLD
+) -> str:
     """Return `chat_text` with sentences removed that overlap strongly with the report.
 
     Args:

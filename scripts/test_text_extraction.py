@@ -42,7 +42,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 
 async def _debug_url(
-    url: str, use_exa: bool, *, dump: bool = False, out_dir: Path | None = None
+    url: str,
+    use_exa: bool,
+    *,
+    dump: bool = False,
+    dump_raw: bool = False,
+    out_dir: Path | None = None,
 ) -> None:
     extractor = TextExtractor.instance()
 
@@ -72,8 +77,24 @@ async def _debug_url(
                 print(f"[✓] {name:15} {len(result):6,} chars | {preview}")
                 if dump and out_dir is not None:
                     safe = re.sub(r"[^A-Za-z0-9._-]", "_", url)[:60]
-                    file_path = out_dir / f"{safe}_{name}.txt"
+                    # Write cleaned text (default behaviour of layer)
+                    file_path = out_dir / f"{safe}_{name}_clean.txt"
                     file_path.write_text(result, encoding="utf-8")
+
+                    # Optionally write RAW (un-cleaned) version for PDF layers.
+                    if dump_raw and name in {"arxiv_pdf", "pdf_generic", "html_pdf_link"}:
+                        # Temporarily disable cleaning by monkey-patching _clean_text
+                        from services.paper import text_extractor as _te
+
+                        orig_clean = _te._clean_text  # type: ignore[attr-defined]
+                        _te._clean_text = lambda x: x  # type: ignore[assignment]
+                        try:
+                            raw_res = await func(url)
+                            if raw_res:
+                                raw_path = out_dir / f"{safe}_{name}_raw.txt"
+                                raw_path.write_text(raw_res, encoding="utf-8")
+                        finally:
+                            _te._clean_text = orig_clean  # type: ignore[assignment]
             else:
                 print(f"[ ] {name:15} no content or below quality threshold")
         except Exception as exc:  # pragma: no cover – diagnostics only
@@ -158,6 +179,11 @@ async def _main(argv: list[str]) -> None:
     parser.add_argument(
         "--dump", action="store_true", help="Dump successful layer outputs to files"
     )
+    parser.add_argument(
+        "--dump-raw",
+        action="store_true",
+        help="When used with --dump, also dump un-cleaned PDF text (_raw.txt).",
+    )
     default_out = Path(__file__).resolve().parent / "text_dumps"
     parser.add_argument(
         "--out",
@@ -175,7 +201,13 @@ async def _main(argv: list[str]) -> None:
         args.out = str(out_dir)
 
     for url in args.urls:
-        await _debug_url(url, args.use_exa, dump=args.dump, out_dir=Path(args.out))
+        await _debug_url(
+            url,
+            args.use_exa,
+            dump=args.dump,
+            dump_raw=args.dump_raw,
+            out_dir=Path(args.out),
+        )
         if args.trace_pdf:
             await _trace_pdf(TextExtractor.instance(), url)
 
