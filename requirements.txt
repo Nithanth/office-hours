@@ -13,7 +13,7 @@ redis~=6.2
 # API Clients & HTTP
 httpx~=0.28
 exa_py~=1.14
-openai~=1.85
+openai~=1.108
 anthropic~=0.53
 together~=1.5
 google-genai~=1.19
