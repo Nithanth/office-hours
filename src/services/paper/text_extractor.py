@@ -424,7 +424,7 @@ class TextExtractor:
 
                     async def _meta_task() -> None:
                         """Background task to download the PDF and parse metadata."""
-                        import requests  # type: ignore[import-untyped]  # local import to avoid mandatory dep
+                        import requests
 
                         nonlocal meta
                         try:

@@ -1,8 +1,7 @@
-"""Study-notes generator.
+"""Study-notes and blog-post generators.
 
-POST `/generate-report-notes` accepts the plain-text report (from the browser)
-plus optional output format and returns downloadable notes (`.txt` or `.docx`).
-It also injects recent chat context so the LLM can avoid repetition.
+POST `/generate-report-notes` – downloadable notes (`.txt`, `.md`, or `.docx`).
+POST `/generate-blog` – downloadable Markdown blog post synthesised from the report.
 """
 
 from typing import Literal
@@ -12,6 +11,7 @@ from loguru import logger
 
 from api.deps import get_llm_service, get_session_id
 from config import config
+from prompts.prompt_builder import _load_template
 from services.chat.chat_state import ChatState, get_chat_state
 from services.core.llm_service import LLMService
 from services.notes.notes_generator import NotesGenerator
@@ -45,7 +45,7 @@ def _gather_chat_digest(cs: ChatState, char_cap: int = 5000) -> str:
 async def generate_report_notes(
     request: Request,
     report_text: str = Form(...),
-    output_format: Literal["txt", "docx"] = Form("txt"),
+    output_format: Literal["txt", "md", "docx"] = Form("txt"),
     paper_id: str | None = Form(None),  # deprecated, kept for backward compat
 ) -> Response:
     """Generate study notes from *report_text* and recent chat history.
@@ -99,3 +99,58 @@ async def generate_report_notes(
 
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content, media_type=media_type, headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# Blog post generator
+# ---------------------------------------------------------------------------
+
+_BLOG_SYSTEM_PROMPT: str = _load_template("blog/system.md")
+
+
+@limiter.limit("10/5minute")
+@router.post("/generate-blog")
+async def generate_blog(
+    request: Request,
+    report_text: str = Form(...),
+) -> Response:
+    """Generate a polished Markdown blog post from the report text + chat history."""
+
+    logger.info("blog_generate: request received")
+
+    if not report_text.strip():
+        raise HTTPException(status_code=400, detail="Report text required")
+
+    session_id = await get_session_id(request)
+    chat_state = get_chat_state(session_id)
+    chat_digest = _gather_chat_digest(chat_state, char_cap=8000)
+
+    llm_service: LLMService | None = get_llm_service()
+    if llm_service is None:
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
+
+    model_key = config.DEFAULT_MODEL_KEY
+    model_cfg = config.AVAILABLE_MODELS[model_key]
+
+    user_prompt = (
+        "Transform the following research report into a compelling blog post.\n\n"
+        "REPORT:\n"
+        + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
+    )
+    if chat_digest:
+        user_prompt += "\n\nADDITIONAL INSIGHTS FROM CHAT:\n" + chat_digest
+
+    try:
+        blog_md = await llm_service.generate_completion(
+            provider_name=model_cfg["provider"],
+            model_name=model_cfg["id"],
+            prompt=user_prompt,
+            max_tokens=4096,
+            system_prompt=_BLOG_SYSTEM_PROMPT,
+        )
+    except Exception as err:
+        logger.error("blog_generation_error", error=str(err))
+        raise HTTPException(status_code=500, detail="Blog generation failed") from err
+
+    headers = {"Content-Disposition": 'attachment; filename="research_blog.md"'}
+    return Response(blog_md, media_type="text/markdown; charset=utf-8", headers=headers)

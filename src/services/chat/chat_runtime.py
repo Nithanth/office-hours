@@ -72,7 +72,13 @@ async def build_prompt(
     # ------------------------------------------------------------------
     context_chunks = ""
     try:
-        from services.paper import vector_store as _vs  # local import avoid cycles
+        import importlib
+        import sys
+
+        # Use dynamic import so test stubs injected into sys.modules are honoured
+        _vs = sys.modules.get("services.paper.vector_store")
+        if _vs is None:
+            _vs = importlib.import_module("services.paper.vector_store")
 
         if _vs.index_exists(paper_id) and turns and turns[-1].role == "user":
             from services.paper.embedding import embed_query as _embed_q

@@ -1,4 +1,4 @@
-"""Thin wrapper around *exa_py* with stable snake_case API and structured logging."""
+"""Thin wrapper around *exa_py* ≥2.0 with stable snake_case API and structured logging."""
 
 from typing import Any, Final
 
@@ -13,7 +13,6 @@ from tenacity import (
 from utils.observability import _METRICS_ENABLED, EXA_LAT
 
 try:
-    # The canonical synchronous & async clients shipped by exa_py.
     from exa_py import Exa
 except ModuleNotFoundError as exc:  # pragma: no cover - dev mis-config
     raise ImportError(
@@ -22,10 +21,16 @@ except ModuleNotFoundError as exc:  # pragma: no cover - dev mis-config
     ) from exc
 
 
-class ExaAdapter:  # pylint: disable=too-few-public-methods
-    """SDK wrapper exposing *search_and_contents* through a stable interface."""
+class ExaAdapter:
+    """SDK wrapper exposing Exa search/similar/answer/research through a stable interface.
 
-    # Transient network errors that merit an exponential back-off + retry.
+    Updated for exa_py 2.x:
+    - search() replaces search_and_contents() (now returns text by default)
+    - find_similar() replaces find_similar_and_contents()
+    - use_autoprompt removed (no longer a parameter)
+    - contents= dict replaces top-level text=/summary=/highlights= params
+    """
+
     _RETRIABLE_EXCEPTIONS: Final[tuple[type[Exception], ...]] = (
         ConnectionError,
         TimeoutError,
@@ -34,62 +39,38 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
     def __init__(self, api_key: str) -> None:
         if not api_key:
             raise ValueError("Exa API key is required to instantiate ExaAdapter.")
-
         self._sync: Exa = Exa(api_key=api_key)
-        self._async: Any | None = None  # Async client not available yet
 
     # ---------------------------------------------------------------------
-    # Public (synchronous) helpers
+    # Search (replaces search_and_contents in 2.x)
     # ---------------------------------------------------------------------
 
-    @retry(  # Simple exponential back-off for transient errors
+    @retry(
         retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    def search_and_contents(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 - SDK types
-        """Wrapper for :py:meth:`exa_py.Exa.search_and_contents`.
+    def search(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 - SDK types
+        """Unified search via :py:meth:`exa_py.Exa.search`.
 
-        Parameters are accepted in *snake_case* and passed directly to the SDK.
+        In 2.x, search() returns text contents by default. Pass
+        ``contents=False`` for metadata-only, or
+        ``contents={"text": True, "summary": True}`` for specific content.
         """
-
-        # Exa SDK expects snake_case parameter names. Passing kwargs directly
-        # avoids validation errors such as "Invalid option: 'numResults'".
-        params = kwargs
-        logger.debug("Exa search_and_contents", query=query, params=params)
+        # Strip removed params that callers might still pass
+        kwargs.pop("use_autoprompt", None)
+        logger.debug("Exa search", query=query, params=kwargs)
         if _METRICS_ENABLED and EXA_LAT is not None:
             with EXA_LAT.time():
-                return self._sync.search_and_contents(query, **params)
-        return self._sync.search_and_contents(query, **params)
+                return self._sync.search(query, **kwargs)
+        return self._sync.search(query, **kwargs)
+
+    # Backward-compat alias for callers that haven't migrated yet
+    search_and_contents = search
 
     # ------------------------------------------------------------------
-    # Faster metadata-only search (no full text) -----------------------
-    # ------------------------------------------------------------------
-
-    @retry(  # same retry policy as above
-        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    )
-    def search(self, query: str, **kwargs: Any) -> Any:  # noqa: ANN401 – SDK types
-        """Wrapper for :py:meth:`exa_py.Exa.search` (metadata only).
-
-        This variant is substantially faster because it skips the costly
-        *get_contents* stage.  We use it for the initial paper-search UI; full
-        text is fetched lazily later when the user selects papers for a report.
-        """
-
-        params = kwargs  # already snake_case in our codebase
-        logger.debug("Exa search (metadata-only)", query=query, params=params)
-        if _METRICS_ENABLED and EXA_LAT is not None:
-            with EXA_LAT.time():
-                return self._sync.search(query, **params)
-        return self._sync.search(query, **params)
-
-    # ------------------------------------------------------------------
-    # Answer endpoint - short answers with supporting passages
+    # Find similar (replaces find_similar_and_contents in 2.x)
     # ------------------------------------------------------------------
 
     @retry(
@@ -98,12 +79,48 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    def answer(self, question: str, **kwargs: Any) -> Any:  # noqa: ANN401 - SDK types
-        """Wrapper for :py:meth:`exa_py.Exa.answer`.
+    def find_similar(self, url: str, **kwargs: Any) -> Any:  # noqa: ANN401
+        """Find pages similar to *url* via :py:meth:`exa_py.Exa.find_similar`.
 
-        Returns Exa SDK *Answer* object which contains an `answer` string and
-        supporting `results` list.
+        In 2.x, find_similar() returns text contents by default.
         """
+        kwargs.pop("use_autoprompt", None)
+        logger.debug("Exa find_similar", url=url, params=kwargs)
+        if _METRICS_ENABLED and EXA_LAT is not None:
+            with EXA_LAT.time():
+                return self._sync.find_similar(url, **kwargs)
+        return self._sync.find_similar(url, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Get contents (still supported in 2.x)
+    # ------------------------------------------------------------------
+
+    @retry(
+        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def get_contents(self, urls: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        """Retrieve contents for a list of URLs."""
+        logger.debug("Exa get_contents", urls=urls, params=kwargs)
+        if _METRICS_ENABLED and EXA_LAT is not None:
+            with EXA_LAT.time():
+                return self._sync.get_contents(urls, **kwargs)
+        return self._sync.get_contents(urls, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Answer endpoint
+    # ------------------------------------------------------------------
+
+    @retry(
+        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def answer(self, question: str, **kwargs: Any) -> Any:  # noqa: ANN401
+        """Short answer with supporting passages via :py:meth:`exa_py.Exa.answer`."""
         logger.debug("Exa answer", question=question, params=kwargs)
         if _METRICS_ENABLED and EXA_LAT is not None:
             with EXA_LAT.time():
@@ -111,15 +128,13 @@ class ExaAdapter:  # pylint: disable=too-few-public-methods
         return self._sync.answer(question, **kwargs)
 
     # ------------------------------------------------------------------
-    # Async variant - handy for future performance improvements.
+    # Research endpoint (new in 2.x)
     # ------------------------------------------------------------------
 
-    async def search_and_contents_async(self, query: str, **kwargs: Any) -> Any:
-        if self._async is None:
-            raise RuntimeError("AsyncExa client is not available in the installed exa_py SDK.")
-        params = kwargs
-        logger.debug("Exa search_and_contents_async", query=query, params=params)
-        return await self._async.search_and_contents(query, **params)
+    @property
+    def research(self) -> Any:
+        """Access the Exa Research API client (async research tasks)."""
+        return self._sync.research
 
     # -----------------------------------------------
     # Accessors

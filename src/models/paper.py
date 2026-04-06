@@ -30,6 +30,10 @@ class Paper(BaseModel):
     score: Optional[float] = Field(
         default=None, description="Relevance score from the search provider."
     )
+    relevance_score: Optional[float] = Field(
+        default=None,
+        description="Computed relevance score (0.00–1.00) factoring in search rank, metadata quality, and source authority.",
+    )
 
     # Path to cached full-text file (filled by TextExtractor when available)
     full_text_path: Optional[str] = Field(

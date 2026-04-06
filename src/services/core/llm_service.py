@@ -97,18 +97,30 @@ class LLMService:
             return
 
         self.logger.info("initializing providers")
+        initialized_any = False
+
         for provider_name, config in self.provider_configs.items():
             api_key = config.get("api_key")
             ProviderClass = config["ProviderClass"]
             default_model_id = config["default_model"]
 
-            # ---- Strict validation ----
+            # ---- Graceful validation ----
             if not api_key or not isinstance(api_key, str) or not api_key.strip():
-                raise LLMConfigurationError(f"{ProviderClass.__name__} API key is not configured")
-            if not default_model_id:
-                raise LLMConfigurationError(
-                    f"{ProviderClass.__name__} default model is not configured"
+                self.logger.warning(
+                    "provider skipped - missing API key",
+                    provider=ProviderClass.__name__,
                 )
+                # Ensure the provider is not left in the pool from a previous run
+                self.providers.pop(provider_name, None)
+                continue
+
+            if not default_model_id:
+                self.logger.warning(
+                    "provider skipped - missing default model",
+                    provider=ProviderClass.__name__,
+                )
+                self.providers.pop(provider_name, None)
+                continue
 
             try:
                 provider_instance = self.providers.get(provider_name) or ProviderClass(
@@ -117,6 +129,7 @@ class LLMService:
                 # Ensure async client ready
                 await provider_instance.initialize_client()
                 self.providers[provider_name] = provider_instance
+                initialized_any = True
                 self.logger.info(
                     "provider initialized",
                     provider=ProviderClass.__name__,
@@ -129,6 +142,10 @@ class LLMService:
                     error=str(e),
                     exc_info=True,
                 )
+                self.providers.pop(provider_name, None)
+
+        if not initialized_any:
+            raise LLMConfigurationError("No LLM providers could be initialised; configure at least one API key.")
 
         self._initialized = True
         self.logger.info("LLMService initialization complete.")

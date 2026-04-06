@@ -41,18 +41,28 @@ def text_to_html_paragraphs(text: str | None) -> str:
             _close_list()
             level = min(len(ln) - len(ln.lstrip("#")), 6)
             content = ln[level:].strip()
-            html_parts.append(f"<h{level}>{html.escape(content)}</h{level}>")
+            if not content:
+                continue  # skip empty headings
+            # Clamp headings to h3-h6 so LLM output never creates h1/h2
+            # (those are reserved for the report's own structure)
+            clamped = max(level, 3)
+            html_parts.append(f"<h{clamped}>{html.escape(content)}</h{clamped}>")
             continue
 
-        # Ordered list item ("1. foo") ------------------------------------------
-        if ln[0].isdigit() and ln[1:].lstrip().startswith("."):
-            if list_open != "ol":
-                _close_list()
-                list_open = "ol"
-                html_parts.append("<ol>")
-            content = ln.split(".", 1)[1].lstrip()
-            html_parts.append(f"<li>{html.escape(content)}</li>")
-            continue
+        # Ordered list item ("1. foo", "10. bar", etc.) -------------------------
+        if ln[0].isdigit():
+            # Find where digits end, then check for "." immediately after
+            i = 0
+            while i < len(ln) and ln[i].isdigit():
+                i += 1
+            if i < len(ln) and ln[i] == ".":
+                if list_open != "ol":
+                    _close_list()
+                    list_open = "ol"
+                    html_parts.append("<ol>")
+                content = ln.split(".", 1)[1].lstrip()
+                html_parts.append(f"<li>{html.escape(content)}</li>")
+                continue
 
         # Unordered list item ("- " or "* ") ------------------------------------
         if ln.startswith(("- ", "* ")):

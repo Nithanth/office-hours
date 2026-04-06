@@ -63,10 +63,13 @@ def is_valid_paper(paper: Paper | None) -> bool:
     if not paper.url:
         return False
 
-    return bool(
-        (paper.authors and len(paper.authors) > 0)
-        or (paper.text_content and len(paper.text_content) >= 100)
-    )
+    # Allow Exa's sparse results: accept when any of the following signals exist
+    has_authors = bool(paper.authors and len(paper.authors) > 0)
+    has_text = bool(paper.text_content and len(paper.text_content) >= 100)
+    url_str = str(paper.url)
+    has_trusted_id = bool(_url_utils.extract_arxiv_id(url_str) or _url_utils.extract_doi(url_str))
+
+    return bool(has_authors or has_text or has_trusted_id)
 
 
 def _coerce_http_url(raw: str) -> HttpUrl | str:
@@ -89,8 +92,16 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
     """Convert a raw Exa SDK `result` into a `Paper` object."""
     try:
         raw_title: str | None = getattr(result, "title", None)
-        title_val: str = _clean_title(raw_title) or "No Title Provided"
+        title_val: str = _clean_title(raw_title) or ""
         raw_url: str = getattr(result, "url", "")
+
+        # If title is missing (common for PDF URLs), use arXiv ID as readable placeholder
+        if not title_val:
+            arxiv_id = _url_utils.extract_arxiv_id(raw_url)
+            if arxiv_id:
+                title_val = f"arXiv:{arxiv_id}"
+            else:
+                title_val = "No Title Provided"
         url_val: str = _url_utils.upgrade_to_pdf_url(raw_url) or raw_url
 
         url_val_typed = _coerce_http_url(url_val)
@@ -132,16 +143,18 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
                 else:
                     published_date = pd_str  # assume datetime already
 
+        # Prefer full text when available; fallback to abstract when text is missing
+        text_or_abstract = getattr(result, "text", None) or getattr(result, "abstract", None)
+
         paper = Paper(
             id=getattr(result, "id", None),
             title=title_val,
             url=url_val_typed,
             authors=_author_utils.filter_plausible_authors(authors_list) or None,
-            abstract=getattr(result, "abstract", None),
             published_date=published_date,
             source=source_description,
             score=getattr(result, "score", None),
-            text_content=getattr(result, "text", None),
+            text_content=text_or_abstract,
         )
         return paper
     except Exception as exc:  # noqa: BLE001

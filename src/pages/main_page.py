@@ -1,6 +1,8 @@
 """FastHTML page components for Lux Scholar's main UI."""
 
 import html
+import re
+import urllib.parse
 from datetime import datetime
 from typing import Any, Optional
 
@@ -92,7 +94,6 @@ def render_report_config_form(
                 Option("S (Concise)", value="S"),
                 Option("M (Standard)", value="M", selected=True),
                 Option("L (Detailed)", value="L"),
-                Option("XL (Comprehensive)", value="XL"),
                 name="summary_size",
                 id="summary_size_select",
             ),
@@ -163,7 +164,7 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
             authors_display = f"Author(s): {', '.join(paper.authors)}"
 
     # Basic styling for the paper item
-    item_style = "margin-bottom: 1em; padding: 0.5em; border: 1px solid #ccc; position: relative;"
+    item_style = "margin-bottom: 1em; padding: 0.5em; border: 1px solid var(--container-border); position: relative;"
     if is_main_paper:  # Minimal distinction for main paper
         item_style = "margin-bottom: 1em; padding: 0.5em; border: 2px solid var(--main-paper-border); position: relative;"
 
@@ -210,10 +211,114 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
         else None
     )
 
-    li_attrs = {"style": item_style, "id": f"paper-{paper.id}", "data-paper-id": paper.id}
+    # --------------------------------------------------
+    # Relevance badge
+    # --------------------------------------------------
+    relevance_span = None
+    if paper.relevance_score is not None:
+        rs = paper.relevance_score
+        if rs >= 0.75:
+            badge_color = "var(--relevance-high, #22c55e)"
+        elif rs >= 0.50:
+            badge_color = "var(--relevance-mid, #eab308)"
+        else:
+            badge_color = "var(--relevance-low, #ef4444)"
+        relevance_span = Span(
+            f"{rs:.2f}",
+            cls="relevance-badge",
+            title=f"Relevance: {rs:.2f}",
+            style=f"font-size:0.75em; font-weight:600; color:{badge_color}; border:1px solid {badge_color}; border-radius:4px; padding:1px 5px; margin-left:6px; vertical-align:middle;",
+        )
+
+    # ISO date for client-side sorting; lowercase authors for filtering
+    date_sort_key = ""
+    if paper.published_date:
+        try:
+            date_sort_key = (
+                paper.published_date.isoformat()
+                if isinstance(paper.published_date, datetime)
+                else str(paper.published_date)
+            )
+        except Exception:
+            pass
+
+    authors_lower = ",".join(a.lower() for a in paper.authors) if paper.authors else ""
+
+    li_attrs: dict[str, Any] = {
+        "style": item_style,
+        "id": f"paper-{paper.id}",
+        "data-paper-id": paper.id,
+        "data-date": date_sort_key,
+        "data-authors": authors_lower,
+    }
     if wildcard:
         li_attrs["id"] = "wild-card-item"
         li_attrs["class"] = "wildcard-paper"
+
+    # Extract a clean abstract from text_content (skip arXiv metadata boilerplate)
+    abstract_text = ""
+    if paper.text_content:
+        raw_text = paper.text_content.strip()
+        # Try to find an "Abstract" section
+        m = re.search(r"(?i)(?:^|\n)\s*(?:abstract|summary)[:\s]*\n?\s*(.+?)(?:\n\s*\n|\n\s*(?:#{1,3}\s|introduction|1[\.\s]))", raw_text[:8000], re.DOTALL)
+        if m:
+            abstract_text = m.group(1).strip()
+        else:
+            # Fallback: skip arXiv-style header lines (lines with "arXiv:", ">", "[Submitted")
+            lines = raw_text[:3000].split("\n")
+            content_lines = []
+            for line in lines:
+                stripped = line.strip()
+                # Skip arXiv metadata header lines
+                if re.match(r"^(#|arXiv:|>\s|Computer Science|\[Submitted|\[v\d|Title:|Authors?:|Date:)", stripped):
+                    continue
+                if stripped and len(stripped) > 30:
+                    content_lines.append(stripped)
+                if len(" ".join(content_lines)) > 600:
+                    break
+            abstract_text = " ".join(content_lines)
+
+        # Truncate to reasonable length for popover
+        if len(abstract_text) > 800:
+            cut = abstract_text[:800].rfind(" ")
+            abstract_text = abstract_text[:cut if cut > 400 else 800] + "…"
+
+    toggle_btn = BUTTON(
+        I(cls="fa-solid fa-chevron-down"),
+        type="button",
+        cls="abstract-toggle-btn",
+        title="Show abstract",
+        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:6px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
+        **{"data-abstract": html.escape(abstract_text)} if abstract_text else {},
+    ) if abstract_text else Span()
+
+    # No longer inline — JS will create a popover from data-abstract
+
+    # BibTeX citation data attributes
+    bib_year = ""
+    if paper.published_date:
+        try:
+            date_val = (
+                paper.published_date.isoformat()
+                if isinstance(paper.published_date, datetime)
+                else str(paper.published_date)
+            )
+            bib_year = date_val.split("-")[0]
+        except Exception:
+            pass
+    bibtex_btn = BUTTON(
+        I(cls="fa-solid fa-quote-right"),
+        type="button",
+        cls="bibtex-copy-btn",
+        title="Copy BibTeX citation",
+        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
+        **{
+            "data-bib-title": paper.title or "",
+            "data-bib-authors": "; ".join(paper.authors) if paper.authors else "",
+            "data-bib-year": bib_year,
+            "data-bib-url": str(paper.url) if paper.url else "",
+        },
+    )
 
     return LI(
         Div(
@@ -223,7 +328,10 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                 href=paper.url if paper.url else "#",
                 target="_blank",
             ),
+            relevance_span,
             enrich_span,
+            toggle_btn,
+            bibtex_btn,
             Br(),
             EM(authors_display),
             Br(),
@@ -284,6 +392,52 @@ def render_search_results(
             )
             for i, p in enumerate(papers_list)
         ]
+
+        # Sort & filter controls (client-side)
+        results_content.append(
+            Div(
+                Div(
+                    BUTTON(
+                        I(cls="fa-solid fa-arrow-down-short-wide"),
+                        " Date ↓",
+                        type="button",
+                        id="sort-date-btn",
+                        cls="btn-secondary",
+                        title="Sort by date (newest first)",
+                        style="font-size:0.8rem;padding:3px 8px;",
+                    ),
+                    BUTTON(
+                        "Select All",
+                        type="button",
+                        id="select-all-btn",
+                        cls="btn-secondary",
+                        title="Select all papers",
+                        style="font-size:0.8rem;padding:3px 8px;",
+                    ),
+                    BUTTON(
+                        "Deselect All",
+                        type="button",
+                        id="deselect-all-btn",
+                        cls="btn-secondary",
+                        title="Deselect all papers",
+                        style="font-size:0.8rem;padding:3px 8px;",
+                    ),
+                    style="display:inline-flex;gap:6px;align-items:center;",
+                ),
+                Div(
+                    INPUT(
+                        type="text",
+                        id="author-filter-input",
+                        placeholder="Filter by author…",
+                        style="font-size:0.85rem;padding:3px 6px;width:14rem;",
+                    ),
+                    style="display:inline-flex;gap:6px;align-items:center;margin-left:12px;",
+                ),
+                style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:8px;gap:4px;",
+                id="results-controls",
+            )
+        )
+
         # Main list that HTMX endpoints will target
         results_content.append(
             UL(
@@ -355,7 +509,11 @@ def loading_indicator_component() -> Div:
     """Spinner visible while search requests are in-flight."""
     return Div(
         Div(cls="lux-spinner"),
-        Span("Searching the PaperVerse…", id="lux-loading-text", style="display:inline-block; margin-left:6px;"),
+        Span(
+            "Searching the PaperVerse…",
+            id="lux-loading-text",
+            style="display:inline-block; margin-left:6px;",
+        ),
         id="loading-indicator",
         cls="htmx-indicator",
         style="display:flex; align-items:center; gap:6px; margin-top:6px;",
@@ -399,7 +557,7 @@ def render_report(
             <p class="text-sm">Source: <a href="{html.escape(paper.url)}" target="_blank" class="hover:underline">{html.escape(paper.url)}</a></p>
             <p class="mt-2">{html.escape(summary)}</p>
             <button class="ask-assistant-btn mt-2 text-sm flex items-center gap-1"
-                    hx-get="/paper-modal?paper_id={paper.id}"
+                    hx-get="/viewer/{paper.id}?url={urllib.parse.quote_plus(str(paper.url))}"
                     hx-target="#modal-container"
                     hx-swap="innerHTML">
                 <i class="fa-solid fa-comment-dots"></i><span>Ask Assistant About This Paper</span>
@@ -486,7 +644,10 @@ def home_page(page_data: SharedPageData) -> Body:
             papers_list=page_data.search_results,
         )
     else:  # No search performed yet, or search_results is None
-        results_display_content = ""
+        results_display_content = Div(
+            P("▒░ results will appear here ░▒"),
+            cls="empty-state",
+        )
 
     return Body(
         Head(
@@ -515,135 +676,121 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src="/static/js/settings.js"),
             Script(src="/static/js/htmx-url-reset.js", defer=True),
             # Modular JS entry-points
-            Script(src="/static/js/main.js", type="module"),
+            Script(src="/static/js/main.js?v=2", type="module"),
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
         Div(
-            Link("█▓▒░ Lux Scholar ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
+            Link("█▓▒░ Nithu's PhD Student ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
             Div("", style="flex:1"),
             Select(
-                Option(
-                    "Select Audience",
-                    value="",
-                    disabled=True,
-                    selected=True,
-                    # color handled via select.placeholder CSS
-                ),
-                Option("Highly Technical (PhD/Researcher)", value="technical"),
-                Option("Semi-Technical (Lux)", value="semi_technical"),
-                Option("Non-technical (Other VCs)", value="non_technical"),
+                Option("Audience", value="", disabled=True, selected=True),
+                Option("Technical (PhD)", value="technical"),
+                Option("Semi-Technical", value="semi_technical"),
+                Option("Non-Technical", value="non_technical"),
                 id="aud-select",
                 name="audience",
-                style="margin-right:0.5rem;",
             ),
             Select(
-                Option(
-                    "Select Model",
-                    value="",
-                    disabled=True,
-                    selected=True,
-                    # color handled via select.placeholder CSS
-                ),
+                Option("Model", value="", disabled=True, selected=True),
                 *[
-                    Option(
-                        cfg["display_name"],
-                        value=key,
-                    )
+                    Option(cfg["display_name"], value=key)
                     for key, cfg in config.config.AVAILABLE_MODELS.items()
                 ],
                 id="model-select",
                 name="model_key",
-                style="margin-right:0.5rem;",
+            ),
+            BUTTON(
+                "💬 Assistant",
+                id="open-global-chat",
+                type="button",
+                hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
+                hx_target="#modal-container",
+                hx_swap="innerHTML",
             ),
             BUTTON(
                 "🌙 Dark",
                 id="lux-dark-toggle",
                 aria_label="Toggle dark mode",
                 type="button",
-                style="padding:1px 4px;margin-left:4px;",
             ),
             cls="top-bar",
-            style="display:flex;align-items:center;padding:4px 8px;",
         ),
         # Comma added above after top-bar Div
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
-                P(I("Enter a research topic, query, or paper link:")),
+                P(I("Enter a research topic, query, or paper link:"), style="margin-bottom:0.5rem;"),
                 FORM(  # Search Form
-                    Label(for_="search_query"),
                     INPUT(
                         type="search",
                         id="search_query",
                         name="search_query",
                         required=True,
-                        placeholder="e.g., 'transformer architecture overview', or 'https://www.arxiv.org/pdf/2506.08388'",
+                        placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
                         value=page_data.current_query or "",
-                        style="width:40rem;max-width:100%;",
+                        style="width:100%;max-width:44rem;padding:6px 10px;font-size:0.95rem;",
                     ),
-                    Br(),
-                    # Author input removed per new requirements
-                    Br(),
+                    # Filters row — date + quality + domain pills on one line
                     Div(
-                        Label(
-                            "Published After ",
-                            EM("(optional)", style="color:#666; font-style:italic;"),
-                            ":",
-                            for_="start_published_date",
-                            style="font-size:0.9rem;",
-                        ),
-                        INPUT(
-                            type="date",
-                            id="start_published_date",
-                            name="start_published_date",
-                            placeholder="YYYY-MM-DD",
-                            style="margin-left:6px;",
-                        ),
-                        style="display:flex; align-items:center; gap:6px; margin-bottom:6px;",
-                    ),
-                    Div(
-                        Label(
-                            "Source Domain ",
-                            EM("(optional)", style="color:#666; font-style:italic;"),
-                            ":",
-                            for_="include_domains",
-                            style="font-size:0.9rem;",
+                        Div(
+                            Span("After ", cls="filter-label"),
+                            INPUT(
+                                type="date",
+                                id="start_published_date",
+                                name="start_published_date",
+                                placeholder="YYYY-MM-DD",
+                                style="font-size:0.8rem;padding:2px 4px;",
+                            ),
                         ),
                         Div(
-                            *[
-                                Div(
-                                    Span(dom, style="flex:1;"),
-                                    INPUT(type="checkbox", name="include_domains", value=dom),
-                                    style="display:flex; align-items:center; justify-content:space-between; padding:2px 4px;",
-                                )
-                                for dom in [
-                                    "arxiv.org",
-                                    "biorxiv.org",
-                                    "medrxiv.org",
-                                    "ieeexplore.ieee.org",
-                                    "dl.acm.org",
-                                    "openreview.net",
-                                    "aclanthology.org",
-                                    "aclweb.org",
-                                ]
-                            ],
-                            # Let CSS control width; only other layout props here
-                            style="max-height:88px; overflow-y:auto; border:1px solid #ccc; border-radius:4px; margin-left:8px; font-size:0.8rem;",
-                            id="domain-filter-container",
+                            Span("Quality ", cls="filter-label"),
+                            Select(
+                                Option("All results", value="0"),
+                                Option("Standard", value="0.4"),
+                                Option("High", value="0.6"),
+                                Option("Top only", value="0.8"),
+                                name="min_quality",
+                                id="min_quality_select",
+                                style="font-size:0.8rem;padding:2px 4px;",
+                            ),
                         ),
-                        style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px;",
+                        Div(
+                            Span("Sources ", cls="filter-label"),
+                            Div(
+                                *[
+                                    Label(
+                                        INPUT(type="checkbox", name="include_domains", value=dom),
+                                        label,
+                                        cls="domain-pill",
+                                    )
+                                    for dom, label in [
+                                        ("arxiv.org", "arXiv"),
+                                        ("biorxiv.org", "bioRxiv"),
+                                        ("medrxiv.org", "medRxiv"),
+                                        ("ieeexplore.ieee.org", "IEEE"),
+                                        ("dl.acm.org", "ACM"),
+                                        ("openreview.net", "OpenReview"),
+                                        ("aclanthology.org", "ACL"),
+                                    ]
+                                ],
+                                id="domain-filter-container",
+                            ),
+                        ),
+                        cls="search-form-filters",
                     ),
-                    Br(),
-                    # Buttons choose workflow (paper search)
-                    BUTTON(
-                        "Search Papers",
-                        type="submit",
-                        name="mode",
-                        value="auto",
-                        onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
+                    # Action button
+                    Div(
+                        BUTTON(
+                            "Search Papers",
+                            type="submit",
+                            name="mode",
+                            value="auto",
+                            onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
+                        ),
+                        loading_indicator_component(),
+                        style="margin-top:0.75rem;display:flex;align-items:center;gap:8px;",
                     ),
-                    loading_indicator_component(),
                     hx_post="/search",
                     hx_target="#search-results-container",
                     hx_swap="innerHTML",
@@ -667,16 +814,6 @@ def home_page(page_data: SharedPageData) -> Body:
                     Div(id="report-display-area"),
                     id="results-and-report-form",
                 ),
-                # ---------------- Global Chat Assistant button ----------------
-                BUTTON(
-                    "💬 Research Assistant",
-                    id="open-global-chat",
-                    hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
-                    hx_target="#modal-container",
-                    hx_swap="innerHTML",
-                    _class="ask-assistant-btn",
-                    style="",
-                ),
                 Div(id="modal-container"),
                 # no extra class – outer search-card handles border
             ),
@@ -684,8 +821,10 @@ def home_page(page_data: SharedPageData) -> Body:
         ),
         Footer(
             P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
-            style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ccc; text-align:center; font-size:0.8rem; color:#666;",
+            style="padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; font-size:0.75rem; color:#aaa;",
         ),
         **{"hx-push-url": "false"},
     )  # Close Body
-  # Close HTML
+
+
+# Close HTML

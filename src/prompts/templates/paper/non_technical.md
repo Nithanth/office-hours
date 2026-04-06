@@ -36,6 +36,7 @@ CONTENT AND STYLE GUIDELINES:
 
 FORMATTING REQUIREMENTS:
 
-- Allowed Markdown: headings (H1–H3), bullet/numbered lists, and inline `code` when clarifying terminology.
+- Write flowing prose paragraphs. Do NOT use section headings or standalone title-like lines.
+- Bullet/numbered lists and inline `code` are allowed when they genuinely improve clarity.
 - Avoid tables, images, and long code blocks.
 - Ensure paragraphs are well-formed and cohesive.

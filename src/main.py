@@ -271,7 +271,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Very restrictive CSP; adjust 'img-src' and 'media-src' as needed.
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+            (
+                "default-src 'self' https: data: blob:; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com blob:; "
+                "worker-src 'self' blob:; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https:; "
+                "connect-src 'self' https:; "
+                "frame-src 'self' https: data:; "  # allow same-origin http for viewer iframe
+                "object-src https: data: blob:; "
+                "frame-ancestors 'none'"
+            ),
         )
         return response
 

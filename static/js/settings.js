@@ -284,13 +284,18 @@
     applyTheme('light');
 
     // ------------------------------------------------------------------
-    // Summary size persistence (S/M/L/XL)
+    // Summary size persistence (S/M/L)
     // ------------------------------------------------------------------
 
     const SIZE_KEY = "summary_size";
 
     function restoreSummarySize() {
-      const saved = LS.getItem(SIZE_KEY);
+      let saved = LS.getItem(SIZE_KEY);
+      if (saved === 'XL') {
+        // Backwards-compat with older builds that offered an XL option
+        saved = 'L';
+        LS.setItem(SIZE_KEY, saved);
+      }
       if (!saved) return;
       document.querySelectorAll('#summary_size_select').forEach(sel => {
         if (sel && sel.value !== saved) sel.value = saved;

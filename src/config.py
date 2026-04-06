@@ -6,48 +6,10 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 from dotenv import load_dotenv
-from pydantic import BaseModel
 
 # Load .env only in development/local environments to avoid accidental leakage
 if os.getenv("ENV", "dev") != "prod":  # Treat any non-"prod" value as dev
     load_dotenv()
-
-
-# --- Nested Pydantic stubs (currently unused, reserved for future) ---
-class GeneralConfig(BaseModel):
-    app_name: str
-    log_level: str
-
-
-class OpenAIConfig(BaseModel):
-    api_key: Optional[str] = None
-    default_model: Optional[str] = None
-
-
-class TogetherAIConfig(BaseModel):
-    api_key: Optional[str] = None
-    default_model: Optional[str] = None
-
-
-class AnthropicConfig(BaseModel):
-    api_key: Optional[str] = None
-    default_model: Optional[str] = None
-
-
-class GeminiConfig(BaseModel):
-    api_key: Optional[str] = None
-    default_model: Optional[str] = None
-
-
-class LLMConfig(BaseModel):
-    default_provider: str
-    request_timeout: int
-    temperature: float
-    max_retries: int
-    together_ai: Optional[TogetherAIConfig] = None
-    openai: Optional[OpenAIConfig] = None
-    anthropic: Optional[AnthropicConfig] = None
-    gemini: Optional[GeminiConfig] = None
 
 
 class Config:
@@ -56,24 +18,7 @@ class Config:
     TOGETHER_API_KEY: Optional[str] = os.getenv("TOGETHER_API_KEY")
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
-    GEMINI_API_KEY: Optional[str] = os.getenv(
-        "GEMINI_API_KEY"
-    )  # Google AI Studio API Key for Gemini
-    # Path to your Google credentials JSON file - will be deferred for MVP
-    GOOGLE_DOCS_CREDENTIALS_PATH: Optional[str] = os.getenv("GOOGLE_DOCS_CREDENTIALS_PATH")
-
-    # --- Redis settings ---
-    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT: int = int(os.getenv("REDIS_PORT", 6379))
-    REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD")
-    REDIS_DB: int = int(os.getenv("REDIS_DB", 0))
-    CACHE_TTL_SECONDS: int = int(os.getenv("CACHE_TTL_SECONDS", 3600))  # 1 hour default
-
-    # --- Modal settings ---
-    MODAL_TOKEN: Optional[str] = os.getenv("MODAL_TOKEN")
-    MODAL_WORKSPACE: Optional[str] = os.getenv("MODAL_WORKSPACE")
-    MODAL_TOKEN_ID: Optional[str] = os.getenv("MODAL_TOKEN_ID")
-    MODAL_TOKEN_SECRET: Optional[str] = os.getenv("MODAL_TOKEN_SECRET")
+    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
 
     # --- App runtime settings ---
     # --- Environment and asset prefixes ---
@@ -81,7 +26,7 @@ class Config:
     # Front-end CSS folder: use purged bundle in production for smaller payload.
     CSS_PREFIX: str = os.getenv("CSS_PREFIX", "css/dist" if ENV == "prod" else "css")
 
-    APP_TITLE: str = "Lux Scholar"
+    APP_TITLE: str = "Nithu's PhD Student"
     VERSION: str = "0.1.0"
     YEAR: int = int(os.getenv("YEAR", datetime.datetime.utcnow().year))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
@@ -258,24 +203,24 @@ class Config:
     EXA_RETRY_MAX_WAIT: int = int(os.getenv("EXA_RETRY_MAX_WAIT", 10))  # seconds
 
     # --- Default/fallback LLM models ---
-    DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_2_5_pro_preview")
+    DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_2_5_pro")
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
-        # Gemini (Google) - internal provider tag remains "gemini"
-        "gemini_2_5_pro_preview": {
+        # Gemini (Google)
+        "gemini_2_5_pro": {
             "id": "models/gemini-2.5-pro-preview-06-05",
             "provider": "gemini",
             "input_token_limit": 1_000_000,
             "display_name": "Gemini 2.5 Pro",
         },
-        "gemini_flash_2_5": {
+        "gemini_2_5_flash": {
             "id": "models/gemini-2.5-flash-preview-05-20",
             "provider": "gemini",
             "input_token_limit": 1_000_000,
             "display_name": "Gemini 2.5 Flash",
         },
         # Anthropic Claude
-        "anthropic_claude_opus_4_preview": {
+        "anthropic_claude_opus_4": {
             "id": "claude-opus-4-20250514",
             "provider": "anthropic",
             "input_token_limit": 200_000,
@@ -287,7 +232,7 @@ class Config:
             "input_token_limit": 200_000,
             "display_name": "Claude Sonnet 4",
         },
-        # OpenAI GPT
+        # OpenAI
         "openai_gpt_4o": {
             "id": "gpt-4o",
             "provider": "openai",
@@ -297,14 +242,14 @@ class Config:
         "openai_gpt_4_1": {
             "id": "gpt-4.1",
             "provider": "openai",
-            "input_token_limit": 128_000,
+            "input_token_limit": 1_000_000,
             "display_name": "GPT-4.1",
         },
-        "openai_gpt_o3": {
+        "openai_o3": {
             "id": "o3",
             "provider": "openai",
-            "input_token_limit": 128_000,
-            "display_name": "o3 (Coming Soon...)",
+            "input_token_limit": 200_000,
+            "display_name": "o3",
         },
         # TogetherAI Models
         "together_deepseek_v3": {
@@ -317,7 +262,7 @@ class Config:
             "id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
             "provider": "together_ai",
             "input_token_limit": 950_000,
-            "display_name": "LLaMA-4 Maverick 17B (TogetherAI)",
+            "display_name": "Llama 4 Maverick (TogetherAI)",
         },
         "together_qwen3_235b": {
             "id": "Qwen/Qwen3-235B-A22B-fp8-tput",

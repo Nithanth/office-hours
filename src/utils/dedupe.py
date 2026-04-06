@@ -39,10 +39,18 @@ def _sentences(text: str) -> list[str]:
     except LookupError as err:
         logger.warning("punkt_missing_fallback", error=str(err))
 
-    # Fallback: split on period/question/exclamation followed by whitespace.
+    # ------------------------------------------------------------------
+    # Fallback splitter when NLTK punkt is unavailable
+    #   • Primary delimiter: end-of-sentence punctuation (. ! ?) followed by
+    #     whitespace *or* newline characters.
+    #   • Secondary delimiter: common bullet/number list prefixes so each bullet
+    #     is treated as its own "sentence" for embedding similarity.
+    # ------------------------------------------------------------------
     import re
 
-    rough = re.split(r"(?<=[.!?])\s+", text.strip())
+    bullet_prefix_pat = r"\s*(?:[•◦▪\-*]|\d+[.)])\s+"
+    delim_regex = rf"(?<=[.!?])\s+|\n+|{bullet_prefix_pat}"
+    rough = re.split(delim_regex, text.strip())
     return [s for s in rough if s]
 
 
@@ -77,5 +85,9 @@ def deduplicate_chat(
         sim = util.cos_sim(emb, rep_emb).max().item()
         if sim < threshold:
             keep.append(sent)
+
+    logger.debug(
+        "chat_dedupe", total=len(chat_sents), kept=len(keep), removed=len(chat_sents) - len(keep), threshold=threshold
+    )
 
     return " ".join(keep)

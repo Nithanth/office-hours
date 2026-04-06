@@ -53,6 +53,82 @@ def filter_papers(
     return final
 
 
+# ---------------------------------------------------------------------------
+# Relevance scoring
+# ---------------------------------------------------------------------------
+
+# Authoritative academic domains earn a source-quality bonus.
+_TRUSTED_DOMAINS: set[str] = {
+    "arxiv.org", "ar5iv.org", "biorxiv.org", "medrxiv.org",
+    "ieee.org", "ieeexplore.ieee.org", "dl.acm.org",
+    "openreview.net", "aclanthology.org", "aclweb.org",
+    "nature.com", "science.org", "pnas.org", "springer.com",
+    "wiley.com", "cell.com", "nih.gov", "ncbi.nlm.nih.gov",
+}
+
+
+def compute_relevance_scores(papers: list[Paper]) -> None:
+    """Assign ``paper.relevance_score`` (0.00–1.00) to every paper **in-place**.
+
+    Composite score blending Exa's rank-order relevance with paper quality
+    signals.  Each component is normalised to 0–1, then weighted:
+
+        rank_signal      (0.40) — Exa's result ordering is their relevance
+        source_authority (0.25) — trusted academic domains score higher
+        metadata_quality (0.20) — authors, date, completeness
+        content_richness (0.15) — how much extractable text we have
+    """
+    if not papers:
+        return
+
+    n = len(papers)
+
+    for rank, p in enumerate(papers):
+        # --- Rank signal (0–1, top=1.0, bottom=0.0) -------------------------
+        rank_signal = 1.0 - (rank / max(n - 1, 1))
+
+        # --- Source authority (0–1) -----------------------------------------
+        url_str = str(p.url).lower() if p.url else ""
+        host = urlparse(url_str).netloc.removeprefix("www.")
+        is_trusted = any(host == d or host.endswith("." + d) for d in _TRUSTED_DOMAINS)
+        source_authority = 1.0 if is_trusted else 0.3
+
+        # --- Metadata quality (0–1) -----------------------------------------
+        meta_score = 0.0
+        has_authors = bool(p.authors and len(p.authors) > 0)
+        has_date = bool(p.published_date)
+        has_title = bool(p.title and p.title not in ("No Title Provided", ""))
+        # Each component worth ~0.33
+        if has_authors:
+            meta_score += 0.40
+        if has_date:
+            meta_score += 0.30
+        if has_title:
+            meta_score += 0.30
+
+        # --- Content richness (0–1) -----------------------------------------
+        text_len = len(p.text_content or "")
+        if text_len > 5000:
+            content_score = 1.0
+        elif text_len > 2000:
+            content_score = 0.8
+        elif text_len > 500:
+            content_score = 0.5
+        elif text_len > 50:
+            content_score = 0.2
+        else:
+            content_score = 0.0
+
+        # --- Weighted composite ---------------------------------------------
+        final = (
+            0.40 * rank_signal
+            + 0.25 * source_authority
+            + 0.20 * meta_score
+            + 0.15 * content_score
+        )
+        p.relevance_score = round(max(0.0, min(1.0, final)), 2)
+
+
 def pre_filter_papers(
     papers: Iterable[Paper],
     *,
@@ -78,6 +154,28 @@ def pre_filter_papers(
         and _url_utils.domain_allowed(p.url, include_domains, exclude_domains)
     ] or pool  # fallback if heuristics were too strict
 
+    logger.info(
+        "stage1_filter_stats", total=len(pool), kept=len(stage1), dropped=len(pool) - len(stage1)
+    )
+    # Fail-soft: if we kept too few (heuristics overshot), revert to pool.
+    # Triggers when <50% or <10 items remain, whichever is larger.
+    min_keep_soft = max(10, len(pool) // 2)
+    if len(stage1) < min_keep_soft:
+        logger.info(
+            "stage1_fail_soft_triggered", total=len(pool), kept=len(stage1), min_keep_soft=min_keep_soft
+        )
+        stage1 = pool
+
+    # Promote to INFO so it shows up in main logs and dump all items
+    from loguru import logger as _lg  # use local alias to avoid shadowing
+    _lg.info("STAGE1_POOL ({})", len(stage1))
+    for i, _p in enumerate(stage1, 1):
+        _score = getattr(_p, "score", None)
+        _s = f"score={_score:.3f}" if _score is not None else "score=?"
+        _title = (_p.title or "").strip()
+        _url = str(_p.url) if _p.url else ""
+        _lg.info("STAGE1 {:02d} {} | {} | {}", i, _s, _title, _url)
+
     # 2. de-duplicate -------------------------------------------------------
     seen_keys: set[str] = set()
     deduped: list[Paper] = []
@@ -96,16 +194,31 @@ def pre_filter_papers(
 
     for p in stage1:
         url_str = str(p.url)
-        candidate_keys: set[str] = {_canonical_url_key(url_str)}
-        if arxiv_id := _url_utils.extract_arxiv_id(url_str):
+        candidate_keys: set[str] = set()
+        arxiv_id = _url_utils.extract_arxiv_id(url_str)
+        doi = _url_utils.extract_doi(url_str)
+
+        # Prefer strong identifiers over canonical host+path. For arXiv/DOI we
+        # only use the strong key so variants (pdf/abs/ar5iv) are not collapsed
+        # beyond the ID itself.
+        if arxiv_id:
             candidate_keys.add(f"arxiv:{arxiv_id}")
-        if doi := _url_utils.extract_doi(url_str):
+        elif doi:
             candidate_keys.add(f"doi:{doi}")
-        # Also include Paper.id if looks like a DOI or arXiv; helps when URL missing.
+        else:
+            candidate_keys.add(_canonical_url_key(url_str))
+
+        # Include Paper.id only when it resembles a trusted ID to avoid
+        # over-collapsing on opaque ids.
         if p.id:
-            candidate_keys.add(p.id.lower())
+            pid = p.id.lower()
+            if _url_utils.extract_arxiv_id(pid):
+                candidate_keys.add(f"arxiv:{_url_utils.extract_arxiv_id(pid)}")
+            elif _url_utils.extract_doi(pid):
+                candidate_keys.add(f"doi:{_url_utils.extract_doi(pid)}")
 
         if candidate_keys & seen_keys:
+            logger.info("dup_skip", title=p.title, keys=list(candidate_keys))
             continue  # duplicate hit – skip
 
         seen_keys.update(candidate_keys)
@@ -114,10 +227,42 @@ def pre_filter_papers(
     # Final O(N^2) check using robust URL equivalence matcher to catch alias cases
     unique: list[Paper] = []
     for p in deduped:
-        if any(_url_utils.url_equivalent(str(p.url), str(q.url)) for q in unique):
-            continue
+        # Do not collapse arXiv variants here; we already deduped by arXiv ID.
+        if not _url_utils.extract_arxiv_id(str(p.url)):
+            if any(_url_utils.url_equivalent(str(p.url), str(q.url)) for q in unique):
+                continue
         unique.append(p)
     deduped = unique
+
+    logger.info(
+        "dedup_filter_stats", after_stage1=len(stage1), kept=len(deduped), dropped=len(stage1)-len(deduped)
+    )
+    _lg.info("DEDUP_POOL ({})", len(deduped))
+    for i, _p in enumerate(deduped, 1):
+        _score = getattr(_p, "score", None)
+        _s = f"score={_score:.3f}" if _score is not None else "score=?"
+        _title = (_p.title or "").strip()
+        _url = str(_p.url) if _p.url else ""
+        _lg.info("DEDUP {:02d} {} | {} | {}", i, _s, _title, _url)
+
+    # Emit a JSON-like dump of the PRE (deduped) pool for debugging
+    def _pdict(_p: Paper) -> dict:
+        pd = {
+            "title": (_p.title or "").strip(),
+            "url": str(_p.url) if _p.url else None,
+            "score": _p.score,
+            "source": getattr(_p, "source", None),
+            "authors": _p.authors,
+        }
+        # published_date may be datetime or str; coerce to ISO-like string
+        try:
+            if getattr(_p, "published_date", None):
+                pd["published_date"] = str(_p.published_date)
+        except Exception:
+            pd["published_date"] = None
+        return pd
+
+    logger.info("PRE_POOL_JSON {}", [_pdict(p) for p in deduped])
 
     if not deduped:
         return []
@@ -129,25 +274,54 @@ def apply_score_threshold(
     papers: Iterable[Paper],
     k: int,
 ) -> list[Paper]:
-    """Apply adaptive score threshold to filtered papers."""
+    """Apply adaptive score threshold to filtered papers.
+
+    Exa 2.x returns ``score=None`` for all results. When scores are absent
+    we preserve the original Exa rank order (which *is* their relevance
+    ranking) and only trim to a sensible pool size.
+    """
+
+    pool = list(papers)
+
+    # Check if we actually have scores to threshold on
+    has_scores = any(p.score is not None for p in pool)
+
+    if not has_scores:
+        # No scores — keep all papers in Exa's rank order, trimmed to a
+        # reasonable pool size so the UI isn't overwhelmed.
+        min_keep = max(int(len(pool) * ADAPTIVE_KEEP_FRAC), 20)
+        final_pool = pool[:max(min_keep, k * 3, len(pool))]
+        logger.debug(
+            "apply_score_threshold_stats (no scores)", pool=len(pool), kept=len(final_pool)
+        )
+        return final_pool
 
     ranked = sorted(
-        papers,
+        pool,
         key=lambda x: x.score if x.score is not None else 1.0,
         reverse=True,
     )
 
-    # Keep at least 25 % of the pool or 20 items irrespective of display
-    # count so subsequent UI slices are stable.
     min_keep = max(int(len(ranked) * ADAPTIVE_KEEP_FRAC), 20)
     min_keep = min(min_keep, len(ranked))
 
     score_cut = ranked[min_keep - 1].score if ranked[min_keep - 1].score is not None else None
-    threshold = max(MIN_SCORE_FLOOR, score_cut or 0.0)
+
+    if len(ranked) < 20:
+        threshold = MIN_SCORE_FLOOR
+        logger.debug(
+            "small_pool_threshold", size=len(ranked), threshold=threshold, score_cut=score_cut
+        )
+    else:
+        threshold = max(MIN_SCORE_FLOOR, score_cut or 0.0)
 
     final_pool = [p for p in ranked if p.score is None or p.score >= threshold]
 
-    if len(final_pool) < k:  # guarantee UI is not starved
+    logger.debug(
+        "apply_score_threshold_stats", pool=len(ranked), kept=len(final_pool), threshold=threshold
+    )
+
+    if len(final_pool) < k:
         final_pool = ranked[: max(k * 3, len(ranked))]
 
     return final_pool

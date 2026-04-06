@@ -18,7 +18,12 @@ import lancedb
 import numpy as np
 import tiktoken
 from loguru import logger
-from sentence_transformers import CrossEncoder
+
+# Cross-encoder is optional – lazy import so test envs pass without it.
+try:
+    from sentence_transformers import CrossEncoder
+except ImportError:  # pragma: no cover – optional dep
+    CrossEncoder = None  # type: ignore[misc]
 
 from config import config
 from services.paper.embedding import embed_texts
@@ -47,7 +52,7 @@ _SEARCH_MULTIPLIER = config.RAG_SEARCH_MULTIPLIER
 # Optional cross-encoder rerank (query ⊕ chunk for fine-grained scoring)
 # ---------------------------------------------------------------------------
 
-_CE_MODEL: CrossEncoder | None = None
+_CE_MODEL: CrossEncoder | None = None  # quoted for typing when dep absent
 _CE_POOL = config.CE_RERANK_POOL  # how many candidates to rerank
 _CE_PAIR_CACHE: dict[
     tuple[str, str], float
@@ -55,7 +60,13 @@ _CE_PAIR_CACHE: dict[
 
 
 def _load_ce() -> CrossEncoder:
-    """Lazy-load the cross-encoder singleton."""
+    """Lazy-load the cross-encoder singleton, raising if unavailable."""
+
+    if CrossEncoder is None:  # dependency not installed
+        raise RuntimeError(
+            "CrossEncoder requested but 'sentence-transformers' is not installed. "
+            "Install it or disable ENABLE_CE_RERANK."
+        )
 
     global _CE_MODEL
     if _CE_MODEL is None:
@@ -106,8 +117,26 @@ def _safe_name(paper_id: str) -> str:
 
 
 def index_path(paper_id: str) -> Path:
-    """Return absolute path to Lance index for *paper_id*."""
-    return Path(_VECTOR_ROOT) / f"{_safe_name(paper_id)}.lance"
+    """Return absolute path to Lance index directory for *paper_id*.
+
+    Prior versions mistakenly appended a ``.lance`` suffix even though
+    ``lancedb`` creates a *directory* named exactly after the table.  This
+    caused `index_exists()` to always miss the on-disk dataset and trigger
+    expensive rebuilds on every call.  We now generate the correct path and
+    fall back to the legacy suffix for backwards-compatibility.
+    """
+
+    root = Path(_VECTOR_ROOT)
+    name = _safe_name(paper_id)
+
+    # Preferred (correct) location
+    new_path = root / name
+
+    # Legacy location created by earlier buggy versions
+    legacy_path = root / f"{name}.lance"
+
+    # If only the legacy path exists, keep using it to avoid rebuilding indexes
+    return legacy_path if legacy_path.exists() and not new_path.exists() else new_path
 
 
 # ---------------------------------------------------------------------------

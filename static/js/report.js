@@ -139,11 +139,16 @@ const actionsObserver = new MutationObserver(() => {
     el.classList.remove("hidden");
     el.classList.add("lux-flex-end");
 
-    // Enable notes button once report finished.
+    // Enable notes + blog buttons once report finished.
     const notesBtn = el.querySelector("#report-notes-btn");
     if (notesBtn) {
       notesBtn.removeAttribute("disabled");
       notesBtn.title = "Generate Notes";
+    }
+    const blogBtn = el.querySelector("#report-blog-btn");
+    if (blogBtn) {
+      blogBtn.removeAttribute("disabled");
+      blogBtn.title = "Generate Blog Post";
     }
   });
 });
@@ -151,6 +156,17 @@ const actionsObserver = new MutationObserver(() => {
 // Observe the whole document for added nodes (this is inexpensive for the
 // small incremental updates HTMX performs).
 actionsObserver.observe(document.body, { childList: true, subtree: true });
+
+// ---------------------------------------------------------------------------
+// Ensure HTMX processes hx-* attributes on SSE-injected report blocks
+// (e.g. "Ask Assistant" buttons with hx-get).
+// ---------------------------------------------------------------------------
+document.addEventListener("htmx:afterSwap", (evt) => {
+  const tgt = evt?.detail?.target;
+  if (tgt && tgt.id === "report-blocks" && window.htmx) {
+    window.htmx.process(tgt);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Reveal action buttons when report streaming finishes (HTMX/SSE)
@@ -228,7 +244,8 @@ function openNotesDialog(onConfirm) {
 
            <fieldset style="margin-top:12px;">
              <legend>Format</legend>
-             <label style="margin-right:8px;"><input type="radio" name="fmt" value="txt" checked> .txt</label>
+             <label style="margin-right:8px;"><input type="radio" name="fmt" value="md" checked> .md</label>
+             <label style="margin-right:8px;"><input type="radio" name="fmt" value="txt"> .txt</label>
              <label><input type="radio" name="fmt" value="docx"> .docx</label>
            </fieldset>
 
@@ -301,6 +318,54 @@ function handleNotesClick(ev) {
 }
 
 document.addEventListener("click", handleNotesClick);
+
+// ---------------------------------------------------------------------------
+// Blog Post generation – POST report text, download .md
+// ---------------------------------------------------------------------------
+function handleBlogClick(ev) {
+  const btn = ev.target.closest("#report-blog-btn");
+  if (!btn) return;
+
+  const reportEl = document.getElementById("report-content");
+  if (!reportEl) return;
+
+  btn.disabled = true;
+  const origHtml = btn.innerHTML;
+  btn.innerHTML =
+    '<span class="lux-spinner small" style="vertical-align:middle;"></span> Writing…';
+
+  const cleaned = getCleanReportText(reportEl);
+  const fd = new FormData();
+  fd.append("report_text", cleaned);
+
+  fetch("/generate-blog", { method: "POST", body: fd })
+    .then((r) => {
+      if (!r.ok) throw new Error(`Server responded ${r.status}`);
+      return r.blob();
+    })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement("a"), {
+        href: url,
+        download: "research_blog.md",
+      });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    })
+    .catch((err) => {
+      console.error("[lux] blog download failed", err);
+      // eslint-disable-next-line no-alert
+      alert("Failed to generate blog post. Please try again.");
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    });
+}
+
+document.addEventListener("click", handleBlogClick);
 
 (function () {
   // simple toast fallback if settings.js not loaded

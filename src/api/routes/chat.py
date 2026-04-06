@@ -234,6 +234,21 @@ async def chat_stream(
                                 temperature=_cfg.config.CHAT_TEMPERATURE,
                                 system_prompt=None,
                             )
+                            # Batch tokens to reduce SSE event overhead and smooth streaming
+                            _batch_buf: list[str] = []
+                            _batch_last_flush = time.perf_counter()
+                            _BATCH_INTERVAL = 0.08  # flush every ~80ms
+
+                            async def _flush_batch() -> None:
+                                nonlocal _batch_buf, _batch_last_flush
+                                if not _batch_buf:
+                                    return
+                                chunk = "".join(_batch_buf)
+                                _batch_buf = []
+                                _batch_last_flush = time.perf_counter()
+                                safe_chunk = html.escape(chunk).replace("\n", "<br/>")
+                                yield f"event: assistant\ndata: {safe_chunk}\n\n"
+
                             async for token in stream_iter:
                                 if await request.is_disconnected():
                                     if hasattr(stream_iter, "aclose"):
@@ -244,27 +259,28 @@ async def chat_stream(
 
                                 assistant_msg += token
                                 tok_idx += 1
-                                log.debug(
-                                    "chat_stream_token",
-                                    session_id=session_id,
-                                    idx=tok_idx,
-                                    token_len=len(token),
-                                    preview=token[:40].replace("\n", "\\n"),
-                                )
                                 chat_state.push_token(token)
-                                safe_token = html.escape(token).replace("\n", "<br/>")
-                                yield f"event: assistant\ndata: {safe_token}\n\n"
-                                log.debug(
-                                    "chat_sse_emit",
-                                    session_id=session_id,
-                                    idx=tok_idx,
-                                    chars=len(assistant_msg),
-                                )
+                                _batch_buf.append(token)
+
+                                # Flush when batch interval elapsed
+                                if time.perf_counter() - _batch_last_flush >= _BATCH_INTERVAL:
+                                    chunk = "".join(_batch_buf)
+                                    _batch_buf = []
+                                    _batch_last_flush = time.perf_counter()
+                                    safe_chunk = html.escape(chunk).replace("\n", "<br/>")
+                                    yield f"event: assistant\ndata: {safe_chunk}\n\n"
 
                                 if _METRICS_ENABLED and CHAT_TOKEN_LAT:
                                     now_t = time.perf_counter()
                                     CHAT_TOKEN_LAT.observe(now_t - last_tok_t)
                                     last_tok_t = now_t
+
+                            # Flush any remaining tokens
+                            if _batch_buf:
+                                chunk = "".join(_batch_buf)
+                                _batch_buf = []
+                                safe_chunk = html.escape(chunk).replace("\n", "<br/>")
+                                yield f"event: assistant\ndata: {safe_chunk}\n\n"
 
                             if completed_successfully is False:
                                 completed_successfully = True

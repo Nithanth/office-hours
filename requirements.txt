@@ -7,12 +7,9 @@ fastapi~=0.115  # Added for direct FastAPI imports
 # Environment & Configuration
 python-dotenv~=1.1
 
-# Caching & Job Management
-redis~=6.2
-
 # API Clients & HTTP
 httpx~=0.28
-exa_py~=1.14
+exa_py~=2.7
 openai~=1.85
 anthropic~=0.53
 together~=1.5
