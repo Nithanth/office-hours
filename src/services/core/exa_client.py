@@ -29,6 +29,9 @@ from services.paper.metadata.metadata_fetchers import (
     fetch_arxiv_metadata as _fetch_arxiv_metadata,
 )
 from services.paper.metadata.metadata_fetchers import (
+    fetch_arxiv_metadata_batch as _fetch_arxiv_batch,
+)
+from services.paper.metadata.metadata_fetchers import (
     fetch_crossref_metadata as _fetch_crossref_metadata,
 )
 from services.paper.metadata.metadata_fetchers import (
@@ -124,8 +127,8 @@ class ExaClient:
             resp = self.client.search(
                 f'url:"{url}"',
                 num_results=1,
-                use_autoprompt=False,
                 category="research paper",
+                contents=False,
             )
             if resp.results:
                 return resp.results[0].id
@@ -258,12 +261,11 @@ class ExaClient:
                         queries.append(f'url:"{abs_url}"')
 
                     for q in queries:
-                        search_res = self.adapter.search_and_contents(
+                        search_res = self.adapter.search(
                             q,
                             num_results=1,
-                            text=True,
+                            contents={"text": True},
                             category="research paper",
-                            use_autoprompt=False,
                         )
                         if search_res.results:
                             res = search_res
@@ -439,7 +441,7 @@ class ExaClient:
         exclude_domains: list[str] | None = None,
     ) -> list[Paper]:
         """
-        Find papers similar to the one at the given URL using Exa's find_similar_and_contents endpoint.
+        Find papers similar to the one at the given URL using Exa's find_similar endpoint.
 
         Args:
             paper_url: URL of the paper to find similar papers for.
@@ -462,7 +464,7 @@ class ExaClient:
 
         papers: list[Paper] = []
         try:
-            # Build parameter set for the Exa *find_similar_and_contents* call
+            # Build parameter set for the Exa find_similar call
             exa_kwargs: dict[str, Any] = {
                 "num_results": request_count,
                 "category": category,
@@ -475,7 +477,7 @@ class ExaClient:
             if exclude_domains:
                 exa_kwargs["exclude_domains"] = exclude_domains
 
-            similar_response = self.client.find_similar_and_contents(
+            similar_response = self.client.find_similar(
                 paper_url_norm,
                 **exa_kwargs,
             )
@@ -772,24 +774,49 @@ class ExaClient:
             exclude_domains=kwargs.get("exclude_domains"),
         )
 
-        # 2. Enrich metadata for the pruned pool only ----------------------
+        # 2a. Batch-fetch arXiv metadata (single API call for all arXiv papers)
+        arxiv_papers: dict[str, list[Paper]] = {}  # arxiv_id → papers with that id
         for p in pre_pool:
-            has_trusted_id = bool(
-                _url_utils.extract_arxiv_id(p.url)
-                or _url_utils.extract_doi(str(p.url) if p.url else None)
+            aid = _url_utils.extract_arxiv_id(str(p.url) if p.url else "")
+            if aid:
+                arxiv_papers.setdefault(aid, []).append(p)
+
+        if arxiv_papers:
+            batch_meta = _fetch_arxiv_batch(list(arxiv_papers.keys()))
+            for aid, meta in batch_meta.items():
+                for p in arxiv_papers.get(aid, []):
+                    _paper_utils.update_paper_from_meta(p, meta)
+
+        # 2b. Enrich remaining metadata per-paper ----------------------------
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        papers_to_enrich = [
+            p for p in pre_pool
+            if (
+                bool(
+                    _url_utils.extract_arxiv_id(p.url)
+                    or _url_utils.extract_doi(str(p.url) if p.url else None)
+                )
+                or not (p.authors and p.published_date)
             )
+        ]
 
-            if not has_trusted_id and p.authors and p.published_date:
-                continue  # already complete enough for non-arXiv/DOI docs
-
-            try:
-                self._enrich_paper_metadata(p)
-            except Exception as exc:  # noqa: BLE001 – best-effort
-                failed_paper = p
-                logger.debug("enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc))
+        ENRICH_WORKERS = min(8, max(2, os.cpu_count() or 4))
+        if papers_to_enrich:
+            with ThreadPoolExecutor(max_workers=ENRICH_WORKERS) as _pool:
+                fut_map = {_pool.submit(self._enrich_paper_metadata, p): p for p in papers_to_enrich}
+                for fut in as_completed(fut_map):
+                    try:
+                        fut.result()
+                    except Exception as exc:  # noqa: BLE001 – best-effort
+                        failed_paper = fut_map.get(fut)
+                        logger.debug("enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc))
 
         # 3. Adaptive score / breadth filter -------------------------------
         filtered = _filter_utils.apply_score_threshold(pre_pool, k)
+
+        # 4. Compute composite relevance scores ----------------------------
+        _filter_utils.compute_relevance_scores(filtered)
         # Detailed pipeline stats -------------------------------------------
         elapsed_ms = int((time.perf_counter() - t_start) * 1000)
 
@@ -817,6 +844,21 @@ class ExaClient:
             final=len(filtered),
             k_display=k,
             elapsed_ms=elapsed_ms,
+        )
+
+        # Detailed list of papers that survived filtering – useful for debugging UI pool size issues.
+        logger.info(
+            "filtered_papers_list",
+            papers=[
+                {
+                    "rank": idx + 1,
+                    "id": p.id,
+                    "title": (p.title or "")[:120],
+                    "score": p.score,
+                    "url": str(p.url) if p.url else None,
+                }
+                for idx, p in enumerate(filtered)
+            ],
         )
         return filtered
 
@@ -901,6 +943,9 @@ class ExaClient:
             except Exception as bg_exc:
                 logger.debug("TextExtractor background task failed to start: {}", bg_exc)
             pinned_id = main_paper.id if main_paper.id else None
+
+        # Compute composite relevance scores for all papers in the URL pool
+        _filter_utils.compute_relevance_scores(papers_pool)
 
         paper_by_id = {p.id: p for p in papers_pool if p.id}
         if not paper_by_id:
@@ -1054,6 +1099,8 @@ class ExaClient:
             kwargs["end_published_date"] = kwargs["end_published_date"].date().isoformat()
 
         try:
+            # Use neural search to get relevance scores (auto search deprecated scores)
+            kwargs.setdefault("type", "neural")
             sdk_res = self.adapter.search(query, num_results=num_results, **kwargs)
         except Exception as exc:
             logger.error("Exa search failed for {} - {}", query, exc)

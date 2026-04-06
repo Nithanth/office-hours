@@ -2,8 +2,8 @@
 // Provides lazy-loading of marked.js, DOMPurify, highlight.js and helper
 // functions to render markdown safely in chat bubbles.
 
-import { addCopyButtons } from "./ui.js";
-import { dbg } from "../util.js";
+import { addCopyButtons } from "./ui.js?v=2";
+import { dbg } from "../util.js?v=2";
 
 // Snapshot dark-mode at module load so we don’t query DOM on every call.
 const _isDarkMode = document.body.classList.contains("lux-dark");
@@ -89,23 +89,25 @@ export function ensureKatexLoaded() {
     css.href = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css";
     document.head.appendChild(css);
 
-    // Helper to track both script loads
-    let loaded = 0;
-    const done = () => {
-      if (++loaded === 2) resolve();
-    };
-
-    // Core KaTeX
+    // Core KaTeX must load BEFORE auto-render (it depends on window.katex)
     const s = document.createElement("script");
     s.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
-    s.onload = done; s.onerror = done; // best-effort
+    s.onload = () => {
+      // Now load auto-render after katex is available
+      const auto = document.createElement("script");
+      auto.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js";
+      auto.onload = () => resolve();
+      auto.onerror = () => {
+        console.warn("[lux] auto-render.min.js failed to load");
+        resolve(); // best-effort
+      };
+      document.head.appendChild(auto);
+    };
+    s.onerror = () => {
+      console.warn("[lux] katex.min.js failed to load");
+      resolve(); // best-effort
+    };
     document.head.appendChild(s);
-
-    // Auto-render
-    const auto = document.createElement("script");
-    auto.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js";
-    auto.onload = done; auto.onerror = done;
-    document.head.appendChild(auto);
   });
 
   return _katexPromise;
@@ -119,17 +121,40 @@ export async function renderMarkdownPartial(el) {
     await ensureMarkdownLibs();
 
     let rawMd = el.textContent ?? "";
-    // Close any still-open code block fence so marked won’t choke.
-    const fenceCount = (rawMd.match(/```/g) || []).length;
-    if (fenceCount % 2 === 1) rawMd += "\n```";
 
-    const dirtyHtml = window.marked.parse(rawMd, {
+    // --- Protect LaTeX from marked.js ------------------------------------
+    const mathPlaceholders = [];
+    let protectedMd = rawMd;
+    protectedMd = protectedMd.replace(/\$\$([\s\S]*?)\$\$/g, (m) => {
+      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
+    });
+    protectedMd = protectedMd.replace(/\\\[([\s\S]*?)\\\]/g, (m) => {
+      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
+    });
+    protectedMd = protectedMd.replace(/\$([^\$\n]+?)\$/g, (m) => {
+      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
+    });
+    protectedMd = protectedMd.replace(/\\\((.*?)\\\)/g, (m) => {
+      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
+    });
+
+    // Close any still-open code block fence so marked won’t choke.
+    const fenceCount = (protectedMd.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) protectedMd += "\n```";
+
+    const dirtyHtml = window.marked.parse(protectedMd, {
       gfm: true,
       breaks: true,
       smartLists: true,
     });
     const safeHtml = window.DOMPurify ? window.DOMPurify.sanitize(dirtyHtml) : dirtyHtml;
-    el.innerHTML = safeHtml;
+
+    // Restore math placeholders
+    let finalHtml = safeHtml;
+    mathPlaceholders.forEach((original, i) => {
+      finalHtml = finalHtml.replace(`%%MATH${i}%%`, original);
+    });
+    el.innerHTML = finalHtml;
 
     // Render LaTeX expressions with KaTeX (lazy-loaded)
     await ensureKatexLoaded();
@@ -138,6 +163,8 @@ export async function renderMarkdownPartial(el) {
         delimiters: [
           { left: "$$", right: "$$", display: true },
           { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false },
+          { left: "\\[", right: "\\]", display: true },
         ],
         throwOnError: false,
       });

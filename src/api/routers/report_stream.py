@@ -138,10 +138,11 @@ async def generate_report_incremental(  # noqa: PLR0913
         return HTMLResponse(content=error_html)
 
     html_skeleton = f"""
-    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Feature coming soon\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Generate Notes
+    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
+        </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>
-        </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
+        </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
       <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>
     """
     return HTMLResponse(content=html_skeleton)
@@ -239,8 +240,8 @@ async def report_stream(
         start_ts = time.perf_counter()
         prompt_len_label = summary_size.upper()
 
-        # Topic summary now respects the same S/M/L sizing
-        actual_topic_size_key = prompt_len_label if prompt_len_label in ("S", "M", "L") else "M"
+        topic_size_map = {"S": "M", "M": "L", "L": "L", "XL": "L"}
+        actual_topic_size_key = topic_size_map.get(prompt_len_label, "M")
 
         overall_instr = rg.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_size_key]
 
@@ -285,8 +286,11 @@ async def report_stream(
         """LLM call that builds a summary for *paper* (role = main|similar)."""
         start_ts = time.perf_counter()
         prompt_len_label = summary_size.upper()
-        tok_target = rg._get_output_token_target(audience_type, prompt_len_label, False)
-        snippet_limit = rg._get_max_content_snippet_chars(audience_type, prompt_len_label, False)
+        normalized_size = (
+            prompt_len_label if prompt_len_label in rg.QUALITATIVE_LENGTH_GUIDANCE else "M"
+        )
+        tok_target = rg._get_output_token_target(audience_type, normalized_size, False)
+        snippet_limit = rg._get_max_content_snippet_chars(audience_type, normalized_size, False)
         full_text = paper.text_content or ""
         snippet = full_text[:snippet_limit]
 
@@ -307,7 +311,7 @@ async def report_stream(
             paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
             paper_publication_date=html.escape(rg._get_formatted_date_str(paper.published_date)),
             paper_content_snippet=snippet,
-            overall_instructions=rg.QUALITATIVE_LENGTH_GUIDANCE[prompt_len_label],
+            overall_instructions=rg.QUALITATIVE_LENGTH_GUIDANCE[normalized_size],
             target_audience=audience_type,
         )
         summary = await rg._generate_single_summary(prompt, tok_target, semaphore=semaphore)
@@ -321,7 +325,7 @@ async def report_stream(
         html_block = (
             f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank'>{html.escape(paper.title or 'Paper')}</a></h4>"
             f"{rg._text_to_html_paragraphs(summary)}"
-            f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
+            f"<button class='ask-assistant-btn' style='position:static;display:inline-block;margin-top:0.75rem;' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
             "</div>"
         )
         return role, html_block
@@ -376,7 +380,14 @@ async def report_stream(
 
         # Stream blocks **in task creation order** to maintain UI ordering while
         # still allowing the LLM calls to execute concurrently.
-        for t in coros:
+        total_blocks = len(coros)
+        for block_idx, t in enumerate(coros, 1):
+            # Send progress update
+            progress_text = f"Summarizing {block_idx} of {total_blocks}…"
+            yield _format_sse_event(
+                "report-progress",
+                f"<div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>{progress_text}</span>",
+            )
             try:
                 _role_label, block_html = await t
             except (asyncio.TimeoutError, ValueError, RuntimeError) as e:

@@ -53,8 +53,13 @@ function updatePager() {
 export function initPagination() {
   const list = document.getElementById("papers-list");
   if (!list) return;
+  // Recalculate total from visible items
+  totalPages = Math.ceil(Array.from(list.children).length / PAGE_SIZE) || 1;
   renderPage(0);
 }
+
+// Expose globally so sort/filter in main.js can re-init after reordering
+window.initPagination = initPagination;
 
 // Auto-init when list is present on first load
 if (document.readyState === "loading") {

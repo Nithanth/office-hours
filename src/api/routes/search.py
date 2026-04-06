@@ -52,6 +52,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     num_results: int | None = Form(None),  # display count (1–10)
     mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
     include_domains: list[str] | None = Form(None),  # noqa: B008
+    min_quality: float | None = Form(None),  # quality threshold (0–1)
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
@@ -198,13 +199,20 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 **shared_kwargs,
             )
         else:
-            search_kwargs = {"use_autoprompt": True, "category": "research_paper"}
+            search_kwargs = {"category": "research paper"}
             search_kwargs.update(shared_kwargs)
             exa_results = client.search_and_cache(
                 query=input_query_stripped,
                 k=num_results_display,
                 **search_kwargs,
             )
+
+        # Apply quality threshold if set ----------------------------------------
+        quality_threshold = max(0.0, min(1.0, min_quality or 0.0))
+        if quality_threshold > 0 and exa_results:
+            filtered = [p for p in exa_results if (p.relevance_score or 0) >= quality_threshold]
+            # Never filter to empty — keep at least the top results
+            exa_results = filtered if filtered else exa_results[:5]
 
         # Render results ----------------------------------------------------------
         results_component = render_search_results(
@@ -285,11 +293,27 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
             f"name='selected_papers_json' value='{paper_json_escaped}'>"
         )
 
+    # Relevance badge
+    relevance_html = ""
+    if pap.relevance_score is not None:
+        rs = pap.relevance_score
+        if rs >= 0.75:
+            badge_color = "var(--relevance-high, #22c55e)"
+        elif rs >= 0.50:
+            badge_color = "var(--relevance-mid, #eab308)"
+        else:
+            badge_color = "var(--relevance-low, #ef4444)"
+        relevance_html = (
+            f"<span class='relevance-badge' title='Relevance: {rs:.2f}' "
+            f"style='font-size:0.75em;font-weight:600;color:{badge_color};border:1px solid {badge_color};"
+            f"border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;'>{rs:.2f}</span>"
+        )
+
     return (
         f"<li id='{html.escape(li_id)}' style='margin-bottom:1em;padding:0.5em;border:{border};position:relative;'>"
         f"<div>"
         f"{selection_input_html}"
-        f"<a href='{html.escape(url_str)}' target='_blank'>{html.escape(title_str)}</a><br>"
+        f"<a href='{html.escape(url_str)}' target='_blank'>{html.escape(title_str)}</a>{relevance_html}<br>"
         f"<em>{authors_display}</em><br>"
         f"Published: {html.escape(formatted_date)}"
         f"</div></li>"

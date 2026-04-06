@@ -18,10 +18,9 @@ body.lux-dark input[type="number"]:hover { background:#333 !important; }
 #ask-assistant-form, .ask-llm-subtitle, #ask-result-container { background:transparent !important; }
 
 /* Chat form layout and controls */
-form[hx-post='/chat'] { display:flex; align-items:flex-end; gap:6px; }
-form[hx-post='/chat'] textarea { flex:1; }
+form[hx-post='/chat'] { display:block; }
 
-.send-btn { padding:6px 10px; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+.send-btn { padding:6px 10px; background:#2563eb; color:#fff; border:1px solid #000; border-radius:4px; cursor:pointer; }
 .send-btn:hover { background:#1e40af; }
 body.lux-dark .send-btn { background:#333; color:var(--lux-red); border:1px solid #555; }
 body.lux-dark .send-btn:hover { background:#444; color:var(--lux-red); }

@@ -1,13 +1,13 @@
 // chat/events.js – global event wiring for chat subsystem
 
-import { dbg } from "../util.js";
+import { dbg } from "../util.js?v=2";
 // ---------------------------------------------------------------------------
 // Session cleanup – tell backend to drop ChatState when the page unloads.
 // ---------------------------------------------------------------------------
 //
-import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } from "./stream.js";
-import { getModalParts, setControlsEnabled, scrollToBottom, enhanceModal } from "./ui.js";
-import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js";
+import { pendingBuffers, startTypingIndicator, finalizeBubble, loadTranscript } from "./stream.js?v=2";
+import { getModalParts, setControlsEnabled, scrollToBottom, enhanceModal } from "./ui.js?v=2";
+import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js?v=2";
 
 // ---------------------------------------------------------------------------
 // Chat session lifecycle

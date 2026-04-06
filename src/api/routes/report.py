@@ -11,6 +11,7 @@ from config import Config as AppConfig
 from models.paper import Paper
 from pages.main_page import render_error_message, render_paper_card
 from services.core.exa_client import ExaClient
+from services.core.exa_utils import url_utils as _url_utils
 from services.core.llm_service import LLMConfigurationError, LLMService
 from services.report.report_generator import ReportGenerator
 from utils.rate_limit import limiter
@@ -155,11 +156,24 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
     topic_papers_for_report: list[Paper] = []
 
     if is_url_input:
+        similar_candidates: list[Paper] = []
         for paper in deserialized_papers:
-            if paper.url == original_query_for_report:
+            url_str = str(paper.url)
+            if main_paper_for_report is None and _url_utils.url_equivalent(url_str, original_query_for_report):
                 main_paper_for_report = paper
             else:
-                similar_papers_for_report.append(paper)
+                similar_candidates.append(paper)
+
+        if main_paper_for_report is None and deserialized_papers:
+            # Fall back to the first selected paper when canonical URLs differ
+            main_paper_for_report = deserialized_papers[0]
+            similar_candidates = deserialized_papers[1:]
+
+        if main_paper_for_report is not None:
+            main_id = main_paper_for_report.id
+            similar_papers_for_report = [p for p in similar_candidates if p.id != main_id]
+        else:
+            similar_papers_for_report = similar_candidates
         logger.info(
             "report_url_mode",
             main_paper_title=(main_paper_for_report.title if main_paper_for_report else "<none>"),

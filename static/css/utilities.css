@@ -31,7 +31,7 @@ body.lux-dark .error-banner {
   padding: 0.35rem 0.75rem;
   background: #2563eb;
   color: #fff;
-  border: none;
+  border: 1px solid #000;
   border-radius: 4px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -47,6 +47,7 @@ body.lux-dark .ask-assistant-btn {
 }
 body.lux-dark .ask-assistant-btn:hover {
   background: #444;
+  color: var(--lux-red);
 }
 
 /* --- Legacy layout utility classes (migrated from styles.css) --- */

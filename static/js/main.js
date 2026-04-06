@@ -4,7 +4,6 @@
 
 // Controls for shuffle/reset buttons (defines window.disableShuffle etc.)
 import "./shuffle_controls.js";
-// Pin feature removed – module import dropped
 // Ensure HTMX opens multiple SSE streams concurrently (chat + report, etc.)
 // Script is idempotent; importing here avoids separate <script> tag.
 import "./htmx-sse-pool.js";
@@ -19,18 +18,18 @@ import "./util.js";
 import "./pagination.js";
 
 // Chat subsystem (streams, UI, events)
-import "./chat/stream.js";
-import "./chat/ui.js";
-import "./chat/events.js";
-// import "./citation.js"; // hover cards disabled per user preference
+// Cache-bust: v2 forces browser to reload these modules
+import "./chat/stream.js?v=2";
+import "./chat/ui.js?v=2";
+import "./chat/events.js?v=2";
 
 // Markdown helpers – only pull the symbol we need (module still executes once)
-import { ensureMarkdownLibs } from "./chat/markdown.js";
+import { ensureMarkdownLibs } from "./chat/markdown.js?v=2";
 // Kick off background load early; no await needed.
 ensureMarkdownLibs();
 
 // Report page helpers (copy button, etc.)
-import "./report.js";
+import "./report.js?v=2";
 
 // ---------------------------------------------------------------------------
 // Simple-reload snapshot & restore
@@ -90,6 +89,9 @@ import "./report.js";
       return;
     }
 
+    const viewerOpen = !!document.querySelector(".modal-content.pdf-viewer");
+    if (viewerOpen) return; // treat like hard reload
+
     const modal = document.querySelector(".modal .chat-log-container[data-chat-pid]");
     const pid = modal ? modal.dataset.chatPid : null;
 
@@ -132,3 +134,170 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
 });
 
 console.debug("[lux] main.js history clean listener wired");
+
+// ---------------------------------------------------------------------------
+// Sort by date & filter by author (client-side, on search results)
+// ---------------------------------------------------------------------------
+
+(function () {
+  let sortDesc = true; // newest first by default
+
+  function getPapersList() {
+    return document.getElementById("papers-list");
+  }
+
+  function reinitPagination() {
+    // Re-trigger pagination after sort/filter so page slicing matches new order
+    if (typeof window.initPagination === "function") {
+      window.initPagination();
+    } else {
+      // Fallback: show all items if pagination module not available
+      const ul = getPapersList();
+      if (ul) ul.querySelectorAll("li").forEach((li) => (li.style.display = ""));
+    }
+  }
+
+  function handleSortDate() {
+    const ul = getPapersList();
+    if (!ul) return;
+    // Clear any author filter first
+    const filterInput = document.getElementById("author-filter-input");
+    if (filterInput) filterInput.value = "";
+    ul.querySelectorAll("li").forEach((li) => (li.style.display = ""));
+
+    const items = Array.from(ul.querySelectorAll("li"));
+    items.sort((a, b) => {
+      const da = a.dataset.date || "";
+      const db = b.dataset.date || "";
+      return sortDesc ? db.localeCompare(da) : da.localeCompare(db);
+    });
+    items.forEach((li) => ul.appendChild(li));
+    sortDesc = !sortDesc;
+    const btn = document.getElementById("sort-date-btn");
+    if (btn) btn.innerHTML = sortDesc
+      ? '<i class="fa-solid fa-arrow-down-short-wide"></i> Date ↓'
+      : '<i class="fa-solid fa-arrow-up-short-wide"></i> Date ↑';
+    reinitPagination();
+  }
+
+  function handleAuthorFilter(ev) {
+    const query = (ev.target.value || "").toLowerCase().trim();
+    const ul = getPapersList();
+    if (!ul) return;
+    ul.querySelectorAll("li").forEach((li) => {
+      if (!query) {
+        li.style.display = "";
+        return;
+      }
+      const authors = li.dataset.authors || "";
+      li.style.display = authors.includes(query) ? "" : "none";
+    });
+  }
+
+  document.addEventListener("click", (ev) => {
+    if (ev.target.closest("#sort-date-btn")) handleSortDate();
+  });
+
+  document.addEventListener("input", (ev) => {
+    if (ev.target.id === "author-filter-input") handleAuthorFilter(ev);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Select All / Deselect All paper checkboxes
+// ---------------------------------------------------------------------------
+(function () {
+  document.addEventListener("click", (ev) => {
+    if (ev.target.closest("#select-all-btn")) {
+      document
+        .querySelectorAll(".paper-select-checkbox:not(.pinned-checkbox)")
+        .forEach((cb) => (cb.checked = true));
+    }
+    if (ev.target.closest("#deselect-all-btn")) {
+      document
+        .querySelectorAll(".paper-select-checkbox:not(.pinned-checkbox)")
+        .forEach((cb) => (cb.checked = false));
+    }
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Abstract preview popover
+// ---------------------------------------------------------------------------
+(function () {
+  // Lazy-inject the popover dialog once
+  function ensureDialog() {
+    let dlg = document.getElementById("abstract-popover");
+    if (dlg) return dlg;
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<dialog id="abstract-popover" class="lux-modal" style="max-width:540px;max-height:70vh;overflow-y:auto;">
+         <div id="abstract-popover-body" style="white-space:pre-wrap;font-size:0.9rem;line-height:1.5;"></div>
+         <menu style="margin-top:12px;display:flex;justify-content:flex-end;">
+           <button value="cancel" style="font-size:0.85rem;">Close</button>
+         </menu>
+       </dialog>`
+    );
+    dlg = document.getElementById("abstract-popover");
+    dlg.addEventListener("click", (e) => {
+      // Close on backdrop click
+      if (e.target === dlg) dlg.close();
+    });
+    return dlg;
+  }
+
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".abstract-toggle-btn");
+    if (!btn) return;
+    const abstract = btn.dataset.abstract;
+    if (!abstract) return;
+    const dlg = ensureDialog();
+    // Get paper title from sibling <a> tag
+    const li = btn.closest("li");
+    const titleEl = li ? li.querySelector("a") : null;
+    const title = titleEl ? titleEl.textContent.trim() : "Abstract";
+    dlg.querySelector("#abstract-popover-body").innerHTML =
+      `<strong>${title.replace(/</g, "&lt;")}</strong><hr style="margin:8px 0;">` +
+      abstract.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    dlg.showModal();
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// BibTeX citation copy
+// ---------------------------------------------------------------------------
+(function () {
+  function generateBibtex(btn) {
+    const title = btn.dataset.bibTitle || "Untitled";
+    const authors = btn.dataset.bibAuthors || "Unknown";
+    const year = btn.dataset.bibYear || "n.d.";
+    const url = btn.dataset.bibUrl || "";
+
+    // Generate a citekey from first author surname + year
+    const firstAuthor = authors.split(";")[0].trim().split(" ").pop() || "unknown";
+    const citekey = firstAuthor.toLowerCase().replace(/[^a-z]/g, "") + year;
+
+    return `@article{${citekey},
+  title = {${title}},
+  author = {${authors}},
+  year = {${year}},
+  url = {${url}}
+}`;
+  }
+
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".bibtex-copy-btn");
+    if (!btn) return;
+    const bibtex = generateBibtex(btn);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(bibtex).then(() => {
+        btn.style.opacity = "1";
+        btn.title = "Copied!";
+        setTimeout(() => {
+          btn.style.opacity = "0.6";
+          btn.title = "Copy BibTeX citation";
+        }, 1500);
+      });
+    }
+  });
+})();

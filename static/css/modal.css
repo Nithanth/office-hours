@@ -20,7 +20,7 @@ body.lux-dark .modal {
 .modal-content {
   position: relative;           /* anchor abs-pos children */
   background: #fff;
-  padding: 1.5rem;
+  padding: 1rem;
   border-radius: 6px;
   max-width: 640px;
   width: 90%;
@@ -31,11 +31,25 @@ body.lux-dark .modal-content {
   border: 1px solid #444;
 }
 
+/* PDF viewer modal: large but leaves breathing room so bottom controls remain visible */
+.modal-content.pdf-viewer {
+  width: 95vw !important;
+  max-width: 95vw !important;
+  max-height: 94vh !important; /* leave consistent vertical margin */
+  height: 96vh !important;      /* balanced with 95vw width margin */
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.pdf-viewer .modal-header {
+  margin-bottom: 0.5rem;
 }
 .modal-close-btn {
   background: transparent;
@@ -45,3 +59,134 @@ body.lux-dark .modal-content {
   line-height: 1;
 }
 body.lux-dark .modal-close-btn { color: var(--lux-red); }
+
+/* -------------------- PDF Viewer Layout -------------------- */
+/* grid fills remaining vertical space flexibly so textarea remains visible */
+.pdf-viewer .viewer-grid {
+  display: grid;
+  grid-template-columns: minmax(0,60%) minmax(320px,40%); /* widen chat */
+  flex: 1 1 auto;
+  min-height: 0; /* allow children to scroll */
+  gap: 0;
+  overflow: hidden;
+}
+
+.pdf-viewer embed,
+.pdf-viewer iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.pdf-viewer .pdf-container {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.pdf-viewer .pdf-container canvas {
+  display: block;
+  margin: 0 auto 8px auto;
+  background: #fff;
+}
+
+.pdf-viewer .chat-column {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--lux-border, #ddd);
+  background: #fafafa;
+  overflow: hidden;
+  font-size: 0.8rem;   /* smaller bubble text */
+  font-family: Arial, Helvetica, sans-serif;
+  padding: 0.5rem;          /* adjust padding */
+  gap: 0.6rem;               /* vertical breathing room */
+  min-width: 320px;       /* chat shouldn't shrink below 320px */
+}
+body.lux-dark .pdf-viewer .chat-column {
+  background: #1f1f1f;
+}
+
+.pdf-viewer .chat-column .modal-body,
+.pdf-viewer .chat-column .chat-log-container {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.pdf-viewer .chat-column form {
+  flex-shrink: 0;
+}
+
+.pdf-viewer .chat-column textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-panel textarea {
+  resize: vertical;
+}
+
+/* Override bubble font sizes inside viewer chat */
+.pdf-viewer .chat-column .user-message,
+.pdf-viewer .chat-column .assistant-message {
+  font-size: 0.78rem; /* slightly smaller */
+  font-family: inherit;
+}
+
+/* Ensure list bullets render inside viewer chat bubbles */
+.pdf-viewer .chat-column .assistant-message ul,
+.pdf-viewer .chat-column .assistant-message ol {
+  margin: 0.4rem 0 0.4rem 1.2rem;
+  padding-left: 0;
+  list-style-position: inside; /* keep markers visible but let list type cascade */
+  color: inherit;
+}
+
+/* First-level list types – match standalone chat */
+.pdf-viewer .chat-column .assistant-message > ul { list-style-type: disc; }
+.pdf-viewer .chat-column .assistant-message > ol { list-style-type: decimal; }
+
+.pdf-viewer .chat-column .assistant-message li {
+  list-style-position: inside;
+}
+
+/* Blinking caret in streaming assistant bubble */
+.caret {
+  animation: luxCaretBlink 1s steps(1) infinite;
+  opacity: 1;
+}
+
+@keyframes luxCaretBlink {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+/* In two-pane viewer the global Stop button overlaps; hide it */
+.pdf-viewer .stop-btn {
+  display: none !important;
+}
+
+/* PDF loading overlay */
+.pdf-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #555;
+  display: flex;
+  align-items: center;
+  z-index: 5; /* above pdf canvas */
+}
+
+.pdf-loading .spin {
+  animation: lux-spin 1s linear infinite;
+  margin-right: 6px;
+}
+
+@keyframes lux-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

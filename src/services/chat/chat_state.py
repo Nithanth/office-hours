@@ -45,7 +45,8 @@ class ChatState:
 
     # Per-paper rolling window of recent turns.
     _histories: dict[str, list[ChatMessage]] = field(default_factory=dict)
-    _cap: int = 20  # configurable later, apply per paper
+    # Max turns to retain per paper (mirrors persistence cap below)
+    _cap: int = 50
     # Per-paper scratch space (e.g., cached full-text paths)
     paper_cache: dict[str, dict[str, str]] = field(default_factory=dict)
     # Ring buffer of last tokens for stream-resume (Phase 6)
@@ -77,6 +78,15 @@ class ChatState:
         history = self._histories.setdefault(paper_id, [])
         history.append(msg)
         self._histories[paper_id] = history[-self._cap :]
+
+        # Persist to on-disk cache so history survives restarts.
+        try:
+            from services.chat.chat_history_cache import ChatHistoryCache as _CHC  # local import
+
+            # Serialise to plain dicts for JSON
+            _CHC.save(paper_id, [m.serialise() for m in self._histories[paper_id]])
+        except Exception:  # noqa: BLE001 – persistence is best-effort
+            pass
 
     def get_conversation(self, paper_id: str) -> list[ChatMessage]:  # noqa: D401 - helper
         """Return a copy of the history list for *paper_id*."""

@@ -6,49 +6,83 @@
   color: #000;
   font-family: "Lucida Console", "Courier New", monospace;
   font-size: 0.9rem;
-  padding: 2px 6px;
+  padding: 3px 10px;
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
+  gap: 6px;
+  border-bottom: 2px solid #888;
+}
+
+.top-bar a { color: #000; text-decoration: none; }
+
+/* Shared style for all top-bar controls */
+.top-bar select,
+.top-bar button {
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  height: 22px;
+  background: #fff;
+  color: #000;
+  border: 1px outset #ddd;
+  cursor: pointer;
 }
 
 .top-bar select {
-  font-size: 0.7rem;
-  padding: 1px 4px;
-  width: 115px;
+  width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #000;
+  appearance: auto;
 }
 
 .top-bar select.placeholder {
   color: #888 !important;
-  font-size: 0.7rem;
 }
 
+.top-bar button:active {
+  border-style: inset;
+}
+
+/* --- Dark mode --- */
 body.lux-dark .top-bar {
   background: var(--bg-dark);
   color: var(--fg-dark);
+  border-bottom-color: #333;
 }
-body.lux-dark .top-bar select {
+body.lux-dark .top-bar a { color: var(--lux-red); }
+
+body.lux-dark .top-bar select,
+body.lux-dark .top-bar button {
+  background: #2a2a2a;
   color: var(--lux-red);
+  border: 1px solid #555;
 }
 body.lux-dark .top-bar select.placeholder {
   color: #666 !important;
 }
 
-/* Dark-mode toggle button */
-.top-bar button#lux-dark-toggle {
-  font-size: 0.7rem;
-  padding: 1px 4px;
-  height: 20px;
-  background: #fff;
-  border: 1px solid #000;
-  cursor: pointer;
-}
-body.lux-dark .top-bar button#lux-dark-toggle {
-  background: #333;
-  color: var(--lux-red);
-  border-color: #666;
+/* Responsive top bar */
+@media (max-width: 640px) {
+  .top-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+  .top-bar a.text-lg {
+    font-size: 0.75rem;
+    margin-right: 0;
+  }
+  .top-bar select {
+    width: 90px;
+    font-size: 0.6rem;
+    height: 20px;
+  }
+  .top-bar button {
+    font-size: 0.6rem;
+    height: 20px;
+    padding: 1px 4px;
+  }
 }

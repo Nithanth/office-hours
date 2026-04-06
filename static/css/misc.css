@@ -45,21 +45,26 @@ body.lux-dark .pager-btn:hover:not(:disabled) {
   opacity: 0.85;
 }
 
-/* Initial compact search card */
+/* ================================================================
+   Search card — fills viewport, footer stays at bottom
+   ================================================================ */
 .search-card {
-  max-width: 2000px; /* even wider card */
-  width: 75%; /* force card to fill most of viewport */
-  /* move card downward so gap above equals combined gap below (card margin + footer spacing) */
-  margin: 4rem auto 1rem; /* top 4rem, horizontal auto, bottom 1rem */
-  padding: 2rem 2rem 3rem; /* more spacious */
-  border: 1px solid #ccc;
-  background: #fff;
-  /* Slightly deeper, softer shadow */
+  max-width: 2000px;
+  width: 75%;
+  min-height: calc(100vh - 12rem);
+  margin: 2rem auto 0.5rem;
+  padding: 1.5rem 2rem 1.5rem;
+  border: 1px solid var(--container-border);
+  background: var(--container-bg);
   box-shadow: 0 4px 16px rgba(0,0,0,0.14);
   border-radius: 6px;
   position: relative;
-  min-height: 550px; /* taller card */
-  /* Flex column so we can push RA button to bottom */
+  display: flex;
+  flex-direction: column;
+}
+/* Inner content wrapper grows to push empty-state down */
+.search-card > div:first-child {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
 }
@@ -71,59 +76,37 @@ body.lux-dark .search-card::after {
 }
 
 body.lux-dark .search-card {
-  background: #1e1e1e;
-  border-color: #555;
   box-shadow: 0 4px 16px rgba(0,0,0,0.6);
 }
 
 /* Override any inline margins */
 .search-card #modal-container { position: relative; z-index: 2; }
-.search-card .ask-assistant-btn {
-  position: absolute;
-  bottom: 1.5rem;      /* keep bottom padding gap */
-  left: 2rem;          /* align with card side padding */
-  margin: 0;
 
-  /* Match neutral Search Papers button style */
-  background: buttonface;
-  color: buttontext;
-  border: 1px solid #a9a9a9;
-  border-radius: 4px;
-  padding: 2px 6px;              /* default UA padding */
-  font: inherit;                 /* inherit font to match */
-  cursor: pointer;
-  font-size: 0.8rem;
+/* Global Research Assistant button in top-bar */
+#open-global-chat {
+  white-space: nowrap;
 }
 
-.search-card .ask-assistant-btn:hover {
-  filter: brightness(0.95);
+/* Per-paper summary blocks in the report */
+.paper-summary {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--container-border, #ddd);
 }
 
-/* Dark-mode variant */
-body.lux-dark .search-card .ask-assistant-btn {
-  background: #444;
-  color: #eee;
-  border: 1px solid #666;
-}
-
-body.lux-dark .search-card .ask-assistant-btn:hover {
-  background: #555;
-}
-
-/* Ensure results+report form stretches so button gets pushed */
-.search-card #results-and-report-form {
-  flex: 1 1 auto;
-}
-
-/* Ensure main content wrapper inside search-card grows */
-.search-card > div:first-child {
-  flex: 1 1 auto;
+/* Per-paper Ask Assistant buttons inside report blocks flow normally */
+.paper-summary .ask-assistant-btn {
+  position: static !important;
+  display: inline-block;
+  margin-top: 0.75rem;
 }
 
 /* Paper result items – keep readable margins & wrap long text */
 .search-card li[data-paper-id] {
-  margin: 0 0.75rem 1rem; /* side gap so borders don’t hug card edge */
+  margin: 0 0.75rem 1rem; /* side gap so borders don't hug card edge */
   overflow-wrap: anywhere; /* long titles/urls wrap instead of overflowing */
+  border: 1px solid var(--container-border);
+  border-radius: 4px;
 }
 
 /* Results list spacing */
@@ -133,21 +116,200 @@ body.lux-dark .search-card .ask-assistant-btn:hover {
   list-style: none;       /* remove bullets */
 }
 
-/* ------- Domain filter sizing tweaks ------- */
-#domain-filter-container {
-  font: inherit;          /* match button font-family & size */
-  font-size: 0.8rem;      /* same size as buttons */
-  line-height: 1.1;
-  padding: 4px 4px;       /* slight inner padding */
-  width: 140px;           /* further shrink width */
-  font-family: Arial, sans-serif; /* ensure sans font */
- }
+/* Paper list dark-mode border override */
+body.lux-dark .search-card li[data-paper-id] {
+  border-color: var(--container-border);
+}
 
-#domain-filter-container span {
-  font-family: inherit;
+/* Dark-mode border fix for domain filter box */
+body.lux-dark .search-card #domain-filter-container {
+  border-color: var(--container-border);
+}
+
+/* ================================================================
+   Domain filter pills
+   ================================================================ */
+#domain-filter-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0;
+  border: none !important;
+  max-height: none !important;
+  overflow: visible;
+  margin-left: 0;
+}
+
+/* Hide the actual checkbox, style the label-wrapper as a pill */
+.domain-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--container-border);
+  border-radius: 12px;
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  background: var(--container-bg);
+  color: var(--fg);
+}
+.domain-pill:hover {
+  border-color: #888;
+}
+
+/* Checked state */
+.domain-pill input[type="checkbox"] { display: none; }
+.domain-pill:has(input:checked) {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+body.lux-dark .domain-pill {
+  background: #2a2a2a;
+  border-color: #555;
+  color: #ccc;
+}
+body.lux-dark .domain-pill:hover {
+  border-color: #888;
+}
+body.lux-dark .domain-pill:has(input:checked) {
+  background: var(--lux-red);
+  color: #fff;
+  border-color: var(--lux-red);
+}
+
+/* ================================================================
+   Empty state (before first search)
+   ================================================================ */
+/* Results form stretches so empty-state can center */
+#results-and-report-form {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+#search-results-container {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.empty-state {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #bbb;
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+body.lux-dark .empty-state { color: #444; }
+
+/* ================================================================
+   Search form layout tightening
+   ================================================================ */
+.search-form-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 24px;
+  margin: 8px 0 4px;
+}
+.search-form-filters > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.filter-label {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.filter-label em {
+  color: #999;
+  font-style: italic;
 }
 
 /* ---------- KaTeX tweaks ---------- */
 body.lux-dark .katex {
   color: #eee; /* lighten math text in dark theme */
+}
+
+/* Make all form control borders consistent grey in dark mode */
+body.lux-dark .search-card input,
+body.lux-dark .search-card select,
+body.lux-dark .search-card textarea {
+  border: 1px solid #555;
+  background: #2a2a2a;
+  color: #eee;
+}
+
+body.lux-dark .search-card input:focus,
+body.lux-dark .search-card select:focus,
+body.lux-dark .search-card textarea:focus {
+  outline: none;
+  border-color: var(--lux-red);
+}
+
+/* ================================================================
+   Responsive breakpoints
+   ================================================================ */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .search-card {
+    width: 90%;
+    padding: 1rem 1.25rem;
+  }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .search-card {
+    width: 97%;
+    padding: 0.75rem;
+    margin: 0.5rem auto;
+    min-height: auto;
+  }
+
+  .search-card li[data-paper-id] {
+    margin: 0 0.25rem 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .search-form-filters {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #domain-filter-container {
+    gap: 3px;
+  }
+
+  .domain-pill {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
+
+  #results-controls {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  /* Stack report action buttons vertically */
+  #report-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Paper abstract previews: full-width on mobile */
+  .paper-abstract-preview {
+    font-size: 0.8rem;
+  }
 }

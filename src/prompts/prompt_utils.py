@@ -1,6 +1,6 @@
 """Prompt sizing and token-budget helper functions.
 
-This module converts qualitative size keys ("S/M/L/XL") into concrete
+This module converts qualitative size keys ("S/M/L") into concrete
 token- or character-budgets given the selected LLM’s context window. It is
 **stateless** and therefore safe for import by any service without risk of
 side-effects or circular dependencies.

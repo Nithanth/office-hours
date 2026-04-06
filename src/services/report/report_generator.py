@@ -19,9 +19,6 @@ from prompts.prompt_utils import max_content_snippet_chars as _calc_snippet_char
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMService
 from services.core.llm_utils.types import ProviderName
-
-# RAG helpers
-from services.paper import vector_store
 from services.paper.embedding import embed_query
 from services.report.report_utils import PaperSummariser, SummaryCache, TopicSummariser
 from utils.html_builder import text_to_html_paragraphs
@@ -333,7 +330,7 @@ class ReportGenerator:
             )
             user_summary_size_key = "M"
 
-        topic_size_map = {"S": "M", "M": "L", "L": "XL", "XL": "XL"}
+        topic_size_map = {"S": "M", "M": "L", "L": "L", "XL": "L"}
         actual_topic_summary_size_key = topic_size_map.get(user_summary_size_key, "L")
 
         topic_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_summary_size_key]
@@ -382,84 +379,58 @@ class ReportGenerator:
         summary_tasks: list[asyncio.Task[str]] = []
         task_infos: list[tuple[Optional[Paper], str]] = []  # (paper_or_none, role)
 
-        if main_input_paper:
-            if include_section_headings:
-                report_parts.append("<h3>Summary of Input Paper</h3>")
-            # Decide between full-context vs hybrid RAG snippet
+        def _queue_paper_summary(paper: Paper, *, role: str) -> None:
             hybrid_needed = (
-                len(main_input_paper.text_content or "") > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
+                len(paper.text_content or "") > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
             )
-
-            snippet_override_main: str | None = None
+            snippet_override: str | None = None
             if hybrid_needed:
-                snippet_override_main = self._build_hybrid_snippet(
-                    main_input_paper,
+                snippet_override = self._build_hybrid_snippet(
+                    paper,
                     char_limit=paper_max_content_snippet_chars,
                 )
 
-            main_prompt, main_tok_target = self._paper_summariser.build_prompt_and_target(
-                main_input_paper,
+            paper_prompt, tok_target = self._paper_summariser.build_prompt_and_target(
+                paper,
                 audience_type=audience_type,
                 summary_size_key=user_summary_size_key,
                 length_guidance=paper_length_guidance,
                 prompt_template=active_paper_prompt_template,
                 snippet_char_limit=paper_max_content_snippet_chars,
-                snippet_override=snippet_override_main,
+                snippet_override=snippet_override,
             )
             summary_tasks.append(
                 asyncio.create_task(
                     self._generate_single_summary(
-                        main_prompt,
-                        main_tok_target,
+                        paper_prompt,
+                        tok_target,
                         semaphore=paper_summary_semaphore,
                         cache_key=self._paper_cache_key(
-                            main_input_paper.id,
+                            paper.id,
                             user_summary_size_key,
                             audience_type,
                         ),
                     )
                 )
             )
-            task_infos.append((main_input_paper, "main"))
+            task_infos.append((paper, role))
+
+        if main_input_paper:
+            if include_section_headings:
+                report_parts.append("<h3>Summary of Input Paper</h3>")
+            _queue_paper_summary(main_input_paper, role="main")
 
         if similar_papers_data:
             if include_section_headings:
                 report_parts.append("<h3>Summaries of Similar Papers</h3>")
             for paper in similar_papers_data:
-                hybrid_needed = (
-                    len(paper.text_content or "") > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
-                )
-                snippet_override_sim: str | None = None
-                if hybrid_needed:
-                    snippet_override_sim = self._build_hybrid_snippet(
-                        paper,
-                        char_limit=paper_max_content_snippet_chars,
-                    )
+                _queue_paper_summary(paper, role="similar")
 
-                paper_prompt, tok_target = self._paper_summariser.build_prompt_and_target(
-                    paper,
-                    audience_type=audience_type,
-                    summary_size_key=user_summary_size_key,
-                    length_guidance=paper_length_guidance,
-                    prompt_template=active_paper_prompt_template,
-                    snippet_char_limit=paper_max_content_snippet_chars,
-                    snippet_override=snippet_override_sim,
-                )
-                summary_tasks.append(
-                    asyncio.create_task(
-                        self._generate_single_summary(
-                            paper_prompt,
-                            tok_target,
-                            semaphore=paper_summary_semaphore,
-                            cache_key=self._paper_cache_key(
-                                paper.id,
-                                user_summary_size_key,
-                                audience_type,
-                            ),
-                        )
-                    )
-                )
-                task_infos.append((paper, "similar"))
+        if papers_for_topic_report and not is_url_input:
+            if include_section_headings:
+                report_parts.append("<h3>Summaries of Selected Papers</h3>")
+            for paper in papers_for_topic_report:
+                _queue_paper_summary(paper, role="topic")
 
         # Topic overview / common theme --------------------------------------------------
         # 1) Query workflow → normal topic overview (is_url_input is False)
@@ -603,16 +574,26 @@ class ReportGenerator:
         clean_title = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", title).strip()
         clean_title = cast(str, clean_title).strip('* "')
 
-        # --- Copy-text utility only (works even on non-secure origins) -----------
-        buttons_html = (
-            "<div class='report-actions hidden' style='margin:1em 0;' id='report-actions'>"
-            "<button type='button' id='copy-report-btn'>Copy&nbsp;Text</button>"
+        title_html = html.escape(clean_title) if clean_title else "Research Report"
+
+        actions_html = (
+            "<div id='report-actions' class='mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2'>"
+            "<button id='report-notes-btn' class='btn-secondary' title='Generate Notes' type='button'>"
+            "<i class='fa-solid fa-wand-magic-sparkles'></i>&nbsp;Generate Notes"
+            "</button>"
+            "<button id='copy-report-btn' class='copy-icon-btn' title='Copy text' type='button'>"
+            "<i class='fa-solid fa-copy'></i>"
+            "</button>"
             "</div>"
         )
 
-        # Action buttons (appear before report content)
-        # Return action buttons then report body. (Copy logic lives in static/js/report.js)
-        return buttons_html + report_body
+        return (
+            "<div id='report-content' class='mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50'>"
+            f"<h2 class='text-2xl font-bold mb-4'>{title_html}</h2>"
+            f"{report_body}"
+            f"{actions_html}"
+            "</div>"
+        )
 
     async def _generate_report_title(self, report_content: str, model_key: str) -> str:
         """Generates a concise, intelligent title for the report content."""
@@ -714,6 +695,8 @@ class ReportGenerator:
 
         # Ensure vector index exists
         try:
+            from services.paper import vector_store  # local import avoids early binding
+
             if paper.text_content and not vector_store.index_exists(paper.id):
                 vector_store.build_index_from_text(paper.id, paper.text_content)
         except Exception as exc:
@@ -722,6 +705,8 @@ class ReportGenerator:
         # RAG retrieval per theme
         for theme, q in themes.items():
             try:
+                from services.paper import vector_store  # late import for stubbing
+
                 q_vec = embed_query(q)
                 hits = vector_store.search(
                     paper.id,

@@ -1,9 +1,9 @@
 // chat/stream.js – SSE streaming & typing indicator logic
 // Handles token buffering, markdown render, and finalisation of assistant messages.
 
-import { dbg, decodeEntities } from "../util.js";
-import { getModalParts, setControlsEnabled, addCopyButtons, scrollToBottom } from "./ui.js";
-import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded } from "./markdown.js";
+import { dbg, decodeEntities } from "../util.js?v=2";
+import { getModalParts, setControlsEnabled, addCopyButtons, scrollToBottom } from "./ui.js?v=2";
+import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded, ensureKatexLoaded } from "./markdown.js?v=2";
 
 // Map<Element, Entry> tracking in-flight SSE token buffers
 const _pendingTokenBuffers = new Map();
@@ -140,13 +140,61 @@ function _finalizeBubble(targetEl) {
 
   ensureMarkdownLibs()
     .then(() => {
+      // --- Protect LaTeX from marked.js -----------------------------------
+      // marked will mangle backslashes and underscores inside math blocks.
+      // We temporarily replace them with placeholders, parse markdown, then
+      // restore them so KaTeX can render properly.
+      const mathPlaceholders = [];
+      let protectedMd = rawMd;
+
+      // Protect display math ($$...$$) and (\[...\])
+      protectedMd = protectedMd.replace(/\$\$([\s\S]*?)\$\$/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+      protectedMd = protectedMd.replace(/\\\[([\s\S]*?)\\\]/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+      // Protect inline math ($...$) and (\(...\))
+      protectedMd = protectedMd.replace(/\$([^\$\n]+?)\$/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+      protectedMd = protectedMd.replace(/\\\((.*?)\\\)/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+
       // Make sure code fences are balanced
-      const fenceCt = (rawMd.match(/```/g) || []).length;
-      const mdSrc = fenceCt % 2 === 1 ? `${rawMd}\n\n\`\`\`` : rawMd;
+      const fenceCt = (protectedMd.match(/```/g) || []).length;
+      const mdSrc = fenceCt % 2 === 1 ? `${protectedMd}\n\n\`\`\`` : protectedMd;
       const dirtyHtml = window.marked.parse(mdSrc, { gfm: true, breaks: true });
       const safeHtml = window.DOMPurify ? window.DOMPurify.sanitize(dirtyHtml) : dirtyHtml;
-      targetEl.innerHTML = safeHtml;
+
+      // Restore math placeholders
+      let finalHtml = safeHtml;
+      mathPlaceholders.forEach((original, i) => {
+        finalHtml = finalHtml.replace(`%%MATH${i}%%`, original);
+      });
+      targetEl.innerHTML = finalHtml;
     })
+    // --- KaTeX math rendering --------------------------------------------
+    .then(() => ensureKatexLoaded())
+    .then(() => {
+      if (window.renderMathInElement) {
+        window.renderMathInElement(targetEl, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false },
+            { left: "\\(", right: "\\)", display: false },
+            { left: "\\[", right: "\\]", display: true },
+          ],
+          throwOnError: false,
+        });
+      }
+    })
+    // ---------------------------------------------------------------------
     .then(() => mdHighlightLoaded())
     .then(() => {
       targetEl.querySelectorAll("pre code").forEach((block) => window.hljs && window.hljs.highlightElement(block));

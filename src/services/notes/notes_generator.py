@@ -66,8 +66,21 @@ def _render_txt(md_text: str) -> str:
         if m_b or m_n:
             m = cast(re.Match[str], m_b or m_n)
             indent_spaces = len(m["indent"])
-            level = min(indent_spaces // 2, 2)
-            prefix = _PLAIN_BULLETS[level] if m_b else m.group(2)
+
+            # -------------------------------
+            # Determine nesting level
+            #   • Primary: 2-space indent per level (as produced by _json_to_md)
+            #   • Fallback: infer from bullet symbol when no indent present
+            # -------------------------------
+            if indent_spaces:
+                level = min(indent_spaces // 2, 2)
+            else:
+                if m.group(2) in _PLAIN_BULLETS:
+                    level = _PLAIN_BULLETS.index(m.group(2))
+                else:
+                    level = 0
+
+            prefix = _PLAIN_BULLETS[min(level, 2)] if m_b else m.group(2)
             txt_clean = re.sub(r"[*_]{1,2}(.*?)?[*_]{1,2}", r"\1", m["txt"])
             out_lines.append(f"{'  ' * level}{prefix} {txt_clean}")
             continue
@@ -191,7 +204,7 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
         chat_digest: str = "",
         provider: str,
         model_id: str,
-        output_format: Literal["txt", "docx"] = "txt",
+        output_format: Literal["txt", "md", "docx"] = "txt",
         paper_ids: list[str] | None = None,
     ) -> tuple[bytes | str, str, str]:
         """Return *(content, mime_type, filename)* for the generated notes."""
@@ -304,6 +317,9 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "report_notes.docx",
             )
+
+        if output_format == "md":
+            return notes_text, "text/markdown; charset=utf-8", "report_notes.md"
 
         plain = _render_txt(notes_text)
         return plain, "text/plain; charset=utf-8", "report_notes.txt"

@@ -75,6 +75,17 @@ def _clear_paper_cache() -> None:
 
         PaperCache().clear()
         logger.info("paper_cache_cleared")
+
+        # ---- additionally wipe per-paper chat history cache ----
+        from services.chat.chat_history_cache import ChatHistoryCache  # local import
+
+        cache_dir = Path(ChatHistoryCache._cache_dir)
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir, ignore_errors=True)
+            logger.info("chat_history_cache_cleared", path=str(cache_dir))
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            logger.info("chat_history_cache_missing", path=str(cache_dir))
     except Exception as exc:  # noqa: BLE001
         logger.exception("failed_clearing_paper_cache", error=str(exc))
 

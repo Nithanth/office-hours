@@ -77,6 +77,77 @@ def fetch_arxiv_metadata(arxiv_id: str, timeout: int = 10) -> dict[str, Any]:
         return {}
 
 
+def fetch_arxiv_metadata_batch(arxiv_ids: list[str], timeout: int = 15) -> dict[str, dict[str, Any]]:
+    """Fetch metadata for multiple arXiv IDs in a single API call.
+
+    Returns a dict mapping arxiv_id → metadata dict (same format as
+    ``fetch_arxiv_metadata``).  IDs that fail parsing are silently skipped.
+    """
+    global _ARXIV_NEXT_OK
+
+    if not arxiv_ids:
+        return {}
+
+    now = time.time()
+    if now < _ARXIV_NEXT_OK:
+        time.sleep(_ARXIV_NEXT_OK - now)
+
+    id_list = ",".join(arxiv_ids)
+    api_url = f"https://export.arxiv.org/api/query?id_list={id_list}&max_results={len(arxiv_ids)}"
+    req = urllib.request.Request(
+        api_url,
+        headers={"User-Agent": "LuxScholarBot/0.1 (batch metadata enrichment)"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            xml_bytes: bytes = resp.read()
+        _ARXIV_NEXT_OK = time.time() + 3.2
+
+        root = ET.fromstring(xml_bytes)
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+
+        results: dict[str, dict[str, Any]] = {}
+        for entry in root.findall("atom:entry", ns):
+            # Extract arXiv ID from the entry's <id> element
+            id_el = entry.find("atom:id", ns)
+            if id_el is None or not id_el.text:
+                continue
+            # arXiv <id> looks like "http://arxiv.org/abs/2301.00001v2"
+            m = _re.search(r"(\d{4}\.\d{4,5})", id_el.text)
+            if not m:
+                continue
+            entry_id = m.group(1)
+
+            meta: dict[str, Any] = {}
+            title_el = entry.find("atom:title", ns)
+            if title_el is not None and title_el.text:
+                meta["title"] = title_el.text.strip().replace("\n", " ")
+
+            authors: list[str] = []
+            for auth_el in entry.findall("atom:author", ns):
+                nm_el = auth_el.find("atom:name", ns)
+                if nm_el is not None and nm_el.text:
+                    nm = nm_el.text.strip()
+                    if nm and _author_utils.is_plausible_author(nm):
+                        authors.append(nm)
+            if authors:
+                meta["authors"] = authors
+
+            published_el = entry.find("atom:published", ns)
+            if published_el is not None and published_el.text:
+                meta["published_date"] = published_el.text.strip()
+
+            if meta:
+                results[entry_id] = meta
+
+        logger.info("arxiv_batch_fetch", requested=len(arxiv_ids), returned=len(results))
+        return results
+    except (URLError, HTTPError, TimeoutError, ParseError) as exc:
+        logger.warning("arXiv batch fetch failed - {}", exc)
+        return {}
+
+
 # Semantic Scholar Graph API ---------------------------------------------
 _SS_REQ_DAY: date = datetime.utcnow().date()
 _SS_REQ_COUNT: int = 0  # ~100 anonymous requests per day allowed

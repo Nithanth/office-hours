@@ -40,11 +40,34 @@ fi
 ###################################
 # Activate virtual environment
 ###################################
-if [[ -z "${VIRTUAL_ENV:-}" ]] && [[ -d .venv ]]; then
-  msg "Activating Python virtualenv (.venv)"
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
+if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+  if [[ -d .venv ]]; then
+    msg "Activating Python virtualenv (.venv)"
+    # shellcheck disable=SC1091
+    source .venv/bin/activate
+  elif [[ -d venv ]]; then
+    msg "Activating Python virtualenv (venv)"
+    # shellcheck disable=SC1091
+    source venv/bin/activate
+  fi
 fi
+
+###################################
+# Clear ports that might be in use
+###################################
+clear_port() {
+  local port=$1
+  local pids
+  pids=$(lsof -ti :$port 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    msg "Killing processes on port $port: $pids"
+    echo "$pids" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+}
+
+msg "Clearing ports that might be in use"
+clear_port "${PORT:-8000}"  # FastAPI server port
 
 ###################################
 # Start the server

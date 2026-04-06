@@ -158,6 +158,7 @@ cython_debug/
 data/
 .summary_cache/
 scripts/text_dumps/
+.chat_cache/
 # vector indices
 +.vector_cache/
 +*.faiss

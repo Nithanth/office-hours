@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from fasthtml.components import BUTTON, H2, INPUT, A, Div, Form, P, Span, Textarea
+from fasthtml.components import BUTTON, H2, INPUT, A, Div, Form, Label, P, Span, Textarea
 
 
 # Leaf components
@@ -46,7 +46,7 @@ def CitationCard(
     )
 
 
-# Chat modal (optional)
+# Chat modal
 def ChatModal(
     modal_id: str,
     title: str,
@@ -56,18 +56,28 @@ def ChatModal(
     oob_slot: str | None = None,
     **attrs: Any,
 ) -> Div:
-    """Return a modal shell (header, log container, input form).
-
-    This is not used yet; provided for future refactor once modal markup
-    stabilises.
-    """
+    """Return a modal shell (header, log container, input form)."""
     if oob_slot:
         attrs = {**attrs, "hx_oob": oob_slot}
+
+    is_global = paper_id == "global"
+
+    # Sources toggle only for global assistant
+    sources_toggle = (
+        Label(
+            INPUT(type="checkbox", name="with_sources", value="1"),
+            Span("Use sources", style="margin-left:4px;"),
+            cls="sources-toggle",
+        )
+        if is_global
+        else ()
+    )
+
     return Div(
         Div(
             # Header
             Div(
-                H2(title),
+                H2(title, cls="chat-modal-title"),
                 BUTTON(
                     "×",
                     cls="modal-close-btn",
@@ -76,30 +86,35 @@ def ChatModal(
                 ),
                 cls="modal-header",
             ),
-            # Body
-            Div(id=chat_log_id, cls="chat-log-container modal-body"),
+            # Chat log
+            Div(
+                Div(
+                    P(
+                        "░ ask a question to get started ░"
+                        if is_global
+                        else "░ ask about this paper ░",
+                    ),
+                    cls="chat-empty-hint",
+                ),
+                id=chat_log_id,
+                cls="chat-log-container modal-body",
+            ),
+            # Input area
             Form(
-                (
+                Div(
+                    Textarea(
+                        name="message",
+                        placeholder="Ask anything…" if is_global else "Ask about this paper…",
+                        rows="2",
+                        cls="chat-textarea",
+                    ),
                     Div(
-                        INPUT(type="checkbox", name="with_sources", value="1"),
-                        Span(
-                            "Use sources",
-                            style="font-size:0.8rem;margin-left:4px;",
-                        ),
-                        style="display:flex;align-items:center;position:absolute;top:6px;left:20px;",
-                    )
-                    if paper_id == "global"
-                    else (),
+                        sources_toggle,
+                        BUTTON("→", type="submit", cls="send-btn"),
+                        cls="chat-form-controls",
+                    ),
+                    cls="chat-input-row",
                 ),
-                Textarea(
-                    name="message",
-                    placeholder="Ask about this paper…"
-                    if paper_id != "global"
-                    else "Ask anything…",
-                    rows="3",
-                    style="width: 100%; border-radius: 4px; padding: 5px;",
-                ),
-                BUTTON("→", type="submit", cls="send-btn", style="margin-left: 6px;"),
                 method="POST",
                 action=form_action,
                 **{

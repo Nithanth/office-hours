@@ -1,7 +1,7 @@
 // chat/ui.js – modal UI helpers & utilities for chat subsystem
 
-import { dbg } from "../util.js";
-import { finalizeBubble, saveTranscript, pendingBuffers as _pendingBuffers } from "./stream.js";
+import { dbg } from "../util.js?v=2";
+import { finalizeBubble, saveTranscript, pendingBuffers as _pendingBuffers } from "./stream.js?v=2";
 
 // Internal cache so we don't create duplicate stop buttons.
 const _stopBtnSym = Symbol("stopBtnSym");
@@ -17,25 +17,30 @@ export function getModalParts(el) {
   const textarea = form?.querySelector("textarea[name='message']");
   const submitBtn = form?.querySelector("button[type='submit'],input[type='submit']");
 
-  // Stop button is inserted on-demand (legacy design kept for parity)
-  let stopBtn = modal[_stopBtnSym];
-  if (!stopBtn) {
-    stopBtn = document.createElement("button");
-    stopBtn.type = "button";
-    stopBtn.textContent = "Stop";
-    stopBtn.className = "stop-btn text-sm px-2 py-1 rounded bg-red-600 text-white";
-    stopBtn.addEventListener("click", () => {
-      const activeStream = modal.querySelector("[sse-connect]");
-      if (activeStream) {
-        activeStream.dataset.interrupted = "1";
-        activeStream.classList.add("interrupted");
-        const src = activeStream.__eventSource;
-        if (src && typeof src.close === "function") src.close();
-      }
-      stopBtn.classList.add("hidden");
-    });
-    modal.appendChild(stopBtn);
-    modal[_stopBtnSym] = stopBtn;
+  // Skip stop button for PDF viewer layout – it overlaps UI.
+  const isPdfViewer = !!modal.querySelector(".modal-content.pdf-viewer");
+
+  let stopBtn = null;
+  if (!isPdfViewer) {
+    stopBtn = modal[_stopBtnSym];
+    if (!stopBtn) {
+      stopBtn = document.createElement("button");
+      stopBtn.type = "button";
+      stopBtn.textContent = "Stop";
+      stopBtn.className = "stop-btn text-sm px-2 py-1 rounded bg-red-600 text-white";
+      stopBtn.addEventListener("click", () => {
+        const activeStream = modal.querySelector("[sse-connect]");
+        if (activeStream) {
+          activeStream.dataset.interrupted = "1";
+          activeStream.classList.add("interrupted");
+          const src = activeStream.__eventSource;
+          if (src && typeof src.close === "function") src.close();
+        }
+        stopBtn.classList.add("hidden");
+      });
+      modal.appendChild(stopBtn);
+      modal[_stopBtnSym] = stopBtn;
+    }
   }
 
   return { modal, form, textarea, submitBtn, stopBtn };
@@ -173,6 +178,10 @@ export function enhanceModal(modal) {
     modal.dataset.closeHook = "1";
     const cleanUp = () => {
       const hidden = modal.querySelector("#hidden-paper-id");
+
+      // If log container is already removed (edge-case race on modal close),
+      // exit early to avoid null deref errors.
+      if (!log) return;
 
       // ------------------------------------------------------------------
       // 1. Find any unfinished assistant bubble (streaming, typing, or not yet
@@ -312,8 +321,12 @@ document.body.addEventListener("keydown", (evt) => {
   const ta = evt.target;
   if (!(ta instanceof HTMLTextAreaElement)) return;
   if (!ta.closest(".modal")) return; // only within chat modal
+  const MAX_CHARS = 2400; // ~1.5k tokens safeguard
   if (evt.key === "Enter" && !evt.shiftKey) {
     evt.preventDefault();
+    if (ta.value.length > MAX_CHARS) {
+      ta.value = ta.value.slice(0, MAX_CHARS);
+    }
     const form = ta.closest("form");
     if (form) form.requestSubmit();
   }
