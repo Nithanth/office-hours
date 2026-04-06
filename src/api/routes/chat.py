@@ -91,14 +91,15 @@ async def chat_post(
     # 2. Create a unique container for the assistant's streaming response (raw HTML)
     assistant_response_id = f"assistant-response-{uuid4()}"
     # Full stream URL (used by JS) includes additional audience/model params.
+    safe_paper_id = _urlparse.quote_plus(paper_id)
     stream_url = (
-        f"/chat/stream?paper_id={paper_id}&audience_type={_urlparse.quote_plus(audience_type)}"
+        f"/chat/stream?paper_id={safe_paper_id}&audience_type={_urlparse.quote_plus(audience_type)}"
     )
     if model_key:
         stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
 
     # Minimal URL expected by legacy tests for HTMX sse-connect attr – only paper_id.
-    legacy_sse_url = f"/chat/stream?paper_id={paper_id}"
+    legacy_sse_url = f"/chat/stream?paper_id={safe_paper_id}"
 
     assistant_response_container_html = (
         f'<div id="{assistant_response_id}" class="assistant-message typing" '
@@ -238,16 +239,6 @@ async def chat_stream(
                             _batch_buf: list[str] = []
                             _batch_last_flush = time.perf_counter()
                             _BATCH_INTERVAL = 0.08  # flush every ~80ms
-
-                            async def _flush_batch() -> None:
-                                nonlocal _batch_buf, _batch_last_flush
-                                if not _batch_buf:
-                                    return
-                                chunk = "".join(_batch_buf)
-                                _batch_buf = []
-                                _batch_last_flush = time.perf_counter()
-                                safe_chunk = html.escape(chunk).replace("\n", "<br/>")
-                                yield f"event: assistant\ndata: {safe_chunk}\n\n"
 
                             async for token in stream_iter:
                                 if await request.is_disconnected():

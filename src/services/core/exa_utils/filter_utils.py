@@ -154,27 +154,25 @@ def pre_filter_papers(
         and _url_utils.domain_allowed(p.url, include_domains, exclude_domains)
     ] or pool  # fallback if heuristics were too strict
 
-    logger.info(
+    logger.debug(
         "stage1_filter_stats", total=len(pool), kept=len(stage1), dropped=len(pool) - len(stage1)
     )
     # Fail-soft: if we kept too few (heuristics overshot), revert to pool.
     # Triggers when <50% or <10 items remain, whichever is larger.
     min_keep_soft = max(10, len(pool) // 2)
     if len(stage1) < min_keep_soft:
-        logger.info(
+        logger.debug(
             "stage1_fail_soft_triggered", total=len(pool), kept=len(stage1), min_keep_soft=min_keep_soft
         )
         stage1 = pool
 
-    # Promote to INFO so it shows up in main logs and dump all items
-    from loguru import logger as _lg  # use local alias to avoid shadowing
-    _lg.info("STAGE1_POOL ({})", len(stage1))
+    logger.debug("STAGE1_POOL ({})", len(stage1))
     for i, _p in enumerate(stage1, 1):
         _score = getattr(_p, "score", None)
         _s = f"score={_score:.3f}" if _score is not None else "score=?"
         _title = (_p.title or "").strip()
         _url = str(_p.url) if _p.url else ""
-        _lg.info("STAGE1 {:02d} {} | {} | {}", i, _s, _title, _url)
+        logger.debug("STAGE1 {:02d} {} | {} | {}", i, _s, _title, _url)
 
     # 2. de-duplicate -------------------------------------------------------
     seen_keys: set[str] = set()
@@ -218,7 +216,7 @@ def pre_filter_papers(
                 candidate_keys.add(f"doi:{_url_utils.extract_doi(pid)}")
 
         if candidate_keys & seen_keys:
-            logger.info("dup_skip", title=p.title, keys=list(candidate_keys))
+            logger.debug("dup_skip", title=p.title, keys=list(candidate_keys))
             continue  # duplicate hit – skip
 
         seen_keys.update(candidate_keys)
@@ -234,35 +232,16 @@ def pre_filter_papers(
         unique.append(p)
     deduped = unique
 
-    logger.info(
+    logger.debug(
         "dedup_filter_stats", after_stage1=len(stage1), kept=len(deduped), dropped=len(stage1)-len(deduped)
     )
-    _lg.info("DEDUP_POOL ({})", len(deduped))
+    logger.debug("DEDUP_POOL ({})", len(deduped))
     for i, _p in enumerate(deduped, 1):
         _score = getattr(_p, "score", None)
         _s = f"score={_score:.3f}" if _score is not None else "score=?"
         _title = (_p.title or "").strip()
         _url = str(_p.url) if _p.url else ""
-        _lg.info("DEDUP {:02d} {} | {} | {}", i, _s, _title, _url)
-
-    # Emit a JSON-like dump of the PRE (deduped) pool for debugging
-    def _pdict(_p: Paper) -> dict:
-        pd = {
-            "title": (_p.title or "").strip(),
-            "url": str(_p.url) if _p.url else None,
-            "score": _p.score,
-            "source": getattr(_p, "source", None),
-            "authors": _p.authors,
-        }
-        # published_date may be datetime or str; coerce to ISO-like string
-        try:
-            if getattr(_p, "published_date", None):
-                pd["published_date"] = str(_p.published_date)
-        except Exception:
-            pd["published_date"] = None
-        return pd
-
-    logger.info("PRE_POOL_JSON {}", [_pdict(p) for p in deduped])
+        logger.debug("DEDUP {:02d} {} | {} | {}", i, _s, _title, _url)
 
     if not deduped:
         return []

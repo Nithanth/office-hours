@@ -301,7 +301,7 @@ async def pdf_proxy(
         await upstream.aclose()
         await client.aclose()
 
-    background = BackgroundTask(lambda: asyncio.run(_cleanup()))
+    background = BackgroundTask(_cleanup)
 
     return StreamingResponse(
         upstream.aiter_bytes(),
@@ -366,7 +366,7 @@ async def html_proxy(
         await upstream.aclose()
         await client.aclose()
 
-    background = BackgroundTask(lambda: asyncio.run(_cleanup()))
+    background = BackgroundTask(_cleanup)
 
     return HTMLResponse(
         content=text,

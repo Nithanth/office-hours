@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from loguru import logger
 
 import config as _cfg
-from api.deps import get_exa_client, get_llm_service, get_settings
+from api.deps import get_exa_client, get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
 from pages.main_page import render_search_results
@@ -39,8 +39,8 @@ async def _prewarm_cached(url: str, paper_id: str) -> None:
             logger.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
 
 
-# Track currently running direct-query task so it can be cancelled on new requests.
-current_direct_query_task: asyncio.Task | None = None
+# Track currently running direct-query tasks per session to avoid cross-user cancellation.
+_direct_query_tasks: dict[str, asyncio.Task] = {}
 
 
 @limiter.limit("100/5minute")
@@ -57,7 +57,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
-    global current_direct_query_task
+    session_id = await get_session_id(request)
 
     exa_client = get_exa_client()
     llm_service = get_llm_service()
@@ -98,18 +98,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     input_query_stripped = clean_query(search_query.strip())
 
     # ------------------------------------------------------------------
-    # Task-cancellation bookkeeping
+    # Task-cancellation bookkeeping (per-session, not global)
     # ------------------------------------------------------------------
-    if mode != "direct":  # a paper search → cancel any in-flight Ask-LLM task
-        if current_direct_query_task and not current_direct_query_task.done():
-            logger.info("search_cancel_direct_query_task")
-            current_direct_query_task.cancel()
-            current_direct_query_task = None
-    else:  # new direct Ask-LLM query → cancel earlier one
-        if current_direct_query_task and not current_direct_query_task.done():
-            logger.info("direct_query_cancel_previous")
-            current_direct_query_task.cancel()
-            current_direct_query_task = None
+    prev_task = _direct_query_tasks.get(session_id)
+    if prev_task and not prev_task.done():
+        logger.info("cancel_previous_direct_query", session_id=session_id)
+        prev_task.cancel()
+        _direct_query_tasks.pop(session_id, None)
 
     # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)
@@ -133,7 +128,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 return cast(str, await rg.generate_direct_query_answer(query=input_query_stripped))
 
             this_task = asyncio.create_task(_run())
-            current_direct_query_task = this_task
+            _direct_query_tasks[session_id] = this_task
 
             answer_html = await this_task
             return HTMLResponse(
@@ -153,8 +148,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 status_code=500,
             )
         finally:
-            if this_task and current_direct_query_task is this_task and this_task.done():
-                current_direct_query_task = None
+            if this_task and _direct_query_tasks.get(session_id) is this_task and this_task.done():
+                _direct_query_tasks.pop(session_id, None)
 
     # ------------------------------------------------------------------
     # Standard paper search flow
@@ -193,7 +188,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         is_url_search = _url_utils.is_paper_url(input_query_stripped)
 
         if is_url_search:
-            exa_results = client.url_search_and_cache(
+            exa_results = await asyncio.to_thread(
+                client.url_search_and_cache,
                 paper_url=input_query_stripped,
                 k=num_results_display,
                 **shared_kwargs,
@@ -201,7 +197,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         else:
             search_kwargs = {"category": "research paper"}
             search_kwargs.update(shared_kwargs)
-            exa_results = client.search_and_cache(
+            exa_results = await asyncio.to_thread(
+                client.search_and_cache,
                 query=input_query_stripped,
                 k=num_results_display,
                 **search_kwargs,

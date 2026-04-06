@@ -92,32 +92,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     if _METRICS_ENABLED and REPORT_REQ is not None:
         REPORT_REQ.inc()
 
-    # Generate a short-lived token and cache the full request payload server-side.
-    token = str(uuid.uuid4())
-    REPORT_REQUEST_CACHE[token] = {
-        "original_query": original_query_for_report,
-        "selected_papers_json": selected_papers_json,
-        "audience_type": audience_type,
-        "summary_size": summary_size,
-        "selected_model_key": selected_model_key,
-        "is_url_input": is_url_input,
-    }
-
-    # --- Logging breadcrumbs ---
-    logger.info(
-        "stage1_incremental_received",
-        token=token,
-        is_url_input_form=is_url_input,
-    )
-
-    logger.info(
-        "stage2_cached",
-        token=token,
-        cached_flag=REPORT_REQUEST_CACHE[token]["is_url_input"],
-    )
-
-    sse_url = f"/report/stream?token={token}"
-
+    # --- Validate before caching ---
     def _is_blank(val: str | None) -> bool:
         return (val or "").strip() == ""
 
@@ -136,6 +111,32 @@ async def generate_report_incremental(  # noqa: PLR0913
             "</div>"
         )
         return HTMLResponse(content=error_html)
+
+    if selected_model_key not in config.AVAILABLE_MODELS:
+        error_html = (
+            "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+            "Unknown model selected. Please choose a valid model and retry."
+            "</div>"
+        )
+        return HTMLResponse(content=error_html)
+
+    # --- Cache payload and generate token (only after validation) ---
+    token = str(uuid.uuid4())
+    REPORT_REQUEST_CACHE[token] = {
+        "original_query": original_query_for_report,
+        "selected_papers_json": selected_papers_json,
+        "audience_type": audience_type,
+        "summary_size": summary_size,
+        "selected_model_key": selected_model_key,
+        "is_url_input": is_url_input,
+    }
+
+    logger.info("report_incremental_received", token=token, is_url_input_form=is_url_input)
+
+    # Schedule cleanup in case the SSE stream never connects
+    asyncio.create_task(_del_cache_later(token, delay=120))
+
+    sse_url = f"/report/stream?token={token}"
 
     html_skeleton = f"""
     <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes

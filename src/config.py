@@ -291,3 +291,12 @@ class Config:
 
 # Instantiate config for easy import
 config = Config()
+
+# Warn loudly if deploying with insecure session secret
+if config.ENV == "prod" and config.LUX_SESSION_SECRET == "dev-insecure-secret":
+    import logging as _logging
+
+    _logging.critical(
+        "LUX_SESSION_SECRET is set to the insecure default in production! "
+        "Set LUX_SESSION_SECRET to a strong random value."
+    )

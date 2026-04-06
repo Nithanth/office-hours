@@ -57,6 +57,12 @@ from .exa_utils import (
 )
 
 
+# Shared thread pool for enrich_url calls (avoids creating a new pool per call)
+from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
+
+_ENRICH_POOL = _ThreadPoolExecutor(max_workers=4)
+
+
 class ExaClientError(Exception):
     """Base exception for ExaClient errors."""
 
@@ -137,52 +143,27 @@ class ExaClient:
         return None
 
     def _safe_get_contents(self, url: str) -> Any | None:
-        """Best-effort wrapper around `get_contents` guaranteeing URL match."""
+        """Best-effort wrapper around `get_contents`.
+
+        Returns the first result from Exa if available. Only falls back to a
+        search-by-URL lookup when the primary call returns no results at all,
+        avoiding unnecessary extra API calls.
+        """
         try:
             res = self.client.get_contents([url], text=True)
-            first_res = res.results[0] if getattr(res, "results", None) else None
-            if first_res:
-                snippet = (first_res.text[:100] + "…") if getattr(first_res, "text", None) else ""
-                meta = {
-                    "title": getattr(first_res, "title", None),
-                    "authors": getattr(first_res, "authors", None),
-                    "published_date": getattr(first_res, "published_date", None),
-                    "url": getattr(first_res, "url", None)
-                    or getattr(first_res, "canonical_url", None),
-                    "id": getattr(first_res, "id", None),
-                    "text_snippet": snippet,
-                }
-                logger.info("_safe_get_contents direct: url={} → meta={}", url, meta)
-            else:
-                logger.info("_safe_get_contents direct: url={} → no results", url)
-            if res.results and _url_utils.url_equivalent(
-                url, res.results[0].url or getattr(res.results[0], "canonical_url", None)
-            ):
+            if getattr(res, "results", None):
+                logger.debug("_safe_get_contents hit: url={}", url)
                 return res.results[0]
 
+            # Primary returned nothing — try resolving via search
             doc_id = self._get_id_from_url(url)
             if not doc_id:
+                logger.debug("_safe_get_contents miss: url={} (no doc_id)", url)
                 return None
 
             res2 = self.client.get_contents([doc_id], text=True)
-            first_res2 = res2.results[0] if getattr(res2, "results", None) else None
-            if first_res2:
-                snippet2 = (
-                    (first_res2.text[:100] + "…") if getattr(first_res2, "text", None) else ""
-                )
-                meta2 = {
-                    "title": getattr(first_res2, "title", None),
-                    "authors": getattr(first_res2, "authors", None),
-                    "published_date": getattr(first_res2, "published_date", None),
-                    "url": getattr(first_res2, "url", None)
-                    or getattr(first_res2, "canonical_url", None),
-                    "id": getattr(first_res2, "id", None),
-                    "text_snippet": snippet2,
-                }
-                logger.info("_safe_get_contents by_id: doc_id={} → meta={}", doc_id, meta2)
-            else:
-                logger.info("_safe_get_contents by_id: doc_id={} → no results", doc_id)
-            if res2.results:
+            if getattr(res2, "results", None):
+                logger.debug("_safe_get_contents hit via doc_id: url={} doc_id={}", url, doc_id)
                 return res2.results[0]
         except Exception as exc:
             logger.warning("_safe_get_contents failed for {}: {}", url, exc)
@@ -364,7 +345,7 @@ class ExaClient:
                             )
 
                 complete_now = bool(paper.authors and paper.published_date)
-                self._cache.upsert(doc_id, paper.dict(), complete_now)
+                self._cache.upsert(doc_id, paper.model_dump(), complete_now)
         except Exception as exc:
             logger.debug("Metadata enrichment failed for {} - {}", doc_id, exc)
         logger.debug(
@@ -510,49 +491,45 @@ class ExaClient:
 
                 prelim.append(p)
 
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
-            # Run metadata enrichment in a bounded thread pool to avoid blocking I/O
-            ENRICH_WORKERS = min(8, max(2, os.cpu_count() or 4))
+            from concurrent.futures import as_completed
 
             if prelim:
-                with ThreadPoolExecutor(max_workers=ENRICH_WORKERS) as _pool:
-                    fut_map = {_pool.submit(self._enrich_paper_metadata, p): p for p in prelim}
-                    for fut in as_completed(fut_map):
-                        try:
-                            paper = fut.result()
-                        except Exception as enrich_exc:
-                            failed_paper = fut_map.get(fut)
-                            logger.debug(
-                                "enrich failed",
-                                id=getattr(failed_paper, "id", None),
-                                err=str(enrich_exc),
-                            )
-                            continue
+                fut_map = {_ENRICH_POOL.submit(self._enrich_paper_metadata, p): p for p in prelim}
+                for fut in as_completed(fut_map):
+                    try:
+                        paper = fut.result()
+                    except Exception as enrich_exc:
+                        failed_paper = fut_map.get(fut)
+                        logger.debug(
+                            "enrich failed",
+                            id=getattr(failed_paper, "id", None),
+                            err=str(enrich_exc),
+                        )
+                        continue
 
-                        # Date filter now that we have enriched metadata
-                        if (
-                            start_published_date
-                            and paper.published_date
-                            and isinstance(paper.published_date, datetime)
-                            and paper.published_date < start_published_date
-                        ):
-                            continue
+                    # Date filter now that we have enriched metadata
+                    if (
+                        start_published_date
+                        and paper.published_date
+                        and isinstance(paper.published_date, datetime)
+                        and paper.published_date < start_published_date
+                    ):
+                        continue
 
-                        url_str = str(paper.url)
+                    url_str = str(paper.url)
 
-                        # Heuristic author / scholarly check (unchanged)
-                        if not paper.authors and (
-                            not url_str.endswith(".pdf")
-                            and not re.search(
-                                r"arxiv\.org|doi\.org|acm\.org|ieee\.org|springer\.com|elsevier\.com|wiley\.com|nature\.com|sciencemag\.org|pubmed\.ncbi\.nlm\.nih\.gov|ssrn\.com|semanticscholar\.org|researchgate\.net",
-                                url_str,
-                            )
-                        ):
-                            continue
+                    # Heuristic author / scholarly check (unchanged)
+                    if not paper.authors and (
+                        not url_str.endswith(".pdf")
+                        and not re.search(
+                            r"arxiv\.org|doi\.org|acm\.org|ieee\.org|springer\.com|elsevier\.com|wiley\.com|nature\.com|sciencemag\.org|pubmed\.ncbi\.nlm\.nih\.gov|ssrn\.com|semanticscholar\.org|researchgate\.net",
+                            url_str,
+                        )
+                    ):
+                        continue
 
-                        if _paper_utils.is_valid_paper(paper):
-                            papers.append(paper)
+                    if _paper_utils.is_valid_paper(paper):
+                        papers.append(paper)
 
             unique: dict[str, Paper] = {}
             for paper in papers:
@@ -641,62 +618,57 @@ class ExaClient:
             logger.warning("primary enrich_url failed for {} - {}", normalized_url, enrich_exc)
 
         # 1. If still incomplete, try Exa get_contents for richer text/metadata
-        try:
-            needs_exa = (
-                main_paper_object is None
-                or not main_paper_object.authors
-                or not main_paper_object.published_date
-                or not main_paper_object.text_content
-            )
+        needs_exa = (
+            main_paper_object is None
+            or not main_paper_object.authors
+            or not main_paper_object.published_date
+            or not main_paper_object.text_content
+        )
 
-            if not needs_exa:
-                raise StopIteration  # skip Exa path; jump to similar search
+        if needs_exa:
+            try:
+                logger.info("Fetching content for main URL (safe): {}", normalized_url)
 
-            logger.info("Fetching content for main URL (safe): {}", normalized_url)
-
-            main_res = self._safe_get_contents(normalized_url)
-            if main_res:
-                # Only construct a new Paper object from the Exa result when we
-                # *don’t already* have a high-quality object from the Metadata
-                # Enricher step.  Otherwise, merge in *only* missing fields so
-                # we never clobber the authoritative title / authors / date.
-                try:
-                    if main_paper_object is None:
-                        main_paper_object = _paper_utils.create_paper_from_exa_result(
-                            main_res, f"Exa (safe_get_contents: {normalized_url})"
-                        )
-                    else:
-                        meta_patch: dict[str, Any] = {
-                            "text_content": getattr(main_res, "text", None),
-                        }
-                        # Only add title/authors/date if still missing.
-                        for fld in ("title", "authors", "published_date"):
-                            cur_val = getattr(main_paper_object, fld)
-                            new_val = getattr(main_res, fld, None)
-                            if (not cur_val) and new_val:
-                                meta_patch[fld] = new_val
-
-                        if meta_patch:
-                            main_paper_object = _paper_utils.update_paper_from_meta(
-                                main_paper_object, meta_patch
+                main_res = self._safe_get_contents(normalized_url)
+                if main_res:
+                    # Only construct a new Paper object from the Exa result when we
+                    # *don’t already* have a high-quality object from the Metadata
+                    # Enricher step.  Otherwise, merge in *only* missing fields so
+                    # we never clobber the authoritative title / authors / date.
+                    try:
+                        if main_paper_object is None:
+                            main_paper_object = _paper_utils.create_paper_from_exa_result(
+                                main_res, f"Exa (safe_get_contents: {normalized_url})"
                             )
-                except Exception as conv_exc:  # noqa: BLE001 – log and fall back
-                    logger.warning(
-                        "create/merge paper from Exa failed for {} - {}",
-                        normalized_url,
-                        conv_exc,
-                        exc_info=True,
-                    )
-        except StopIteration:
-            # Skip Exa branch – already have quality metadata
-            pass
-        except Exception as e:
-            logger.error(
-                "content fetch failed",
-                url=paper_url,
-                error=str(e),
-                exc_info=True,
-            )
+                        else:
+                            meta_patch: dict[str, Any] = {
+                                "text_content": getattr(main_res, "text", None),
+                            }
+                            # Only add title/authors/date if still missing.
+                            for fld in ("title", "authors", "published_date"):
+                                cur_val = getattr(main_paper_object, fld)
+                                new_val = getattr(main_res, fld, None)
+                                if (not cur_val) and new_val:
+                                    meta_patch[fld] = new_val
+
+                            if meta_patch:
+                                main_paper_object = _paper_utils.update_paper_from_meta(
+                                    main_paper_object, meta_patch
+                                )
+                    except Exception as conv_exc:  # noqa: BLE001 – log and fall back
+                        logger.warning(
+                            "create/merge paper from Exa failed for {} - {}",
+                            normalized_url,
+                            conv_exc,
+                            exc_info=True,
+                        )
+            except Exception as e:
+                logger.error(
+                    "content fetch failed",
+                    url=paper_url,
+                    error=str(e),
+                    exc_info=True,
+                )
 
         # If Exa content fetch failed entirely, fall back to MetadataEnricher on the normalized URL.
         if main_paper_object is None:
@@ -788,7 +760,7 @@ class ExaClient:
                     _paper_utils.update_paper_from_meta(p, meta)
 
         # 2b. Enrich remaining metadata per-paper ----------------------------
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import as_completed
 
         papers_to_enrich = [
             p for p in pre_pool
@@ -801,16 +773,14 @@ class ExaClient:
             )
         ]
 
-        ENRICH_WORKERS = min(8, max(2, os.cpu_count() or 4))
         if papers_to_enrich:
-            with ThreadPoolExecutor(max_workers=ENRICH_WORKERS) as _pool:
-                fut_map = {_pool.submit(self._enrich_paper_metadata, p): p for p in papers_to_enrich}
-                for fut in as_completed(fut_map):
-                    try:
-                        fut.result()
-                    except Exception as exc:  # noqa: BLE001 – best-effort
-                        failed_paper = fut_map.get(fut)
-                        logger.debug("enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc))
+            fut_map = {_ENRICH_POOL.submit(self._enrich_paper_metadata, p): p for p in papers_to_enrich}
+            for fut in as_completed(fut_map):
+                try:
+                    fut.result()
+                except Exception as exc:  # noqa: BLE001 – best-effort
+                    failed_paper = fut_map.get(fut)
+                    logger.debug("enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc))
 
         # 3. Adaptive score / breadth filter -------------------------------
         filtered = _filter_utils.apply_score_threshold(pre_pool, k)
@@ -1074,9 +1044,8 @@ class ExaClient:
                 return asyncio.run(_runner())
 
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    fut = pool.submit(_thread_runner)
-                    paper = fut.result(timeout=timeout + 1.0)
+                fut = _ENRICH_POOL.submit(_thread_runner)
+                paper = fut.result(timeout=timeout + 1.0)
             except Exception as exc:
                 logger.warning("enrich_url failed in worker thread for {} - {}", url, exc)
                 return None
@@ -1085,7 +1054,7 @@ class ExaClient:
             return None
 
         complete_now = bool(paper.authors and paper.published_date)
-        self._cache.upsert(paper.id, paper.dict(), complete_now)
+        self._cache.upsert(paper.id, paper.model_dump(), complete_now)
         return paper
 
     def search_papers(self, query: str, num_results: int = 10, **kwargs: Any) -> list[Paper]:

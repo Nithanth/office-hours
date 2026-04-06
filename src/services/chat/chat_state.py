@@ -2,6 +2,7 @@
 
 import html
 import os
+import time
 from dataclasses import dataclass, field
 
 from loguru import logger
@@ -57,6 +58,8 @@ class ChatState:
     stream_active: bool = False
     # Count consecutive busy 202 responses to allow escalating to 429.
     busy_retries: int = 0
+    # Timestamp of last activity — used by GC loop to evict idle sessions.
+    _last_t: float = field(default_factory=time.time)
 
     def reset_stream_buffer(self) -> None:
         """Call at the start of a new assistant stream."""
@@ -75,6 +78,7 @@ class ChatState:
 
     def append(self, paper_id: str, msg: ChatMessage) -> None:
         """Append message *msg* to the chat history for *paper_id*."""
+        self._last_t = time.time()
         history = self._histories.setdefault(paper_id, [])
         history.append(msg)
         self._histories[paper_id] = history[-self._cap :]
@@ -89,7 +93,22 @@ class ChatState:
             pass
 
     def get_conversation(self, paper_id: str) -> list[ChatMessage]:  # noqa: D401 - helper
-        """Return a copy of the history list for *paper_id*."""
+        """Return a copy of the history list for *paper_id*.
+
+        If the paper has no in-memory history, attempt to restore from the
+        on-disk chat cache so conversations survive server restarts.
+        """
+        if paper_id not in self._histories:
+            try:
+                from services.chat.chat_history_cache import ChatHistoryCache as _CHC
+
+                turns = _CHC.load(paper_id)
+                if turns:
+                    self._histories[paper_id] = [
+                        ChatMessage(role=t["role"], content=t["content"]) for t in turns
+                    ]
+            except Exception:  # noqa: BLE001 – best-effort restore
+                pass
         return list(self._histories.get(paper_id, []))
 
     def last_role(self, paper_id: str) -> str | None:
