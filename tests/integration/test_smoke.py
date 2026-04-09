@@ -152,7 +152,7 @@ def test_generate_report_endpoint(client: TestClient):
             "selected_papers_json": '{"id":"p1","title":"Dummy Paper","url":"https://example.com"}',
             "audience_type": "technical",
             "summary_size": "M",
-            "selected_model_key": "gemini_2_5_pro",
+            "selected_model_key": "gemini_3_1_pro",
             "is_url_input": "false",
         },
         headers={"HX-Request": "true"},

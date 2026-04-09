@@ -57,6 +57,19 @@ async def chat_post(
 
     chat_state = get_chat_state(session_id)
 
+    # Auto-reset stuck stream_active flag if it's been True longer than the timeout.
+    if chat_state.stream_active and chat_state._stream_started_at > 0:
+        elapsed = time.time() - chat_state._stream_started_at
+        if elapsed > chat_state._STREAM_TIMEOUT_SEC:
+            log.warning(
+                "chat_stream_stuck_reset",
+                session_id=session_id,
+                elapsed_sec=round(elapsed, 1),
+            )
+            chat_state.stream_active = False
+            chat_state._stream_started_at = 0.0
+            chat_state.busy_retries = 0
+
     # If a stream is already active, signal busy to frontend and let HTMX retry.
     if chat_state.stream_active:
         chat_state.busy_retries += 1
@@ -148,6 +161,7 @@ async def chat_stream(
     if chat_state.stream_active:
         return Response(status_code=204)
     chat_state.stream_active = True
+    chat_state._stream_started_at = time.time()
 
     # Log stream start for easier tracing
     log.info(
@@ -313,6 +327,7 @@ async def chat_stream(
                 chat_state.reset_stream_buffer()
 
             chat_state.stream_active = False
+            chat_state._stream_started_at = 0.0
             try:
                 log.info("chat_sse_emit_done", session_id=session_id, chars=len(assistant_msg))
                 # Legacy compatibility events expected by tests/frontend
@@ -366,6 +381,14 @@ async def chat_clear_session(
         if session_id in _chat_states:
             del _chat_states[session_id]
     except Exception:
-        pass
+        log.warning("chat_clear_session_memory_failed", session_id=session_id)
+
+    # Also remove disk-persisted session state so it doesn't get reloaded.
+    try:
+        from services.chat.session_state_cache import SessionStateCache
+
+        SessionStateCache.delete(session_id)
+    except Exception:  # noqa: BLE001
+        log.warning("chat_clear_session_disk_failed", session_id=session_id)
 
     return Response(status_code=204)

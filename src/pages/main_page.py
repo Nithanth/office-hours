@@ -6,6 +6,8 @@ import urllib.parse
 from datetime import datetime
 from typing import Any, Optional
 
+from loguru import logger
+
 # FastHTML components used by this page
 from fasthtml.components import (
     BUTTON,
@@ -151,7 +153,8 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                     formatted_date = date_iso
             else:
                 formatted_date = date_iso
-        except Exception:
+        except Exception as exc:
+            logger.debug("date_format_failed", paper_id=paper.id, err=str(exc))
             formatted_date = str(paper.published_date)
 
     paper_json_str = paper.model_dump_json()
@@ -239,8 +242,8 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                 if isinstance(paper.published_date, datetime)
                 else str(paper.published_date)
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("date_sort_format_failed", paper_id=paper.id, err=str(exc))
 
     authors_lower = ",".join(a.lower() for a in paper.authors) if paper.authors else ""
 
@@ -304,8 +307,8 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                 else str(paper.published_date)
             )
             bib_year = date_val.split("-")[0]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("bib_year_format_failed", paper_id=paper.id, err=str(exc))
     bibtex_btn = BUTTON(
         I(cls="fa-solid fa-quote-right"),
         type="button",
@@ -506,7 +509,7 @@ def render_search_results(
 
 
 def loading_indicator_component() -> Div:
-    """Spinner visible while search requests are in-flight."""
+    """Spinner visible while search requests are in-flight — centered in card."""
     return Div(
         Div(cls="lux-spinner"),
         Span(
@@ -516,7 +519,7 @@ def loading_indicator_component() -> Div:
         ),
         id="loading-indicator",
         cls="htmx-indicator",
-        style="display:flex; align-items:center; gap:6px; margin-top:6px;",
+        style="display:flex; align-items:center; justify-content:center; gap:8px; padding:3rem 0; width:100%;",
     )
 
 
@@ -731,7 +734,7 @@ def home_page(page_data: SharedPageData) -> Body:
                         value=page_data.current_query or "",
                         style="width:100%;max-width:44rem;padding:6px 10px;font-size:0.95rem;",
                     ),
-                    # Filters row — date + quality + domain pills on one line
+                    # Filters row — date + sources dropdown
                     Div(
                         Div(
                             Span("After ", cls="filter-label"),
@@ -744,26 +747,11 @@ def home_page(page_data: SharedPageData) -> Body:
                             ),
                         ),
                         Div(
-                            Span("Quality ", cls="filter-label"),
-                            Select(
-                                Option("All results", value="0"),
-                                Option("Standard", value="0.4"),
-                                Option("High", value="0.6"),
-                                Option("Top only", value="0.8"),
-                                name="min_quality",
-                                id="min_quality_select",
-                                style="font-size:0.8rem;padding:2px 4px;",
-                            ),
-                        ),
-                        Div(
                             Span("Sources ", cls="filter-label"),
-                            Div(
+                            Select(
+                                Option("All sources", value=""),
                                 *[
-                                    Label(
-                                        INPUT(type="checkbox", name="include_domains", value=dom),
-                                        label,
-                                        cls="domain-pill",
-                                    )
+                                    Option(label, value=dom)
                                     for dom, label in [
                                         ("arxiv.org", "arXiv"),
                                         ("biorxiv.org", "bioRxiv"),
@@ -774,7 +762,10 @@ def home_page(page_data: SharedPageData) -> Body:
                                         ("aclanthology.org", "ACL"),
                                     ]
                                 ],
-                                id="domain-filter-container",
+                                name="include_domains",
+                                id="source_select",
+                                multiple=True,
+                                style="font-size:0.8rem;padding:2px 4px;min-width:10rem;height:auto;max-height:6rem;",
                             ),
                         ),
                         cls="search-form-filters",
@@ -788,8 +779,7 @@ def home_page(page_data: SharedPageData) -> Body:
                             value="auto",
                             onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
                         ),
-                        loading_indicator_component(),
-                        style="margin-top:0.75rem;display:flex;align-items:center;gap:8px;",
+                        style="margin-top:0.75rem;",
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",
@@ -800,6 +790,8 @@ def home_page(page_data: SharedPageData) -> Body:
                     id="paper-search-form",
                     style="background:inherit;padding:0.5rem 0;",
                 ),
+                # Centered search spinner (outside search form so it spans the card)
+                loading_indicator_component(),
                 # Results and Report Form (wraps hidden inputs etc.)
                 FORM(
                     # Search results are displayed here, targeted by the search form's hx_target

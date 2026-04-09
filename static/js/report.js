@@ -320,7 +320,7 @@ function handleNotesClick(ev) {
 document.addEventListener("click", handleNotesClick);
 
 // ---------------------------------------------------------------------------
-// Blog Post generation – POST report text, download .md
+// Blog Post generation – POST report text, open rendered blog in new tab
 // ---------------------------------------------------------------------------
 function handleBlogClick(ev) {
   const btn = ev.target.closest("#report-blog-btn");
@@ -341,21 +341,15 @@ function handleBlogClick(ev) {
   fetch("/generate-blog", { method: "POST", body: fd })
     .then((r) => {
       if (!r.ok) throw new Error(`Server responded ${r.status}`);
-      return r.blob();
+      return r.json();
     })
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement("a"), {
-        href: url,
-        download: "research_blog.md",
-      });
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+    .then((data) => {
+      if (data.url) {
+        window.open(data.url, "_blank");
+      }
     })
     .catch((err) => {
-      console.error("[lux] blog download failed", err);
+      console.error("[lux] blog generation failed", err);
       // eslint-disable-next-line no-alert
       alert("Failed to generate blog post. Please try again.");
     })

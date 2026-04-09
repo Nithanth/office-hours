@@ -307,7 +307,8 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
                 _dedup_section(_sec)
 
             notes_text = _json_to_md(notes_doc)
-        except Exception:
+        except Exception as exc:
+            logger.warning("notes_parse_fallback", err=str(exc))
             notes_text = str(notes_raw)
 
         if output_format == "docx":

@@ -119,9 +119,10 @@ class ExaClient:
         # SQLite paper metadata cache (no external service)
         self._cache = PaperCache()
 
-        # New pooled search cache
-        self._last_cached_search: Optional[CachedSearch] = None
-        self._last_url_pinned_id: str | None = None
+        # Per-session pooled search cache keyed by session_id.
+        # Avoids race conditions when multiple users search concurrently.
+        self._cached_searches: dict[str, CachedSearch] = {}
+        self._url_pinned_ids: dict[str, str | None] = {}
 
     def _get_id_from_url(self, url: str) -> Optional[str]:
         """Return Exa document ID for a given URL.
@@ -251,8 +252,8 @@ class ExaClient:
                         if search_res.results:
                             res = search_res
                             break
-                except Exception as _:
-                    pass
+                except Exception as _search_exc:
+                    logger.debug("fallback_search_failed", url=paper.url, err=str(_search_exc))
 
             if res.results:
                 r = res.results[0]
@@ -859,16 +860,18 @@ class ExaClient:
         cached.init_display()
         return cached
 
-    def search_and_cache(self, query: str, k: int = 10, **kwargs: Any) -> list[Paper]:
+    def search_and_cache(
+        self, query: str, k: int = 10, *, session_id: str = "_default", **kwargs: Any
+    ) -> list[Paper]:
         """Fetches papers from Exa, caches them, and returns the initial display list."""
         papers = self._fetch_papers_from_exa(query, k, **kwargs)
 
         cached_search = self._build_cache(papers, k, query)
-        self._last_cached_search = cached_search
-
-        if not cached_search:
+        if cached_search is None:
+            self._cached_searches.pop(session_id, None)
             return []
 
+        self._cached_searches[session_id] = cached_search
         return cast(list["Paper"], cached_search.get_display_papers())
 
     def url_search_and_cache(
@@ -876,6 +879,7 @@ class ExaClient:
         paper_url: str,
         *,
         k: int = 8,
+        session_id: str = "_default",
         **kwargs: Any,
     ) -> list[Paper]:
         """Fetch *paper_url* and up to *k* similar papers, then cache.
@@ -919,7 +923,7 @@ class ExaClient:
 
         paper_by_id = {p.id: p for p in papers_pool if p.id}
         if not paper_by_id:
-            self._last_cached_search = None
+            self._cached_searches.pop(session_id, None)
             return []
 
         if pinned_id and pinned_id not in paper_by_id and main_paper and main_paper.id:
@@ -942,17 +946,17 @@ class ExaClient:
             pinned_id=pinned_id,
         )
         cached.init_display()
-        self._last_cached_search = cached
-        self._last_url_pinned_id = pinned_id
+        self._cached_searches[session_id] = cached
+        self._url_pinned_ids[session_id] = pinned_id
         return cast(list["Paper"], cached.get_display_papers())
 
-    def get_cached_search(self) -> CachedSearch | None:
-        """Return the most recent :class:`CachedSearch`, if any."""
-        return self._last_cached_search
+    def get_cached_search(self, session_id: str = "_default") -> CachedSearch | None:
+        """Return the :class:`CachedSearch` for *session_id*, if any."""
+        return self._cached_searches.get(session_id)
 
-    def replace_wildcard(self) -> Optional[Paper]:
+    def replace_wildcard(self, session_id: str = "_default") -> Optional[Paper]:
         """Swap the special *wildcard* slot for a fresh paper (when cached)."""
-        cs = self._last_cached_search
+        cs = self._cached_searches.get(session_id)
         if cs is None:
             return None
         paper = cast(Optional["Paper"], cs.replace_wildcard())
@@ -963,9 +967,9 @@ class ExaClient:
         )
         return paper
 
-    def shuffle_k(self) -> list[Paper]:
+    def shuffle_k(self, session_id: str = "_default") -> list[Paper]:
         """Randomly shuffle the current *k* display papers (excluding pinned)."""
-        cs = self._last_cached_search
+        cs = self._cached_searches.get(session_id)
         if cs is None:
             return []
         shuffled = cs.shuffle_k()
@@ -976,19 +980,25 @@ class ExaClient:
         )
         return cast(list[Paper], shuffled)
 
-    def reset_display(self) -> list[Paper]:
+    def reset_display(self, session_id: str = "_default") -> list[Paper]:
         """Restore the cached paper list to its original deterministic ordering."""
-        cs = self._last_cached_search
+        cs = self._cached_searches.get(session_id)
         return cast(list[Paper], cs.reset_display()) if cs is not None else []
 
     def clear_cache(self) -> None:
         """Drop all records from the on-disk PaperCache."""
         self._cache.clear()
 
-    def reset_cached_search(self) -> None:  # noqa: D401
-        """Clear the in-memory CachedSearch used for shuffle/reset UX."""
-        self._last_cached_search = None
-        logger.debug("cached_search_reset")
+    def reset_cached_search(self, session_id: str | None = None) -> None:  # noqa: D401
+        """Clear the in-memory CachedSearch used for shuffle/reset UX.
+
+        If *session_id* is None, clears **all** cached searches.
+        """
+        if session_id is None:
+            self._cached_searches.clear()
+        else:
+            self._cached_searches.pop(session_id, None)
+        logger.debug("cached_search_reset", session_id=session_id)
 
     def invalidate(self, doc_id: str) -> None:
         """Remove *doc_id* from cache so the next fetch is forced to hit the network."""

@@ -205,8 +205,8 @@ def _extract_pdf_metadata(pdf_bytes: bytes) -> dict[str, str]:
                     meta["authors"] = info["author"].strip()
                 if info.get("creationDate") and info["creationDate"].startswith("D:"):
                     meta["year"] = info["creationDate"][2:6]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("pymupdf_metadata_failed", err=str(exc))
 
     # Fallback heuristic: use first 20 lines of extracted text
     if not meta.get("title") or not meta.get("authors"):
@@ -221,8 +221,8 @@ def _extract_pdf_metadata(pdf_bytes: bytes) -> dict[str, str]:
                     if "," in ln and len(ln) < 200:
                         meta["authors"] = ln
                         break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("heuristic_metadata_failed", err=str(exc))
 
     return meta
 
@@ -486,7 +486,8 @@ class TextExtractor:
             return None
         try:
             return Path(path_str).read_text(encoding="utf-8")
-        except Exception:
+        except Exception as exc:
+            logger.debug("read_full_text_failed", paper_id=paper_id, err=str(exc))
             return None
 
     async def get_paper_content_from_id(self, paper_id: str) -> str | None:
@@ -731,5 +732,6 @@ class TextExtractor:
             return None
         try:
             return cast(dict[str, Any], json.loads(meta_path.read_text(encoding="utf-8")))
-        except Exception:
+        except Exception as exc:
+            logger.debug("meta_json_read_failed", paper_id=paper_id, err=str(exc))
             return None

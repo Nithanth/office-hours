@@ -15,17 +15,34 @@ Given a research report (containing paper summaries and topic overviews) and opt
    - Key findings explained accessibly
    - Connections between papers highlighted
    - Technical details preserved but explained
-4. **Key Takeaways** — Bulleted list of the most important insights.
-5. **Looking Ahead** — 1-2 paragraphs on implications, open questions, or future directions.
+4. **Visual Diagrams** — Include 1-3 Mermaid diagrams where they add clarity. Good candidates:
+   - A **concept map** showing how key ideas relate across papers (use `graph TD` or `graph LR`)
+   - A **methodology flowchart** illustrating a paper's approach (use `flowchart TD`)
+   - A **timeline** showing how the field evolved (use `timeline`)
+   - A **comparison** of approaches (use `graph LR` with subgraphs)
+
+   Wrap each diagram in a fenced code block with the `mermaid` language tag. Keep diagrams clean — 5-12 nodes max. Use short, readable labels. Example:
+
+   ```mermaid
+   graph LR
+     A[Input Data] --> B[Encoder]
+     B --> C[Latent Space]
+     C --> D[Decoder]
+     D --> E[Output]
+   ```
+
+5. **Key Takeaways** — Bulleted list of the most important insights.
+6. **Looking Ahead** — 1-2 paragraphs on implications, open questions, or future directions.
 
 ## Style Guidelines
 
 - Write in an authoritative but approachable tone (think: Distill.pub meets a well-written research blog).
 - Use concrete examples and analogies to explain complex ideas.
 - Include inline citations referencing paper titles when discussing specific findings.
-- Use code blocks, math notation, or diagrams descriptions where they add clarity.
+- Use code blocks for code, LaTeX (`$...$` for inline, `$$...$$` for display) for math.
 - Vary sentence length. Mix short punchy statements with longer explanatory ones.
 - Avoid generic filler ("In this blog post, we will explore..."). Get to the substance.
+- Diagrams should feel organic to the narrative, not bolted on. Introduce them with a sentence like "Here's how these pieces fit together:" or "The pipeline works like this:".
 
 ## Output
 

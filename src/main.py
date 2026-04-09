@@ -165,6 +165,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("LLM Service initialized.")
 
         async def _chatstate_gc_loop() -> None:
+            from services.chat.session_state_cache import SessionStateCache
+
             while True:
                 await asyncio.sleep(_IDLE_SESSION_TTL_SEC)
                 now = time.time()
@@ -173,6 +175,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     last_t = getattr(st, "_last_t", now)
                     if now - last_t > _IDLE_SESSION_TTL_SEC:
                         _chat_states.pop(sid, None)
+                        # Also purge disk-persisted session state
+                        try:
+                            SessionStateCache.delete(sid)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.debug("gc_disk_delete_failed", session_id=sid, err=str(exc))
                         removed += 1
                 if removed:
                     logger.info("chatstate_gc", evicted=removed)
@@ -275,7 +282,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "default-src 'self' https: data: blob:; "
                 "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com blob:; "
                 "worker-src 'self' blob:; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+                "font-src 'self' https://fonts.gstatic.com; "
                 "img-src 'self' data: https:; "
                 "connect-src 'self' https:; "
                 "frame-src 'self' https: data:; "  # allow same-origin http for viewer iframe

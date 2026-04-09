@@ -23,7 +23,6 @@ class LLMService:
     """Orchestrates LLM calls to various providers."""
 
     _instance = None
-    _initialized = False
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "LLMService":
         if cls._instance is None:
@@ -31,8 +30,10 @@ class LLMService:
         return cls._instance
 
     def __init__(self) -> None:
-        if LLMService._initialized:
+        # Guard on instance attribute so re-creating the singleton works in tests.
+        if getattr(self, "_initialized", False):
             return
+        self._initialized = False
 
         # Bind component field for richer context in every log entry
         self.logger = logger.bind(component="LLMService")
@@ -48,7 +49,7 @@ class LLMService:
 
         self._semaphores: dict[ProviderName, asyncio.Semaphore] = {
             name: asyncio.Semaphore(concurrency_limit)
-            for name in ("together_ai", "openai", "anthropic", "gemini")
+            for name in ("together_ai", "openai", "anthropic", "gemini", "xai")
         }
 
         # ---------------- Provider configuration ----------------
@@ -72,6 +73,11 @@ class LLMService:
                 "api_key": app_config.GEMINI_API_KEY,
                 "default_model": self._resolve_default_model("gemini"),
                 "ProviderClass": llm_providers.GeminiProvider,
+            },
+            "xai": {
+                "api_key": app_config.XAI_API_KEY,
+                "default_model": self._resolve_default_model("xai"),
+                "ProviderClass": llm_providers.XAIProvider,
             },
         }
 
@@ -256,7 +262,8 @@ class LLMService:
                             yield tok
 
                 return _openai_stream()
-            except Exception:
+            except Exception as exc:
+                self.logger.warning("openai_stream_setup_failed", err=str(exc))
                 return _fallback_stream()
 
         # Anthropic native streaming
@@ -295,7 +302,8 @@ class LLMService:
                             yield tok
 
                 return _anthropic_stream()
-            except Exception:
+            except Exception as exc:
+                self.logger.warning("anthropic_stream_setup_failed", err=str(exc))
                 return _fallback_stream()
 
         # Together AI native streaming
@@ -337,7 +345,8 @@ class LLMService:
                             yield tok
 
                 return _together_stream()
-            except Exception:
+            except Exception as exc:
+                self.logger.warning("together_stream_setup_failed", err=str(exc))
                 return _fallback_stream()
 
         # Gemini native streaming
@@ -381,7 +390,44 @@ class LLMService:
                             yield tok
 
                 return _gemini_stream()
-            except Exception:
+            except Exception as exc:
+                self.logger.warning("gemini_stream_setup_failed", err=str(exc))
+                return _fallback_stream()
+
+        # xAI native streaming
+        if provider_name == "xai":
+            try:
+                from xai_sdk.chat import system as xai_system
+                from xai_sdk.chat import user as xai_user
+
+                xai_client = provider._async_client
+                if xai_client is None:
+                    return _fallback_stream()
+
+                async def _xai_stream() -> AsyncIterator[str]:
+                    try:
+                        messages = []
+                        if system_prompt:
+                            messages.append(xai_system(system_prompt))
+
+                        chat = xai_client.chat.create(
+                            model=model_name,
+                            messages=messages,
+                        )
+                        chat.append(xai_user(prompt))
+                        for _response, chunk in await chat.stream():
+                            if hasattr(chunk, "content") and chunk.content:
+                                yield str(chunk.content)
+                    except Exception as exc:  # noqa: BLE001
+                        self.logger.exception(
+                            "xAI streaming failed - falling back", exc_info=exc
+                        )
+                        async for tok in _fallback_stream():
+                            yield tok
+
+                return _xai_stream()
+            except Exception as exc:
+                self.logger.warning("xai_stream_setup_failed", err=str(exc))
                 return _fallback_stream()
 
         # Default fallback – should rarely be reached if all provider branches handled.
@@ -519,6 +565,7 @@ class LLMService:
             "together_ai": "TOGETHER_DEFAULT_MODEL",
             "anthropic": "ANTHROPIC_DEFAULT_MODEL",
             "gemini": "GEMINI_DEFAULT_MODEL",
+            "xai": "XAI_DEFAULT_MODEL",
         }
 
         override_attr = override_map.get(provider)

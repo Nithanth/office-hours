@@ -1,12 +1,16 @@
 """Study-notes and blog-post generators.
 
 POST `/generate-report-notes` – downloadable notes (`.txt`, `.md`, or `.docx`).
-POST `/generate-blog` – downloadable Markdown blog post synthesised from the report.
+POST `/generate-blog` – generates a Markdown blog and redirects to a rendered view.
+GET  `/blog-view` – standalone rendered blog page.
 """
 
+import html as _html
+import uuid as _uuid
 from typing import Literal
 
-from fastapi import APIRouter, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse
 from loguru import logger
 
 from api.deps import get_llm_service, get_session_id
@@ -107,6 +111,10 @@ async def generate_report_notes(
 
 _BLOG_SYSTEM_PROMPT: str = _load_template("blog/system.md")
 
+# In-memory store for generated blog markdown (token → markdown string).
+# Entries are short-lived — consumed once when /blog-view loads.
+_BLOG_CACHE: dict[str, str] = {}
+
 
 @limiter.limit("10/5minute")
 @router.post("/generate-blog")
@@ -114,7 +122,7 @@ async def generate_blog(
     request: Request,
     report_text: str = Form(...),
 ) -> Response:
-    """Generate a polished Markdown blog post from the report text + chat history."""
+    """Generate a Markdown blog post and return a token for the rendered view."""
 
     logger.info("blog_generate: request received")
 
@@ -152,5 +160,86 @@ async def generate_blog(
         logger.error("blog_generation_error", error=str(err))
         raise HTTPException(status_code=500, detail="Blog generation failed") from err
 
-    headers = {"Content-Disposition": 'attachment; filename="research_blog.md"'}
-    return Response(blog_md, media_type="text/markdown; charset=utf-8", headers=headers)
+    # Store markdown under a one-time token and return the view URL.
+    token = str(_uuid.uuid4())
+    _BLOG_CACHE[token] = blog_md
+    logger.info("blog_cached", token=token, chars=len(blog_md))
+
+    # Return JSON so the frontend JS can open the blog view in a new tab.
+    return Response(
+        content=f'{{"url": "/blog-view?token={token}"}}',
+        media_type="application/json",
+    )
+
+
+@router.get("/blog-view")
+async def blog_view(
+    token: str = Query(...),
+) -> Response:
+    """Render the blog post as a standalone modern page."""
+
+    blog_md = _BLOG_CACHE.pop(token, None)
+    if blog_md is None:
+        raise HTTPException(status_code=404, detail="Blog not found or already viewed. Generate a new one.")
+
+    # Escape markdown for safe embedding in HTML
+    safe_md = _html.escape(blog_md)
+
+    page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blog — Lux Scholar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/blog.css">
+</head>
+<body class="blog-is-loading">
+
+  <!-- Reading progress bar -->
+  <div class="blog-progress-bar"></div>
+
+  <!-- Nav -->
+  <nav class="blog-nav">
+    <a href="/" class="blog-nav-brand">Lux Scholar</a>
+    <div class="blog-nav-actions">
+      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown">Copy</button>
+      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md">Download</button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="blog-hero">
+    <div class="blog-meta">
+      <span class="blog-tag">Research</span>
+      <span class="blog-meta-divider"></span>
+      <span id="blog-date"></span>
+      <span class="blog-meta-divider"></span>
+      <span id="blog-read-time"></span>
+    </div>
+    <h1>Loading...</h1>
+  </header>
+
+  <!-- Article (rendered by JS) -->
+  <article class="blog-article">
+    <div class="blog-loading">
+      <div class="blog-loading-spinner"></div>
+      <p>Rendering blog...</p>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="blog-footer">
+    Generated with <a href="/">Lux Scholar</a>
+  </footer>
+
+  <!-- Raw markdown (hidden, consumed by JS) -->
+  <script id="blog-raw" type="text/plain">{safe_md}</script>
+
+  <script src="/static/js/blog-view.js"></script>
+</body>
+</html>"""
+
+    return HTMLResponse(content=page)

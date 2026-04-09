@@ -8,6 +8,7 @@ messages via SSE.
 
 import asyncio
 import html
+import ipaddress
 import re
 import time
 import urllib.parse
@@ -23,6 +24,87 @@ from api.deps import get_paper_service  # lightweight helper, no heavy imports
 from services.chat.chat_components import ChatBubble, ChatModal
 
 router: APIRouter = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Shared httpx client pool (reuses TCP connections across proxy requests)
+# ---------------------------------------------------------------------------
+_PROXY_CLIENT: httpx.AsyncClient | None = None
+
+
+def _get_proxy_client() -> httpx.AsyncClient:
+    global _PROXY_CLIENT
+    if _PROXY_CLIENT is None or _PROXY_CLIENT.is_closed:
+        _PROXY_CLIENT = httpx.AsyncClient(
+            timeout=30,
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _PROXY_CLIENT
+
+
+# ---------------------------------------------------------------------------
+# SSRF protection: only allow proxying to known academic / research domains
+# ---------------------------------------------------------------------------
+_ALLOWED_PROXY_DOMAINS: set[str] = {
+    "arxiv.org",
+    "ar5iv.org",
+    "ar5iv.labs.arxiv.org",
+    "export.arxiv.org",
+    "doi.org",
+    "dx.doi.org",
+    "semanticscholar.org",
+    "api.semanticscholar.org",
+    "scholar.google.com",
+    "pubmed.ncbi.nlm.nih.gov",
+    "ncbi.nlm.nih.gov",
+    "biorxiv.org",
+    "medrxiv.org",
+    "openreview.net",
+    "aclanthology.org",
+    "proceedings.mlr.press",
+    "dl.acm.org",
+    "ieee.org",
+    "ieeexplore.ieee.org",
+    "link.springer.com",
+    "nature.com",
+    "science.org",
+    "sciencedirect.com",
+    "wiley.com",
+    "onlinelibrary.wiley.com",
+    "plos.org",
+    "journals.plos.org",
+    "oup.com",
+    "academic.oup.com",
+    "cell.com",
+    "ssrn.com",
+    "papers.ssrn.com",
+    "nber.org",
+    "researchgate.net",
+}
+
+
+def _is_url_allowed(url: str) -> bool:
+    """Validate that *url* targets an allowed domain (SSRF protection)."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or ""
+        host = host.lower().rstrip(".")
+
+        # Block obvious SSRF: loopback, private IPs
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_reserved:
+                return False
+        except ValueError:
+            pass  # Not an IP literal — continue with domain check
+
+        # Check if host matches or is a subdomain of an allowed domain
+        for allowed in _ALLOWED_PROXY_DOMAINS:
+            if host == allowed or host.endswith("." + allowed):
+                return True
+        return False
+    except Exception:
+        return False
 
 
 @router.get("/chat-modal", response_class=HTMLResponse)
@@ -277,14 +359,21 @@ async def pdf_proxy(
     if not url.lower().startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Invalid URL scheme")
 
+    # SSRF protection: only proxy to allowed academic domains
+    if not _is_url_allowed(url):
+        raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
+
     # Forward Range / If-Modified-Since so seeking & caching still work
     fwd_headers: dict[str, str] = {}
     for h in ("range", "if-modified-since", "if-none-match"):
         if h in request.headers:
             fwd_headers[h] = request.headers[h]
 
-    client = httpx.AsyncClient(timeout=30)
-    upstream = await client.get(url, headers=fwd_headers, follow_redirects=True)
+    client = _get_proxy_client()
+    upstream = await client.send(
+        client.build_request("GET", url, headers=fwd_headers),
+        stream=True,
+    )
 
     # Prepare response headers – copy selective safe ones
     resp_headers = {
@@ -296,10 +385,9 @@ async def pdf_proxy(
         "Access-Control-Allow-Origin": "*",
     }
 
-    # Close upstream and HTTP client when streaming finishes
+    # Close the upstream response when streaming finishes (client is pooled)
     async def _cleanup() -> None:
         await upstream.aclose()
-        await client.aclose()
 
     background = BackgroundTask(_cleanup)
 
@@ -329,7 +417,11 @@ async def html_proxy(
     if not url.lower().startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Invalid URL scheme")
 
-    client = httpx.AsyncClient(timeout=30, follow_redirects=True)
+    # SSRF protection: only proxy to allowed academic domains
+    if not _is_url_allowed(url):
+        raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
+
+    client = _get_proxy_client()
     upstream = await client.get(url)
 
     # Decode using httpx' detected encoding.
@@ -361,10 +453,9 @@ async def html_proxy(
     except Exception:  # noqa: BLE001 – best-effort only
         pass
 
-    # Cleanup handles closing the upstream response & HTTP client after send.
+    # Cleanup handles closing the upstream response (client is pooled).
     async def _cleanup() -> None:
         await upstream.aclose()
-        await client.aclose()
 
     background = BackgroundTask(_cleanup)
 

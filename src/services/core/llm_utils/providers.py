@@ -1,4 +1,4 @@
-"""Async wrappers for TogetherAI, OpenAI, Anthropic, and Gemini SDKs."""
+"""Async wrappers for TogetherAI, OpenAI, Anthropic, Gemini, and xAI SDKs."""
 
 import asyncio
 from typing import Any, Optional, cast
@@ -345,3 +345,59 @@ class GeminiProvider(LLMProvider):
                     ) from gen_exc
             # Non-retriable – propagate as provider error.
             raise
+
+
+class XAIProvider(LLMProvider):
+    """xAI Grok provider using the native xai-sdk."""
+
+    _async_client: Optional[Any] = None
+
+    async def initialize_client(self) -> None:
+        """Lazily create and cache the xAI AsyncClient."""
+        if self._async_client is None:
+            from xai_sdk import AsyncClient as XAIAsyncClient
+
+            logger.info("Initializing xAI client for {}", self.default_model)
+            self._async_client = XAIAsyncClient(api_key=self.api_key)
+
+    async def close(self) -> None:
+        """Drop cached client reference."""
+        self._async_client = None
+        await asyncio.sleep(0)
+
+    async def generate_text(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = 2048,
+        system_prompt: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Generate text using xAI Grok."""
+        await self.initialize_client()
+        assert self._async_client is not None
+        selected_model = model or self.default_model
+
+        from xai_sdk.chat import system, user
+
+        messages = []
+        if system_prompt:
+            messages.append(system(system_prompt))
+
+        try:
+            chat = self._async_client.chat.create(
+                model=selected_model,
+                messages=messages,
+            )
+            chat.append(user(prompt))
+            response = await chat.sample()
+            content = response.content if hasattr(response, "content") else str(response)
+            if not content:
+                raise LLMProviderError("xai", "Empty response from Grok")
+            return str(content).strip()
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "rate limit" in err_msg or "429" in err_msg:
+                raise LLMRateLimitError("xai", "Rate limit exceeded", e) from e
+            raise LLMProviderError("xai", f"xAI API error: {e}", e) from e

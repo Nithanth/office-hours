@@ -1,7 +1,6 @@
 """Chat helpers: per-paper semaphores and prompt builder."""
 
 import asyncio
-import contextlib
 import os
 from collections import defaultdict
 
@@ -41,12 +40,6 @@ async def build_prompt(
     # ------------------------------------------------------------------
     if excerpt_chars is None:
         excerpt_chars = config.EXCERPT_CHARS
-
-        # Legacy fallback – still honour env override if set explicitly.
-        env_override = str(config.EXCERPT_CHARS)
-        if env_override is not None:
-            with contextlib.suppress(ValueError):
-                excerpt_chars = int(env_override)
 
     turns = chat_state.get_conversation(paper_id)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)

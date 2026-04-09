@@ -19,6 +19,7 @@ class Config:
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
+    XAI_API_KEY: Optional[str] = os.getenv("XAI_API_KEY")
 
     # --- App runtime settings ---
     # --- Environment and asset prefixes ---
@@ -203,53 +204,65 @@ class Config:
     EXA_RETRY_MAX_WAIT: int = int(os.getenv("EXA_RETRY_MAX_WAIT", 10))  # seconds
 
     # --- Default/fallback LLM models ---
-    DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_2_5_pro")
+    DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_3_1_pro")
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
         # Gemini (Google)
-        "gemini_2_5_pro": {
-            "id": "models/gemini-2.5-pro-preview-06-05",
+        "gemini_3_1_pro": {
+            "id": "gemini-3.1-pro-preview",
             "provider": "gemini",
             "input_token_limit": 1_000_000,
-            "display_name": "Gemini 2.5 Pro",
+            "display_name": "Gemini 3.1 Pro",
         },
-        "gemini_2_5_flash": {
-            "id": "models/gemini-2.5-flash-preview-05-20",
+        "gemini_3_flash": {
+            "id": "gemini-3-flash-preview",
             "provider": "gemini",
             "input_token_limit": 1_000_000,
-            "display_name": "Gemini 2.5 Flash",
+            "display_name": "Gemini 3 Flash",
+        },
+        "gemini_3_1_flash_lite": {
+            "id": "gemini-3.1-flash-lite-preview",
+            "provider": "gemini",
+            "input_token_limit": 1_000_000,
+            "display_name": "Gemini 3.1 Flash Lite",
         },
         # Anthropic Claude
-        "anthropic_claude_opus_4": {
-            "id": "claude-opus-4-20250514",
+        "anthropic_claude_opus_4_6": {
+            "id": "claude-opus-4-6",
             "provider": "anthropic",
-            "input_token_limit": 200_000,
-            "display_name": "Claude Opus 4",
+            "input_token_limit": 1_000_000,
+            "display_name": "Claude Opus 4.6",
         },
-        "anthropic_claude_sonnet_4": {
-            "id": "claude-sonnet-4-20250514",
+        "anthropic_claude_sonnet_4_6": {
+            "id": "claude-sonnet-4-6",
+            "provider": "anthropic",
+            "input_token_limit": 1_000_000,
+            "display_name": "Claude Sonnet 4.6",
+        },
+        "anthropic_claude_haiku_4_5": {
+            "id": "claude-haiku-4-5-20251001",
             "provider": "anthropic",
             "input_token_limit": 200_000,
-            "display_name": "Claude Sonnet 4",
+            "display_name": "Claude Haiku 4.5",
         },
         # OpenAI
-        "openai_gpt_4o": {
-            "id": "gpt-4o",
-            "provider": "openai",
-            "input_token_limit": 128_000,
-            "display_name": "GPT-4o",
-        },
-        "openai_gpt_4_1": {
-            "id": "gpt-4.1",
+        "openai_gpt_5_4": {
+            "id": "gpt-5.4",
             "provider": "openai",
             "input_token_limit": 1_000_000,
-            "display_name": "GPT-4.1",
+            "display_name": "GPT-5.4",
         },
-        "openai_o3": {
-            "id": "o3",
+        "openai_gpt_5_4_mini": {
+            "id": "gpt-5.4-mini",
             "provider": "openai",
-            "input_token_limit": 200_000,
-            "display_name": "o3",
+            "input_token_limit": 400_000,
+            "display_name": "GPT-5.4 Mini",
+        },
+        "openai_gpt_5_4_nano": {
+            "id": "gpt-5.4-nano",
+            "provider": "openai",
+            "input_token_limit": 400_000,
+            "display_name": "GPT-5.4 Nano",
         },
         # TogetherAI Models
         "together_deepseek_v3": {
@@ -270,10 +283,23 @@ class Config:
             "input_token_limit": 128_000,
             "display_name": "Qwen3 235B (TogetherAI)",
         },
+        # xAI Grok
+        "xai_grok_4_20": {
+            "id": "grok-4.20-0309-non-reasoning",
+            "provider": "xai",
+            "input_token_limit": 2_000_000,
+            "display_name": "Grok 4.20 (xAI)",
+        },
+        "xai_grok_4_1_fast": {
+            "id": "grok-4-1-fast-non-reasoning",
+            "provider": "xai",
+            "input_token_limit": 2_000_000,
+            "display_name": "Grok 4.1 Fast (xAI)",
+        },
     }
 
     # Fallback TogetherAI model if primary fails
-    TOGETHER_FALLBACK_MODEL: Optional[str] = "gpt-4o"
+    TOGETHER_FALLBACK_MODEL: Optional[str] = "deepseek-ai/DeepSeek-V3"
 
     # --- RAG / retrieval parameters ---
     RAG_CHUNK_TOKENS: int = int(os.getenv("RAG_CHUNK_TOKENS", 512))

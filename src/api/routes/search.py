@@ -52,7 +52,6 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     num_results: int | None = Form(None),  # display count (1–10)
     mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
     include_domains: list[str] | None = Form(None),  # noqa: B008
-    min_quality: float | None = Form(None),  # quality threshold (0–1)
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
@@ -96,6 +95,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         num_results_display = max(1, min(num_results, 10))
 
     input_query_stripped = clean_query(search_query.strip())
+
+    # ------------------------------------------------------------------
+    # Prune completed tasks to prevent unbounded dict growth
+    # ------------------------------------------------------------------
+    done_keys = [k for k, t in _direct_query_tasks.items() if t.done()]
+    for k in done_keys:
+        _direct_query_tasks.pop(k, None)
 
     # ------------------------------------------------------------------
     # Task-cancellation bookkeeping (per-session, not global)
@@ -192,6 +198,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 client.url_search_and_cache,
                 paper_url=input_query_stripped,
                 k=num_results_display,
+                session_id=session_id,
                 **shared_kwargs,
             )
         else:
@@ -201,15 +208,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 client.search_and_cache,
                 query=input_query_stripped,
                 k=num_results_display,
+                session_id=session_id,
                 **search_kwargs,
             )
-
-        # Apply quality threshold if set ----------------------------------------
-        quality_threshold = max(0.0, min(1.0, min_quality or 0.0))
-        if quality_threshold > 0 and exa_results:
-            filtered = [p for p in exa_results if (p.relevance_score or 0) >= quality_threshold]
-            # Never filter to empty — keep at least the top results
-            exa_results = filtered if filtered else exa_results[:5]
 
         # Render results ----------------------------------------------------------
         results_component = render_search_results(
@@ -323,7 +324,10 @@ def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False)
 
 
 @router.post("/shuffle", response_class=HTMLResponse)
-async def shuffle_random_paper() -> HTMLResponse:
+async def shuffle_random_paper(
+    request: Request,
+    session_id: str = Depends(get_session_id),
+) -> HTMLResponse:
     """Return a single random paper (wild-card) as an HTMX swap."""
     exa_client = get_exa_client()
     if exa_client is None:
@@ -332,7 +336,7 @@ async def shuffle_random_paper() -> HTMLResponse:
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    paper = cast(ExaClient, exa_client).replace_wildcard()
+    paper = cast(ExaClient, exa_client).replace_wildcard(session_id=session_id)
     if paper is None:
         return HTMLResponse(
             "<ul id='papers-list'><li>No more random papers available. Run a new search.</li></ul>",
@@ -345,7 +349,10 @@ async def shuffle_random_paper() -> HTMLResponse:
 
 
 @router.post("/shuffle_all", response_class=HTMLResponse)
-async def shuffle_all_papers() -> HTMLResponse:
+async def shuffle_all_papers(
+    request: Request,
+    session_id: str = Depends(get_session_id),
+) -> HTMLResponse:
     """Shuffle the cached papers and return the refreshed `<ul>` list."""
     exa_client = get_exa_client()
     if exa_client is None:
@@ -355,14 +362,14 @@ async def shuffle_all_papers() -> HTMLResponse:
         )
 
     client = cast(ExaClient, exa_client)
-    papers = client.shuffle_k()
+    papers = client.shuffle_k(session_id=session_id)
     if not papers:
         return HTMLResponse(
             "<ul id='papers-list'><li>Cache cleared - run a new search before shuffling.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    cached = client.get_cached_search()
+    cached = client.get_cached_search(session_id=session_id)
     pinned_id = cached.pinned_id if cached is not None else None
 
     rendered_items = [
@@ -384,7 +391,10 @@ async def shuffle_all_papers() -> HTMLResponse:
 
 
 @router.post("/reset_results", response_class=HTMLResponse)
-async def reset_papers() -> HTMLResponse:
+async def reset_papers(
+    request: Request,
+    session_id: str = Depends(get_session_id),
+) -> HTMLResponse:
     """Reset the paper list back to the cached core search results."""
     exa_client = get_exa_client()
     if exa_client is None:
@@ -394,14 +404,14 @@ async def reset_papers() -> HTMLResponse:
         )
 
     client = cast(ExaClient, exa_client)
-    core_list = client.reset_display()
+    core_list = client.reset_display(session_id=session_id)
     if not core_list:
         return HTMLResponse(
             "<ul id='papers-list'><li>Cache cleared - run a new search before resetting.</li></ul>",
             headers={"HX-Reswap": "outerHTML"},
         )
 
-    cached = client.get_cached_search()
+    cached = client.get_cached_search(session_id=session_id)
     pinned_id = cached.pinned_id if cached is not None else None
 
     rendered_items = [
