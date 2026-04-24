@@ -277,14 +277,11 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
                     continue
                 if stripped and len(stripped) > 30:
                     content_lines.append(stripped)
-                if len(" ".join(content_lines)) > 600:
+                if len(" ".join(content_lines)) > 2000:
                     break
             abstract_text = " ".join(content_lines)
 
-        # Truncate to reasonable length for popover
-        if len(abstract_text) > 800:
-            cut = abstract_text[:800].rfind(" ")
-            abstract_text = abstract_text[:cut if cut > 400 else 800] + "…"
+        # No truncation — the modal dialog scrolls for long abstracts
 
     toggle_btn = BUTTON(
         I(cls="fa-solid fa-chevron-down"),
@@ -519,7 +516,7 @@ def loading_indicator_component() -> Div:
         ),
         id="loading-indicator",
         cls="htmx-indicator",
-        style="display:flex; align-items:center; justify-content:center; gap:8px; padding:3rem 0; width:100%;",
+        style="display:flex; align-items:center; justify-content:center; gap:8px; padding:1rem 0; width:100%;",
     )
 
 
@@ -712,6 +709,13 @@ def home_page(page_data: SharedPageData) -> Body:
                 hx_swap="innerHTML",
             ),
             BUTTON(
+                I(cls="fa-solid fa-gear"),
+                id="lux-settings-btn",
+                type="button",
+                title="Settings",
+                style="border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 8px;",
+            ),
+            BUTTON(
                 "🌙 Dark",
                 id="lux-dark-toggle",
                 aria_label="Toggle dark mode",
@@ -739,33 +743,51 @@ def home_page(page_data: SharedPageData) -> Body:
                         Div(
                             Span("After ", cls="filter-label"),
                             INPUT(
-                                type="date",
+                                type="text",
                                 id="start_published_date",
                                 name="start_published_date",
                                 placeholder="YYYY-MM-DD",
-                                style="font-size:0.8rem;padding:2px 4px;",
+                                autocomplete="off",
+                                style="font-size:0.8rem;padding:2px 4px;width:9rem;",
                             ),
                         ),
+                        # Custom dropdown-checkbox for sources
                         Div(
                             Span("Sources ", cls="filter-label"),
-                            Select(
-                                Option("All sources", value=""),
-                                *[
-                                    Option(label, value=dom)
-                                    for dom, label in [
-                                        ("arxiv.org", "arXiv"),
-                                        ("biorxiv.org", "bioRxiv"),
-                                        ("medrxiv.org", "medRxiv"),
-                                        ("ieeexplore.ieee.org", "IEEE"),
-                                        ("dl.acm.org", "ACM"),
-                                        ("openreview.net", "OpenReview"),
-                                        ("aclanthology.org", "ACL"),
-                                    ]
-                                ],
-                                name="include_domains",
-                                id="source_select",
-                                multiple=True,
-                                style="font-size:0.8rem;padding:2px 4px;min-width:10rem;height:auto;max-height:6rem;",
+                            Div(
+                                BUTTON(
+                                    "All sources ▾",
+                                    type="button",
+                                    id="sources-dropdown-btn",
+                                    style="font-size:0.8rem;padding:2px 8px;cursor:pointer;background:var(--container-bg);border:1px solid #aaa;border-radius:3px;min-width:9rem;text-align:left;",
+                                ),
+                                Div(
+                                    *[
+                                        Label(
+                                            INPUT(
+                                                type="checkbox",
+                                                name="include_domains",
+                                                value=dom,
+                                                id=f"src-{dom.split('.')[0]}",
+                                                cls="source-checkbox",
+                                            ),
+                                            Span(f" {label}", style="font-size:0.8rem;"),
+                                            style="display:flex;align-items:center;gap:4px;padding:3px 8px;cursor:pointer;",
+                                        )
+                                        for dom, label in [
+                                            ("arxiv.org", "arXiv"),
+                                            ("biorxiv.org", "bioRxiv"),
+                                            ("medrxiv.org", "medRxiv"),
+                                            ("ieeexplore.ieee.org", "IEEE"),
+                                            ("dl.acm.org", "ACM"),
+                                            ("openreview.net", "OpenReview"),
+                                            ("aclanthology.org", "ACL"),
+                                        ]
+                                    ],
+                                    id="sources-dropdown-menu",
+                                    style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--container-bg);border:1px solid #aaa;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:4px 0;min-width:10rem;",
+                                ),
+                                style="position:relative;display:inline-block;",
                             ),
                         ),
                         cls="search-form-filters",
@@ -779,7 +801,7 @@ def home_page(page_data: SharedPageData) -> Body:
                             value="auto",
                             onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
                         ),
-                        style="margin-top:0.75rem;",
+                        style="margin-top:0.4rem;",
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",
