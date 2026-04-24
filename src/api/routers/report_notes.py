@@ -1,8 +1,9 @@
-"""Study-notes and blog-post generators.
+"""Study-notes, blog-post, and Notion export generators.
 
 POST `/generate-report-notes` – downloadable notes (`.txt`, `.md`, or `.docx`).
 POST `/generate-blog` – generates a Markdown blog and redirects to a rendered view.
 GET  `/blog-view` – standalone rendered blog page.
+POST `/export-notion` – push report to a Notion page/database and return its URL.
 """
 
 import html as _html
@@ -110,6 +111,7 @@ async def generate_report_notes(
 # ---------------------------------------------------------------------------
 
 _BLOG_SYSTEM_PROMPT: str = _load_template("blog/system.md")
+_NOTION_OUTLINE_PROMPT: str = _load_template("notion/outline.md")
 
 # In-memory store for generated blog markdown (token → markdown string).
 # Entries are short-lived — consumed once when /blog-view loads.
@@ -205,8 +207,9 @@ async def blog_view(
   <nav class="blog-nav">
     <a href="/" class="blog-nav-brand">Lux Scholar</a>
     <div class="blog-nav-actions">
-      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown">Copy</button>
-      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md">Download</button>
+      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown">Copy MD</button>
+      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md">Download MD</button>
+      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as HTML">Save HTML</button>
     </div>
   </nav>
 
@@ -243,3 +246,116 @@ async def blog_view(
 </html>"""
 
     return HTMLResponse(content=page)
+
+
+# ---------------------------------------------------------------------------
+# Notion export
+# ---------------------------------------------------------------------------
+
+
+def _parse_tags(llm_output: str) -> tuple[str, list[str]]:
+    """Split the TAGS: line from the outline and return (outline, tags)."""
+    lines = llm_output.rstrip().split("\n")
+    tags: list[str] = []
+    outline = llm_output
+
+    # Walk backwards to find the TAGS line (should be last non-empty line)
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
+        if not stripped:
+            continue
+        if stripped.upper().startswith("TAGS:"):
+            raw = stripped[len("TAGS:"):].strip()
+            tags = [t.strip() for t in raw.split(",") if t.strip()]
+            outline = "\n".join(lines[:i]).rstrip()
+            break
+        # Stop searching if we hit a non-TAGS content line
+        break
+
+    return outline, tags
+
+
+@limiter.limit("10/5minute")
+@router.post("/export-notion")
+async def export_notion(
+    request: Request,
+    report_text: str = Form(...),
+    title: str = Form("Lux Scholar Report"),
+    source_url: str = Form(""),
+    audience: str = Form(""),
+    model: str = Form(""),
+) -> Response:
+    """Generate a structured outline, then push it to Notion."""
+
+    logger.info("notion_export: request received")
+
+    if not report_text.strip():
+        raise HTTPException(status_code=400, detail="Report text required")
+
+    if not config.NOTION_API_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail="Notion integration not configured. Set NOTION_API_KEY in .env.",
+        )
+    if not (config.NOTION_PARENT_PAGE_ID or config.NOTION_PARENT_DATABASE_ID):
+        raise HTTPException(
+            status_code=400,
+            detail="Set NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID in .env.",
+        )
+
+    # --- Generate structured outline via LLM ---
+    llm_service: LLMService | None = get_llm_service()
+    outline_md = report_text.strip()  # fallback: raw report
+    tags: list[str] = []
+
+    if llm_service:
+        model_key = config.DEFAULT_MODEL_KEY
+        model_cfg = config.AVAILABLE_MODELS[model_key]
+        try:
+            user_prompt = (
+                "Distill the following research report into a structured outline.\n\n"
+                "REPORT:\n" + report_text.strip()[:config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
+            )
+            raw_outline = await llm_service.generate_completion(
+                provider_name=model_cfg["provider"],
+                model_name=model_cfg["id"],
+                prompt=user_prompt,
+                max_tokens=1024,
+                system_prompt=_NOTION_OUTLINE_PROMPT,
+            )
+            outline_md, tags = _parse_tags(raw_outline)
+            logger.info("notion_outline_generated", chars=len(outline_md), tags=tags)
+        except Exception as err:
+            logger.warning("notion_outline_fallback", error=str(err))
+            # Fall through — outline_md stays as raw report text
+    else:
+        logger.warning("notion_export: LLM unavailable, exporting raw report")
+
+    from services.notion.notion_exporter import NotionExporter, NotionExportError
+
+    exporter = NotionExporter(api_key=config.NOTION_API_KEY)
+    try:
+        url = await exporter.export_report(
+            title=title,
+            markdown=outline_md,
+            parent_page_id=config.NOTION_PARENT_PAGE_ID,
+            parent_database_id=config.NOTION_PARENT_DATABASE_ID,
+            metadata={
+                "source_url": source_url or None,
+                "audience": audience or None,
+                "model": model or None,
+                "type": "Report",
+                "tags": tags,
+            },
+        )
+    except NotionExportError as err:
+        logger.error("notion_export_failed", error=str(err))
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    finally:
+        await exporter.close()
+
+    logger.info("notion_export_success", url=url)
+    return Response(
+        content=f'{{"url": "{url}"}}',
+        media_type="application/json",
+    )
