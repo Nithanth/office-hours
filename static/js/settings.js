@@ -56,28 +56,52 @@
 
     selects.forEach(setPlaceholderState);
 
-    // Initialise flatpickr date picker (moved from inline script)
+    // Initialise flatpickr date picker — allowInput lets users type manually
     if (window.flatpickr) {
       try {
-        window.flatpickr('#start_published_date', { dateFormat: 'Y-m-d' });
+        window.flatpickr('#start_published_date', {
+          dateFormat: 'Y-m-d',
+          allowInput: true,
+        });
       } catch (e) {
         console.warn('[lux] flatpickr init failed', e);
       }
     }
 
-    // Initialise Choices.js multiselect for domain filter
-    if (window.Choices) {
-      try {
-        new Choices('#include_domains', {
-          removeItemButton: true,
-          searchEnabled: true,
-          shouldSort: false,
-        });
-        console.debug('[lux] Choices multiselect initialised');
-      } catch (e) {
-        console.warn('[lux] Choices init failed', e);
+    // Sources dropdown-checkbox toggle
+    (function initSourcesDropdown() {
+      const btn = document.getElementById('sources-dropdown-btn');
+      const menu = document.getElementById('sources-dropdown-menu');
+      if (!btn || !menu) return;
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = menu.style.display !== 'none';
+        menu.style.display = open ? 'none' : 'block';
+      });
+
+      // Close on outside click
+      document.addEventListener('click', () => {
+        menu.style.display = 'none';
+      });
+      menu.addEventListener('click', (e) => e.stopPropagation());
+
+      // Update button label when checkboxes change
+      function updateLabel() {
+        const checked = menu.querySelectorAll('.source-checkbox:checked');
+        if (checked.length === 0) {
+          btn.textContent = 'All sources ▾';
+        } else {
+          const names = Array.from(checked).map(cb => {
+            const span = cb.parentElement.querySelector('span');
+            return span ? span.textContent.trim() : cb.value;
+          });
+          btn.textContent = names.join(', ') + ' ▾';
+        }
       }
-    }
+      menu.addEventListener('change', updateLabel);
+      console.debug('[lux] sources dropdown initialised');
+    })();
 
     // Persist on change
     selects.forEach(el => {
@@ -457,6 +481,70 @@
         if (container) container.innerHTML = '';
       }
     });
+
+    // ------------------------------------------------------------------
+    // Settings modal (gear icon) — shows Notion connection status
+    // ------------------------------------------------------------------
+    const settingsBtn = document.getElementById('lux-settings-btn');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+        let dlg = document.getElementById('settings-dialog');
+        if (!dlg) {
+          document.body.insertAdjacentHTML(
+            'beforeend',
+            `<dialog id="settings-dialog" class="lux-modal">
+              <form method="dialog">
+                <h3 style="margin:0 0 16px">Settings</h3>
+                <div id="notion-status-area" style="margin-bottom:16px;">
+                  <h4 style="margin:0 0 8px;font-size:0.95rem;">Notion Integration</h4>
+                  <div id="notion-status-content">
+                    <span class="lux-spinner small" style="display:inline-block;vertical-align:middle;"></span>
+                    Checking…
+                  </div>
+                </div>
+                <menu style="display:flex;justify-content:flex-end;">
+                  <button value="close">Close</button>
+                </menu>
+              </form>
+            </dialog>`
+          );
+          dlg = document.getElementById('settings-dialog');
+        }
+
+        // Fetch Notion status every time the modal opens
+        const statusEl = document.getElementById('notion-status-content');
+        if (statusEl) {
+          statusEl.innerHTML = '<span class="lux-spinner small" style="display:inline-block;vertical-align:middle;"></span> Checking…';
+          fetch('/api/notion-status')
+            .then(r => r.json())
+            .then(data => {
+              if (data.connected) {
+                statusEl.innerHTML =
+                  '<span style="color:#22c55e;font-weight:600;">● Connected</span>' +
+                  '<div style="margin-top:6px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
+                  'Target: ' + (data.target_type === 'database' ? 'Database' : 'Page') +
+                  ' <code>' + data.database_id + '</code>' +
+                  '</div>';
+              } else {
+                let detail = '';
+                if (!data.has_api_key) detail += '<div>✗ NOTION_API_KEY not set</div>';
+                if (!data.has_parent) detail += '<div>✗ No database or page ID configured</div>';
+                statusEl.innerHTML =
+                  '<span style="color:#ef4444;font-weight:600;">● Not configured</span>' +
+                  '<div style="margin-top:6px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
+                  detail +
+                  '<div style="margin-top:4px;">Set <code>NOTION_API_KEY</code> and <code>NOTION_PARENT_DATABASE_ID</code> in <code>.env</code>, then restart.</div>' +
+                  '</div>';
+              }
+            })
+            .catch(() => {
+              statusEl.innerHTML = '<span style="color:#eab308;">● Could not check status</span>';
+            });
+        }
+
+        dlg.showModal();
+      });
+    }
   }
 
   // Ensure DOM is ready
