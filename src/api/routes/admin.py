@@ -1,5 +1,7 @@
 """Health-check and small admin utilities (cache flush, metadata recheck)."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
@@ -57,3 +59,24 @@ async def recheck_paper_metadata(
     processed = exa_client.recheck_incomplete_metadata(limit=limit)
     logger.info("metadata_recheck_complete", processed=processed)
     return {"processed": processed}
+
+
+@router.get("/api/notion-status", tags=["admin"])
+async def notion_status() -> dict[str, Any]:
+    """Return Notion integration connection status (no secrets exposed)."""
+    has_key = bool(_cfg.config.NOTION_API_KEY)
+    db_id = _cfg.config.NOTION_PARENT_DATABASE_ID or ""
+    page_id = _cfg.config.NOTION_PARENT_PAGE_ID or ""
+    has_parent = bool(db_id or page_id)
+
+    # Mask the database/page ID — show only last 8 chars
+    target_id = db_id or page_id
+    masked_id = f"...{target_id[-8:]}" if len(target_id) > 8 else target_id
+
+    return {
+        "connected": has_key and has_parent,
+        "database_id": masked_id if has_parent else "",
+        "has_api_key": has_key,
+        "has_parent": has_parent,
+        "target_type": "database" if db_id else ("page" if page_id else "none"),
+    }
