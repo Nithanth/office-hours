@@ -150,6 +150,11 @@ const actionsObserver = new MutationObserver(() => {
       blogBtn.removeAttribute("disabled");
       blogBtn.title = "Generate Blog Post";
     }
+    const notionBtn = el.querySelector("#report-notion-btn");
+    if (notionBtn) {
+      notionBtn.removeAttribute("disabled");
+      notionBtn.title = "Export to Notion";
+    }
   });
 });
 
@@ -334,6 +339,10 @@ function handleBlogClick(ev) {
   btn.innerHTML =
     '<span class="lux-spinner small" style="vertical-align:middle;"></span> Writing…';
 
+  // Open the window synchronously (inside the click handler) so browsers
+  // don't block it as a popup.  We navigate it once the fetch resolves.
+  const blogWindow = window.open("about:blank", "_blank");
+
   const cleaned = getCleanReportText(reportEl);
   const fd = new FormData();
   fd.append("report_text", cleaned);
@@ -344,12 +353,16 @@ function handleBlogClick(ev) {
       return r.json();
     })
     .then((data) => {
-      if (data.url) {
+      if (data.url && blogWindow) {
+        blogWindow.location.href = data.url;
+      } else if (data.url) {
+        // Fallback if the window was blocked despite our efforts
         window.open(data.url, "_blank");
       }
     })
     .catch((err) => {
       console.error("[lux] blog generation failed", err);
+      if (blogWindow) blogWindow.close();
       // eslint-disable-next-line no-alert
       alert("Failed to generate blog post. Please try again.");
     })
@@ -360,6 +373,67 @@ function handleBlogClick(ev) {
 }
 
 document.addEventListener("click", handleBlogClick);
+
+// ---------------------------------------------------------------------------
+// Notion export – POST report text, open Notion page in new tab
+// ---------------------------------------------------------------------------
+function handleNotionClick(ev) {
+  const btn = ev.target.closest("#report-notion-btn");
+  if (!btn) return;
+
+  const reportEl = document.getElementById("report-content");
+  if (!reportEl) return;
+
+  btn.disabled = true;
+  const origHtml = btn.innerHTML;
+  btn.innerHTML =
+    '<span class="lux-spinner small" style="vertical-align:middle;"></span> Exporting…';
+
+  // Open window synchronously so browsers don't block it as a popup.
+  const notionWindow = window.open("about:blank", "_blank");
+
+  const cleaned = getCleanReportText(reportEl);
+  const fd = new FormData();
+  fd.append("report_text", cleaned);
+
+  // Pull title from the first heading in the report, if any.
+  const firstH = reportEl.querySelector("h1, h2, h3");
+  fd.append("title", firstH ? firstH.textContent.trim() : "Lux Scholar Report");
+
+  // Include audience and model so Notion gets structured properties.
+  const audSel = document.getElementById("aud-select");
+  const modelSel = document.getElementById("model-select");
+  if (audSel && audSel.value) fd.append("audience", audSel.value);
+  if (modelSel && modelSel.value) fd.append("model", modelSel.value);
+
+  fetch("/export-notion", { method: "POST", body: fd })
+    .then((r) => {
+      if (!r.ok) return r.json().then((d) => { throw new Error(d.detail || `Server responded ${r.status}`); });
+      return r.json();
+    })
+    .then((data) => {
+      if (data.url && notionWindow) {
+        notionWindow.location.href = data.url;
+        if (typeof window.showToast === "function") {
+          window.showToast("Exported to Notion!");
+        }
+      } else if (data.url) {
+        window.open(data.url, "_blank");
+      }
+    })
+    .catch((err) => {
+      console.error("[lux] notion export failed", err);
+      if (notionWindow) notionWindow.close();
+      // eslint-disable-next-line no-alert
+      alert(err.message || "Failed to export to Notion. Check your NOTION_API_KEY in .env.");
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    });
+}
+
+document.addEventListener("click", handleNotionClick);
 
 (function () {
   // simple toast fallback if settings.js not loaded
