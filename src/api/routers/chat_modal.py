@@ -116,6 +116,7 @@ async def chat_modal(
         None, description="(Optional) Audience type key from toolbar"
     ),
     model_key: str | None = Query(None, description="(Optional) Selected model key"),
+    report_id: str | None = Query(None, description="(Optional) saved report id"),
 ) -> HTMLResponse:  # noqa: D401 - pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
@@ -239,8 +240,13 @@ async def chat_modal(
         if model_key
         else ""
     )
+    hidden_report = (
+        f"<input type='hidden' id='hidden-report-id' name='report_id' value='{html.escape(report_id)}'/>"
+        if report_id
+        else ""
+    )
     modal_html = modal_html.replace(
-        "<textarea", hidden_input + hidden_aud + hidden_model + "<textarea"
+        "<textarea", hidden_input + hidden_aud + hidden_model + hidden_report + "<textarea"
     )
 
     # Replace underscored HX attributes with hyphenated versions expected by HTMX
@@ -254,7 +260,7 @@ async def chat_modal(
     # Add hx-include for hidden paper field on the chat form
     modal_html = modal_html.replace(
         'hx-post="/chat"',
-        'hx-post="/chat" hx-include="#hidden-paper-id,#hidden-audience-type,#hidden-model-key"',
+        'hx-post="/chat" hx-include="#hidden-paper-id,#hidden-audience-type,#hidden-model-key,#hidden-report-id"',
     )
 
     # If we have a URL, make the H2 title a hyperlink in the rendered HTML

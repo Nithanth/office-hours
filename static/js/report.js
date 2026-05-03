@@ -173,6 +173,26 @@ document.addEventListener("htmx:afterSwap", (evt) => {
   }
 });
 
+document.body.addEventListener("htmx:sseMessage", (evt) => {
+  if (evt.detail?.type !== "report-saved") return;
+  try {
+    const payload = JSON.parse(evt.detail.data || "{}");
+    if (!payload.report_id) return;
+    const reportEl = document.getElementById("report-content");
+    if (reportEl) reportEl.dataset.reportId = payload.report_id;
+    document.querySelectorAll(".ask-assistant-btn[hx-get]").forEach((btn) => {
+      const current = btn.getAttribute("hx-get") || "";
+      if (current && !current.includes("report_id=")) {
+        const sep = current.includes("?") ? "&" : "?";
+        btn.setAttribute("hx-get", `${current}${sep}report_id=${encodeURIComponent(payload.report_id)}`);
+      }
+    });
+    if (window.htmx) window.htmx.process(document.body);
+  } catch (err) {
+    console.warn("[lux] could not process report-saved event", err);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Reveal action buttons when report streaming finishes (HTMX/SSE)
 // ---------------------------------------------------------------------------
@@ -399,6 +419,7 @@ function handleNotionClick(ev) {
   // Pull title from the first heading in the report, if any.
   const firstH = reportEl.querySelector("h1, h2, h3");
   fd.append("title", firstH ? firstH.textContent.trim() : "Lux Scholar Report");
+  if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
 
   // Include audience and model so Notion gets structured properties.
   const audSel = document.getElementById("aud-select");

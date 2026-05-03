@@ -495,6 +495,13 @@
             `<dialog id="settings-dialog" class="lux-modal">
               <form method="dialog">
                 <h3 style="margin:0 0 16px">Settings</h3>
+                <div id="account-status-area" style="margin-bottom:16px;">
+                  <h4 style="margin:0 0 8px;font-size:0.95rem;">Account</h4>
+                  <div id="account-status-content">
+                    <span class="lux-spinner small" style="display:inline-block;vertical-align:middle;"></span>
+                    Checking…
+                  </div>
+                </div>
                 <div id="notion-status-area" style="margin-bottom:16px;">
                   <h4 style="margin:0 0 8px;font-size:0.95rem;">Notion Integration</h4>
                   <div id="notion-status-content">
@@ -511,6 +518,31 @@
           dlg = document.getElementById('settings-dialog');
         }
 
+        const accountEl = document.getElementById('account-status-content');
+        if (accountEl) {
+          fetch('/api/me')
+            .then(r => r.json())
+            .then(data => {
+              if (data.authenticated) {
+                const name = data.user.name || data.user.email;
+                accountEl.innerHTML =
+                  '<div><strong>' + escapeHtml(name) + '</strong></div>' +
+                  '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
+                  '<a href="/reports">My Reports</a>' +
+                  '<button type="button" id="logout-btn">Log out</button>' +
+                  '</div>';
+                document.getElementById('logout-btn')?.addEventListener('click', () => {
+                  fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
+                });
+              } else {
+                accountEl.innerHTML = '<a class="btn-secondary" href="/auth/google/login">Sign in with Google</a>';
+              }
+            })
+            .catch(() => {
+              accountEl.innerHTML = '<span style="color:#eab308;">Could not check account status</span>';
+            });
+        }
+
         // Fetch Notion status every time the modal opens
         const statusEl = document.getElementById('notion-status-content');
         if (statusEl) {
@@ -522,19 +554,29 @@
                 statusEl.innerHTML =
                   '<span style="color:#22c55e;font-weight:600;">● Connected</span>' +
                   '<div style="margin-top:6px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
-                  'Target: ' + (data.target_type === 'database' ? 'Database' : 'Page') +
-                  ' <code>' + data.database_id + '</code>' +
-                  '</div>';
+                  (data.workspace_name ? 'Workspace: ' + escapeHtml(data.workspace_name) + '<br>' : '') +
+                  'Target: ' + (data.target_type === 'database' ? 'Database' : data.target_type === 'page' ? 'Page' : 'Not selected') +
+                  (data.database_id ? ' <code>' + escapeHtml(data.database_id) + '</code>' : '') +
+                  '</div>' +
+                  (data.oauth_connected
+                    ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
+                      '<button type="button" id="notion-refresh-destinations">Choose destination</button>' +
+                      '<button type="button" id="notion-disconnect">Disconnect</button>' +
+                      '</div><div id="notion-destinations" style="margin-top:8px;"></div>'
+                    : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
+                if (data.oauth_connected) wireNotionControls(statusEl);
               } else {
-                let detail = '';
-                if (!data.has_api_key) detail += '<div>✗ NOTION_API_KEY not set</div>';
-                if (!data.has_parent) detail += '<div>✗ No database or page ID configured</div>';
+                let detail = data.oauth_connected === false
+                  ? '<div>Connect your own Notion workspace for private beta exports.</div>'
+                  : '';
+                if (!data.has_api_key) detail += '<div>✗ No Notion connection configured</div>';
+                if (!data.has_parent && data.has_api_key) detail += '<div>✗ No database or page selected</div>';
                 statusEl.innerHTML =
                   '<span style="color:#ef4444;font-weight:600;">● Not configured</span>' +
                   '<div style="margin-top:6px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
                   detail +
-                  '<div style="margin-top:4px;">Set <code>NOTION_API_KEY</code> and <code>NOTION_PARENT_DATABASE_ID</code> in <code>.env</code>, then restart.</div>' +
-                  '</div>';
+                  '</div>' +
+                  '<div style="margin-top:8px;"><a class="btn-secondary" href="/integrations/notion/connect">Connect Notion</a></div>';
               }
             })
             .catch(() => {
@@ -543,6 +585,62 @@
         }
 
         dlg.showModal();
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[ch]));
+    }
+
+    function wireNotionControls(statusEl) {
+      const disconnect = statusEl.querySelector('#notion-disconnect');
+      if (disconnect) {
+        disconnect.addEventListener('click', () => {
+          fetch('/integrations/notion/disconnect', { method: 'POST' }).then(() => {
+            if (typeof window.showToast === 'function') window.showToast('Notion disconnected');
+            document.getElementById('lux-settings-btn')?.click();
+          });
+        });
+      }
+      const choose = statusEl.querySelector('#notion-refresh-destinations');
+      if (!choose) return;
+      choose.addEventListener('click', () => {
+        const destEl = statusEl.querySelector('#notion-destinations');
+        if (!destEl) return;
+        destEl.innerHTML = '<span class="lux-spinner small"></span> Loading destinations…';
+        fetch('/api/notion/destinations')
+          .then(r => r.json())
+          .then(data => {
+            if (!data.ok) {
+              destEl.textContent = data.detail || 'Could not load destinations.';
+              return;
+            }
+            destEl.innerHTML = data.destinations.map(dest =>
+              '<button type="button" class="notion-destination" data-id="' + escapeHtml(dest.id) +
+              '" data-type="' + escapeHtml(dest.type) + '">' +
+              escapeHtml(dest.type) + ': ' + escapeHtml(dest.title) + '</button>'
+            ).join(' ');
+            destEl.querySelectorAll('.notion-destination').forEach(btn => {
+              btn.addEventListener('click', () => {
+                const fd = new FormData();
+                fd.append('destination_id', btn.dataset.id);
+                fd.append('destination_type', btn.dataset.type);
+                fetch('/api/notion/destination', { method: 'POST', body: fd })
+                  .then(r => r.json())
+                  .then(() => {
+                    if (typeof window.showToast === 'function') window.showToast('Notion destination saved');
+                    document.getElementById('lux-settings-btn')?.click();
+                  });
+              });
+            });
+          })
+          .catch(() => { destEl.textContent = 'Could not load Notion destinations.'; });
       });
     }
   }

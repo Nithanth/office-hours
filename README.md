@@ -4,7 +4,7 @@
 
 A web-based research paper assistant for searching academic papers, extracting full text, generating AI reports, chatting with paper-grounded context, creating notes/blog drafts, and exporting reports to Notion.
 
-The app is built with FastAPI, FastHTML/PyHTML, HTMX/SSE, Exa, multiple LLM providers, local disk caches, SQLite metadata caching, LanceDB vector indexes, and optional Notion export.
+The app is built with FastAPI, FastHTML/PyHTML, HTMX/SSE, Exa, multiple LLM providers, Postgres-backed private-beta persistence, local disk caches, SQLite metadata caching, LanceDB vector indexes, and optional per-user Notion export.
 
 ## Project Setup
 
@@ -51,6 +51,29 @@ If you want to run the app directly without Docker:
    ./dev.sh
    ```
 
+## Private Beta Setup
+
+The app can still run in local demo mode with no database. For multi-user beta mode:
+
+1. Provision Postgres and set `DATABASE_URL`.
+2. Generate `LUX_SECRET_ENCRYPTION_KEY`:
+
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+3. Configure Google OAuth with callback `${AUTH_REDIRECT_BASE_URL}/auth/google/callback`.
+4. Configure public Notion OAuth with callback `${AUTH_REDIRECT_BASE_URL}/integrations/notion/callback`.
+5. Run migrations:
+
+   ```bash
+   alembic upgrade head
+   ```
+
+6. Set `REQUIRE_LOGIN=1` when you want search/report/chat routes gated to signed-in beta users.
+
+In development, tables are also created automatically when `DATABASE_URL` is set and `ENV != prod`; use Alembic for production.
+
 ## Demo
 
 ![Lux Scholar Demo](static/images/LuxScholarMVPDemo.gif)
@@ -63,9 +86,9 @@ If you want to run the app directly without Docker:
 * `Dockerfile`: Defines the Docker image for the web app.
 * `docker-compose.yml`: Runs the web app locally.
 * `.env.example`: Template for environment variables.
-* `src/api/`: FastAPI route modules for search, reports, chat, admin, metadata, and export flows.
+* `src/api/`: FastAPI route modules for search, reports, chat, auth, history, integrations, admin, metadata, and export flows.
 * `src/pages/`: PyHTML components for web pages and reusable UI blocks.
-* `src/services/`: Backend business logic for Exa, LLMs, text extraction, RAG, reports, chat, notes, and Notion.
+* `src/services/`: Backend business logic for Exa, LLMs, text extraction, RAG, reports, chat, notes, auth, persistence, and Notion.
 * `src/models/`: Pydantic data models.
 * `static/`: Static files (CSS, JavaScript, images).
 * `src/templates/`: Reusable PyHTML layout components.

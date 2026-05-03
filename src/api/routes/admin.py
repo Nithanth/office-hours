@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from loguru import logger
 
@@ -75,8 +75,32 @@ async def recheck_paper_metadata(
 
 
 @router.get("/api/notion-status", tags=["admin"])
-async def notion_status() -> dict[str, Any]:
+async def notion_status(request: Request) -> dict[str, Any]:
     """Return Notion integration connection status (no secrets exposed)."""
+    from services.auth.session import get_auth_user_id
+    from services.persistence.database import database_available, session_scope
+
+    user_id = get_auth_user_id(request)
+    if user_id and database_available():
+        from services.persistence.repositories import get_notion_integration
+
+        async for session in session_scope():
+            integration = await get_notion_integration(session, user_id=user_id)
+        if integration is not None:
+            target_id = integration.parent_database_id or integration.parent_page_id or ""
+            masked_id = f"...{target_id[-8:]}" if len(target_id) > 8 else target_id
+            return {
+                "connected": True,
+                "oauth_connected": True,
+                "database_id": masked_id,
+                "has_api_key": True,
+                "has_parent": bool(target_id),
+                "target_type": "database"
+                if integration.parent_database_id
+                else ("page" if integration.parent_page_id else "none"),
+                "workspace_name": integration.workspace_name,
+            }
+
     has_key = bool(_cfg.config.NOTION_API_KEY)
     db_id = _cfg.config.NOTION_PARENT_DATABASE_ID or ""
     page_id = _cfg.config.NOTION_PARENT_PAGE_ID or ""
@@ -88,6 +112,7 @@ async def notion_status() -> dict[str, Any]:
 
     return {
         "connected": has_key and has_parent,
+        "oauth_connected": False,
         "database_id": masked_id if has_parent else "",
         "has_api_key": has_key,
         "has_parent": has_parent,

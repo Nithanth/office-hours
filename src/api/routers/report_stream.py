@@ -134,6 +134,23 @@ async def generate_report_incremental(  # noqa: PLR0913
     is_url_input: bool = Form(False),  # noqa: B008
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
+    from services.auth.session import get_auth_user_id
+    from services.persistence.database import database_available, session_scope
+
+    user_id = get_auth_user_id(request)
+    if user_id and database_available():
+        from services.persistence.repositories import daily_usage_count
+
+        async for session in session_scope():
+            used = await daily_usage_count(session, user_id=user_id, event_type="report_generated")
+        if used >= config.BETA_DAILY_REPORT_LIMIT:
+            return HTMLResponse(
+                "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+                "Daily report limit reached. Please try again tomorrow."
+                "</div>",
+                status_code=429,
+            )
+
     # Metrics: count incoming requests
     if _METRICS_ENABLED and REPORT_REQ is not None:
         REPORT_REQ.inc()
@@ -175,6 +192,7 @@ async def generate_report_incremental(  # noqa: PLR0913
         "summary_size": summary_size,
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
+        "user_id": user_id,
     }
     REPORT_REQUEST_CACHE[token] = payload
     _save_report_request(token, payload)
@@ -218,6 +236,7 @@ async def report_stream(
     audience_type = payload["audience_type"]
     summary_size = payload["summary_size"]
     selected_model_key = payload["selected_model_key"] or config.DEFAULT_MODEL_KEY
+    user_id = payload.get("user_id")
 
     llm_service, exa_client = await _get_services()
 
@@ -382,6 +401,7 @@ async def report_stream(
 
     async def event_generator() -> AsyncIterator[str]:
         _start_time = time.perf_counter()  # latency metric
+        persisted_blocks: list[str] = []
         # Kick off tasks concurrently
         coros: list[asyncio.Task[tuple[str, str]]] = []
         task_paper_map: dict[asyncio.Task, Paper] = {}
@@ -389,6 +409,7 @@ async def report_stream(
 
         # --- Emit heading block first so it appears above all summaries ---
         heading_html = "<h2 class='report-title text-xl font-bold mb-4'>Report</h2>"
+        persisted_blocks.append(heading_html)
         yield _format_sse_event("report-block", heading_html)
         # JSON envelope for clients needing structured stream (non-breaking)
         heading_meta = json.dumps(
@@ -458,6 +479,7 @@ async def report_stream(
             if _METRICS_ENABLED and REPORT_BLOCKS is not None:
                 REPORT_BLOCKS.inc()
             # Send HTML block for existing HTMX swap
+            persisted_blocks.append(block_html)
             yield _format_sse_event("report-block", block_html)
             # Send JSON envelope alongside for consumers needing structure
             block_meta = json.dumps(
@@ -479,6 +501,33 @@ async def report_stream(
             yield _format_sse_event("failures", json.dumps(failed_titles))
 
         # Finalise - send empty payload
+        if user_id:
+            try:
+                from services.persistence.database import database_available, session_scope
+                from services.persistence.repositories import create_report
+
+                if database_available():
+                    async for session in session_scope():
+                        saved = await create_report(
+                            session,
+                            user_id=str(user_id),
+                            title=str(payload["original_query"])[:300] or "Research Report",
+                            original_query=str(payload["original_query"]),
+                            audience_type=audience_type,
+                            summary_size=summary_size,
+                            model_key=selected_model_key,
+                            is_url_input=is_url_input_flag,
+                            report_html="\n".join(persisted_blocks),
+                            papers=papers_list,
+                        )
+                    yield _format_sse_event(
+                        "report-saved",
+                        json.dumps({"report_id": saved.id}, separators=(",", ":")),
+                    )
+                    logger.info("report_persisted", report_id=saved.id, user_id=user_id)
+            except Exception as exc:  # noqa: BLE001 - persistence must not break streaming
+                logger.warning("report_persist_failed", user_id=user_id, error=str(exc))
+
         yield _format_sse_event("done", "")
         # Also signal done for JSON stream so any listener can clean up.
         yield _format_sse_event(f"{_JSON_EVENT}-done", "")

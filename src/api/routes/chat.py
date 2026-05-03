@@ -52,6 +52,7 @@ async def chat_post(
     with_sources: str | None = Form(None),
     audience_type: str = Form("technical"),
     model_key: Optional[str] = Form(None),
+    report_id: str | None = Form(None),
 ) -> Response:
     """Handle a user chat message and return HTML skeleton for streaming reply."""
 
@@ -92,6 +93,25 @@ async def chat_post(
         return Response(status_code=204)
 
     chat_state.append(paper_id, ChatMessage(role="user", content=clean_msg))
+    from services.auth.session import get_auth_user_id
+    from services.persistence.database import database_available, session_scope
+
+    user_id = get_auth_user_id(request)
+    if user_id and database_available():
+        try:
+            from services.persistence.repositories import append_chat_message
+
+            async for db_session in session_scope():
+                await append_chat_message(
+                    db_session,
+                    user_id=user_id,
+                    report_id=report_id,
+                    paper_id=paper_id,
+                    role="user",
+                    content=clean_msg,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("chat_persist_user_failed", user_id=user_id, error=str(exc))
     log.info("chat_request", session_id=session_id, paper_id=paper_id, chars=len(clean_msg))
 
     # Reset ring buffer for new assistant response
@@ -110,6 +130,8 @@ async def chat_post(
     )
     if model_key:
         stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
+    if report_id:
+        stream_url += f"&report_id={_urlparse.quote_plus(report_id)}"
 
     # Minimal URL expected by legacy tests for HTMX sse-connect attr – only paper_id.
     legacy_sse_url = f"/chat/stream?paper_id={safe_paper_id}"
@@ -132,6 +154,7 @@ async def chat_stream(
     paper_id: str,
     audience_type: str = Query("technical"),
     model_key: Optional[str] = Query(None),
+    report_id: str | None = Query(None),
     resume_at: int = Query(0, ge=0, description="Token index to resume from."),
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> Response:
@@ -323,6 +346,27 @@ async def chat_stream(
             )
             if completed_successfully and assistant_msg:
                 chat_state.append(paper_id, ChatMessage(role="assistant", content=assistant_msg))
+                from services.auth.session import get_auth_user_id
+                from services.persistence.database import database_available, session_scope
+
+                user_id = get_auth_user_id(request)
+                if user_id and database_available():
+                    try:
+                        from services.persistence.repositories import append_chat_message
+
+                        async for db_session in session_scope():
+                            await append_chat_message(
+                                db_session,
+                                user_id=user_id,
+                                report_id=report_id,
+                                paper_id=paper_id,
+                                role="assistant",
+                                content=assistant_msg,
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning(
+                            "chat_persist_assistant_failed", user_id=user_id, error=str(exc)
+                        )
             else:
                 chat_state.reset_stream_buffer()
 

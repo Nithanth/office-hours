@@ -292,6 +292,7 @@ async def export_notion(
     source_url: str = Form(""),
     audience: str = Form(""),
     model: str = Form(""),
+    report_id: str | None = Form(None),
 ) -> Response:
     """Generate a structured outline, then push it to Notion."""
 
@@ -300,14 +301,40 @@ async def export_notion(
     if not report_text.strip():
         return _notion_json_error("Report text required", 400)
 
-    if not config.NOTION_API_KEY:
+    from services.auth.session import get_auth_user_id
+    from services.persistence.database import database_available, session_scope
+
+    user_id = get_auth_user_id(request)
+    notion_api_key = config.NOTION_API_KEY
+    notion_parent_page_id = config.NOTION_PARENT_PAGE_ID
+    notion_parent_database_id = config.NOTION_PARENT_DATABASE_ID
+    destination = "env"
+
+    if user_id and database_available():
+        try:
+            from services.persistence.repositories import (
+                get_notion_integration,
+                notion_access_token,
+            )
+
+            async for db_session in session_scope():
+                integration = await get_notion_integration(db_session, user_id=user_id)
+            if integration is not None:
+                notion_api_key = notion_access_token(integration)
+                notion_parent_page_id = integration.parent_page_id
+                notion_parent_database_id = integration.parent_database_id
+                destination = integration.workspace_name or "notion"
+        except Exception as err:  # noqa: BLE001
+            logger.warning("notion_user_config_load_failed", user_id=user_id, error=str(err))
+
+    if not notion_api_key:
         return _notion_json_error(
-            "Notion integration not configured. Set NOTION_API_KEY in .env.",
+            "Notion is not connected. Connect Notion in Settings first.",
             400,
         )
-    if not (config.NOTION_PARENT_PAGE_ID or config.NOTION_PARENT_DATABASE_ID):
+    if not (notion_parent_page_id or notion_parent_database_id):
         return _notion_json_error(
-            "Set NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID in .env.",
+            "Choose a Notion destination in Settings before exporting.",
             400,
         )
 
@@ -341,13 +368,13 @@ async def export_notion(
 
     from services.notion.notion_exporter import NotionExporter, NotionExportError
 
-    exporter = NotionExporter(api_key=config.NOTION_API_KEY)
+    exporter = NotionExporter(api_key=notion_api_key)
     try:
         url = await exporter.export_report(
             title=title,
             markdown=outline_md,
-            parent_page_id=config.NOTION_PARENT_PAGE_ID,
-            parent_database_id=config.NOTION_PARENT_DATABASE_ID,
+            parent_page_id=notion_parent_page_id,
+            parent_database_id=notion_parent_database_id,
             metadata={
                 "source_url": source_url or None,
                 "audience": audience or None,
@@ -358,9 +385,43 @@ async def export_notion(
         )
     except NotionExportError as err:
         logger.error("notion_export_failed", error=str(err))
+        if user_id and database_available():
+            try:
+                from services.persistence.repositories import record_export
+
+                async for db_session in session_scope():
+                    await record_export(
+                        db_session,
+                        user_id=user_id,
+                        report_id=report_id,
+                        export_type="notion",
+                        destination=destination,
+                        url=None,
+                        status="failed",
+                        error=str(err),
+                    )
+            except Exception as persist_err:  # noqa: BLE001
+                logger.warning("notion_export_record_failed", error=str(persist_err))
         return _notion_json_error(str(err), 502)
     finally:
         await exporter.close()
+
+    if user_id and database_available():
+        try:
+            from services.persistence.repositories import record_export
+
+            async for db_session in session_scope():
+                await record_export(
+                    db_session,
+                    user_id=user_id,
+                    report_id=report_id,
+                    export_type="notion",
+                    destination=destination,
+                    url=url,
+                    status="success",
+                )
+        except Exception as persist_err:  # noqa: BLE001
+            logger.warning("notion_export_record_failed", error=str(persist_err))
 
     logger.info("notion_export_success", url=url)
     return JSONResponse(content={"ok": True, "url": url})

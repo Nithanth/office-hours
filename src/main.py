@@ -16,6 +16,7 @@ import logging
 import pathlib as _pathlib
 import sys
 import time
+import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -34,6 +35,7 @@ from services.chat.chat_state import _chat_states
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMConfigurationError, LLMService
 from services.paper.text_extractor import TextExtractor
+from services.persistence.database import close_database, init_database
 from utils.observability import setup_observability
 
 # --- Optional Prometheus histogram; None when metrics are disabled ---
@@ -155,6 +157,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("initializing services")
     try:
         config.config.validate_model_registry()
+        await init_database()
         if config.config.EXA_API_KEY is None:
             logger.critical("EXA_API_KEY missing; aborting startup")
             sys.exit(1)
@@ -206,6 +209,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 _gc_task.cancel()
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
+        await close_database()
 
 
 # --- FastAPI app -----------------------------------------------------------
@@ -230,7 +234,16 @@ from api.routes import (
     ask_llm as _ask_llm_routes,
 )
 from api.routes import (
+    auth as _auth_routes,
+)
+from api.routes import (
     chat as _chat_routes,
+)
+from api.routes import (
+    history as _history_routes,
+)
+from api.routes import (
+    integrations as _integration_routes,
 )
 from api.routes import (
     metadata as _metadata_routes,
@@ -251,6 +264,9 @@ for _r in (
     _chat_routes.router,
     _report_routes.router,
     _search_routes.router,
+    _auth_routes.router,
+    _history_routes.router,
+    _integration_routes.router,
     _pages_routes.router,
     _ask_llm_routes.router,
     _admin_routes.router,
@@ -298,7 +314,42 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class AuthGateMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: D401
+        if not config.config.REQUIRE_LOGIN:
+            return await call_next(request)
+
+        path = request.url.path
+        public_prefixes = (
+            "/auth/",
+            "/static/",
+            "/healthz",
+            "/metrics",
+            "/api/me",
+            "/favicon.ico",
+        )
+        if path == "/" or any(path.startswith(prefix) for prefix in public_prefixes):
+            return await call_next(request)
+
+        from fastapi.responses import RedirectResponse
+
+        from services.auth.session import get_auth_user_id
+
+        if get_auth_user_id(request):
+            return await call_next(request)
+        if request.headers.get("HX-Request") == "true":
+            return HTMLResponse(
+                "<div class='error-banner'>Please sign in to continue.</div>",
+                status_code=401,
+            )
+        next_url = str(request.url.path)
+        if request.url.query:
+            next_url += "?" + request.url.query
+        return RedirectResponse(f"/auth/google/login?next={urllib.parse.quote(next_url)}")
+
+
 app.add_middleware(ChatSessionMiddleware)
+app.add_middleware(AuthGateMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 import uvicorn

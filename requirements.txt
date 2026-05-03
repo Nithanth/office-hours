@@ -6,6 +6,7 @@ fastapi~=0.115  # Added for direct FastAPI imports
 
 # Environment & Configuration
 python-dotenv~=1.1
+cryptography>=42
 
 # API Clients & HTTP
 httpx~=0.28
@@ -27,6 +28,9 @@ slowapi~=0.1
 aiohttp
 pdfplumber
 pandas
+sqlalchemy[asyncio]~=2.0
+asyncpg~=0.29
+alembic~=1.13
 
 # Data Validation & Modeling
 pydantic~=2.11

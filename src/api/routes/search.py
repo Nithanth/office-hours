@@ -57,6 +57,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
     session_id = await get_session_id(request)
+    from services.auth.session import get_auth_user_id
+    from services.persistence.database import database_available, session_scope
+
+    user_id = get_auth_user_id(request)
 
     exa_client = get_exa_client()
     llm_service = get_llm_service()
@@ -86,6 +90,18 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 "HX-Push-Url": "/",
             },
         )
+
+    if user_id and database_available():
+        from services.persistence.repositories import daily_usage_count
+
+        async for db_session in session_scope():
+            used = await daily_usage_count(db_session, user_id=user_id, event_type="search")
+        if used >= settings.BETA_DAILY_SEARCH_LIMIT:
+            return HTMLResponse(
+                "<div class='error-banner'>Daily search limit reached. Please try again tomorrow.</div>",
+                status_code=429,
+                headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            )
 
     # Normalise display count ----------------------------------------------------
     if num_results is None:
@@ -211,6 +227,18 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 session_id=session_id,
                 **search_kwargs,
             )
+
+        if user_id and database_available():
+            from services.persistence.repositories import record_usage
+
+            async for db_session in session_scope():
+                await record_usage(
+                    db_session,
+                    user_id=user_id,
+                    event_type="search",
+                    provider="exa",
+                    metadata={"mode": "url" if is_url_search else "query"},
+                )
 
         # Render results ----------------------------------------------------------
         results_component = render_search_results(

@@ -45,6 +45,20 @@ class Config:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
     LOG_FORMAT_JSON: bool = os.getenv("LUX_LOG_FORMAT_JSON", "False").lower() == "true"
 
+    # --- Private beta persistence/auth ---
+    DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+    AUTH_REDIRECT_BASE_URL: str = os.getenv(
+        "AUTH_REDIRECT_BASE_URL", f"http://localhost:{os.getenv('PORT', 8000)}"
+    ).rstrip("/")
+    GOOGLE_CLIENT_ID: str | None = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET: str | None = os.getenv("GOOGLE_CLIENT_SECRET")
+    NOTION_OAUTH_CLIENT_ID: str | None = os.getenv("NOTION_OAUTH_CLIENT_ID")
+    NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
+    LUX_SECRET_ENCRYPTION_KEY: str | None = os.getenv("LUX_SECRET_ENCRYPTION_KEY")
+    REQUIRE_LOGIN: bool = os.getenv("REQUIRE_LOGIN", "0") in {"1", "true", "yes", "True"}
+    BETA_DAILY_REPORT_LIMIT: int = int(os.getenv("BETA_DAILY_REPORT_LIMIT", 20))
+    BETA_DAILY_SEARCH_LIMIT: int = int(os.getenv("BETA_DAILY_SEARCH_LIMIT", 100))
+
     # --- Cache directories ---
     # All on-disk caches live under a single root to simplify deployment and cleanup.
     CACHE_DIR: Path = Path(os.getenv("CACHE_DIR", ".cache")).expanduser()
