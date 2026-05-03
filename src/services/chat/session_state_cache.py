@@ -11,8 +11,9 @@ import fcntl
 import json
 import os
 import time
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -103,17 +104,17 @@ class SessionStateCache:
                     return
                 try:
                     os.replace(temp_path, path)
-                    logger.debug("session_cache_saved", session_id=session_id, keys=list(state.keys()))
+                    logger.debug(
+                        "session_cache_saved", session_id=session_id, keys=list(state.keys())
+                    )
                 finally:
                     cls._release_lock(lock_fh.fileno())
 
         except OSError as exc:
             logger.warning("session_cache_save_failed", session_id=session_id, err=str(exc))
             # Clean up temp file if it exists
-            try:
+            with suppress(OSError):
                 temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     @classmethod
     def load(cls, session_id: str) -> dict[str, Any] | None:
@@ -137,10 +138,12 @@ class SessionStateCache:
                     logger.warning("session_cache_read_lock_timeout", session_id=session_id)
                     return None
                 try:
-                    with open(path, "r", encoding="utf-8") as fh:
+                    with open(path, encoding="utf-8") as fh:
                         data = json.load(fh)
-                    logger.debug("session_cache_loaded", session_id=session_id, keys=list(data.keys()))
-                    return data
+                    logger.debug(
+                        "session_cache_loaded", session_id=session_id, keys=list(data.keys())
+                    )
+                    return cast(dict[str, Any], data)
                 finally:
                     cls._release_lock(lock_fh.fileno())
 
@@ -149,12 +152,12 @@ class SessionStateCache:
         except json.JSONDecodeError as exc:
             logger.warning("session_cache_corrupted", session_id=session_id, err=str(exc))
             # Try to backup and clear corrupted file
-            try:
+            with suppress(OSError):
                 backup_path = path.with_suffix(".corrupted")
                 path.rename(backup_path)
-                logger.info("session_cache_backed_up", session_id=session_id, backup=str(backup_path))
-            except OSError:
-                pass
+                logger.info(
+                    "session_cache_backed_up", session_id=session_id, backup=str(backup_path)
+                )
             return None
         except OSError as exc:
             logger.warning("session_cache_load_failed", session_id=session_id, err=str(exc))

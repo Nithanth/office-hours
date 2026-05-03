@@ -6,7 +6,6 @@ input, and rewrites HTMX attributes so the front-end can immediately stream
 messages via SSE.
 """
 
-import asyncio
 import html
 import ipaddress
 import re
@@ -186,7 +185,9 @@ async def chat_modal(
 
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
-        from services.chat.chat_state import get_chat_state  # local import avoids heavy dep
+        from services.chat.chat_state import (
+            get_chat_state,
+        )  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
         history = get_chat_state(session_id).get_conversation(paper_id)
@@ -211,13 +212,14 @@ async def chat_modal(
     _search = f'id="{chat_log_id}" class="chat-log-container modal-body"'
 
     # Find the chat-log div and replace its contents
-    _open_tag = f'{_search}>'
+    _open_tag = f"{_search}>"
     _open_repl = f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden">'
     modal_html = modal_html.replace(_open_tag, _open_repl, 1)
 
     # If we have history, replace the empty hint with conversation bubbles
     if history_html:
         import re as _re
+
         modal_html = _re.sub(
             r'(<div[^>]*class="chat-empty-hint"[^>]*>.*?</div>)',
             history_html,
@@ -289,7 +291,9 @@ async def chat_panel(
     chat_log_id = f"chat-log-{uuid4().hex[:8]}"
 
     # Load prior history (best-effort)
-    from services.chat.chat_state import get_chat_state  # local import avoids heavier top-level dep
+    from services.chat.chat_state import (
+        get_chat_state,
+    )  # local import avoids heavier top-level dep
 
     session_id = getattr(request.state, "session_id", "anon")
     chat_state = get_chat_state(session_id)
@@ -301,7 +305,7 @@ async def chat_panel(
         try:
             from services.chat.chat_history_cache import ChatHistoryCache as _CHC
 
-            loaded = _CHC.load(paper_id)
+            loaded = _CHC.load(session_id, paper_id)
             if loaded:
                 from services.chat.chat_state import ChatMessage  # local import
 
@@ -465,7 +469,8 @@ async def html_proxy(
         headers={
             "Cache-Control": "public, max-age=3600",
             "X-Frame-Options": "SAMEORIGIN",
-            # Allow the proxied document to fetch its own CSS/JS/fonts/images over HTTPS
+            # Remote HTML is rendered in a sandboxed iframe; block scripts at
+            # the response layer too so it cannot execute under our origin.
             "Content-Security-Policy": (
                 "frame-ancestors 'self'; "
                 "frame-src 'self' https: data:; "
@@ -473,7 +478,7 @@ async def html_proxy(
                 "style-src 'self' 'unsafe-inline' https:; "
                 "font-src 'self' https: data:; "
                 "img-src 'self' data: https:; "
-                "script-src 'self' 'unsafe-inline' https:; "
+                "script-src 'none'; "
                 "connect-src 'self' https:;"
             ),
         },
@@ -493,8 +498,8 @@ async def viewer_modal(
     """Return a two-pane viewer (PDF or HTML) with side-chat.
 
     • If *url* ends in `.pdf`, we embed with `<embed>` and mark data-viewer=pdf.
-    • Otherwise we treat it as a normal webpage and use an `<iframe>` with
-      sandboxing disabled for now (iframe navigation stays inside the pane).
+    • Otherwise we treat it as a normal webpage and use a strongly sandboxed
+      `<iframe>` so proxied remote HTML cannot execute in our origin.
     • When *url* is omitted we fall back to the existing chat-only modal.
     """
 
@@ -549,7 +554,7 @@ async def viewer_modal(
         )
     else:
         proxied = f"/html-proxy?url={urllib.parse.quote_plus(url)}"
-        embed_html = f'<iframe id="doc-frame" src="{proxied}" sandbox="allow-same-origin allow-scripts"></iframe>'
+        embed_html = f'<iframe id="doc-frame" src="{proxied}" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe>'
 
     modal_html = f"""
 <div class=\"modal\" id=\"viewer-{paper_id}\">

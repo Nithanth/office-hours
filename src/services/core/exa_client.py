@@ -9,10 +9,12 @@ network access or shared caches remains here.
 """
 
 import asyncio
-import os
 import re
 import time
 from collections import Counter
+
+# Shared thread pool for enrich_url calls (avoids creating a new pool per call)
+from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Optional, cast
 
@@ -40,6 +42,9 @@ from services.paper.metadata.metadata_fetchers import (
 from services.paper.metadata.metadata_fetchers import (
     fetch_semantic_scholar_arxiv as _fetch_ss_arxiv,
 )
+from services.paper.metadata.metadata_fetchers import (
+    fetch_semantic_scholar_arxiv_batch as _fetch_ss_arxiv_batch,
+)
 from services.query.cache import CachedSearch
 
 from .exa_adapter import ExaAdapter
@@ -55,10 +60,6 @@ from .exa_utils import (
 from .exa_utils import (
     url_utils as _url_utils,
 )
-
-
-# Shared thread pool for enrich_url calls (avoids creating a new pool per call)
-from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 
 _ENRICH_POOL = _ThreadPoolExecutor(max_workers=4)
 
@@ -202,6 +203,10 @@ class ExaClient:
                 if arxiv_id_early:
                     logger.debug("Fetching arXiv metadata for {}", arxiv_id_early)
                     external_meta = _fetch_arxiv_metadata(arxiv_id_early)
+                    # Fallback to Semantic Scholar if arXiv returned nothing (rate-limited)
+                    if not external_meta:
+                        logger.debug("arXiv empty, trying Semantic Scholar for {}", arxiv_id_early)
+                        external_meta = _fetch_ss_arxiv(arxiv_id_early)
                     logger.debug(
                         "arXiv meta keys={} authors={}",
                         list(external_meta.keys()) if external_meta else None,
@@ -229,6 +234,17 @@ class ExaClient:
                 paper = cast(Paper, _paper_utils.update_paper_from_meta(paper, external_meta))
                 if external_meta.get("text_content") and not paper.text_content:
                     paper.text_content = external_meta["text_content"]
+
+            # Early exit: if we already have title + authors + date, skip Exa calls
+            title_ok = bool(
+                paper.title
+                and paper.title != "No Title Provided"
+                and not paper.title.startswith("arXiv:")
+            )
+            if title_ok and paper.authors and paper.published_date:
+                complete_now = True
+                self._cache.upsert(doc_id, paper.model_dump(), complete_now)
+                return paper
 
             # 3. If still incomplete or stale, consult Exa get_contents ---------
             logger.debug("Exa get_contents for {}", doc_id)
@@ -278,7 +294,11 @@ class ExaClient:
                 # metadata from overwriting clean values.
                 # ----------------------------------------------------------
                 meta: dict[str, Any] = {}
-                if not paper.title or paper.title == "No Title Provided":
+                if (
+                    not paper.title
+                    or paper.title == "No Title Provided"
+                    or paper.title.startswith("arXiv:")
+                ):
                     meta["title"] = getattr(r, "title", None)
                 if (
                     (not paper.authors)
@@ -293,8 +313,14 @@ class ExaClient:
                     paper = cast(Paper, _paper_utils.update_paper_from_meta(paper, meta))
 
                 # Fallback to arXiv API if critical fields still missing
+                _title_missing = (
+                    not paper.title
+                    or paper.title == "No Title Provided"
+                    or paper.title.startswith("arXiv:")
+                )
                 if "arxiv.org" in str(paper.url).lower() and (
-                    not paper.authors
+                    _title_missing
+                    or not paper.authors
                     or not any(_author_utils.is_plausible_author(a) for a in paper.authors)
                     or not paper.published_date
                 ):
@@ -391,20 +417,21 @@ class ExaClient:
         If Exa fails or no answer is found, returns an empty dict.
         """
         try:
-            resp = self.adapter.answer(question, num_results=top_k)
+            resp = self.adapter.answer(question, text=True)
             answer_text: str | None = getattr(resp, "answer", None)
+            if isinstance(answer_text, dict):
+                answer_text = str(answer_text)
             passages: list[dict[str, str]] = []
-            if hasattr(resp, "results") and resp.results:
-                for res in resp.results[:top_k]:
-                    snippet = (
-                        getattr(res, "text", "").strip() or getattr(res, "snippet", "").strip()
-                    )
-                    passages.append(
-                        {
-                            "snippet": snippet[:512],
-                            "url": getattr(res, "url", "") or getattr(res, "id", ""),
-                        }
-                    )
+            # v2 answer() returns .citations instead of .results
+            citations = getattr(resp, "citations", None) or getattr(resp, "results", None) or []
+            for res in citations[:top_k]:
+                snippet = getattr(res, "text", "").strip() or getattr(res, "snippet", "").strip()
+                passages.append(
+                    {
+                        "snippet": snippet[:512],
+                        "url": getattr(res, "url", "") or getattr(res, "id", ""),
+                    }
+                )
             return {"answer": answer_text, "passages": passages}
         except Exception as exc:
             logger.warning(
@@ -459,6 +486,8 @@ class ExaClient:
             if exclude_domains:
                 exa_kwargs["exclude_domains"] = exclude_domains
 
+            # v2: contents=False for metadata-only similar results
+            exa_kwargs.setdefault("contents", False)
             similar_response = self.client.find_similar(
                 paper_url_norm,
                 **exa_kwargs,
@@ -755,7 +784,16 @@ class ExaClient:
                 arxiv_papers.setdefault(aid, []).append(p)
 
         if arxiv_papers:
-            batch_meta = _fetch_arxiv_batch(list(arxiv_papers.keys()))
+            arxiv_ids = list(arxiv_papers.keys())
+            batch_meta = _fetch_arxiv_batch(arxiv_ids)
+
+            # Fallback: if arXiv returned nothing (e.g. 429), try Semantic Scholar
+            if not batch_meta and arxiv_ids:
+                logger.info(
+                    "arXiv batch empty, falling back to Semantic Scholar for {} IDs", len(arxiv_ids)
+                )
+                batch_meta = _fetch_ss_arxiv_batch(arxiv_ids)
+
             for aid, meta in batch_meta.items():
                 for p in arxiv_papers.get(aid, []):
                     _paper_utils.update_paper_from_meta(p, meta)
@@ -763,25 +801,35 @@ class ExaClient:
         # 2b. Enrich remaining metadata per-paper ----------------------------
         from concurrent.futures import as_completed
 
-        papers_to_enrich = [
-            p for p in pre_pool
-            if (
-                bool(
-                    _url_utils.extract_arxiv_id(p.url)
-                    or _url_utils.extract_doi(str(p.url) if p.url else None)
-                )
-                or not (p.authors and p.published_date)
+        def _needs_enrichment(p: Paper) -> bool:
+            """Only enrich papers still missing critical metadata after batch fetch."""
+            title_ok = bool(
+                p.title and p.title != "No Title Provided" and not p.title.startswith("arXiv:")
             )
-        ]
+            authors_ok = bool(p.authors and len(p.authors) > 0)
+            date_ok = bool(p.published_date)
+            # Only enrich if title OR (authors AND date) are missing
+            return not title_ok or not (authors_ok and date_ok)
+
+        papers_to_enrich = [p for p in pre_pool if _needs_enrichment(p)]
+        logger.info(
+            "enrich_needed: {}/{} papers need per-paper enrichment",
+            len(papers_to_enrich),
+            len(pre_pool),
+        )
 
         if papers_to_enrich:
-            fut_map = {_ENRICH_POOL.submit(self._enrich_paper_metadata, p): p for p in papers_to_enrich}
+            fut_map = {
+                _ENRICH_POOL.submit(self._enrich_paper_metadata, p): p for p in papers_to_enrich
+            }
             for fut in as_completed(fut_map):
                 try:
                     fut.result()
                 except Exception as exc:  # noqa: BLE001 – best-effort
                     failed_paper = fut_map.get(fut)
-                    logger.debug("enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc))
+                    logger.debug(
+                        "enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc)
+                    )
 
         # 3. Adaptive score / breadth filter -------------------------------
         filtered = _filter_utils.apply_score_threshold(pre_pool, k)
@@ -1035,8 +1083,6 @@ class ExaClient:
                 logger.warning("enrich_url timed out for {} after {:.1f}s", url, timeout)
                 return None
 
-        import concurrent.futures
-
         # Determine if we're already inside an event loop.  Creating the coroutine only
         # after this check prevents the "coroutine was never awaited" warning.
         loop_running = True
@@ -1078,8 +1124,10 @@ class ExaClient:
             kwargs["end_published_date"] = kwargs["end_published_date"].date().isoformat()
 
         try:
-            # Use neural search to get relevance scores (auto search deprecated scores)
-            kwargs.setdefault("type", "neural")
+            # v2: use auto search for best recall (blends neural + keyword);
+            # contents=False for metadata-only to avoid fetching full text.
+            kwargs.setdefault("type", "auto")
+            kwargs.setdefault("contents", False)
             sdk_res = self.adapter.search(query, num_results=num_results, **kwargs)
         except Exception as exc:
             logger.error("Exa search failed for {} - {}", query, exc)

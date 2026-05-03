@@ -285,19 +285,38 @@ console.debug("[lux] main.js history clean listener wired");
 }`;
   }
 
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    // Fallback for non-HTTPS contexts
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;left:-9999px;";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    return Promise.resolve();
+  }
+
   document.addEventListener("click", (ev) => {
     const btn = ev.target.closest(".bibtex-copy-btn");
     if (!btn) return;
     const bibtex = generateBibtex(btn);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(bibtex).then(() => {
-        btn.style.opacity = "1";
-        btn.title = "Copied!";
-        setTimeout(() => {
-          btn.style.opacity = "0.6";
-          btn.title = "Copy BibTeX citation";
-        }, 1500);
-      });
-    }
+    copyToClipboard(bibtex).then(() => {
+      btn.style.opacity = "1";
+      btn.title = "Copied!";
+      const icon = btn.querySelector("i");
+      if (icon) {
+        icon.className = "fa-solid fa-check";
+        setTimeout(() => { icon.className = "fa-solid fa-quote-right"; }, 1500);
+      }
+      if (window.showToast) window.showToast("BibTeX copied to clipboard");
+      setTimeout(() => {
+        btn.style.opacity = "0.6";
+        btn.title = "Copy BibTeX citation";
+      }, 1500);
+    });
   });
 })();

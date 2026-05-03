@@ -16,6 +16,24 @@ _admin_security = HTTPBearer(auto_error=False)
 router = APIRouter()
 
 
+def _require_admin(creds: HTTPAuthorizationCredentials | None) -> None:
+    """Fail closed for admin operations in production."""
+
+    secret = _cfg.config.ADMIN_API_KEY
+    if not secret:
+        if _cfg.config.ENV == "prod":
+            logger.error("admin_secret_missing")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Admin API key is not configured",
+            )
+        return
+
+    if creds is None or creds.credentials != secret:
+        logger.warning("admin_forbidden")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
 @router.get("/healthz")
 async def healthz() -> dict[str, bool]:
     """Liveness probe consumed by orchestration platforms."""
@@ -27,10 +45,7 @@ async def flush_summary_cache(  # noqa: B008 - Depends used as default per FastA
     creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
 ) -> dict[str, bool]:
     """Clear all cached LLM summaries."""
-    secret = _cfg.config.ADMIN_API_KEY
-    if secret and (creds is None or creds.credentials != secret):
-        logger.warning("flush_cache_forbidden")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    _require_admin(creds)
 
     SummaryCache.clear()
     logger.info("summary_cache_flushed")
@@ -44,16 +59,14 @@ async def recheck_paper_metadata(
 ) -> dict[str, int]:
     """Manually trigger a batch re-enrichment of incomplete paper metadata."""
 
-    secret = _cfg.config.ADMIN_API_KEY
-    if secret and (creds is None or creds.credentials != secret):
-        logger.warning("metadata_recheck_forbidden")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    _require_admin(creds)
 
     exa_client = get_exa_client()
     if exa_client is None:
         logger.error("exa_client_unavailable")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Exa client not ready"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Exa client not ready",
         )
 
     processed = exa_client.recheck_incomplete_metadata(limit=limit)

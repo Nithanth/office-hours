@@ -424,7 +424,7 @@ class TextExtractor:
 
                     async def _meta_task() -> None:
                         """Background task to download the PDF and parse metadata."""
-                        import requests
+                        import requests  # type: ignore[import-untyped]
 
                         nonlocal meta
                         try:
@@ -468,8 +468,12 @@ class TextExtractor:
 
     async def load_full_text(self, paper_id: str) -> str | None:
         """Return absolute cache **file path** for *paper_id* (if any)."""
+        # Sanitize the same way _cache_path does so the glob matches on-disk names.
+        safe_id = (
+            re.sub(r"[^A-Za-z0-9._-]", "_", paper_id)[:80].replace(os.sep, "_").replace("/", "_")
+        )
         # Prefer full extracts over partial abstracts if both exist.
-        candidates = sorted(CACHE_ROOT.glob(f"{paper_id}_*.txt"))
+        candidates = sorted(CACHE_ROOT.glob(f"{safe_id}_*.txt"))
         if not candidates:
             return None
 

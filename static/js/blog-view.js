@@ -274,6 +274,21 @@ function initActions(rawMd) {
     URL.revokeObjectURL(url);
     showToast("Downloaded");
   });
+
+  document.getElementById("blog-save-html-btn")?.addEventListener("click", () => {
+    const htmlContent = document.documentElement.outerHTML;
+    const blob = new Blob(["<!DOCTYPE html>\n" + htmlContent], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: "research_blog.html",
+    });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Saved as HTML");
+  });
 }
 
 // ---------------------------------------------------------------------------

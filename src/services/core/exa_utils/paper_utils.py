@@ -52,22 +52,29 @@ def is_valid_paper(paper: Paper | None) -> bool:
     if paper is None:
         return False
 
-    title_clean = (paper.title or "").strip()
-    if not title_clean or title_clean == "No Title Provided":
-        return False
-    if len(title_clean) < 8:
-        return False
-    blacklist = {"recaptcha", "captcha", "not found", "404", "error"}
-    if any(bad in title_clean.lower() for bad in blacklist):
-        return False
     if not paper.url:
+        return False
+
+    url_str = str(paper.url)
+    has_trusted_id = bool(_url_utils.extract_arxiv_id(url_str) or _url_utils.extract_doi(url_str))
+
+    title_clean = (paper.title or "").strip()
+
+    # Papers from trusted sources (arXiv, DOI) are kept even with placeholder
+    # titles — the enrichment pipeline will resolve the real title later.
+    if not has_trusted_id:
+        if not title_clean or title_clean == "No Title Provided":
+            return False
+        if len(title_clean) < 8:
+            return False
+
+    blacklist = {"recaptcha", "captcha", "not found", "404", "error"}
+    if title_clean and any(bad in title_clean.lower() for bad in blacklist):
         return False
 
     # Allow Exa's sparse results: accept when any of the following signals exist
     has_authors = bool(paper.authors and len(paper.authors) > 0)
     has_text = bool(paper.text_content and len(paper.text_content) >= 100)
-    url_str = str(paper.url)
-    has_trusted_id = bool(_url_utils.extract_arxiv_id(url_str) or _url_utils.extract_doi(url_str))
 
     return bool(has_authors or has_text or has_trusted_id)
 
@@ -98,10 +105,7 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
         # If title is missing (common for PDF URLs), use arXiv ID as readable placeholder
         if not title_val:
             arxiv_id = _url_utils.extract_arxiv_id(raw_url)
-            if arxiv_id:
-                title_val = f"arXiv:{arxiv_id}"
-            else:
-                title_val = "No Title Provided"
+            title_val = f"arXiv:{arxiv_id}" if arxiv_id else "No Title Provided"
         url_val: str = _url_utils.upgrade_to_pdf_url(raw_url) or raw_url
 
         url_val_typed = _coerce_http_url(url_val)
@@ -169,7 +173,9 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
 
 def update_paper_from_meta(paper: Paper, meta: dict[str, Any]) -> Paper:
     """Overlay non-empty *meta* fields onto *paper* in-place and return it."""
-    if meta.get("title") and (not paper.title or paper.title == "No Title Provided"):
+    if meta.get("title") and (
+        not paper.title or paper.title == "No Title Provided" or paper.title.startswith("arXiv:")
+    ):
         paper.title = str(meta["title"])
 
     if meta.get("authors"):

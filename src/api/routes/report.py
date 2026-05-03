@@ -159,7 +159,9 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         similar_candidates: list[Paper] = []
         for paper in deserialized_papers:
             url_str = str(paper.url)
-            if main_paper_for_report is None and _url_utils.url_equivalent(url_str, original_query_for_report):
+            if main_paper_for_report is None and _url_utils.url_equivalent(
+                url_str, original_query_for_report
+            ):
                 main_paper_for_report = paper
             else:
                 similar_candidates.append(paper)

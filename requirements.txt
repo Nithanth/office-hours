@@ -9,7 +9,7 @@ python-dotenv~=1.1
 
 # API Clients & HTTP
 httpx~=0.28
-exa_py~=2.7
+exa_py~=2.11
 openai~=1.85
 anthropic~=0.53
 together~=1.5
@@ -38,3 +38,6 @@ readability-lxml~=0.8.4
 
 # Document generation
 python-docx~=1.2
+
+# Notion integration
+notion-client~=2.3

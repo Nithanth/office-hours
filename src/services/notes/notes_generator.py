@@ -75,10 +75,7 @@ def _render_txt(md_text: str) -> str:
             if indent_spaces:
                 level = min(indent_spaces // 2, 2)
             else:
-                if m.group(2) in _PLAIN_BULLETS:
-                    level = _PLAIN_BULLETS.index(m.group(2))
-                else:
-                    level = 0
+                level = _PLAIN_BULLETS.index(m.group(2)) if m.group(2) in _PLAIN_BULLETS else 0
 
             prefix = _PLAIN_BULLETS[min(level, 2)] if m_b else m.group(2)
             txt_clean = re.sub(r"[*_]{1,2}(.*?)?[*_]{1,2}", r"\1", m["txt"])

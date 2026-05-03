@@ -407,9 +407,16 @@ function handleNotionClick(ev) {
   if (modelSel && modelSel.value) fd.append("model", modelSel.value);
 
   fetch("/export-notion", { method: "POST", body: fd })
-    .then((r) => {
-      if (!r.ok) return r.json().then((d) => { throw new Error(d.detail || `Server responded ${r.status}`); });
-      return r.json();
+    .then(async (r) => {
+      const contentType = r.headers.get("content-type") || "";
+      const payload = contentType.includes("application/json")
+        ? await r.json()
+        : { detail: await r.text() };
+
+      if (!r.ok) {
+        throw new Error(payload.detail || `Server responded ${r.status}`);
+      }
+      return payload;
     })
     .then((data) => {
       if (data.url && notionWindow) {

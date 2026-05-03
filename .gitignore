@@ -161,10 +161,10 @@ data/
 scripts/text_dumps/
 .chat_cache/
 # vector indices
-+.vector_cache/
-+*.faiss
-+.lance/
-+
+.vector_cache/
+*.faiss
+.lance/
+
 # node
 node_modules
 

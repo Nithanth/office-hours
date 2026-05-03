@@ -136,10 +136,16 @@ class ChatState:
 
         # Persist to on-disk cache so history survives restarts.
         try:
-            from services.chat.chat_history_cache import ChatHistoryCache as _CHC  # local import
+            from services.chat.chat_history_cache import (
+                ChatHistoryCache as _CHC,
+            )  # local import
 
             # Serialise to plain dicts for JSON
-            _CHC.save(paper_id, [m.serialise() for m in self._histories[paper_id]])
+            _CHC.save(
+                self._session_id,
+                paper_id,
+                [m.serialise() for m in self._histories[paper_id]],
+            )
         except Exception as exc:  # noqa: BLE001 – persistence is best-effort
             logger.warning("chat_history_save_failed", paper_id=paper_id, err=str(exc))
 
@@ -161,7 +167,7 @@ class ChatState:
             try:
                 from services.chat.chat_history_cache import ChatHistoryCache as _CHC
 
-                turns = _CHC.load(paper_id)
+                turns = _CHC.load(self._session_id, paper_id)
                 if turns:
                     self._histories[paper_id] = [
                         ChatMessage(role=t["role"], content=t["content"]) for t in turns

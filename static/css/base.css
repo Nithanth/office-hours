@@ -2,7 +2,7 @@
 @import url("variables.css");
 
 body {
-  font-family: "Times New Roman", Times, serif; /* retro vibe */
+  font-family: Arial, Helvetica, sans-serif;
   margin: 0;
   padding: 0 var(--page-padding);
   background: var(--bg);

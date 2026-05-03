@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from loguru import logger
@@ -25,6 +26,28 @@ class NotionExporter:
             ) from err
         self._client = AsyncClient(auth=api_key)
 
+    @staticmethod
+    def _create_error_message(err: Exception, target_kind: str) -> str:
+        """Return a concise, actionable Notion API error."""
+
+        status = getattr(err, "status", None)
+        code = getattr(err, "code", None)
+        message = getattr(err, "message", None) or str(err)
+
+        if status == 404 or code == "object_not_found":
+            return (
+                f"Notion could not find the configured {target_kind}. "
+                "Verify the ID in .env and share that page/database with your Notion integration."
+            )
+        if status == 401 or code == "unauthorized":
+            return "Notion rejected NOTION_API_KEY. Verify the integration token in .env."
+        if status == 400 or code == "validation_error":
+            return (
+                "Notion rejected the export payload. If exporting to a database, verify its "
+                "properties match the expected schema or use NOTION_PARENT_PAGE_ID instead."
+            )
+        return f"Notion page creation failed: {message}"
+
     async def export_report(
         self,
         *,
@@ -41,9 +64,7 @@ class NotionExporter:
         child page under ``parent_page_id``.
         """
         if not parent_database_id and not parent_page_id:
-            raise NotionExportError(
-                "Configure NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID."
-            )
+            raise NotionExportError("Configure NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID.")
 
         blocks = markdown_to_blocks(markdown)
         batches = chunk_blocks(blocks)
@@ -52,17 +73,26 @@ class NotionExporter:
         if parent_database_id:
             parent = {"database_id": parent_database_id}
             properties = _database_properties(title, metadata or {})
+            target_kind = "database"
         else:
+            if parent_page_id is None:
+                raise NotionExportError("Configure NOTION_PARENT_PAGE_ID.")
             parent = {"page_id": parent_page_id}
             properties = _page_title_property(title)
+            target_kind = "page"
 
         try:
             page = await self._client.pages.create(
                 parent=parent, properties=properties, children=first_batch
             )
         except Exception as err:  # notion_client raises APIResponseError subclasses
-            logger.error("notion_create_failed", error=str(err))
-            raise NotionExportError(f"Notion page creation failed: {err}") from err
+            logger.error(
+                "notion_create_failed",
+                error=str(err),
+                status=getattr(err, "status", None),
+                code=getattr(err, "code", None),
+            )
+            raise NotionExportError(self._create_error_message(err, target_kind)) from err
 
         page_id = page["id"]
 
@@ -108,20 +138,14 @@ def _database_properties(title: str, metadata: dict[str, Any]) -> dict[str, Any]
         props["Model"] = {"rich_text": [{"type": "text", "text": {"content": model[:200]}}]}
     if authors := metadata.get("authors"):
         joined = ", ".join(authors) if isinstance(authors, list) else str(authors)
-        props["Authors"] = {
-            "rich_text": [{"type": "text", "text": {"content": joined[:2000]}}]
-        }
+        props["Authors"] = {"rich_text": [{"type": "text", "text": {"content": joined[:2000]}}]}
     if year := metadata.get("year"):
-        try:
+        with suppress(TypeError, ValueError):
             props["Year"] = {"number": int(year)}
-        except (TypeError, ValueError):
-            pass
     if export_type := metadata.get("type"):
         props["Type"] = {"select": {"name": export_type}}
     if tags := metadata.get("tags"):
         tag_list = tags if isinstance(tags, list) else [tags]
-        props["Tags"] = {
-            "multi_select": [{"name": t.strip()[:100]} for t in tag_list if t.strip()]
-        }
+        props["Tags"] = {"multi_select": [{"name": t.strip()[:100]} for t in tag_list if t.strip()]}
 
     return props

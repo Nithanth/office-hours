@@ -6,8 +6,6 @@ import urllib.parse
 from datetime import datetime
 from typing import Any, Optional
 
-from loguru import logger
-
 # FastHTML components used by this page
 from fasthtml.components import (
     BUTTON,
@@ -34,6 +32,7 @@ from fasthtml.components import (
     Textarea,
     Title,
 )
+from loguru import logger
 from pydantic import BaseModel
 
 import config  # Your project's config module
@@ -263,7 +262,11 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
     if paper.text_content:
         raw_text = paper.text_content.strip()
         # Try to find an "Abstract" section
-        m = re.search(r"(?i)(?:^|\n)\s*(?:abstract|summary)[:\s]*\n?\s*(.+?)(?:\n\s*\n|\n\s*(?:#{1,3}\s|introduction|1[\.\s]))", raw_text[:8000], re.DOTALL)
+        m = re.search(
+            r"(?i)(?:^|\n)\s*(?:abstract|summary)[:\s]*\n?\s*(.+?)(?:\n\s*\n|\n\s*(?:#{1,3}\s|introduction|1[\.\s]))",
+            raw_text[:8000],
+            re.DOTALL,
+        )
         if m:
             abstract_text = m.group(1).strip()
         else:
@@ -273,7 +276,10 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
             for line in lines:
                 stripped = line.strip()
                 # Skip arXiv metadata header lines
-                if re.match(r"^(#|arXiv:|>\s|Computer Science|\[Submitted|\[v\d|Title:|Authors?:|Date:)", stripped):
+                if re.match(
+                    r"^(#|arXiv:|>\s|Computer Science|\[Submitted|\[v\d|Title:|Authors?:|Date:)",
+                    stripped,
+                ):
                     continue
                 if stripped and len(stripped) > 30:
                     content_lines.append(stripped)
@@ -283,14 +289,18 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
 
         # No truncation — the modal dialog scrolls for long abstracts
 
-    toggle_btn = BUTTON(
-        I(cls="fa-solid fa-chevron-down"),
-        type="button",
-        cls="abstract-toggle-btn",
-        title="Show abstract",
-        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:6px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
-        **{"data-abstract": html.escape(abstract_text)} if abstract_text else {},
-    ) if abstract_text else Span()
+    toggle_btn = (
+        BUTTON(
+            I(cls="fa-solid fa-chevron-down"),
+            type="button",
+            cls="abstract-toggle-btn",
+            title="Show abstract",
+            style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:6px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
+            **{"data-abstract": html.escape(abstract_text)} if abstract_text else {},
+        )
+        if abstract_text
+        else Span()
+    )
 
     # No longer inline — JS will create a popover from data-abstract
 
@@ -727,7 +737,10 @@ def home_page(page_data: SharedPageData) -> Body:
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
-                P(I("Enter a research topic, query, or paper link:"), style="margin-bottom:0.5rem;"),
+                P(
+                    I("Enter a research topic, query, or paper link:"),
+                    style="margin-bottom:0.5rem;",
+                ),
                 FORM(  # Search Form
                     INPUT(
                         type="search",

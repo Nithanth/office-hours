@@ -59,11 +59,24 @@ def filter_papers(
 
 # Authoritative academic domains earn a source-quality bonus.
 _TRUSTED_DOMAINS: set[str] = {
-    "arxiv.org", "ar5iv.org", "biorxiv.org", "medrxiv.org",
-    "ieee.org", "ieeexplore.ieee.org", "dl.acm.org",
-    "openreview.net", "aclanthology.org", "aclweb.org",
-    "nature.com", "science.org", "pnas.org", "springer.com",
-    "wiley.com", "cell.com", "nih.gov", "ncbi.nlm.nih.gov",
+    "arxiv.org",
+    "ar5iv.org",
+    "biorxiv.org",
+    "medrxiv.org",
+    "ieee.org",
+    "ieeexplore.ieee.org",
+    "dl.acm.org",
+    "openreview.net",
+    "aclanthology.org",
+    "aclweb.org",
+    "nature.com",
+    "science.org",
+    "pnas.org",
+    "springer.com",
+    "wiley.com",
+    "cell.com",
+    "nih.gov",
+    "ncbi.nlm.nih.gov",
 }
 
 
@@ -97,7 +110,11 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
         meta_score = 0.0
         has_authors = bool(p.authors and len(p.authors) > 0)
         has_date = bool(p.published_date)
-        has_title = bool(p.title and p.title not in ("No Title Provided", ""))
+        has_title = bool(
+            p.title
+            and p.title not in ("No Title Provided", "")
+            and not p.title.startswith("arXiv:")
+        )
         # Each component worth ~0.33
         if has_authors:
             meta_score += 0.40
@@ -121,10 +138,7 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
 
         # --- Weighted composite ---------------------------------------------
         final = (
-            0.40 * rank_signal
-            + 0.25 * source_authority
-            + 0.20 * meta_score
-            + 0.15 * content_score
+            0.40 * rank_signal + 0.25 * source_authority + 0.20 * meta_score + 0.15 * content_score
         )
         p.relevance_score = round(max(0.0, min(1.0, final)), 2)
 
@@ -162,7 +176,10 @@ def pre_filter_papers(
     min_keep_soft = max(10, len(pool) // 2)
     if len(stage1) < min_keep_soft:
         logger.debug(
-            "stage1_fail_soft_triggered", total=len(pool), kept=len(stage1), min_keep_soft=min_keep_soft
+            "stage1_fail_soft_triggered",
+            total=len(pool),
+            kept=len(stage1),
+            min_keep_soft=min_keep_soft,
         )
         stage1 = pool
 
@@ -226,14 +243,18 @@ def pre_filter_papers(
     unique: list[Paper] = []
     for p in deduped:
         # Do not collapse arXiv variants here; we already deduped by arXiv ID.
-        if not _url_utils.extract_arxiv_id(str(p.url)):
-            if any(_url_utils.url_equivalent(str(p.url), str(q.url)) for q in unique):
-                continue
+        if not _url_utils.extract_arxiv_id(str(p.url)) and any(
+            _url_utils.url_equivalent(str(p.url), str(q.url)) for q in unique
+        ):
+            continue
         unique.append(p)
     deduped = unique
 
     logger.debug(
-        "dedup_filter_stats", after_stage1=len(stage1), kept=len(deduped), dropped=len(stage1)-len(deduped)
+        "dedup_filter_stats",
+        after_stage1=len(stage1),
+        kept=len(deduped),
+        dropped=len(stage1) - len(deduped),
     )
     logger.debug("DEDUP_POOL ({})", len(deduped))
     for i, _p in enumerate(deduped, 1):
@@ -269,7 +290,7 @@ def apply_score_threshold(
         # No scores — keep all papers in Exa's rank order, trimmed to a
         # reasonable pool size so the UI isn't overwhelmed.
         min_keep = max(int(len(pool) * ADAPTIVE_KEEP_FRAC), 20)
-        final_pool = pool[:max(min_keep, k * 3, len(pool))]
+        final_pool = pool[: max(min_keep, k * 3, len(pool))]
         logger.debug(
             "apply_score_threshold_stats (no scores)", pool=len(pool), kept=len(final_pool)
         )

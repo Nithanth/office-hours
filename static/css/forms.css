@@ -87,3 +87,18 @@ body.lux-dark .choices__list--dropdown {
   background: #2a2a2a;
   border-color: #555;
 }
+
+/* Sources dropdown dark-mode */
+body.lux-dark #sources-dropdown-btn {
+  background: #2a2a2a;
+  color: #eee;
+  border-color: #555;
+}
+body.lux-dark #sources-dropdown-menu {
+  background: #2a2a2a;
+  border-color: #555;
+  color: #eee;
+}
+body.lux-dark #sources-dropdown-menu label:hover {
+  background: #333;
+}

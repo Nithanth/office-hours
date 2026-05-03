@@ -25,17 +25,23 @@ class ChatHistoryCache:
     Path(_cache_dir).mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def _path(cls, paper_id: str) -> str:
-        safe = "".join(c for c in paper_id if c.isalnum() or c in ("-", "_"))
-        return os.path.join(cls._cache_dir, f"{safe}.json")
+    def _safe(cls, raw: str) -> str:
+        return "".join(c for c in raw if c.isalnum() or c in ("-", "_")) or "anon"
+
+    @classmethod
+    def _path(cls, session_id: str, paper_id: str) -> str:
+        safe_session = cls._safe(session_id)
+        safe_paper = cls._safe(paper_id)
+        return os.path.join(cls._cache_dir, "history", safe_session, f"{safe_paper}.json")
 
     # -------- public API ---------
     @classmethod
-    def save(cls, paper_id: str, turns: list[dict[str, str]]) -> None:
+    def save(cls, session_id: str, paper_id: str, turns: list[dict[str, str]]) -> None:
         """Persist *turns* (list of dicts) to disk capped to *cls._cap*."""
         # Ensure directory exists in case it was purged while app is running.
         try:
             Path(cls._cache_dir).mkdir(parents=True, exist_ok=True)
+            Path(cls._path(session_id, paper_id)).parent.mkdir(parents=True, exist_ok=True)
         except OSError:
             # If we cannot create the directory, bail early – persistence is best-effort.
             logger.warning("chat_cache_mkdir_failed", path=cls._cache_dir)
@@ -43,14 +49,24 @@ class ChatHistoryCache:
 
         try:
             turns = turns[-cls._cap :]
-            with open(cls._path(paper_id), "w", encoding="utf-8") as fh:
+            with open(cls._path(session_id, paper_id), "w", encoding="utf-8") as fh:
                 json.dump({"turns": turns}, fh)
-            logger.debug("chat_cache_saved", paper_id=paper_id, turns=len(turns))
+            logger.debug(
+                "chat_cache_saved",
+                session_id=session_id,
+                paper_id=paper_id,
+                turns=len(turns),
+            )
         except OSError as exc:
-            logger.warning("chat_cache_write_failed", paper_id=paper_id, err=str(exc))
+            logger.warning(
+                "chat_cache_write_failed",
+                session_id=session_id,
+                paper_id=paper_id,
+                err=str(exc),
+            )
 
     @classmethod
-    def load(cls, paper_id: str) -> list[dict[str, str]]:
+    def load(cls, session_id: str, paper_id: str) -> list[dict[str, str]]:
         """Return list of turns if cached, else empty list."""
         # Ensure directory exists in case it was purged while app is running.
         try:
@@ -61,15 +77,25 @@ class ChatHistoryCache:
             return []
 
         try:
-            with open(cls._path(paper_id), encoding="utf-8") as fh:
+            with open(cls._path(session_id, paper_id), encoding="utf-8") as fh:
                 data = json.load(fh)
             turns = data.get("turns", [])
             if not isinstance(turns, list):
                 raise ValueError("invalid chat cache file")
-            logger.debug("chat_cache_loaded", paper_id=paper_id, turns=len(turns))
+            logger.debug(
+                "chat_cache_loaded",
+                session_id=session_id,
+                paper_id=paper_id,
+                turns=len(turns),
+            )
             return turns[-cls._cap :]
         except FileNotFoundError:
             return []
         except Exception as exc:  # noqa: BLE001
-            logger.warning("chat_cache_read_failed", paper_id=paper_id, err=str(exc))
+            logger.warning(
+                "chat_cache_read_failed",
+                session_id=session_id,
+                paper_id=paper_id,
+                err=str(exc),
+            )
             return []

@@ -87,7 +87,11 @@ def deduplicate_chat(
             keep.append(sent)
 
     logger.debug(
-        "chat_dedupe", total=len(chat_sents), kept=len(keep), removed=len(chat_sents) - len(keep), threshold=threshold
+        "chat_dedupe",
+        total=len(chat_sents),
+        kept=len(keep),
+        removed=len(chat_sents) - len(keep),
+        threshold=threshold,
     )
 
     return " ".join(keep)

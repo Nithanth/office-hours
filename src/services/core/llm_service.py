@@ -151,7 +151,9 @@ class LLMService:
                 self.providers.pop(provider_name, None)
 
         if not initialized_any:
-            raise LLMConfigurationError("No LLM providers could be initialised; configure at least one API key.")
+            raise LLMConfigurationError(
+                "No LLM providers could be initialised; configure at least one API key."
+            )
 
         self._initialized = True
         self.logger.info("LLMService initialization complete.")
@@ -419,9 +421,7 @@ class LLMService:
                             if hasattr(chunk, "content") and chunk.content:
                                 yield str(chunk.content)
                     except Exception as exc:  # noqa: BLE001
-                        self.logger.exception(
-                            "xAI streaming failed - falling back", exc_info=exc
-                        )
+                        self.logger.exception("xAI streaming failed - falling back", exc_info=exc)
                         async for tok in _fallback_stream():
                             yield tok
 

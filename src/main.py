@@ -154,6 +154,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global llm_service_instance, exa_client_instance
     logger.info("initializing services")
     try:
+        config.config.validate_model_registry()
         if config.config.EXA_API_KEY is None:
             logger.critical("EXA_API_KEY missing; aborting startup")
             sys.exit(1)
@@ -260,7 +261,10 @@ for _r in (
 ):
     app.include_router(_r)
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint  # noqa: E402
+from starlette.middleware.base import (
+    BaseHTTPMiddleware,
+    RequestResponseEndpoint,
+)  # noqa: E402
 
 # --- Minimal security headers ---------------------------------------------
 

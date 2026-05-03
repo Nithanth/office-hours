@@ -11,7 +11,7 @@ import uuid as _uuid
 from typing import Literal
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
 
 from api.deps import get_llm_service, get_session_id
@@ -144,8 +144,7 @@ async def generate_blog(
 
     user_prompt = (
         "Transform the following research report into a compelling blog post.\n\n"
-        "REPORT:\n"
-        + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
+        "REPORT:\n" + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
     )
     if chat_digest:
         user_prompt += "\n\nADDITIONAL INSIGHTS FROM CHAT:\n" + chat_digest
@@ -182,7 +181,9 @@ async def blog_view(
 
     blog_md = _BLOG_CACHE.pop(token, None)
     if blog_md is None:
-        raise HTTPException(status_code=404, detail="Blog not found or already viewed. Generate a new one.")
+        raise HTTPException(
+            status_code=404, detail="Blog not found or already viewed. Generate a new one."
+        )
 
     # Escape markdown for safe embedding in HTML
     safe_md = _html.escape(blog_md)
@@ -265,7 +266,7 @@ def _parse_tags(llm_output: str) -> tuple[str, list[str]]:
         if not stripped:
             continue
         if stripped.upper().startswith("TAGS:"):
-            raw = stripped[len("TAGS:"):].strip()
+            raw = stripped[len("TAGS:") :].strip()
             tags = [t.strip() for t in raw.split(",") if t.strip()]
             outline = "\n".join(lines[:i]).rstrip()
             break
@@ -273,6 +274,13 @@ def _parse_tags(llm_output: str) -> tuple[str, list[str]]:
         break
 
     return outline, tags
+
+
+def _notion_json_error(message: str, status_code: int) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"ok": False, "detail": message},
+    )
 
 
 @limiter.limit("10/5minute")
@@ -290,17 +298,17 @@ async def export_notion(
     logger.info("notion_export: request received")
 
     if not report_text.strip():
-        raise HTTPException(status_code=400, detail="Report text required")
+        return _notion_json_error("Report text required", 400)
 
     if not config.NOTION_API_KEY:
-        raise HTTPException(
-            status_code=400,
-            detail="Notion integration not configured. Set NOTION_API_KEY in .env.",
+        return _notion_json_error(
+            "Notion integration not configured. Set NOTION_API_KEY in .env.",
+            400,
         )
     if not (config.NOTION_PARENT_PAGE_ID or config.NOTION_PARENT_DATABASE_ID):
-        raise HTTPException(
-            status_code=400,
-            detail="Set NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID in .env.",
+        return _notion_json_error(
+            "Set NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID in .env.",
+            400,
         )
 
     # --- Generate structured outline via LLM ---
@@ -314,7 +322,7 @@ async def export_notion(
         try:
             user_prompt = (
                 "Distill the following research report into a structured outline.\n\n"
-                "REPORT:\n" + report_text.strip()[:config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
+                "REPORT:\n" + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
             )
             raw_outline = await llm_service.generate_completion(
                 provider_name=model_cfg["provider"],
@@ -350,12 +358,9 @@ async def export_notion(
         )
     except NotionExportError as err:
         logger.error("notion_export_failed", error=str(err))
-        raise HTTPException(status_code=502, detail=str(err)) from err
+        return _notion_json_error(str(err), 502)
     finally:
         await exporter.close()
 
     logger.info("notion_export_success", url=url)
-    return Response(
-        content=f'{{"url": "{url}"}}',
-        media_type="application/json",
-    )
+    return JSONResponse(content={"ok": True, "url": url})

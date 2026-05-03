@@ -35,12 +35,58 @@ router: APIRouter = APIRouter(tags=["report-incremental"])
 
 # Payload values may be str, list[str], or bool – use Any to satisfy mypy.
 REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
+_REPORT_REQUEST_DIR = Path(config.CACHE_DIR) / "report_requests"
 
 # Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars
 
 # Name of the extra SSE event carrying JSON envelope of each block.
 _JSON_EVENT = "report-block-json"
+
+
+def _report_request_path(token: str) -> Path:
+    safe = "".join(c for c in token if c.isalnum() or c in ("-", "_"))
+    return _REPORT_REQUEST_DIR / f"{safe}.json"
+
+
+def _save_report_request(token: str, payload: dict[str, Any]) -> None:
+    """Persist report payload so SSE can resume across workers/restarts."""
+
+    try:
+        _REPORT_REQUEST_DIR.mkdir(parents=True, exist_ok=True)
+        path = _report_request_path(token)
+        tmp_path = path.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+        tmp_path.replace(path)
+    except OSError as exc:
+        logger.warning("report_request_cache_write_failed", token=token, error=str(exc))
+
+
+def _load_report_request(token: str) -> dict[str, Any] | None:
+    payload = REPORT_REQUEST_CACHE.get(token)
+    if payload is not None:
+        return payload
+
+    try:
+        path = _report_request_path(token)
+        if not path.exists():
+            return None
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            return None
+        REPORT_REQUEST_CACHE[token] = loaded
+        return loaded
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("report_request_cache_read_failed", token=token, error=str(exc))
+        return None
+
+
+def _delete_report_request(token: str) -> None:
+    REPORT_REQUEST_CACHE.pop(token, None)
+    try:
+        _report_request_path(token).unlink(missing_ok=True)
+    except OSError as exc:
+        logger.debug("report_request_cache_delete_failed", token=token, error=str(exc))
 
 
 def _format_sse_event(event_name: str, payload: str = "") -> str:
@@ -73,7 +119,7 @@ async def _get_services() -> tuple[LLMService, ExaClient]:
 async def _del_cache_later(token: str, delay: int = 60) -> None:
     """Delete *token* from cache after *delay* seconds (gives SSE reconnect grace)."""
     await asyncio.sleep(delay)
-    REPORT_REQUEST_CACHE.pop(token, None)
+    _delete_report_request(token)
 
 
 @limiter.limit("20/5minute")
@@ -122,7 +168,7 @@ async def generate_report_incremental(  # noqa: PLR0913
 
     # --- Cache payload and generate token (only after validation) ---
     token = str(uuid.uuid4())
-    REPORT_REQUEST_CACHE[token] = {
+    payload = {
         "original_query": original_query_for_report,
         "selected_papers_json": selected_papers_json,
         "audience_type": audience_type,
@@ -130,6 +176,8 @@ async def generate_report_incremental(  # noqa: PLR0913
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
     }
+    REPORT_REQUEST_CACHE[token] = payload
+    _save_report_request(token, payload)
 
     logger.info("report_incremental_received", token=token, is_url_input_form=is_url_input)
 
@@ -141,6 +189,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     html_skeleton = f"""
     <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
         </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
+        </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>
         </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
@@ -159,7 +208,7 @@ async def report_stream(
     if not session_id:
         raise HTTPException(status_code=400, detail="Session required")
 
-    payload = REPORT_REQUEST_CACHE.get(token)
+    payload = _load_report_request(token)
     if payload is None:
         # Unknown or expired token - send 204 so EventSource treats it as closed and
         # does NOT exponentially retry (avoids endless 404 log spam).

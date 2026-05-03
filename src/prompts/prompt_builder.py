@@ -58,8 +58,10 @@ STUDY_NOTES_INSTR_BLOCK: str = (
     "You are preparing STUDY NOTES for the user. "
     "Follow the bullet-list OUTPUT FORMAT rules given in the system prompt. "
     "Use bullets only (no paragraphs) with ≤3 levels of nesting. "
-    "Summarise each major section of the REPORT and then each PAPER discussed, "
-    "weaving in *non-redundant* CHAT insights."
+    "For EACH paper, cover: problem/motivation, method, results (with numbers), "
+    "limitations, and practical implications. "
+    "Weave in *non-redundant* CHAT insights under the relevant sub-bullets. "
+    "Be comprehensive — aim for 5-10 bullets per paper with sub-bullets."
 )
 
 

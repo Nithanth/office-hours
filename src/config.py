@@ -21,6 +21,15 @@ class Config:
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
     XAI_API_KEY: Optional[str] = os.getenv("XAI_API_KEY")
 
+    # --- Notion export ---
+    # Internal integration token (https://www.notion.so/profile/integrations).
+    # The integration must be shared with the parent page/database.
+    NOTION_API_KEY: Optional[str] = os.getenv("NOTION_API_KEY")
+    # Parent page ID for new pages. Used when NOTION_PARENT_DATABASE_ID is unset.
+    NOTION_PARENT_PAGE_ID: Optional[str] = os.getenv("NOTION_PARENT_PAGE_ID")
+    # If set, reports are written as rows in this database instead of child pages.
+    NOTION_PARENT_DATABASE_ID: Optional[str] = os.getenv("NOTION_PARENT_DATABASE_ID")
+
     # --- App runtime settings ---
     # --- Environment and asset prefixes ---
     ENV: str = os.getenv("ENV", "dev").lower()
@@ -96,7 +105,12 @@ class Config:
     EXA_POOL_SIZE: int = int(os.getenv("EXA_POOL_SIZE", 35))
 
     # PDF/Text processing
-    STRIP_REFERENCES: bool = os.getenv("STRIP_REFERENCES", "0") in {"1", "true", "yes", "True"}
+    STRIP_REFERENCES: bool = os.getenv("STRIP_REFERENCES", "0") in {
+        "1",
+        "true",
+        "yes",
+        "True",
+    }
 
     # Caching layer
     PAPER_CACHE_DB: str | None = os.getenv("PAPER_CACHE_DB")
@@ -311,6 +325,24 @@ class Config:
     # --- Chat / notes parameters ---
     CHAT_DEDUPE_SIM_THRESHOLD: float = float(os.getenv("CHAT_DEDUPE_SIM_THRESHOLD", 0.9))
     NOTES_MAX_TOKENS: int = int(os.getenv("NOTES_MAX_TOKENS", 2048))
+
+    def validate_model_registry(self) -> None:
+        """Validate model registry shape before serving traffic."""
+
+        if self.DEFAULT_MODEL_KEY not in self.AVAILABLE_MODELS:
+            raise ValueError(
+                f"DEFAULT_MODEL_KEY '{self.DEFAULT_MODEL_KEY}' is not in AVAILABLE_MODELS"
+            )
+
+        valid_providers = {"openai", "together_ai", "anthropic", "gemini", "xai"}
+        for key, info in self.AVAILABLE_MODELS.items():
+            missing = {"id", "provider", "input_token_limit", "display_name"} - set(info)
+            if missing:
+                raise ValueError(f"Model '{key}' is missing required fields: {sorted(missing)}")
+            if info["provider"] not in valid_providers:
+                raise ValueError(f"Model '{key}' uses unsupported provider '{info['provider']}'")
+            if not isinstance(info["input_token_limit"], int) or info["input_token_limit"] <= 0:
+                raise ValueError(f"Model '{key}' has invalid input_token_limit")
 
     __all__: list[str] = ["Config", "config"]
 

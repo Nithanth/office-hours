@@ -1,4 +1,4 @@
-"""Thin wrapper around *exa_py* ≥2.0 with stable snake_case API and structured logging."""
+"""Thin wrapper around *exa_py* 2.x with stable snake_case API and structured logging."""
 
 from typing import Any, Final
 
@@ -120,7 +120,13 @@ class ExaAdapter:
         reraise=True,
     )
     def answer(self, question: str, **kwargs: Any) -> Any:  # noqa: ANN401
-        """Short answer with supporting passages via :py:meth:`exa_py.Exa.answer`."""
+        """Short answer with supporting passages via :py:meth:`exa_py.Exa.answer`.
+
+        Note: v2 answer() does NOT accept num_results; unsupported kwargs are stripped.
+        """
+        # Strip params not supported by v2 answer()
+        kwargs.pop("num_results", None)
+        kwargs.pop("use_autoprompt", None)
         logger.debug("Exa answer", question=question, params=kwargs)
         if _METRICS_ENABLED and EXA_LAT is not None:
             with EXA_LAT.time():
