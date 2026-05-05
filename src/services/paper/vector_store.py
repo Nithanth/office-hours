@@ -19,14 +19,17 @@ import numpy as np
 import tiktoken
 from loguru import logger
 
-# Cross-encoder is optional – lazy import so test envs pass without it.
-try:
-    from sentence_transformers import CrossEncoder
-except ImportError:  # pragma: no cover – optional dep
-    CrossEncoder = None
-
 from config import config
 from services.paper.embedding import embed_texts
+
+# Cross-encoder is optional – lazy import so test envs pass without it.
+CrossEncoder: Any
+try:
+    from sentence_transformers import CrossEncoder as _CrossEncoder
+
+    CrossEncoder = _CrossEncoder
+except ImportError:  # pragma: no cover – optional dep
+    CrossEncoder = None
 
 _VECTOR_ROOT: Path = cast(Path, config.VECTOR_CACHE_DIR)
 _VECTOR_ROOT.mkdir(parents=True, exist_ok=True)

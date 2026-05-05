@@ -9,6 +9,10 @@ from loguru import logger
 
 import config as _cfg
 
+AsyncEngine: Any
+AsyncSession: Any
+async_sessionmaker: Any
+create_async_engine: Any
 try:
     from sqlalchemy.ext.asyncio import (
         AsyncEngine,

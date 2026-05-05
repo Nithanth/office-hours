@@ -20,6 +20,22 @@ logger = logger.bind(component="Observability")
 
 _METRICS_ENABLED = _cfg.config.ENABLE_METRICS
 
+# Declare metric symbols up-front so importing modules can reference them
+# whether or not prometheus_client is installed. Typed as Any so both the
+# real Counter/Histogram instances below and the None fallbacks type-check.
+CHAT_REQ: Any = None
+CHAT_STREAM_TOK: Any = None
+CHAT_STREAM_LAT: Any = None
+CHAT_TOKEN_LAT: Any = None
+REPORT_REQ: Any = None
+REPORT_BLOCKS: Any = None
+REPORT_LAT: Any = None
+EXA_LAT: Any = None
+LLM_TOKENS: Any = None
+CACHE_HIT: Any = None
+
+generate_latest: Any = None
+
 if _METRICS_ENABLED:
     try:
         from prometheus_client import Counter, Histogram, generate_latest
@@ -77,15 +93,6 @@ if _METRICS_ENABLED:
         "cache_hit_total",
         "Number of cache hits for LLM summary cache",
     )
-
-else:
-    # Provide safe fallbacks so importing modules can reference these symbols
-    REPORT_REQ = None
-    REPORT_BLOCKS = None
-    REPORT_LAT = None
-    EXA_LAT = None
-    LLM_TOKENS = None
-    CACHE_HIT = None
 
 # ---------------------------------------------------------------------------
 # Middleware
