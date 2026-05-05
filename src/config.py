@@ -55,7 +55,12 @@ class Config:
     NOTION_OAUTH_CLIENT_ID: str | None = os.getenv("NOTION_OAUTH_CLIENT_ID")
     NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
     LUX_SECRET_ENCRYPTION_KEY: str | None = os.getenv("LUX_SECRET_ENCRYPTION_KEY")
-    REQUIRE_LOGIN: bool = os.getenv("REQUIRE_LOGIN", "0") in {"1", "true", "yes", "True"}
+    REQUIRE_LOGIN: bool = os.getenv("REQUIRE_LOGIN", "0") in {
+        "1",
+        "true",
+        "yes",
+        "True",
+    }
     BETA_DAILY_REPORT_LIMIT: int = int(os.getenv("BETA_DAILY_REPORT_LIMIT", 20))
     BETA_DAILY_SEARCH_LIMIT: int = int(os.getenv("BETA_DAILY_SEARCH_LIMIT", 100))
 
@@ -88,7 +93,9 @@ class Config:
 
     # Optional manual worker count (warn-only)
     UVICORN_WORKERS: int | None = (
-        int(cast(str, os.getenv("UVICORN_WORKERS"))) if os.getenv("UVICORN_WORKERS") else None
+        int(cast(str, os.getenv("UVICORN_WORKERS")))
+        if os.getenv("UVICORN_WORKERS")
+        else None
     )
 
     # How many candidates we ask Exa for per search before post-filtering.
@@ -139,12 +146,18 @@ class Config:
     # --- Paper/report tuning ---
     MAX_PAPERS_PER_SEARCH: int = 20
     SUMMARY_MAX_LENGTH: int = 300  # words
-    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4))
+    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(
+        os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4)
+    )
     # Hard cap on characters passed from a paper into any LLM prompt (≈15k tokens).
-    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 150000))
+    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(
+        os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 150000)
+    )
     LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
     # Optional UX pause when serving cached summaries – set to 0 to disable.
-    CACHED_SUMMARY_DELAY_SECONDS: float = float(os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5"))
+    CACHED_SUMMARY_DELAY_SECONDS: float = float(
+        os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5")
+    )
     # Maximum concurrent PDF/HTML extraction tasks when pre-fetching full text.
     # Increase if your deployment has ample CPU/network bandwidth.
     PDF_EXTRACTION_CONCURRENCY: int = int(os.getenv("PDF_EXTRACTION_CONCURRENCY", 6))
@@ -337,8 +350,15 @@ class Config:
     RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", 12))
 
     # --- Chat / notes parameters ---
-    CHAT_DEDUPE_SIM_THRESHOLD: float = float(os.getenv("CHAT_DEDUPE_SIM_THRESHOLD", 0.9))
+    CHAT_DEDUPE_SIM_THRESHOLD: float = float(
+        os.getenv("CHAT_DEDUPE_SIM_THRESHOLD", 0.9)
+    )
     NOTES_MAX_TOKENS: int = int(os.getenv("NOTES_MAX_TOKENS", 2048))
+
+    # --- Blog generator parameters ---
+    BLOG_MAX_TOKENS: int = int(os.getenv("BLOG_MAX_TOKENS", 6000))
+    BLOG_TTL_SECONDS: int = int(os.getenv("BLOG_TTL_SECONDS", 60 * 60))
+    BLOG_CACHE_MAX_ENTRIES: int = int(os.getenv("BLOG_CACHE_MAX_ENTRIES", 200))
 
     def validate_model_registry(self) -> None:
         """Validate model registry shape before serving traffic."""
@@ -350,12 +370,21 @@ class Config:
 
         valid_providers = {"openai", "together_ai", "anthropic", "gemini", "xai"}
         for key, info in self.AVAILABLE_MODELS.items():
-            missing = {"id", "provider", "input_token_limit", "display_name"} - set(info)
+            missing = {"id", "provider", "input_token_limit", "display_name"} - set(
+                info
+            )
             if missing:
-                raise ValueError(f"Model '{key}' is missing required fields: {sorted(missing)}")
+                raise ValueError(
+                    f"Model '{key}' is missing required fields: {sorted(missing)}"
+                )
             if info["provider"] not in valid_providers:
-                raise ValueError(f"Model '{key}' uses unsupported provider '{info['provider']}'")
-            if not isinstance(info["input_token_limit"], int) or info["input_token_limit"] <= 0:
+                raise ValueError(
+                    f"Model '{key}' uses unsupported provider '{info['provider']}'"
+                )
+            if (
+                not isinstance(info["input_token_limit"], int)
+                or info["input_token_limit"] <= 0
+            ):
                 raise ValueError(f"Model '{key}' has invalid input_token_limit")
 
     __all__: list[str] = ["Config", "config"]

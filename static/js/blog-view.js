@@ -292,29 +292,90 @@ function initActions(rawMd) {
 }
 
 // ---------------------------------------------------------------------------
+// Status polling
+// ---------------------------------------------------------------------------
+// Polls `/blog-status?token=...` until the server reports the markdown is ready
+// (or it errors out). Falls back to the legacy inline `<script id="blog-raw">`
+// element when no token is exposed (kept for backward compat).
+async function fetchBlogMarkdown(token, { intervalMs = 1500, timeoutMs = 180000 } = {}) {
+  const start = Date.now();
+  const url = `/blog-status?token=${encodeURIComponent(token)}`;
+  while (Date.now() - start < timeoutMs) {
+    const resp = await fetch(url, { headers: { Accept: "application/json" } });
+    if (resp.status === 404) {
+      let detail = "Blog not found or expired.";
+      try {
+        const body = await resp.json();
+        detail = body.error || body.detail || detail;
+      } catch (_) {}
+      throw new Error(detail);
+    }
+    if (!resp.ok) {
+      throw new Error(`Blog status check failed (HTTP ${resp.status}).`);
+    }
+    const data = await resp.json();
+    if (data.state === "ready" && typeof data.markdown === "string") {
+      return data.markdown;
+    }
+    if (data.state === "error") {
+      throw new Error(data.error || "Blog generation failed.");
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("Timed out waiting for blog generation.");
+}
+
+function renderError(article, message) {
+  if (!article) return;
+  const safe = String(message || "Something went wrong.");
+  article.innerHTML =
+    '<div class="blog-error" style="padding:2rem;border:1px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,0.08);">' +
+    '<h2 style="margin-top:0;">We couldn’t load this blog</h2>' +
+    '<p style="opacity:0.85;"></p>' +
+    '<p style="margin-top:1rem;"><a href="/">← Back to Lux Scholar</a></p>' +
+    "</div>";
+  const p = article.querySelector(".blog-error p:first-of-type");
+  if (p) p.textContent = safe;
+}
+
+// ---------------------------------------------------------------------------
 // Main init
 // ---------------------------------------------------------------------------
 async function initBlog() {
-  const rawEl = document.getElementById("blog-raw");
-  if (!rawEl) return;
-
-  const rawMd = rawEl.textContent;
-  const { title, body } = extractTitleAndBody(rawMd);
-
-  // Set hero
+  const articleEl = document.querySelector(".blog-article");
   const heroTitle = document.querySelector(".blog-hero h1");
-  if (heroTitle) heroTitle.textContent = title;
-
   const metaDate = document.getElementById("blog-date");
+  const metaTime = document.getElementById("blog-read-time");
+  const loadingMsg = document.getElementById("blog-loading-msg");
+
   if (metaDate) metaDate.textContent = formatDate();
 
-  const metaTime = document.getElementById("blog-read-time");
+  // Resolve the markdown source: token-based (new flow) or inline (legacy).
+  let rawMd;
+  const token = window.__BLOG_TOKEN__;
+  if (token) {
+    if (loadingMsg) loadingMsg.textContent = "Composing your post…";
+    try {
+      rawMd = await fetchBlogMarkdown(token);
+    } catch (err) {
+      console.error("[blog] failed to fetch markdown", err);
+      if (heroTitle) heroTitle.textContent = "Couldn’t load blog";
+      document.title = "Blog — Lux Scholar";
+      renderError(articleEl, err && err.message ? err.message : String(err));
+      document.body.classList.remove("blog-is-loading");
+      return;
+    }
+  } else {
+    const rawEl = document.getElementById("blog-raw");
+    if (!rawEl) return;
+    rawMd = rawEl.textContent;
+  }
+
+  const { title, body } = extractTitleAndBody(rawMd);
+
+  if (heroTitle) heroTitle.textContent = title || "Research Blog";
   if (metaTime) metaTime.textContent = readingTime(rawMd) + " min read";
-
-  document.title = title + " — Lux Scholar";
-
-  // Show loading
-  const articleEl = document.querySelector(".blog-article");
+  document.title = (title || "Blog") + " — Lux Scholar";
 
   // Load libs
   await loadAllDeps();

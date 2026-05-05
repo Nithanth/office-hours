@@ -35,7 +35,9 @@ class ReportGenerator:
     SAFETY_MARGIN_TOKENS: int = 150  # Increased slightly
 
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = config.QUALITATIVE_LENGTH_GUIDANCE
-    SUMMARY_OUTPUT_TOKEN_TARGETS: dict[str, dict[str, int]] = config.SUMMARY_OUTPUT_TOKEN_TARGETS
+    SUMMARY_OUTPUT_TOKEN_TARGETS: dict[
+        str, dict[str, int]
+    ] = config.SUMMARY_OUTPUT_TOKEN_TARGETS
 
     def __init__(
         self,
@@ -75,10 +77,16 @@ class ReportGenerator:
                 self.SUMMARY_OUTPUT_TOKEN_TARGETS.get("technical", {}).get("M", 500),
             )
 
-    def _estimate_prompt_overhead(self, audience_type: str, is_topic_summary: bool) -> int:
+    def _estimate_prompt_overhead(
+        self, audience_type: str, is_topic_summary: bool
+    ) -> int:
         """Estimates the token overhead for the prompt template."""
-        active_prompts = AUDIENCE_PROMPT_MAP.get(audience_type, AUDIENCE_PROMPT_MAP["technical"])
-        prompt_template = active_prompts["topic"] if is_topic_summary else active_prompts["paper"]
+        active_prompts = AUDIENCE_PROMPT_MAP.get(
+            audience_type, AUDIENCE_PROMPT_MAP["technical"]
+        )
+        prompt_template = (
+            active_prompts["topic"] if is_topic_summary else active_prompts["paper"]
+        )
 
         # Estimate based on base overhead + length of the specific template being used
         # This is a rough estimate; more sophisticated token counting could be used if needed.
@@ -100,7 +108,9 @@ class ReportGenerator:
             ),
         )
 
-    def _get_formatted_date_str(self, date_input: Optional[Union[str, datetime]]) -> str:
+    def _get_formatted_date_str(
+        self, date_input: Optional[Union[str, datetime]]
+    ) -> str:
         if not date_input:  # Handles None or empty string
             return "N/A"
         # If a datetime comes in, format directly
@@ -110,7 +120,9 @@ class ReportGenerator:
         try:
             return datetime.strptime(date_input, "%Y-%m-%d").strftime("%Y-%m-%d")
         except ValueError:
-            logger.error("unrecognized date string format", date_str=date_input, exc_info=True)
+            logger.error(
+                "unrecognized date string format", date_str=date_input, exc_info=True
+            )
             return date_input
 
     def _paper_cache_key(
@@ -142,7 +154,9 @@ class ReportGenerator:
         start_ts = time.perf_counter()
 
         # Check primary prompt-hash cache
-        cached: Any | None = SummaryCache.get(self.selected_model_api_id, prompt, system_prompt)
+        cached: Any | None = SummaryCache.get(
+            self.selected_model_api_id, prompt, system_prompt
+        )
         if cached is None and cache_key:
             cached = SummaryCache.get_generic(cache_key)
 
@@ -175,7 +189,9 @@ class ReportGenerator:
             content = cast(str, result["content"])
 
             # Store in cache (best-effort)
-            SummaryCache.set(self.selected_model_api_id, composed_prompt, system_prompt, content)
+            SummaryCache.set(
+                self.selected_model_api_id, composed_prompt, system_prompt, content
+            )
             if cache_key:
                 SummaryCache.set_generic(cache_key, content)
 
@@ -220,14 +236,20 @@ class ReportGenerator:
         papers_for_topic_report: Optional[list[Paper]] = None,
     ) -> str:
         _selected_similar_papers = (
-            selected_similar_papers_data if selected_similar_papers_data is not None else []
+            selected_similar_papers_data
+            if selected_similar_papers_data is not None
+            else []
         )
         _papers_for_topic_report = (
             papers_for_topic_report if papers_for_topic_report is not None else []
         )
 
         if is_url_input:
-            if main_input_paper is None and not _selected_similar_papers and papers_to_summarize:
+            if (
+                main_input_paper is None
+                and not _selected_similar_papers
+                and papers_to_summarize
+            ):
                 _selected_similar_papers = papers_to_summarize
         elif papers_for_topic_report is None and papers_to_summarize:
             _papers_for_topic_report = papers_to_summarize
@@ -261,7 +283,9 @@ class ReportGenerator:
                     path = await extractor.ensure_cached(url, pid)
                     # If we managed to cache and paper lacks text_content, load first chunk
                     if path:
-                        paper_obj = next((pp for pp in unique_papers if pp.id == pid), None)
+                        paper_obj = next(
+                            (pp for pp in unique_papers if pp.id == pid), None
+                        )
                         if paper_obj:
                             try:
                                 txt = await extractor.read_full_text(pid)
@@ -274,9 +298,13 @@ class ReportGenerator:
                                         prev_chars=len(paper_obj.text_content),
                                     )
                             except (OSError, UnicodeDecodeError) as extract_err:
-                                logger.debug("extractor_read_failed", error=str(extract_err))
+                                logger.debug(
+                                    "extractor_read_failed", error=str(extract_err)
+                                )
 
-            await asyncio.gather(*[_bounded_extract(str(p.url), p.id) for p in unique_papers])
+            await asyncio.gather(
+                *[_bounded_extract(str(p.url), p.id) for p in unique_papers]
+            )
 
             # Attach full_text_path for later use (chat, etc.)
             for p in unique_papers:
@@ -285,7 +313,9 @@ class ReportGenerator:
                     p.full_text_path = cached_path
 
         except (OSError, RuntimeError, asyncio.CancelledError) as prep_exc:
-            logger.warning("pre-fetch full text failed", error=str(prep_exc), exc_info=True)
+            logger.warning(
+                "pre-fetch full text failed", error=str(prep_exc), exc_info=True
+            )
 
         return await self._generate_report_html_async(
             original_query=query_or_url,
@@ -307,7 +337,9 @@ class ReportGenerator:
         similar_papers_data: Optional[list[Paper]] = None,
         papers_for_topic_report: Optional[list[Paper]] = None,
     ) -> str:
-        similar_papers_data = similar_papers_data if similar_papers_data is not None else []
+        similar_papers_data = (
+            similar_papers_data if similar_papers_data is not None else []
+        )
         papers_for_topic_report = (
             papers_for_topic_report if papers_for_topic_report is not None else []
         )
@@ -320,7 +352,9 @@ class ReportGenerator:
         )
         report_parts = []
 
-        active_prompts = AUDIENCE_PROMPT_MAP.get(audience_type, AUDIENCE_PROMPT_MAP["technical"])
+        active_prompts = AUDIENCE_PROMPT_MAP.get(
+            audience_type, AUDIENCE_PROMPT_MAP["technical"]
+        )
         active_paper_prompt_template = active_prompts["paper"]
 
         user_summary_size_key = summary_size.upper()
@@ -333,7 +367,9 @@ class ReportGenerator:
         topic_size_map = {"S": "M", "M": "L", "L": "L", "XL": "L"}
         actual_topic_summary_size_key = topic_size_map.get(user_summary_size_key, "L")
 
-        topic_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE[actual_topic_summary_size_key]
+        topic_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE[
+            actual_topic_summary_size_key
+        ]
         paper_length_guidance = self.QUALITATIVE_LENGTH_GUIDANCE[user_summary_size_key]
 
         paper_max_content_snippet_chars = self._get_max_content_snippet_chars(
@@ -343,7 +379,9 @@ class ReportGenerator:
             audience_type, actual_topic_summary_size_key, is_topic_summary=True
         )
 
-        paper_summary_semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_PAPER_SUMMARIES)
+        paper_summary_semaphore = asyncio.Semaphore(
+            config.MAX_CONCURRENT_PAPER_SUMMARIES
+        )
 
         # Show section headings only for query workflow (not for direct URL input)
         include_section_headings = not is_url_input
@@ -381,7 +419,8 @@ class ReportGenerator:
 
         def _queue_paper_summary(paper: Paper, *, role: str) -> None:
             hybrid_needed = (
-                len(paper.text_content or "") > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
+                len(paper.text_content or "")
+                > config.HYBRID_FULL_CONTEXT_CHAR_THRESHOLD
             )
             snippet_override: str | None = None
             if hybrid_needed:
@@ -445,15 +484,16 @@ class ReportGenerator:
             # Build a concise theme overview from the selected similar papers.
             report_parts.insert(0, "<h3>Common Theme Across Selected Papers</h3>")
 
-            (system_prompt_url_theme, user_prompt_url_theme), tok_target_theme = (
-                self._topic_summariser.build_prompts_and_target(
-                    original_query=original_query,
-                    papers=similar_papers_data,
-                    audience_type=audience_type,
-                    summary_size_key=user_summary_size_key,
-                    length_guidance=topic_length_guidance,
-                    snippet_char_limit=topic_max_content_snippet_chars,
-                )
+            (
+                system_prompt_url_theme,
+                user_prompt_url_theme,
+            ), tok_target_theme = self._topic_summariser.build_prompts_and_target(
+                original_query=original_query,
+                papers=similar_papers_data,
+                audience_type=audience_type,
+                summary_size_key=user_summary_size_key,
+                length_guidance=topic_length_guidance,
+                snippet_char_limit=topic_max_content_snippet_chars,
             )
 
             summary_tasks.insert(
@@ -482,16 +522,19 @@ class ReportGenerator:
             will_trigger=bool(papers_for_topic_report and not is_url_input),
         )
         if papers_for_topic_report and not is_url_input:
-            logger.info("topic_overview_triggered", papers_count=len(papers_for_topic_report))
-            (system_prompt_topic, user_prompt_topic), tok_target_topic = (
-                self._topic_summariser.build_prompts_and_target(
-                    original_query=original_query,
-                    papers=papers_for_topic_report,
-                    audience_type=audience_type,
-                    summary_size_key=actual_topic_summary_size_key,
-                    length_guidance=topic_length_guidance,
-                    snippet_char_limit=topic_max_content_snippet_chars,
-                )
+            logger.info(
+                "topic_overview_triggered", papers_count=len(papers_for_topic_report)
+            )
+            (
+                system_prompt_topic,
+                user_prompt_topic,
+            ), tok_target_topic = self._topic_summariser.build_prompts_and_target(
+                original_query=original_query,
+                papers=papers_for_topic_report,
+                audience_type=audience_type,
+                summary_size_key=actual_topic_summary_size_key,
+                length_guidance=topic_length_guidance,
+                snippet_char_limit=topic_max_content_snippet_chars,
             )
 
             summary_tasks.append(
@@ -513,14 +556,20 @@ class ReportGenerator:
 
         # Run all queued LLM calls concurrently and assemble results in original order
         if summary_tasks:
-            summary_results = await asyncio.gather(*summary_tasks, return_exceptions=True)
-            for (paper_obj, role), result in zip(task_infos, summary_results):
+            summary_results = await asyncio.gather(
+                *summary_tasks, return_exceptions=True
+            )
+            for (paper_obj, role), result in zip(
+                task_infos, summary_results, strict=False
+            ):
                 if role == "topic_overview":
                     if include_section_headings:
                         report_parts.append("<h3>Overview</h3>")
                     if isinstance(result, Exception):
                         logger.error(
-                            "topic overview generation error", error=str(result), exc_info=True
+                            "topic overview generation error",
+                            error=str(result),
+                            exc_info=True,
                         )
                         report_parts.append(
                             "<p><em>Could not generate topic overview due to an error.</em></p>"
@@ -568,7 +617,9 @@ class ReportGenerator:
         report_body = "".join(report_parts)
 
         # Dynamically generate the title based on the report content
-        title = await self._generate_report_title(report_body, self.selected_model_api_id)
+        title = await self._generate_report_title(
+            report_body, self.selected_model_api_id
+        )
 
         # Remove common artifacts from LLM-generated titles (e.g., 'TITLE:', markdown asterisks)
         clean_title = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", title).strip()
@@ -580,6 +631,9 @@ class ReportGenerator:
             "<div id='report-actions' class='mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2'>"
             "<button id='report-notes-btn' class='btn-secondary' title='Generate Notes' type='button'>"
             "<i class='fa-solid fa-wand-magic-sparkles'></i>&nbsp;Generate Notes"
+            "</button>"
+            "<button id='report-blog-btn' class='btn-secondary' title='Generate Blog Post' type='button'>"
+            "<i class='fa-solid fa-pen-nib'></i>&nbsp;Blog"
             "</button>"
             "<button id='report-notion-btn' class='btn-secondary' title='Export to Notion' type='button'>"
             "<i class='fa-solid fa-arrow-up-right-from-square'></i>&nbsp;Notion"
@@ -690,8 +744,12 @@ class ReportGenerator:
         # -------- abstract extraction (very naive) --------
         abstract_text = ""
         if paper.text_content:
-            m = re.search(r"(?is)abstract[:\s]*(.+?)(?:\n\s*\n|$)", paper.text_content[:8000])
-            abstract_text = m.group(1).strip() if m else paper.text_content[:1200].strip()
+            m = re.search(
+                r"(?is)abstract[:\s]*(.+?)(?:\n\s*\n|$)", paper.text_content[:8000]
+            )
+            abstract_text = (
+                m.group(1).strip() if m else paper.text_content[:1200].strip()
+            )
 
         if abstract_text:
             parts.append("ABSTRACT:\n" + abstract_text)
@@ -721,7 +779,9 @@ class ReportGenerator:
                     joined = "\n".join(h["text"].strip() for h in hits)
                     parts.append(f"{theme.upper()}:\n" + joined)
             except Exception as exc:
-                logger.error("hybrid_rag_error", theme=theme, paper_id=paper.id, err=str(exc))
+                logger.error(
+                    "hybrid_rag_error", theme=theme, paper_id=paper.id, err=str(exc)
+                )
 
         snippet = "\n\n".join(parts)
         return snippet[:char_limit]
