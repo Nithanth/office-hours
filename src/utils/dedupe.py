@@ -81,7 +81,7 @@ def deduplicate_chat(
     chat_emb = model.encode(chat_sents, normalize_embeddings=True)
 
     keep: list[str] = []
-    for sent, emb in zip(chat_sents, chat_emb):
+    for sent, emb in zip(chat_sents, chat_emb, strict=False):
         sim = util.cos_sim(emb, rep_emb).max().item()
         if sim < threshold:
             keep.append(sent)

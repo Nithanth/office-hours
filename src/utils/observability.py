@@ -2,7 +2,8 @@
 
 import time
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from loguru import logger
@@ -27,7 +28,9 @@ if _METRICS_ENABLED:
 
 if _METRICS_ENABLED:
     CHAT_REQ = Counter("chat_requests_total", "Number of /chat POST requests")
-    CHAT_STREAM_TOK = Counter("chat_stream_tokens_total", "Streamed tokens sent to clients")
+    CHAT_STREAM_TOK = Counter(
+        "chat_stream_tokens_total", "Streamed tokens sent to clients"
+    )
     CHAT_STREAM_LAT = Histogram(
         "chat_stream_latency_seconds",
         "Time to fully stream assistant response",
@@ -77,12 +80,12 @@ if _METRICS_ENABLED:
 
 else:
     # Provide safe fallbacks so importing modules can reference these symbols
-    REPORT_REQ = None  # type: ignore
-    REPORT_BLOCKS = None  # type: ignore
-    REPORT_LAT = None  # type: ignore
-    EXA_LAT = None  # type: ignore
-    LLM_TOKENS = None  # type: ignore
-    CACHE_HIT = None  # type: ignore
+    REPORT_REQ = None
+    REPORT_BLOCKS = None
+    REPORT_LAT = None
+    EXA_LAT = None
+    LLM_TOKENS = None
+    CACHE_HIT = None
 
 # ---------------------------------------------------------------------------
 # Middleware
@@ -90,7 +93,9 @@ else:
 
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Any]
+    ) -> Response:
         request_id = request.headers.get("X-Request-Id", str(uuid.uuid4()))
         request.state.request_id = request_id
         start = time.time()
