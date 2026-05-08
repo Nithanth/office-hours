@@ -1,13 +1,17 @@
 """Study-notes, blog-post, and Notion export generators.
 
 POST `/generate-report-notes` – downloadable notes (`.txt`, `.md`, or `.docx`).
-POST `/generate-blog` – generates a Markdown blog and redirects to a rendered view.
+POST `/generate-blog` – queues a blog generation, returns a view URL immediately.
+GET  `/blog-status` – polled by the blog page to fetch markdown when ready.
 GET  `/blog-view` – standalone rendered blog page.
 POST `/export-notion` – push report to a Notion page/database and return its URL.
 """
 
+import asyncio
 import html as _html
+import time as _time
 import uuid as _uuid
+from dataclasses import dataclass, field
 from typing import Literal
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
@@ -20,6 +24,7 @@ from prompts.prompt_builder import _load_template
 from services.chat.chat_state import ChatState, get_chat_state
 from services.core.llm_service import LLMService
 from services.notes.notes_generator import NotesGenerator
+from utils.dedupe import deduplicate_chat
 from utils.rate_limit import limiter
 
 router = APIRouter(tags=["report-notes"])
@@ -75,7 +80,9 @@ async def generate_report_notes(
     if paper_id:
         paper_ids = [paper_id]
     else:
-        paper_ids = list(chat_state._histories.keys()) if chat_state._histories else None
+        paper_ids = (
+            list(chat_state._histories.keys()) if chat_state._histories else None
+        )
 
     llm_service: LLMService | None = get_llm_service()
     if llm_service is None:
@@ -113,9 +120,95 @@ async def generate_report_notes(
 _BLOG_SYSTEM_PROMPT: str = _load_template("blog/system.md")
 _NOTION_OUTLINE_PROMPT: str = _load_template("notion/outline.md")
 
-# In-memory store for generated blog markdown (token → markdown string).
-# Entries are short-lived — consumed once when /blog-view loads.
-_BLOG_CACHE: dict[str, str] = {}
+# Default ~1 hour TTL on cached blog entries; tunable via env (config.BLOG_TTL_SECONDS).
+# Cap entries to prevent unbounded growth even before TTL kicks in (config.BLOG_CACHE_MAX_ENTRIES).
+
+
+@dataclass
+class _BlogEntry:
+    """Cached state for an in-flight or completed blog generation."""
+
+    state: Literal["pending", "ready", "error"] = "pending"
+    markdown: str = ""
+    error: str = ""
+    created_at: float = field(default_factory=_time.time)
+
+    @property
+    def expires_at(self) -> float:
+        return self.created_at + int(config.BLOG_TTL_SECONDS)
+
+
+# In-memory cache keyed by short-lived token.
+_BLOG_CACHE: dict[str, _BlogEntry] = {}
+
+
+def _purge_expired_blogs() -> None:
+    """Drop entries past their TTL and trim oldest if cache is over capacity."""
+
+    now = _time.time()
+    for tok in list(_BLOG_CACHE.keys()):
+        if _BLOG_CACHE[tok].expires_at < now:
+            _BLOG_CACHE.pop(tok, None)
+
+    cap = int(config.BLOG_CACHE_MAX_ENTRIES)
+    if len(_BLOG_CACHE) > cap:
+        # Drop oldest first.
+        oldest = sorted(_BLOG_CACHE.items(), key=lambda kv: kv[1].created_at)
+        for tok, _ in oldest[: len(_BLOG_CACHE) - cap]:
+            _BLOG_CACHE.pop(tok, None)
+
+
+async def _run_blog_generation(
+    token: str,
+    *,
+    llm_service: LLMService,
+    provider: str,
+    model_id: str,
+    report_text: str,
+    chat_digest: str,
+) -> None:
+    """Background task that runs the LLM and stores the result in `_BLOG_CACHE`.
+
+    Any exception is captured into the cache entry as `state="error"`; we
+    intentionally swallow it here so the asyncio task does not bubble up an
+    unhandled exception into the event loop.
+    """
+
+    try:
+        snippet_chars = config.PAPER_MAX_CONTENT_SNIPPET_CHARS
+        user_prompt = (
+            "Transform the following research report into a compelling blog post.\n\n"
+            "REPORT:\n" + report_text.strip()[:snippet_chars]
+        )
+        if chat_digest:
+            user_prompt += "\n\nADDITIONAL INSIGHTS FROM CHAT:\n" + chat_digest
+
+        max_tokens = int(config.BLOG_MAX_TOKENS)
+
+        blog_md = await llm_service.generate_completion(
+            provider_name=provider,
+            model_name=model_id,
+            prompt=user_prompt,
+            max_tokens=max_tokens,
+            system_prompt=_BLOG_SYSTEM_PROMPT,
+        )
+
+        entry = _BLOG_CACHE.get(token)
+        if entry is None:
+            # Entry expired or was evicted before generation finished; nothing to record.
+            logger.warning("blog_generation_orphan", token=token, chars=len(blog_md))
+            return
+        entry.state = "ready"
+        entry.markdown = blog_md
+        logger.info("blog_generation_ready", token=token, chars=len(blog_md))
+    except (
+        Exception
+    ) as err:  # noqa: BLE001 – surface any LLM/network error to the polling client
+        logger.error("blog_generation_error", token=token, error=str(err))
+        entry = _BLOG_CACHE.get(token)
+        if entry is not None:
+            entry.state = "error"
+            entry.error = str(err) or "Blog generation failed"
 
 
 @limiter.limit("10/5minute")
@@ -123,8 +216,13 @@ _BLOG_CACHE: dict[str, str] = {}
 async def generate_blog(
     request: Request,
     report_text: str = Form(...),
-) -> Response:
-    """Generate a Markdown blog post and return a token for the rendered view."""
+) -> JSONResponse:
+    """Queue a blog generation and return the view URL immediately.
+
+    The actual LLM call runs as a background task so the popup window opened by
+    the click handler can be navigated within the same user gesture (avoids
+    popup-blocker / auto-close issues with long-running synchronous LLM calls).
+    """
 
     logger.info("blog_generate: request received")
 
@@ -133,7 +231,10 @@ async def generate_blog(
 
     session_id = await get_session_id(request)
     chat_state = get_chat_state(session_id)
-    chat_digest = _gather_chat_digest(chat_state, char_cap=8000)
+    chat_digest_raw = _gather_chat_digest(chat_state, char_cap=8000)
+    chat_digest = (
+        deduplicate_chat(chat_digest_raw, report_text) if chat_digest_raw else ""
+    )
 
     llm_service: LLMService | None = get_llm_service()
     if llm_service is None:
@@ -142,51 +243,62 @@ async def generate_blog(
     model_key = config.DEFAULT_MODEL_KEY
     model_cfg = config.AVAILABLE_MODELS[model_key]
 
-    user_prompt = (
-        "Transform the following research report into a compelling blog post.\n\n"
-        "REPORT:\n" + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
-    )
-    if chat_digest:
-        user_prompt += "\n\nADDITIONAL INSIGHTS FROM CHAT:\n" + chat_digest
-
-    try:
-        blog_md = await llm_service.generate_completion(
-            provider_name=model_cfg["provider"],
-            model_name=model_cfg["id"],
-            prompt=user_prompt,
-            max_tokens=4096,
-            system_prompt=_BLOG_SYSTEM_PROMPT,
-        )
-    except Exception as err:
-        logger.error("blog_generation_error", error=str(err))
-        raise HTTPException(status_code=500, detail="Blog generation failed") from err
-
-    # Store markdown under a one-time token and return the view URL.
+    _purge_expired_blogs()
     token = str(_uuid.uuid4())
-    _BLOG_CACHE[token] = blog_md
-    logger.info("blog_cached", token=token, chars=len(blog_md))
+    _BLOG_CACHE[token] = _BlogEntry(state="pending")
 
-    # Return JSON so the frontend JS can open the blog view in a new tab.
-    return Response(
-        content=f'{{"url": "/blog-view?token={token}"}}',
-        media_type="application/json",
+    asyncio.create_task(
+        _run_blog_generation(
+            token,
+            llm_service=llm_service,
+            provider=model_cfg["provider"],
+            model_id=model_cfg["id"],
+            report_text=report_text,
+            chat_digest=chat_digest,
+        )
     )
+
+    logger.info("blog_queued", token=token)
+    return JSONResponse({"url": f"/blog-view?token={token}", "token": token})
+
+
+@router.get("/blog-status")
+async def blog_status(token: str = Query(...)) -> JSONResponse:
+    """Return the current state of a queued blog generation.
+
+    Polled by `static/js/blog-view.js` until `state == "ready"` or `"error"`.
+    """
+
+    _purge_expired_blogs()
+    entry = _BLOG_CACHE.get(token)
+    if entry is None:
+        return JSONResponse(
+            status_code=404,
+            content={"state": "expired", "error": "Blog not found or expired."},
+        )
+
+    payload: dict[str, str] = {"state": entry.state}
+    if entry.state == "ready":
+        payload["markdown"] = entry.markdown
+    elif entry.state == "error":
+        payload["error"] = entry.error or "Blog generation failed"
+    return JSONResponse(payload)
 
 
 @router.get("/blog-view")
 async def blog_view(
     token: str = Query(...),
 ) -> Response:
-    """Render the blog post as a standalone modern page."""
+    """Render the blog page shell. The markdown is fetched client-side via /blog-status."""
 
-    blog_md = _BLOG_CACHE.pop(token, None)
-    if blog_md is None:
+    _purge_expired_blogs()
+    entry = _BLOG_CACHE.get(token)
+    if entry is None:
         raise HTTPException(
-            status_code=404, detail="Blog not found or already viewed. Generate a new one."
+            status_code=404, detail="Blog not found or expired. Generate a new one."
         )
 
-    # Escape markdown for safe embedding in HTML
-    safe_md = _html.escape(blog_md)
+    safe_token = _html.escape(token, quote=True)
 
     page = f"""<!DOCTYPE html>
 <html lang="en">
@@ -223,14 +335,14 @@ async def blog_view(
       <span class="blog-meta-divider"></span>
       <span id="blog-read-time"></span>
     </div>
-    <h1>Loading...</h1>
+    <h1>Generating blog…</h1>
   </header>
 
-  <!-- Article (rendered by JS) -->
+  <!-- Article (rendered by JS once /blog-status returns markdown) -->
   <article class="blog-article">
     <div class="blog-loading">
       <div class="blog-loading-spinner"></div>
-      <p>Rendering blog...</p>
+      <p id="blog-loading-msg">Composing your post…</p>
     </div>
   </article>
 
@@ -239,9 +351,8 @@ async def blog_view(
     Generated with <a href="/">Lux Scholar</a>
   </footer>
 
-  <!-- Raw markdown (hidden, consumed by JS) -->
-  <script id="blog-raw" type="text/plain">{safe_md}</script>
-
+  <!-- Token consumed by blog-view.js to poll /blog-status -->
+  <script>window.__BLOG_TOKEN__ = "{safe_token}";</script>
   <script src="/static/js/blog-view.js"></script>
 </body>
 </html>"""
@@ -325,7 +436,9 @@ async def export_notion(
                 notion_parent_database_id = integration.parent_database_id
                 destination = integration.workspace_name or "notion"
         except Exception as err:  # noqa: BLE001
-            logger.warning("notion_user_config_load_failed", user_id=user_id, error=str(err))
+            logger.warning(
+                "notion_user_config_load_failed", user_id=user_id, error=str(err)
+            )
 
     if not notion_api_key:
         return _notion_json_error(
@@ -349,7 +462,8 @@ async def export_notion(
         try:
             user_prompt = (
                 "Distill the following research report into a structured outline.\n\n"
-                "REPORT:\n" + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
+                "REPORT:\n"
+                + report_text.strip()[: config.PAPER_MAX_CONTENT_SNIPPET_CHARS]
             )
             raw_outline = await llm_service.generate_completion(
                 provider_name=model_cfg["provider"],

@@ -2,7 +2,8 @@
 
 import time
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from loguru import logger
@@ -19,6 +20,22 @@ logger = logger.bind(component="Observability")
 
 _METRICS_ENABLED = _cfg.config.ENABLE_METRICS
 
+# Declare metric symbols up-front so importing modules can reference them
+# whether or not prometheus_client is installed. Typed as Any so both the
+# real Counter/Histogram instances below and the None fallbacks type-check.
+CHAT_REQ: Any = None
+CHAT_STREAM_TOK: Any = None
+CHAT_STREAM_LAT: Any = None
+CHAT_TOKEN_LAT: Any = None
+REPORT_REQ: Any = None
+REPORT_BLOCKS: Any = None
+REPORT_LAT: Any = None
+EXA_LAT: Any = None
+LLM_TOKENS: Any = None
+CACHE_HIT: Any = None
+
+generate_latest: Any = None
+
 if _METRICS_ENABLED:
     try:
         from prometheus_client import Counter, Histogram, generate_latest
@@ -27,7 +44,9 @@ if _METRICS_ENABLED:
 
 if _METRICS_ENABLED:
     CHAT_REQ = Counter("chat_requests_total", "Number of /chat POST requests")
-    CHAT_STREAM_TOK = Counter("chat_stream_tokens_total", "Streamed tokens sent to clients")
+    CHAT_STREAM_TOK = Counter(
+        "chat_stream_tokens_total", "Streamed tokens sent to clients"
+    )
     CHAT_STREAM_LAT = Histogram(
         "chat_stream_latency_seconds",
         "Time to fully stream assistant response",
@@ -75,22 +94,15 @@ if _METRICS_ENABLED:
         "Number of cache hits for LLM summary cache",
     )
 
-else:
-    # Provide safe fallbacks so importing modules can reference these symbols
-    REPORT_REQ = None  # type: ignore
-    REPORT_BLOCKS = None  # type: ignore
-    REPORT_LAT = None  # type: ignore
-    EXA_LAT = None  # type: ignore
-    LLM_TOKENS = None  # type: ignore
-    CACHE_HIT = None  # type: ignore
-
 # ---------------------------------------------------------------------------
 # Middleware
 # ---------------------------------------------------------------------------
 
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Any]
+    ) -> Response:
         request_id = request.headers.get("X-Request-Id", str(uuid.uuid4()))
         request.state.request_id = request_id
         start = time.time()

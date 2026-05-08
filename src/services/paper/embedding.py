@@ -65,7 +65,8 @@ def _get_model(name: str = MODEL_NAME) -> SentenceTransformer:  # pragma: no cov
     # The model is tiny (33 MB) so CPU inference is still sub-millisecond per
     # chunk; if CUDA is available SentenceTransformer will pick it up
     # automatically once we switch device="auto".
-    return SentenceTransformer(name, device="cpu")
+    model: SentenceTransformer = SentenceTransformer(name, device="cpu")
+    return model
 
 
 def _to_list(texts: Sequence[str] | str) -> list[str]:
@@ -110,7 +111,9 @@ def _prune_cache() -> None:
     now = time.time()
 
     # Drop expired
-    expired_keys = [k for k, (ts, _) in _QUERY_VEC_CACHE.items() if now - ts > _CACHE_TTL_SEC]
+    expired_keys = [
+        k for k, (ts, _) in _QUERY_VEC_CACHE.items() if now - ts > _CACHE_TTL_SEC
+    ]
     for k in expired_keys:
         _QUERY_VEC_CACHE.pop(k, None)
 

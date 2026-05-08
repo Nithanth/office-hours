@@ -19,14 +19,17 @@ import numpy as np
 import tiktoken
 from loguru import logger
 
-# Cross-encoder is optional – lazy import so test envs pass without it.
-try:
-    from sentence_transformers import CrossEncoder
-except ImportError:  # pragma: no cover – optional dep
-    CrossEncoder = None  # type: ignore[misc]
-
 from config import config
 from services.paper.embedding import embed_texts
+
+# Cross-encoder is optional – lazy import so test envs pass without it.
+CrossEncoder: Any
+try:
+    from sentence_transformers import CrossEncoder as _CrossEncoder
+
+    CrossEncoder = _CrossEncoder
+except ImportError:  # pragma: no cover – optional dep
+    CrossEncoder = None
 
 _VECTOR_ROOT: Path = cast(Path, config.VECTOR_CACHE_DIR)
 _VECTOR_ROOT.mkdir(parents=True, exist_ok=True)
@@ -95,11 +98,11 @@ def _rerank(query: str, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     if missing_pairs:
         new_scores = model.predict(missing_pairs, convert_to_numpy=True)
-        for idx, score in zip(missing_indices, new_scores):
+        for idx, score in zip(missing_indices, new_scores, strict=False):
             scores[idx] = float(score)
             _CE_PAIR_CACHE[missing_pairs[idx]] = float(score)
 
-    for h, s in zip(hits, scores):
+    for h, s in zip(hits, scores, strict=False):
         h["_ce_score"] = s
     return sorted(hits, key=lambda r: r["_ce_score"], reverse=True)
 
@@ -168,7 +171,7 @@ def save_index(
         db.drop_table(name)
 
     data: list[dict[str, Any]] = []
-    for idx, (vec, txt) in enumerate(zip(embeddings, chunks)):
+    for idx, (vec, txt) in enumerate(zip(embeddings, chunks, strict=False)):
         stripped = txt.lstrip()
         heading_val = headings[idx] if headings else ""
         meta = {
@@ -218,7 +221,9 @@ def search(
     # Compatibility: older lancedb versions expose .to_pandas() but not .to_list().
     try:
         candidates = (
-            table.search(query_embedding.tolist()).limit(top_k * _SEARCH_MULTIPLIER).to_list()
+            table.search(query_embedding.tolist())
+            .limit(top_k * _SEARCH_MULTIPLIER)
+            .to_list()
         )
     except AttributeError:
         try:
@@ -231,7 +236,9 @@ def search(
         except AttributeError:
             # Final fallback – get N rows and convert via arrow / pylist.
             arrow_tbl = (
-                table.search(query_embedding.tolist()).limit(top_k * _SEARCH_MULTIPLIER).to_arrow()
+                table.search(query_embedding.tolist())
+                .limit(top_k * _SEARCH_MULTIPLIER)
+                .to_arrow()
             )
             candidates = arrow_tbl.to_pylist()
 
@@ -265,12 +272,16 @@ def search(
         and r.get("_distance", 9e9) <= _DISTANCE_THRESH
     ]
     if strict:
-        logger.debug("rag_phase", phase="strict", kept=len(strict), search_ms=t_search_ms)
+        logger.debug(
+            "rag_phase", phase="strict", kept=len(strict), search_ms=t_search_ms
+        )
         return cast(list[dict[str, Any]], strict[:top_k])
 
     # Second pass – relax distance threshold, keep only length filter so we
     # still surface something relevant (best-effort).
-    relaxed = [r for r in candidates if len(r["text"]) >= _MIN_CHARS or _is_special(r["text"])]
+    relaxed = [
+        r for r in candidates if len(r["text"]) >= _MIN_CHARS or _is_special(r["text"])
+    ]
     if relaxed:
         # ---------------- keyword-boost re-rank ----------------
         qt_lower = query_text.lower()
@@ -300,7 +311,10 @@ def search(
 
         relaxed.sort(key=_sort_key)
         logger.debug(
-            "rag_phase", phase="relaxed_kw", kept=len(relaxed[:top_k]), search_ms=t_search_ms
+            "rag_phase",
+            phase="relaxed_kw",
+            kept=len(relaxed[:top_k]),
+            search_ms=t_search_ms,
         )
         return cast(list[dict[str, Any]], relaxed[:top_k])
 
@@ -308,7 +322,10 @@ def search(
     # caller can still display *something* (better than an empty chat response).
     if candidates:
         logger.debug(
-            "rag_phase", phase="fallback", kept=len(candidates[:top_k]), search_ms=t_search_ms
+            "rag_phase",
+            phase="fallback",
+            kept=len(candidates[:top_k]),
+            search_ms=t_search_ms,
         )
         return cast(list[dict[str, Any]], candidates[:top_k])
 
