@@ -3,32 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, TypeAlias
 
 from loguru import logger
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase
 
 import config as _cfg
 
-AsyncEngine: Any
-AsyncSession: Any
-async_sessionmaker: Any
-create_async_engine: Any
-try:
-    from sqlalchemy.ext.asyncio import (
-        AsyncEngine,
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
-    )
-    from sqlalchemy.orm import DeclarativeBase
-except ImportError:  # pragma: no cover - dependency absent until installed
-    AsyncEngine = Any
-    AsyncSession = Any
-    async_sessionmaker = None
-    create_async_engine = None
-
-    class DeclarativeBase:  # type: ignore[no-redef]
-        pass
+SessionMaker: TypeAlias = async_sessionmaker[AsyncSession]
 
 
 class Base(DeclarativeBase):
@@ -36,11 +24,11 @@ class Base(DeclarativeBase):
 
 
 _engine: AsyncEngine | None = None
-_sessionmaker: Any | None = None
+_sessionmaker: SessionMaker | None = None
 
 
 def database_available() -> bool:
-    return bool(_cfg.config.DATABASE_URL and create_async_engine and async_sessionmaker)
+    return bool(_cfg.config.DATABASE_URL)
 
 
 def get_engine() -> AsyncEngine:

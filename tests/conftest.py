@@ -669,6 +669,7 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
     import config as _cfg  # noqa: E402 – late import
 
     monkeypatch.setattr(_cfg.config, "EXA_API_KEY", "test-key", raising=False)
+    monkeypatch.setattr(_cfg.config, "REQUIRE_LOGIN", False, raising=False)
 
     # Stub TextExtractor singleton (avoid PDF downloads)
     try:

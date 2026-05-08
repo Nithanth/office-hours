@@ -725,6 +725,7 @@ def home_page(page_data: SharedPageData) -> Body:
                 title="Settings",
                 style="border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 8px;",
             ),
+            Span(id="lux-auth-status", cls="top-auth-status"),
             BUTTON(
                 "🌙 Dark",
                 id="lux-dark-toggle",
