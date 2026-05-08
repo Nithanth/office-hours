@@ -1,12 +1,50 @@
 /**
  * blog-view.js — Standalone blog renderer.
  *
- * Reads raw markdown from the hidden #blog-raw element, renders it with
- * marked.js + DOMPurify, initializes Mermaid diagrams & KaTeX math,
- * and adds scroll-driven fade-in animations + reading progress bar.
+ * Polls /blog-status with the token in window.__BLOG_TOKEN__ until the LLM
+ * has finished, then renders the markdown with marked.js + DOMPurify,
+ * initializes Mermaid diagrams & KaTeX math, applies scroll-driven
+ * fade-ins, the reading progress bar, and a theme toggle that mirrors
+ * Lux's localStorage 'theme' key so the blog page matches the main app.
  */
 
 /* globals: marked, DOMPurify, mermaid, katex, renderMathInElement, hljs */
+
+// ---------------------------------------------------------------------------
+// Theme — driven by Lux's localStorage 'theme' key for cross-page consistency
+// ---------------------------------------------------------------------------
+function currentTheme() {
+  try {
+    return localStorage.getItem("theme") === "dark" ? "dark" : "light";
+  } catch (_) {
+    return "light";
+  }
+}
+
+function applyTheme(theme) {
+  if (theme === "dark") {
+    document.documentElement.dataset.theme = "dark";
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  const btn = document.getElementById("blog-theme-toggle");
+  if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+}
+
+function initThemeToggle() {
+  const btn = document.getElementById("blog-theme-toggle");
+  if (!btn) return;
+  applyTheme(currentTheme());
+  btn.addEventListener("click", () => {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    try { localStorage.setItem("theme", next); } catch (_) {}
+    applyTheme(next);
+  });
+  // Sync if the user changes theme in another tab.
+  window.addEventListener("storage", (ev) => {
+    if (ev.key === "theme") applyTheme(currentTheme());
+  });
+}
 
 // ---------------------------------------------------------------------------
 // CDN loader
@@ -144,7 +182,7 @@ function formatDate() {
 async function renderMermaidDiagrams(mermaidBlocks) {
   if (!window.mermaid || mermaidBlocks.length === 0) return;
 
-  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = currentTheme() === "dark";
   mermaid.initialize({
     startOnLoad: false,
     theme: isDark ? "dark" : "default",
@@ -292,6 +330,35 @@ function initActions(rawMd) {
 }
 
 // ---------------------------------------------------------------------------
+// Loading-state substep messages — cycled while we wait for the LLM
+// ---------------------------------------------------------------------------
+const LOADING_MESSAGES = [
+  "Reading the report…",
+  "Identifying the most striking findings…",
+  "Planning the narrative arc…",
+  "Sketching diagrams where they help…",
+  "Composing the introduction…",
+  "Polishing the prose…",
+  "Almost there—final pass…",
+];
+
+function startLoadingMessageRotator() {
+  const el = document.getElementById("blog-loading-substep");
+  if (!el) return () => {};
+  let i = 0;
+  el.textContent = LOADING_MESSAGES[0];
+  const handle = setInterval(() => {
+    i = (i + 1) % LOADING_MESSAGES.length;
+    el.classList.add("fading");
+    setTimeout(() => {
+      el.textContent = LOADING_MESSAGES[i];
+      el.classList.remove("fading");
+    }, 380);
+  }, 4200);
+  return () => clearInterval(handle);
+}
+
+// ---------------------------------------------------------------------------
 // Status polling
 // ---------------------------------------------------------------------------
 // Polls `/blog-status?token=...` until the server reports the markdown is ready
@@ -346,25 +413,28 @@ async function initBlog() {
   const heroTitle = document.querySelector(".blog-hero h1");
   const metaDate = document.getElementById("blog-date");
   const metaTime = document.getElementById("blog-read-time");
-  const loadingMsg = document.getElementById("blog-loading-msg");
 
+  initThemeToggle();
   if (metaDate) metaDate.textContent = formatDate();
 
   // Resolve the markdown source: token-based (new flow) or inline (legacy).
   let rawMd;
   const token = window.__BLOG_TOKEN__;
+  let stopRotator = () => {};
   if (token) {
-    if (loadingMsg) loadingMsg.textContent = "Composing your post…";
+    stopRotator = startLoadingMessageRotator();
     try {
       rawMd = await fetchBlogMarkdown(token);
     } catch (err) {
       console.error("[blog] failed to fetch markdown", err);
+      stopRotator();
       if (heroTitle) heroTitle.textContent = "Couldn’t load blog";
       document.title = "Blog — Lux Scholar";
       renderError(articleEl, err && err.message ? err.message : String(err));
       document.body.classList.remove("blog-is-loading");
       return;
     }
+    stopRotator();
   } else {
     const rawEl = document.getElementById("blog-raw");
     if (!rawEl) return;
@@ -390,6 +460,11 @@ async function initBlog() {
   renderKaTeX();
   initScrollAnimations();
   initActions(rawMd);
+
+  // Enable nav-bar action buttons now that content is ready.
+  document.querySelectorAll(".blog-nav-btn[disabled]").forEach((b) => {
+    if (b.id !== "blog-theme-toggle") b.removeAttribute("disabled");
+  });
 
   // Remove loading state
   document.body.classList.remove("blog-is-loading");

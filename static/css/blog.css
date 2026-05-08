@@ -18,18 +18,20 @@
   --blog-reading-bar: #6366f1;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --blog-bg: #0f172a;
-    --blog-surface: #1e293b;
-    --blog-text: #e2e8f0;
-    --blog-text-secondary: #94a3b8;
-    --blog-accent: #818cf8;
-    --blog-accent-soft: #1e1b4b;
-    --blog-border: #334155;
-    --blog-code-bg: #0f172a;
-    --blog-reading-bar: #818cf8;
-  }
+/* Dark theme — applied via [data-theme="dark"] on <html> set by an inline
+   script BEFORE the first paint, so there's no light-flash. The class is
+   driven by Lux's localStorage 'theme' key (set by settings.js) so the blog
+   page matches whatever theme the user chose in the main app. */
+:root[data-theme="dark"] {
+  --blog-bg: #0f172a;
+  --blog-surface: #1e293b;
+  --blog-text: #e2e8f0;
+  --blog-text-secondary: #94a3b8;
+  --blog-accent: #818cf8;
+  --blog-accent-soft: #1e1b4b;
+  --blog-border: #334155;
+  --blog-code-bg: #0f172a;
+  --blog-reading-bar: #818cf8;
 }
 
 html {
@@ -385,9 +387,70 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
+  min-height: 70vh;
   gap: 24px;
   color: var(--blog-text-secondary);
+  text-align: center;
+  padding: 0 24px;
+}
+
+.blog-loading-icon {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.blog-loading-icon svg {
+  width: 64px;
+  height: 64px;
+  color: var(--blog-accent);
+  animation: blog-icon-pulse 2.4s ease-in-out infinite;
+}
+
+.blog-loading-icon::before,
+.blog-loading-icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--blog-accent);
+  opacity: 0;
+  animation: blog-icon-ring 2.4s ease-out infinite;
+}
+
+.blog-loading-icon::after {
+  animation-delay: 1.2s;
+}
+
+.blog-loading-headline {
+  font-size: clamp(22px, 3.5vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--blog-text);
+  margin: 0;
+}
+
+.blog-loading-headline .dots::after {
+  content: "";
+  display: inline-block;
+  width: 1em;
+  text-align: left;
+  animation: blog-loading-dots 1.6s steps(4, end) infinite;
+}
+
+.blog-loading-substep {
+  font-size: 15px;
+  color: var(--blog-text-secondary);
+  margin: 0;
+  min-height: 1.6em;
+  transition: opacity 0.4s ease;
+}
+
+.blog-loading-substep.fading {
+  opacity: 0;
 }
 
 .blog-loading-spinner {
@@ -401,6 +464,24 @@ body {
 
 @keyframes blog-spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes blog-icon-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+}
+
+@keyframes blog-icon-ring {
+  0% { transform: scale(0.6); opacity: 0.6; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+@keyframes blog-loading-dots {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%  { content: "..."; }
+  100% { content: ""; }
 }
 
 /* ---- Responsive ---- */

@@ -9,6 +9,7 @@ POST `/export-notion` – push report to a Notion page/database and return its U
 
 import asyncio
 import html as _html
+import re as _re
 import time as _time
 import uuid as _uuid
 from dataclasses import dataclass, field
@@ -141,6 +142,107 @@ class _BlogEntry:
 # In-memory cache keyed by short-lived token.
 _BLOG_CACHE: dict[str, _BlogEntry] = {}
 
+# Patterns that frequently leak from chat-tuned LLMs as preamble before the
+# actual article. Stripped server-side as a defence-in-depth measure even
+# though the prompt forbids them.
+_BLOG_PREAMBLE_PATTERNS: tuple[_re.Pattern[str], ...] = (
+    _re.compile(
+        r"^\s*here\s+is\s+(?:a|the|an)\s+[^.\n]{0,80}[:\.!]?\s*$", _re.IGNORECASE
+    ),
+    _re.compile(r"^\s*below\s+is\s+[^.\n]{0,80}[:\.!]?\s*$", _re.IGNORECASE),
+    _re.compile(
+        r"^\s*sure[,!.]\s+(?:here|i'?d|i'?ll|let)[^.\n]{0,80}[:\.!]?\s*$",
+        _re.IGNORECASE,
+    ),
+    _re.compile(
+        r"^\s*i'?ve\s+(?:written|crafted|prepared|put\s+together)[^.\n]{0,120}[:\.!]?\s*$",
+        _re.IGNORECASE,
+    ),
+    _re.compile(
+        r"^\s*(?:certainly|absolutely|of\s+course)[,!.]?\s*[^.\n]{0,80}[:\.!]?\s*$",
+        _re.IGNORECASE,
+    ),
+)
+
+# Patterns that commonly trail the article as meta-commentary ("I hope this helps…").
+_BLOG_POSTAMBLE_PATTERNS: tuple[_re.Pattern[str], ...] = (
+    _re.compile(r"^\s*i\s+hope\s+(?:this|that)[^.\n]{0,200}[\.!]?\s*$", _re.IGNORECASE),
+    _re.compile(r"^\s*let\s+me\s+know[^.\n]{0,200}[\.!?]?\s*$", _re.IGNORECASE),
+    _re.compile(r"^\s*feel\s+free\s+to[^.\n]{0,200}[\.!?]?\s*$", _re.IGNORECASE),
+    _re.compile(r"^\s*if\s+you'?d\s+like[^.\n]{0,200}[\.!?]?\s*$", _re.IGNORECASE),
+)
+
+
+def _clean_blog_markdown(md: str) -> str:
+    """Strip chat-style preamble/postamble and unwrap accidental code fencing.
+
+    Some LLMs ignore the "no preamble" instruction and start with sentences
+    like "Here is a compelling blog post:" which then get rendered as the
+    H1. We post-process the model output to:
+
+      1. Drop a leading triple-backtick wrapper (```markdown ... ```) if the
+         model wrapped the whole response in a code fence.
+      2. Drop preamble lines until we find the first H1 (`# `) heading or a
+         line that is clearly substantive content.
+      3. Drop trailing meta-commentary lines after the article ends.
+      4. Collapse excessive leading/trailing whitespace.
+    """
+
+    if not md:
+        return md
+
+    text = md.strip()
+
+    # 1. Unwrap a leading-and-trailing code fence around the whole response.
+    fence_match = _re.match(
+        r"^```(?:markdown|md)?\s*\n(.*?)\n```\s*$",
+        text,
+        _re.DOTALL | _re.IGNORECASE,
+    )
+    if fence_match:
+        text = fence_match.group(1).strip()
+
+    lines = text.split("\n")
+
+    # 2. Drop preamble. If the response contains an H1 anywhere in the first
+    #    ~10 non-empty lines, drop everything before it. Otherwise, drop only
+    #    leading lines that match a known preamble pattern.
+    first_h1 = -1
+    nonempty_seen = 0
+    for idx, line in enumerate(lines):
+        if not line.strip():
+            continue
+        nonempty_seen += 1
+        if line.lstrip().startswith("# "):
+            first_h1 = idx
+            break
+        if nonempty_seen >= 10:
+            break
+
+    if first_h1 > 0:
+        lines = lines[first_h1:]
+    else:
+        # No H1 in window — strip any opening preamble-pattern lines.
+        while lines and (
+            not lines[0].strip()
+            or any(pat.match(lines[0]) for pat in _BLOG_PREAMBLE_PATTERNS)
+        ):
+            lines.pop(0)
+
+    # 3. Drop trailing meta-commentary lines that match postamble patterns.
+    while lines:
+        tail = lines[-1]
+        if not tail.strip():
+            lines.pop()
+            continue
+        if any(pat.match(tail) for pat in _BLOG_POSTAMBLE_PATTERNS):
+            lines.pop()
+            continue
+        break
+
+    cleaned = "\n".join(lines).strip()
+    return cleaned or md.strip()
+
 
 def _purge_expired_blogs() -> None:
     """Drop entries past their TTL and trim oldest if cache is over capacity."""
@@ -185,13 +287,14 @@ async def _run_blog_generation(
 
         max_tokens = int(config.BLOG_MAX_TOKENS)
 
-        blog_md = await llm_service.generate_completion(
+        blog_md_raw = await llm_service.generate_completion(
             provider_name=provider,
             model_name=model_id,
             prompt=user_prompt,
             max_tokens=max_tokens,
             system_prompt=_BLOG_SYSTEM_PROMPT,
         )
+        blog_md = _clean_blog_markdown(blog_md_raw)
 
         entry = _BLOG_CACHE.get(token)
         if entry is None:
@@ -200,7 +303,13 @@ async def _run_blog_generation(
             return
         entry.state = "ready"
         entry.markdown = blog_md
-        logger.info("blog_generation_ready", token=token, chars=len(blog_md))
+        logger.info(
+            "blog_generation_ready",
+            token=token,
+            chars_raw=len(blog_md_raw),
+            chars_clean=len(blog_md),
+            stripped=len(blog_md_raw) - len(blog_md),
+        )
     except (
         Exception
     ) as err:  # noqa: BLE001 – surface any LLM/network error to the polling client
@@ -306,6 +415,15 @@ async def blog_view(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blog — Lux Scholar</title>
+  <!-- Apply Lux's saved theme BEFORE first paint to avoid a light/dark flash. -->
+  <script>
+    (function () {{
+      try {{
+        var t = localStorage.getItem("theme");
+        if (t === "dark") document.documentElement.dataset.theme = "dark";
+      }} catch (e) {{}}
+    }})();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -320,9 +438,10 @@ async def blog_view(
   <nav class="blog-nav">
     <a href="/" class="blog-nav-brand">Lux Scholar</a>
     <div class="blog-nav-actions">
-      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown">Copy MD</button>
-      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md">Download MD</button>
-      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as HTML">Save HTML</button>
+      <button id="blog-theme-toggle" class="blog-nav-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown" disabled>Copy MD</button>
+      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md" disabled>Download MD</button>
+      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as HTML" disabled>Save HTML</button>
     </div>
   </nav>
 
@@ -335,14 +454,22 @@ async def blog_view(
       <span class="blog-meta-divider"></span>
       <span id="blog-read-time"></span>
     </div>
-    <h1>Generating blog…</h1>
+    <h1 id="blog-hero-title">Composing your blog</h1>
   </header>
 
   <!-- Article (rendered by JS once /blog-status returns markdown) -->
   <article class="blog-article">
-    <div class="blog-loading">
-      <div class="blog-loading-spinner"></div>
-      <p id="blog-loading-msg">Composing your post…</p>
+    <div class="blog-loading" role="status" aria-live="polite">
+      <div class="blog-loading-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />
+          <path d="M14 4v5h5" />
+          <path d="M8 13h8" />
+          <path d="M8 17h5" />
+        </svg>
+      </div>
+      <h2 class="blog-loading-headline">Writing your blog<span class="dots"></span></h2>
+      <p class="blog-loading-substep" id="blog-loading-substep">Reading the report…</p>
     </div>
   </article>
 
