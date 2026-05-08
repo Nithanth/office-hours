@@ -16,4 +16,4 @@ mypy
 # Testing dependencies
 # ----------------------------
 pytest
-pytest-asyncio==0.23.6
+pytest-asyncio==1.2.0
