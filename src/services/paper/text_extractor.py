@@ -53,17 +53,25 @@ CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 # PDF extraction configuration (centralised via config.py). Defaults to 30 MB.
 # ---------------------------------------------------------------------------
 _DEFAULT_MAX_MB = 30
-_MAX_PDF_MB = getattr(app_config, "MAX_PDF_MB", _DEFAULT_MAX_MB) if app_config else _DEFAULT_MAX_MB
+_MAX_PDF_MB = (
+    getattr(app_config, "MAX_PDF_MB", _DEFAULT_MAX_MB)
+    if app_config
+    else _DEFAULT_MAX_MB
+)
 MAX_PDF_BYTES = _MAX_PDF_MB * 1024 * 1024
 
 # Quality thresholds
-_MIN_FULL_TEXT = getattr(app_config, "MIN_FULL_TEXT_CHARS", 3000) if app_config else 3000
+_MIN_FULL_TEXT = (
+    getattr(app_config, "MIN_FULL_TEXT_CHARS", 3000) if app_config else 3000
+)
 _MIN_PARTIAL = getattr(app_config, "MIN_PARTIAL_TEXT_CHARS", 400) if app_config else 400
 
 # OCR settings
 _OCR_ENABLED = bool(getattr(app_config, "ENABLE_PDF_OCR", False))
 _OCR_MAX_BYTES = (
-    getattr(app_config, "OCR_MAX_PDF_MB", 10) * 1024 * 1024 if app_config else 10 * 1024 * 1024
+    getattr(app_config, "OCR_MAX_PDF_MB", 10) * 1024 * 1024
+    if app_config
+    else 10 * 1024 * 1024
 )
 
 # Try to import PyMuPDF (fitz). Falls back to pdfminer only when unavailable or fails.
@@ -319,7 +327,9 @@ class TextExtractor:
             # it may have been purged separately via `flush_caches --vector`.
             if paper_id:
                 try:
-                    from services.paper import vector_store as _vs  # local import to avoid cycles
+                    from services.paper import (
+                        vector_store as _vs,
+                    )  # local import to avoid cycles
 
                     if not _vs.index_exists(paper_id):
                         try:
@@ -332,10 +342,14 @@ class TextExtractor:
                             if url != paper_id and not _vs.index_exists(url):
                                 _vs.build_index_from_text(url, cached_text)
                             logger.info(
-                                "vector_index_rebuilt", paper_id=paper_id, chars=len(cached_text)
+                                "vector_index_rebuilt",
+                                paper_id=paper_id,
+                                chars=len(cached_text),
                             )
                 except Exception as _exc:  # pragma: no cover
-                    logger.warning("vector_index_error", paper_id=paper_id, error=str(_exc))
+                    logger.warning(
+                        "vector_index_error", paper_id=paper_id, error=str(_exc)
+                    )
 
             return str(cache_path)
 
@@ -424,14 +438,14 @@ class TextExtractor:
 
                     async def _meta_task() -> None:
                         """Background task to download the PDF and parse metadata."""
-                        import requests  # type: ignore[import-untyped]
+                        import requests  # type: ignore[import-untyped,unused-ignore]
 
                         nonlocal meta
                         try:
                             resp = requests.get(url, timeout=15)
-                            if resp.ok and resp.headers.get("content-type", "").startswith(
-                                "application/pdf"
-                            ):
+                            if resp.ok and resp.headers.get(
+                                "content-type", ""
+                            ).startswith("application/pdf"):
                                 meta = _extract_pdf_metadata(resp.content)
                         except Exception as _req_exc:  # pragma: no cover – best-effort
                             logger.debug("meta_dl_failed", err=str(_req_exc))
@@ -446,7 +460,9 @@ class TextExtractor:
             # Build RAG vector index asynchronously (best-effort, non-blocking).
             try:
                 if paper_id:
-                    from services.paper import vector_store as _vs  # local import to avoid cycles
+                    from services.paper import (
+                        vector_store as _vs,
+                    )  # local import to avoid cycles
 
                     if not _vs.index_exists(paper_id):
                         _vs.build_index_from_text(paper_id, extracted)
@@ -470,7 +486,9 @@ class TextExtractor:
         """Return absolute cache **file path** for *paper_id* (if any)."""
         # Sanitize the same way _cache_path does so the glob matches on-disk names.
         safe_id = (
-            re.sub(r"[^A-Za-z0-9._-]", "_", paper_id)[:80].replace(os.sep, "_").replace("/", "_")
+            re.sub(r"[^A-Za-z0-9._-]", "_", paper_id)[:80]
+            .replace(os.sep, "_")
+            .replace("/", "_")
         )
         # Prefer full extracts over partial abstracts if both exist.
         candidates = sorted(CACHE_ROOT.glob(f"{safe_id}_*.txt"))
@@ -514,7 +532,9 @@ class TextExtractor:
             return None
         client = ExaClient(api_key=app_config.EXA_API_KEY)
         try:
-            response = await asyncio.to_thread(client.client.get_contents, [url], text=True)
+            response = await asyncio.to_thread(
+                client.client.get_contents, [url], text=True
+            )
             if response and response.results:
                 raw = response.results[0].text or ""
                 return _clean_text(raw)
@@ -654,7 +674,9 @@ class TextExtractor:
             if tables_md.strip():
                 text = f"{text}\n\n{tables_md}"
                 logger.debug("tables_extracted", count=tables_md.count("=== TABLE"))
-        except Exception as _tbl_exc:  # pragma: no cover – table extraction is best-effort
+        except (
+            Exception
+        ) as _tbl_exc:  # pragma: no cover – table extraction is best-effort
             logger.debug("table_extract_failed", err=str(_tbl_exc))
 
         # Append detected figure captions (best-effort).
@@ -707,7 +729,9 @@ class TextExtractor:
             safe_fragment = re.sub(r"[^A-Za-z0-9._-]", "_", paper_id)[:80]
             # As an extra guard, strip path separators that could appear after re.sub on exotic unicode
             safe_fragment = safe_fragment.replace(os.sep, "_").replace("/", "_")
-        filename = f"{safe_fragment}_{key_hash}.txt" if safe_fragment else f"{key_hash}.txt"
+        filename = (
+            f"{safe_fragment}_{key_hash}.txt" if safe_fragment else f"{key_hash}.txt"
+        )
         return CACHE_ROOT / filename
 
     @staticmethod
@@ -735,7 +759,9 @@ class TextExtractor:
         if not meta_path.exists():
             return None
         try:
-            return cast(dict[str, Any], json.loads(meta_path.read_text(encoding="utf-8")))
+            return cast(
+                dict[str, Any], json.loads(meta_path.read_text(encoding="utf-8"))
+            )
         except Exception as exc:
             logger.debug("meta_json_read_failed", paper_id=paper_id, err=str(exc))
             return None
