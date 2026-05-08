@@ -347,6 +347,54 @@ document.addEventListener("click", handleNotesClick);
 // ---------------------------------------------------------------------------
 // Blog Post generation – POST report text, open rendered blog in new tab
 // ---------------------------------------------------------------------------
+
+// HTML written into the popup window IMMEDIATELY (inside the click handler)
+// so the user never sees an about:blank flash while waiting for /generate-blog
+// to return the URL. Once the URL resolves, we navigate the popup. The themed
+// loading shell here mirrors the real /blog-view loading state, so the swap
+// is visually seamless.
+function buildBlogPopupShell(theme) {
+  const isDark = theme === "dark";
+  const bg = isDark ? "#0f172a" : "#fafafa";
+  const text = isDark ? "#e2e8f0" : "#1a1a2e";
+  const textSecondary = isDark ? "#94a3b8" : "#64748b";
+  const accent = isDark ? "#818cf8" : "#6366f1";
+  return (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+    '<title>Composing your blog… — Lux Scholar</title>' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<style>' +
+    '*{box-sizing:border-box;margin:0;padding:0}' +
+    `body{background:${bg};color:${text};` +
+    "font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
+    'min-height:100vh;display:flex;flex-direction:column;align-items:center;' +
+    'justify-content:center;text-align:center;padding:24px;line-height:1.6}' +
+    `.brand{position:fixed;top:16px;left:24px;font-size:14px;font-weight:600;color:${textSecondary};letter-spacing:-0.01em}` +
+    '.icon{position:relative;width:96px;height:96px;display:flex;align-items:center;justify-content:center;margin-bottom:24px}' +
+    `.icon svg{width:64px;height:64px;color:${accent};animation:pulse 2.4s ease-in-out infinite}` +
+    `.icon::before,.icon::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid ${accent};opacity:0;animation:ring 2.4s ease-out infinite}` +
+    '.icon::after{animation-delay:1.2s}' +
+    `h1{font-size:clamp(22px,3.5vw,30px);font-weight:700;letter-spacing:-0.02em;color:${text};margin-bottom:12px}` +
+    '.dots::after{content:"";display:inline-block;width:1em;text-align:left;animation:dots 1.6s steps(4,end) infinite}' +
+    `p{font-size:15px;color:${textSecondary};max-width:420px}` +
+    '@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:0.85}}' +
+    '@keyframes ring{0%{transform:scale(0.6);opacity:0.6}100%{transform:scale(1.7);opacity:0}}' +
+    '@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}100%{content:""}}' +
+    '</style></head><body>' +
+    '<div class="brand">Lux Scholar</div>' +
+    '<div class="icon" aria-hidden="true">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />' +
+    '<path d="M14 4v5h5" /><path d="M8 13h8" /><path d="M8 17h5" />' +
+    '</svg></div>' +
+    '<h1>Writing your blog<span class="dots"></span></h1>' +
+    '<p>Synthesizing the report and sketching diagrams. This usually takes 10–30 seconds.</p>' +
+    '<noscript><p style="color:' + accent + ';margin-top:24px">Blog requires JavaScript. ' +
+    'Please enable it and reload.</p></noscript>' +
+    '</body></html>'
+  );
+}
+
 function handleBlogClick(ev) {
   const btn = ev.target.closest("#report-blog-btn");
   if (!btn) return;
@@ -360,8 +408,23 @@ function handleBlogClick(ev) {
     '<span class="lux-spinner small" style="vertical-align:middle;"></span> Writing…';
 
   // Open the window synchronously (inside the click handler) so browsers
-  // don't block it as a popup.  We navigate it once the fetch resolves.
+  // don't block it as a popup, and IMMEDIATELY paint a themed loading shell
+  // so users never see the about:blank flash while the LLM warms up.
   const blogWindow = window.open("about:blank", "_blank");
+  if (blogWindow) {
+    try {
+      const theme = (function () {
+        try {
+          return localStorage.getItem("theme") === "dark" ? "dark" : "light";
+        } catch (_) { return "light"; }
+      })();
+      blogWindow.document.open();
+      blogWindow.document.write(buildBlogPopupShell(theme));
+      blogWindow.document.close();
+    } catch (writeErr) {
+      console.warn("[lux] could not seed popup loading shell", writeErr);
+    }
+  }
 
   const cleaned = getCleanReportText(reportEl);
   const fd = new FormData();
