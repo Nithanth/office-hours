@@ -86,7 +86,9 @@ def _arxiv_batch_chunk(ids: list[str], timeout: int) -> dict[str, dict[str, Any]
         time.sleep(_ARXIV_NEXT_OK - now)
 
     id_list = ",".join(ids)
-    api_url = f"https://export.arxiv.org/api/query?id_list={id_list}&max_results={len(ids)}"
+    api_url = (
+        f"https://export.arxiv.org/api/query?id_list={id_list}&max_results={len(ids)}"
+    )
     req = urllib.request.Request(
         api_url,
         headers={"User-Agent": "LuxScholarBot/0.1 (batch metadata enrichment)"},
@@ -134,8 +136,14 @@ def _arxiv_batch_chunk(ids: list[str], timeout: int) -> dict[str, dict[str, Any]
     return results
 
 
-_ARXIV_BATCH_CHUNK = 20  # arXiv API handles ~20 IDs per request reliably
-_ARXIV_MAX_RETRIES = 2
+# Smaller chunks keep us well below arXiv's per-request size limits and reduce
+# blast radius when one chunk gets 429-rate-limited.
+_ARXIV_BATCH_CHUNK = 10
+# More attempts with exponential backoff: bursty rate-limiting from the public
+# arXiv API typically clears within ~30s, so 4 retries (4s, 8s, 16s, 32s) gives
+# us a much better chance of recovering than the previous 2-attempt window.
+_ARXIV_MAX_RETRIES = 4
+_ARXIV_BACKOFF_BASE_SEC = 4.0
 
 
 def fetch_arxiv_metadata_batch(
@@ -145,13 +153,27 @@ def fetch_arxiv_metadata_batch(
 
     Returns a dict mapping arxiv_id → metadata dict (same format as
     ``fetch_arxiv_metadata``).  IDs that fail parsing are silently skipped.
+
+    Retry policy: on 429 or transient network errors we back off
+    exponentially (``_ARXIV_BACKOFF_BASE_SEC * 2**attempt``) up to
+    ``_ARXIV_MAX_RETRIES`` times per chunk before giving up on that chunk and
+    moving on. Other chunks continue independently.
     """
     if not arxiv_ids:
         return {}
 
+    # De-dup input ids without changing order — callers pass repeats sometimes.
+    seen: set[str] = set()
+    deduped_ids: list[str] = []
+    for aid in arxiv_ids:
+        if aid not in seen:
+            seen.add(aid)
+            deduped_ids.append(aid)
+
     all_results: dict[str, dict[str, Any]] = {}
     chunks = [
-        arxiv_ids[i : i + _ARXIV_BATCH_CHUNK] for i in range(0, len(arxiv_ids), _ARXIV_BATCH_CHUNK)
+        deduped_ids[i : i + _ARXIV_BATCH_CHUNK]
+        for i in range(0, len(deduped_ids), _ARXIV_BATCH_CHUNK)
     ]
 
     for chunk in chunks:
@@ -162,9 +184,9 @@ def fetch_arxiv_metadata_batch(
                 break
             except HTTPError as exc:
                 if exc.code == 429 and attempt < _ARXIV_MAX_RETRIES:
-                    wait = 4.0 * (attempt + 1)
+                    wait = _ARXIV_BACKOFF_BASE_SEC * (2**attempt)
                     logger.warning(
-                        "arXiv 429 rate-limit, retrying in {:.0f}s (attempt {}/{})",
+                        "arXiv 429 rate-limit, backing off {:.0f}s (attempt {}/{})",
                         wait,
                         attempt + 1,
                         _ARXIV_MAX_RETRIES,
@@ -174,10 +196,29 @@ def fetch_arxiv_metadata_batch(
                 logger.warning("arXiv batch fetch failed for chunk - {}", exc)
                 break
             except (URLError, TimeoutError, ParseError) as exc:
+                # Network/parse errors are also retried with backoff — most
+                # often they resolve on the next attempt.
+                if attempt < _ARXIV_MAX_RETRIES:
+                    wait = _ARXIV_BACKOFF_BASE_SEC * (2**attempt)
+                    logger.warning(
+                        "arXiv batch transient error ({}), backing off {:.0f}s "
+                        "(attempt {}/{})",
+                        exc,
+                        wait,
+                        attempt + 1,
+                        _ARXIV_MAX_RETRIES,
+                    )
+                    time.sleep(wait)
+                    continue
                 logger.warning("arXiv batch fetch failed for chunk - {}", exc)
                 break
 
-    logger.info("arxiv_batch_fetch", requested=len(arxiv_ids), returned=len(all_results))
+    logger.info(
+        "arxiv_batch_fetch",
+        requested=len(arxiv_ids),
+        unique_requested=len(deduped_ids),
+        returned=len(all_results),
+    )
     return all_results
 
 
@@ -272,11 +313,11 @@ def fetch_semantic_scholar_arxiv(arxiv_id: str, timeout: int = 10) -> dict[str, 
     if _SS_REQ_COUNT >= 95:
         return {}
 
-    api_url = (
-        f"https://api.semanticscholar.org/graph/v1/paper/ARXIV:{arxiv_id}?fields=title,authors,year"
-    )
+    api_url = f"https://api.semanticscholar.org/graph/v1/paper/ARXIV:{arxiv_id}?fields=title,authors,year"
     try:
-        req = urllib.request.Request(api_url, headers={"User-Agent": "LuxScholarBot/0.1"})
+        req = urllib.request.Request(
+            api_url, headers={"User-Agent": "LuxScholarBot/0.1"}
+        )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data: Mapping[str, Any] = json.load(resp)
         _SS_REQ_COUNT += 1
@@ -318,7 +359,9 @@ def fetch_semantic_scholar_arxiv_batch(
     if _SS_REQ_COUNT >= 95:
         return {}
 
-    api_url = "https://api.semanticscholar.org/graph/v1/paper/batch?fields=title,authors,year"
+    api_url = (
+        "https://api.semanticscholar.org/graph/v1/paper/batch?fields=title,authors,year"
+    )
     payload = json.dumps({"ids": [f"ARXIV:{aid}" for aid in arxiv_ids]}).encode()
     req = urllib.request.Request(
         api_url,

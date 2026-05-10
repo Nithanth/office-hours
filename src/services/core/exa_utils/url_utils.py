@@ -119,7 +119,9 @@ def upgrade_to_pdf_url(url: str | None) -> str | None:
         m = re.search(r"/document/(\d+)", parsed.path)
         if m:
             doc_id = m.group(1)
-            upgraded = f"https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber={doc_id}"
+            upgraded = (
+                f"https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber={doc_id}"
+            )
             logger.debug("upgrade_to_pdf_url", original=url_str, upgraded=upgraded)
             return upgraded
 
@@ -176,19 +178,38 @@ def extract_doi(text: str | None) -> Optional[str]:
 
 
 def url_equivalent(a: str | None, b: str | None) -> bool:  # noqa: D401
-    """Return **True** when *a* and *b* clearly refer to the same document."""
+    """Return **True** when *a* and *b* clearly refer to the same document.
+
+    Equivalence is determined by, in priority order:
+        1. matching arXiv ID (new-style, old-style, or arxiv: prefixed),
+           including across the arxiv.org / ar5iv.org mirror split
+        2. matching DOI
+        3. fallback: identical host+path (after lowercasing, www-stripping,
+           trailing-slash trimming, and dropping query/fragment)
+    """
     if not a or not b:
         return False
 
+    # 1. arXiv ID equivalence (handles new + old + arxiv: forms, mirrors, versions)
+    aid_a = extract_arxiv_id(a)
+    aid_b = extract_arxiv_id(b)
+    if aid_a and aid_b:
+        return aid_a == aid_b
+
+    # 2. DOI equivalence
+    doi_a = extract_doi(a)
+    doi_b = extract_doi(b)
+    if doi_a and doi_b:
+        return doi_a == doi_b
+
+    # 3. host+path fallback
     def _norm(u: str) -> str:
         pu = urlparse(u)
         host = pu.netloc.lower().removeprefix("www.")
+        # treat ar5iv as arxiv mirror in the fallback path too
+        if host == "ar5iv.org" or host.endswith(".ar5iv.org"):
+            host = "arxiv.org"
         path = pu.path.rstrip("/")
-        # arXiv: /abs/ and /pdf/ map to same id
-        if "arxiv.org" in host:
-            m = re.search(r"(?:abs|pdf)/(\d{4}\.\d{4,5})", path)
-            if m:
-                return f"arxiv:{m.group(1)}"
         return f"{host}{path}"
 
     return _norm(a) == _norm(b)

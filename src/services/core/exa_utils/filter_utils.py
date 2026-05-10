@@ -39,7 +39,9 @@ def filter_papers(
     """Backwards-compat convenience wrapper doing full pipeline."""
 
     pool = list(papers)
-    pre = pre_filter_papers(pool, include_domains=include_domains, exclude_domains=exclude_domains)
+    pre = pre_filter_papers(
+        pool, include_domains=include_domains, exclude_domains=exclude_domains
+    )
     final = apply_score_threshold(pre, k)
 
     logger.debug(
@@ -57,39 +59,85 @@ def filter_papers(
 # Relevance scoring
 # ---------------------------------------------------------------------------
 
-# Authoritative academic domains earn a source-quality bonus.
+# Authoritative academic domains earn a source-quality bonus. The set covers
+# preprint servers, major publishers, and the conference proceedings hosts most
+# commonly seen in CS/ML/NLP/CV/bio research.
 _TRUSTED_DOMAINS: set[str] = {
+    # Preprint servers
     "arxiv.org",
     "ar5iv.org",
     "biorxiv.org",
     "medrxiv.org",
+    "chemrxiv.org",
+    "ssrn.com",
+    "osf.io",
+    "papers.ssrn.com",
+    # Major publishers / journals
     "ieee.org",
     "ieeexplore.ieee.org",
     "dl.acm.org",
-    "openreview.net",
-    "aclanthology.org",
-    "aclweb.org",
     "nature.com",
     "science.org",
+    "sciencemag.org",
     "pnas.org",
     "springer.com",
+    "link.springer.com",
     "wiley.com",
+    "onlinelibrary.wiley.com",
     "cell.com",
+    "elifesciences.org",
+    "plos.org",
+    "journals.plos.org",
+    "tandfonline.com",
+    "sciencedirect.com",
+    "frontiersin.org",
+    "mdpi.com",
+    "jmlr.org",
+    # NIH / PubMed
     "nih.gov",
     "ncbi.nlm.nih.gov",
+    "pubmed.ncbi.nlm.nih.gov",
+    # CS/ML/NLP/CV proceedings & venues
+    "openreview.net",
+    "papers.nips.cc",
+    "proceedings.neurips.cc",
+    "proceedings.mlr.press",
+    "proceedings.iclr.cc",
+    "openaccess.thecvf.com",
+    "ojs.aaai.org",
+    "ai.jmlr.org",
+    "aclanthology.org",
+    "aclweb.org",
+    "iclr.cc",
+    "icml.cc",
+    "nips.cc",
+    "neurips.cc",
+    "cvpr.thecvf.com",
+    "iccv.thecvf.com",
+    "eccv.ecva.net",
+    "ecva.net",
+    # Aggregators that mirror peer-reviewed PDFs
+    "semanticscholar.org",
+    "paperswithcode.com",
+    "doi.org",
 }
 
 
 def compute_relevance_scores(papers: list[Paper]) -> None:
     """Assign ``paper.relevance_score`` (0.00–1.00) to every paper **in-place**.
 
-    Composite score blending Exa's rank-order relevance with paper quality
+    Composite score blending Exa's semantic relevance with paper quality
     signals.  Each component is normalised to 0–1, then weighted:
 
-        rank_signal      (0.40) — Exa's result ordering is their relevance
-        source_authority (0.25) — trusted academic domains score higher
+        rank_signal      (0.50) — Exa's per-result semantic score (or rank
+                                  position fallback when score is unavailable)
+        source_authority (0.20) — trusted academic domains score higher
         metadata_quality (0.20) — authors, date, completeness
-        content_richness (0.15) — how much extractable text we have
+        content_richness (0.10) — how much extractable text we have
+
+    Compared to the previous version this gives Exa's *actual* semantic score
+    primary weight and softens the source-authority binary so legitimate
+    venues outside the trusted set are not over-penalised.
     """
     if not papers:
         return
@@ -97,14 +145,22 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
     n = len(papers)
 
     for rank, p in enumerate(papers):
-        # --- Rank signal (0–1, top=1.0, bottom=0.0) -------------------------
-        rank_signal = 1.0 - (rank / max(n - 1, 1))
+        # --- Rank signal (0–1) ----------------------------------------------
+        # Prefer Exa's per-result semantic score when available. It is already
+        # in the 0–1 range. Fall back to the rank-position heuristic when the
+        # adapter did not surface a score (older Exa SDKs / mocked tests).
+        if p.score is not None:
+            rank_signal = max(0.0, min(1.0, float(p.score)))
+        else:
+            rank_signal = 1.0 - (rank / max(n - 1, 1))
 
         # --- Source authority (0–1) -----------------------------------------
         url_str = str(p.url).lower() if p.url else ""
         host = urlparse(url_str).netloc.removeprefix("www.")
         is_trusted = any(host == d or host.endswith("." + d) for d in _TRUSTED_DOMAINS)
-        source_authority = 1.0 if is_trusted else 0.3
+        # Soften the binary: untrusted hosts get 0.5 instead of 0.3 so a
+        # genuine match on a less common venue is not pushed below 0.5.
+        source_authority = 1.0 if is_trusted else 0.5
 
         # --- Metadata quality (0–1) -----------------------------------------
         meta_score = 0.0
@@ -138,7 +194,10 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
 
         # --- Weighted composite ---------------------------------------------
         final = (
-            0.40 * rank_signal + 0.25 * source_authority + 0.20 * meta_score + 0.15 * content_score
+            0.50 * rank_signal
+            + 0.20 * source_authority
+            + 0.20 * meta_score
+            + 0.10 * content_score
         )
         p.relevance_score = round(max(0.0, min(1.0, final)), 2)
 
@@ -169,7 +228,10 @@ def pre_filter_papers(
     ] or pool  # fallback if heuristics were too strict
 
     logger.debug(
-        "stage1_filter_stats", total=len(pool), kept=len(stage1), dropped=len(pool) - len(stage1)
+        "stage1_filter_stats",
+        total=len(pool),
+        kept=len(stage1),
+        dropped=len(pool) - len(stage1),
     )
     # Fail-soft: if we kept too few (heuristics overshot), revert to pool.
     # Triggers when <50% or <10 items remain, whichever is larger.
@@ -292,7 +354,9 @@ def apply_score_threshold(
         min_keep = max(int(len(pool) * ADAPTIVE_KEEP_FRAC), 20)
         final_pool = pool[: max(min_keep, k * 3, len(pool))]
         logger.debug(
-            "apply_score_threshold_stats (no scores)", pool=len(pool), kept=len(final_pool)
+            "apply_score_threshold_stats (no scores)",
+            pool=len(pool),
+            kept=len(final_pool),
         )
         return final_pool
 
@@ -305,12 +369,17 @@ def apply_score_threshold(
     min_keep = max(int(len(ranked) * ADAPTIVE_KEEP_FRAC), 20)
     min_keep = min(min_keep, len(ranked))
 
-    score_cut = ranked[min_keep - 1].score if ranked[min_keep - 1].score is not None else None
+    score_cut = (
+        ranked[min_keep - 1].score if ranked[min_keep - 1].score is not None else None
+    )
 
     if len(ranked) < 20:
         threshold = MIN_SCORE_FLOOR
         logger.debug(
-            "small_pool_threshold", size=len(ranked), threshold=threshold, score_cut=score_cut
+            "small_pool_threshold",
+            size=len(ranked),
+            threshold=threshold,
+            score_cut=score_cut,
         )
     else:
         threshold = max(MIN_SCORE_FLOOR, score_cut or 0.0)
@@ -318,7 +387,10 @@ def apply_score_threshold(
     final_pool = [p for p in ranked if p.score is None or p.score >= threshold]
 
     logger.debug(
-        "apply_score_threshold_stats", pool=len(ranked), kept=len(final_pool), threshold=threshold
+        "apply_score_threshold_stats",
+        pool=len(ranked),
+        kept=len(final_pool),
+        threshold=threshold,
     )
 
     if len(final_pool) < k:

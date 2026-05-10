@@ -64,6 +64,49 @@ from .exa_utils import (
 _ENRICH_POOL = _ThreadPoolExecutor(max_workers=4)
 
 
+# ---------------------------------------------------------------------------
+# Identifier-based dedup helpers
+# ---------------------------------------------------------------------------
+# Two papers are considered the same when they share an arXiv id, a DOI, or
+# (as a fallback) a canonicalised host+path. Returning a *list* (rather than a
+# set) lets callers pick a stable "primary" key for use as a dict key.
+
+
+def _paper_dedup_key(url: str | None) -> str:
+    """Return the single strongest dedup key for *url* (arXiv id / DOI / host+path)."""
+    if not url:
+        return ""
+    aid = _url_utils.extract_arxiv_id(url)
+    if aid:
+        return f"arxiv:{aid}"
+    doi = _url_utils.extract_doi(url)
+    if doi:
+        return f"doi:{doi}"
+    from urllib.parse import urlparse as _urlparse
+
+    pu = _urlparse(url)
+    host = pu.netloc.lower().removeprefix("www.")
+    if host == "ar5iv.org" or host.endswith(".ar5iv.org"):
+        host = "arxiv.org"
+    path = pu.path.rstrip("/")
+    return f"url:{host}{path}"
+
+
+def _candidate_dedup_keys(url: str | None) -> set[str]:
+    """Return *every* dedup key applicable to *url* — useful when comparing two papers."""
+    if not url:
+        return set()
+    keys: set[str] = set()
+    aid = _url_utils.extract_arxiv_id(url)
+    if aid:
+        keys.add(f"arxiv:{aid}")
+    doi = _url_utils.extract_doi(url)
+    if doi:
+        keys.add(f"doi:{doi}")
+    keys.add(_paper_dedup_key(url))
+    return keys
+
+
 class ExaClientError(Exception):
     """Base exception for ExaClient errors."""
 
@@ -139,7 +182,8 @@ class ExaClient:
                 contents=False,
             )
             if resp.results:
-                return resp.results[0].id
+                rid = resp.results[0].id
+                return rid if isinstance(rid, str) else None
         except Exception as e:
             logger.warning("_get_id_from_url failed for {}: {}", url, e, exc_info=True)
         return None
@@ -165,7 +209,9 @@ class ExaClient:
 
             res2 = self.client.get_contents([doc_id], text=True)
             if getattr(res2, "results", None):
-                logger.debug("_safe_get_contents hit via doc_id: url={} doc_id={}", url, doc_id)
+                logger.debug(
+                    "_safe_get_contents hit via doc_id: url={} doc_id={}", url, doc_id
+                )
                 return res2.results[0]
         except Exception as exc:
             logger.warning("_safe_get_contents failed for {}: {}", url, exc)
@@ -184,7 +230,9 @@ class ExaClient:
             # 1. Check cache
             cached = self._cache.get(doc_id)
             if cached and cached["complete"] and self._cache.is_fresh(doc_id):
-                return cast(Paper, _paper_utils.update_paper_from_meta(paper, cached["meta"]))
+                return cast(
+                    Paper, _paper_utils.update_paper_from_meta(paper, cached["meta"])
+                )
 
             # 2. Authoritative external metadata FIRST (arXiv / DOI) -------------
             external_meta: dict[str, Any] | None = None
@@ -205,7 +253,10 @@ class ExaClient:
                     external_meta = _fetch_arxiv_metadata(arxiv_id_early)
                     # Fallback to Semantic Scholar if arXiv returned nothing (rate-limited)
                     if not external_meta:
-                        logger.debug("arXiv empty, trying Semantic Scholar for {}", arxiv_id_early)
+                        logger.debug(
+                            "arXiv empty, trying Semantic Scholar for {}",
+                            arxiv_id_early,
+                        )
                         external_meta = _fetch_ss_arxiv(arxiv_id_early)
                     logger.debug(
                         "arXiv meta keys={} authors={}",
@@ -216,7 +267,9 @@ class ExaClient:
                 doi_val_early = _url_utils.extract_doi(url_lower)
                 logger.debug("Detected DOI={}", doi_val_early)
                 if doi_val_early:
-                    logger.debug("Fetching Semantic Scholar DOI metadata for {}", doi_val_early)
+                    logger.debug(
+                        "Fetching Semantic Scholar DOI metadata for {}", doi_val_early
+                    )
                     external_meta = _fetch_doi_metadata(doi_val_early)
                     logger.debug(
                         "SS meta authors={}",
@@ -231,7 +284,9 @@ class ExaClient:
                         )
 
             if external_meta:
-                paper = cast(Paper, _paper_utils.update_paper_from_meta(paper, external_meta))
+                paper = cast(
+                    Paper, _paper_utils.update_paper_from_meta(paper, external_meta)
+                )
                 if external_meta.get("text_content") and not paper.text_content:
                     paper.text_content = external_meta["text_content"]
 
@@ -269,7 +324,9 @@ class ExaClient:
                             res = search_res
                             break
                 except Exception as _search_exc:
-                    logger.debug("fallback_search_failed", url=paper.url, err=str(_search_exc))
+                    logger.debug(
+                        "fallback_search_failed", url=paper.url, err=str(_search_exc)
+                    )
 
             if res.results:
                 r = res.results[0]
@@ -277,14 +334,22 @@ class ExaClient:
                 authors_meta: list[str] | None = None
                 authors_raw: Any = getattr(cast(Any, r), "authors", None)
                 if authors_raw:
-                    authors_meta = [str(a).strip() for a in authors_raw if str(a).strip()]
+                    authors_meta = [
+                        str(a).strip() for a in authors_raw if str(a).strip()
+                    ]
                 elif getattr(r, "author", None):
                     authors_meta = [
-                        n.strip() for n in str(getattr(r, "author", "")).split(",") if n.strip()
+                        n.strip()
+                        for n in str(getattr(r, "author", "")).split(",")
+                        if n.strip()
                     ]
 
                 authors_meta = _author_utils.filter_plausible_authors(authors_meta)
-                logger.debug("Exa results authors_raw={} | filtered={}", authors_raw, authors_meta)
+                logger.debug(
+                    "Exa results authors_raw={} | filtered={}",
+                    authors_raw,
+                    authors_meta,
+                )
                 if not authors_meta:
                     authors_meta = None  # treat as missing for fallback logic
 
@@ -302,7 +367,9 @@ class ExaClient:
                     meta["title"] = getattr(r, "title", None)
                 if (
                     (not paper.authors)
-                    or not any(_author_utils.is_plausible_author(a) for a in paper.authors)
+                    or not any(
+                        _author_utils.is_plausible_author(a) for a in paper.authors
+                    )
                 ) and authors_meta:
                     meta["authors"] = authors_meta
                 if not paper.published_date and getattr(r, "published_date", None):
@@ -310,7 +377,9 @@ class ExaClient:
 
                 # Skip update if Exa didn’t provide any *new* useful fields
                 if meta:
-                    paper = cast(Paper, _paper_utils.update_paper_from_meta(paper, meta))
+                    paper = cast(
+                        Paper, _paper_utils.update_paper_from_meta(paper, meta)
+                    )
 
                 # Fallback to arXiv API if critical fields still missing
                 _title_missing = (
@@ -321,7 +390,9 @@ class ExaClient:
                 if "arxiv.org" in str(paper.url).lower() and (
                     _title_missing
                     or not paper.authors
-                    or not any(_author_utils.is_plausible_author(a) for a in paper.authors)
+                    or not any(
+                        _author_utils.is_plausible_author(a) for a in paper.authors
+                    )
                     or not paper.published_date
                 ):
                     arxiv_id = _url_utils.extract_arxiv_id(str(paper.url))
@@ -329,32 +400,48 @@ class ExaClient:
                         arxiv_meta = _fetch_arxiv_metadata(arxiv_id)
                         if arxiv_meta:
                             paper = cast(
-                                Paper, _paper_utils.update_paper_from_meta(paper, arxiv_meta)
+                                Paper,
+                                _paper_utils.update_paper_from_meta(paper, arxiv_meta),
                             )
-                            if arxiv_meta.get("text_content") and not paper.text_content:
+                            if (
+                                arxiv_meta.get("text_content")
+                                and not paper.text_content
+                            ):
                                 paper.text_content = arxiv_meta["text_content"]
-                            logger.debug("Metadata enriched from arXiv API for {}", doc_id)
+                            logger.debug(
+                                "Metadata enriched from arXiv API for {}", doc_id
+                            )
 
                         # Secondary: Semantic Scholar ARXIV endpoint if still missing
                         if (
                             not paper.authors
-                            or not any(_author_utils.is_plausible_author(a) for a in paper.authors)
+                            or not any(
+                                _author_utils.is_plausible_author(a)
+                                for a in paper.authors
+                            )
                         ) or not paper.published_date:
                             ss_meta = _fetch_ss_arxiv(arxiv_id)
                             if ss_meta:
                                 paper = cast(
-                                    Paper, _paper_utils.update_paper_from_meta(paper, ss_meta)
+                                    Paper,
+                                    _paper_utils.update_paper_from_meta(paper, ss_meta),
                                 )
-                                if ss_meta.get("text_content") and not paper.text_content:
+                                if (
+                                    ss_meta.get("text_content")
+                                    and not paper.text_content
+                                ):
                                     paper.text_content = ss_meta["text_content"]
                                 logger.debug(
-                                    "Metadata enriched from Semantic Scholar (arXiv) for {}", doc_id
+                                    "Metadata enriched from Semantic Scholar (arXiv) for {}",
+                                    doc_id,
                                 )
 
                 if (
                     (
                         not paper.authors
-                        or not any(_author_utils.is_plausible_author(a) for a in paper.authors)
+                        or not any(
+                            _author_utils.is_plausible_author(a) for a in paper.authors
+                        )
                     )
                     or not paper.published_date
                 ) and "arxiv.org" not in str(paper.url).lower():
@@ -363,12 +450,14 @@ class ExaClient:
                         doi_meta = _fetch_doi_metadata(doi_val)
                         if doi_meta:
                             paper = cast(
-                                Paper, _paper_utils.update_paper_from_meta(paper, doi_meta)
+                                Paper,
+                                _paper_utils.update_paper_from_meta(paper, doi_meta),
                             )
                             if doi_meta.get("text_content") and not paper.text_content:
                                 paper.text_content = doi_meta["text_content"]
                             logger.debug(
-                                "Metadata enriched from Semantic Scholar (DOI) for {}", doc_id
+                                "Metadata enriched from Semantic Scholar (DOI) for {}",
+                                doc_id,
                             )
 
                 complete_now = bool(paper.authors and paper.published_date)
@@ -395,7 +484,9 @@ class ExaClient:
                     meta = {
                         "title": getattr(r, "title", None),
                         "authors": [
-                            n.strip() for n in str(getattr(r, "author", "")).split(",") if n.strip()
+                            n.strip()
+                            for n in str(getattr(r, "author", "")).split(",")
+                            if n.strip()
                         ]
                         if getattr(r, "author", None)
                         else None,
@@ -423,9 +514,14 @@ class ExaClient:
                 answer_text = str(answer_text)
             passages: list[dict[str, str]] = []
             # v2 answer() returns .citations instead of .results
-            citations = getattr(resp, "citations", None) or getattr(resp, "results", None) or []
+            citations = (
+                getattr(resp, "citations", None) or getattr(resp, "results", None) or []
+            )
             for res in citations[:top_k]:
-                snippet = getattr(res, "text", "").strip() or getattr(res, "snippet", "").strip()
+                snippet = (
+                    getattr(res, "text", "").strip()
+                    or getattr(res, "snippet", "").strip()
+                )
                 passages.append(
                     {
                         "snippet": snippet[:512],
@@ -435,7 +531,10 @@ class ExaClient:
             return {"answer": answer_text, "passages": passages}
         except Exception as exc:
             logger.warning(
-                "ExaClient.answer failed for question '{}' : {}", question, exc, exc_info=True
+                "ExaClient.answer failed for question '{}' : {}",
+                question,
+                exc,
+                exc_info=True,
             )
             return {}
 
@@ -464,12 +563,27 @@ class ExaClient:
             A list of Paper objects representing similar papers.
         """
         desired_count = min(num_results, self.MAX_RETURNED_PAPERS)
-        request_count = 60  # Fetch up to 40 papers to ensure we get enough after filtering
+        request_count = (
+            60  # Fetch up to 40 papers to ensure we get enough after filtering
+        )
 
         paper_url_norm = paper_url
         arxiv_id = _url_utils.extract_arxiv_id(paper_url)
         if arxiv_id:
             paper_url_norm = _url_utils.canonical_arxiv_abs_url(arxiv_id)
+
+        # Pre-compute a set of identifier keys for the seed paper so we can
+        # exclude any candidate that resolves to the same arXiv id / DOI / URL,
+        # even when Exa returns a different mirror (arxiv.org vs ar5iv.org),
+        # PDF/abs path, or version-suffixed form.
+        seed_keys: set[str] = set()
+        if arxiv_id:
+            seed_keys.add(f"arxiv:{arxiv_id}")
+        seed_doi = _url_utils.extract_doi(paper_url)
+        if seed_doi:
+            seed_keys.add(f"doi:{seed_doi}")
+        seed_keys.add(_paper_dedup_key(paper_url_norm))
+        seed_keys.add(_paper_dedup_key(paper_url))
 
         papers: list[Paper] = []
         try:
@@ -480,7 +594,9 @@ class ExaClient:
             }
 
             if start_published_date:
-                exa_kwargs["start_published_date"] = start_published_date.strftime("%Y-%m-%d")
+                exa_kwargs["start_published_date"] = start_published_date.strftime(
+                    "%Y-%m-%d"
+                )
             if include_domains:
                 exa_kwargs["include_domains"] = include_domains
             if exclude_domains:
@@ -505,10 +621,15 @@ class ExaClient:
 
             prelim: list[Paper] = []
             for result in similar_response.results:
-                # Skip if the candidate URL is the same paper as the input URL
-                cand_url: str | None = getattr(result, "url", None) or getattr(result, "id", None)
-                if cand_url and _url_utils.url_equivalent(cand_url, paper_url_norm):
-                    continue  # duplicate of main paper – skip
+                # Skip if the candidate matches the seed by any identifier (arXiv
+                # id, DOI, canonical URL — see seed_keys above).
+                cand_url: str | None = getattr(result, "url", None) or getattr(
+                    result, "id", None
+                )
+                if cand_url:
+                    cand_keys = _candidate_dedup_keys(cand_url)
+                    if seed_keys & cand_keys:
+                        continue  # duplicate of main paper – skip
 
                 p = _paper_utils.create_paper_from_exa_result(
                     result, f"Exa (similar to: {paper_url})"
@@ -516,7 +637,9 @@ class ExaClient:
                 if not p:
                     continue
 
-                if not _url_utils.domain_allowed(p.url, include_domains, exclude_domains):
+                if not _url_utils.domain_allowed(
+                    p.url, include_domains, exclude_domains
+                ):
                     continue
 
                 prelim.append(p)
@@ -524,7 +647,10 @@ class ExaClient:
             from concurrent.futures import as_completed
 
             if prelim:
-                fut_map = {_ENRICH_POOL.submit(self._enrich_paper_metadata, p): p for p in prelim}
+                fut_map = {
+                    _ENRICH_POOL.submit(self._enrich_paper_metadata, p): p
+                    for p in prelim
+                }
                 for fut in as_completed(fut_map):
                     try:
                         paper = fut.result()
@@ -561,13 +687,21 @@ class ExaClient:
                     if _paper_utils.is_valid_paper(paper):
                         papers.append(paper)
 
+            # De-dup by strongest available identifier (arXiv id / DOI / canonical
+            # URL), and re-check against the seed paper here in case enrichment
+            # rewrote the URL into a form that now collides with the seed.
             unique: dict[str, Paper] = {}
             for paper in papers:
-                if paper and paper.url:
-                    key = str(paper.url).lower()
-                    if key in unique:
-                        continue
-                    unique[key] = paper
+                if not paper or not paper.url:
+                    continue
+                url_str = str(paper.url)
+                cand_keys = _candidate_dedup_keys(url_str)
+                if seed_keys & cand_keys:
+                    continue
+                # Skip if any of this paper's keys already maps to a kept paper.
+                if any(k in unique for k in cand_keys):
+                    continue
+                unique[_paper_dedup_key(url_str)] = paper
 
             papers = list(unique.values())
 
@@ -627,7 +761,11 @@ class ExaClient:
         arxiv_id = _url_utils.extract_arxiv_id(paper_url)
         if arxiv_id and "arxiv.org/pdf" in paper_url.lower():
             normalized_url = _url_utils.canonical_arxiv_abs_url(arxiv_id)
-            logger.info("Normalized arXiv PDF URL to abs page: {} → {}", paper_url, normalized_url)
+            logger.info(
+                "Normalized arXiv PDF URL to abs page: {} → {}",
+                paper_url,
+                normalized_url,
+            )
 
         main_paper_object: Optional[Paper] = None
         similar_papers_list: list[Paper] = []
@@ -645,7 +783,9 @@ class ExaClient:
                     main_paper_object.published_date,
                 )
         except Exception as enrich_exc:  # noqa: BLE001 – fall back gracefully
-            logger.warning("primary enrich_url failed for {} - {}", normalized_url, enrich_exc)
+            logger.warning(
+                "primary enrich_url failed for {} - {}", normalized_url, enrich_exc
+            )
 
         # 1. If still incomplete, try Exa get_contents for richer text/metadata
         needs_exa = (
@@ -667,8 +807,11 @@ class ExaClient:
                     # we never clobber the authoritative title / authors / date.
                     try:
                         if main_paper_object is None:
-                            main_paper_object = _paper_utils.create_paper_from_exa_result(
-                                main_res, f"Exa (safe_get_contents: {normalized_url})"
+                            main_paper_object = (
+                                _paper_utils.create_paper_from_exa_result(
+                                    main_res,
+                                    f"Exa (safe_get_contents: {normalized_url})",
+                                )
                             )
                         else:
                             meta_patch: dict[str, Any] = {
@@ -703,7 +846,9 @@ class ExaClient:
         # If Exa content fetch failed entirely, fall back to MetadataEnricher on the normalized URL.
         if main_paper_object is None:
             fallback_paper = self.enrich_url(normalized_url)
-            logger.info("fallback enrich_url result for {} → {}", normalized_url, fallback_paper)
+            logger.info(
+                "fallback enrich_url result for {} → {}", normalized_url, fallback_paper
+            )
             if fallback_paper is not None:
                 main_paper_object = fallback_paper
 
@@ -790,12 +935,13 @@ class ExaClient:
             # Fallback: if arXiv returned nothing (e.g. 429), try Semantic Scholar
             if not batch_meta and arxiv_ids:
                 logger.info(
-                    "arXiv batch empty, falling back to Semantic Scholar for {} IDs", len(arxiv_ids)
+                    "arXiv batch empty, falling back to Semantic Scholar for {} IDs",
+                    len(arxiv_ids),
                 )
                 batch_meta = _fetch_ss_arxiv_batch(arxiv_ids)
 
-            for aid, meta in batch_meta.items():
-                for p in arxiv_papers.get(aid, []):
+            for found_aid, meta in batch_meta.items():
+                for p in arxiv_papers.get(found_aid, []):
                     _paper_utils.update_paper_from_meta(p, meta)
 
         # 2b. Enrich remaining metadata per-paper ----------------------------
@@ -804,7 +950,9 @@ class ExaClient:
         def _needs_enrichment(p: Paper) -> bool:
             """Only enrich papers still missing critical metadata after batch fetch."""
             title_ok = bool(
-                p.title and p.title != "No Title Provided" and not p.title.startswith("arXiv:")
+                p.title
+                and p.title != "No Title Provided"
+                and not p.title.startswith("arXiv:")
             )
             authors_ok = bool(p.authors and len(p.authors) > 0)
             date_ok = bool(p.published_date)
@@ -820,7 +968,8 @@ class ExaClient:
 
         if papers_to_enrich:
             fut_map = {
-                _ENRICH_POOL.submit(self._enrich_paper_metadata, p): p for p in papers_to_enrich
+                _ENRICH_POOL.submit(self._enrich_paper_metadata, p): p
+                for p in papers_to_enrich
             }
             for fut in as_completed(fut_map):
                 try:
@@ -828,7 +977,9 @@ class ExaClient:
                 except Exception as exc:  # noqa: BLE001 – best-effort
                     failed_paper = fut_map.get(fut)
                     logger.debug(
-                        "enrich_failed", id=getattr(failed_paper, "id", None), err=str(exc)
+                        "enrich_failed",
+                        id=getattr(failed_paper, "id", None),
+                        err=str(exc),
                     )
 
         # 3. Adaptive score / breadth filter -------------------------------
@@ -881,7 +1032,9 @@ class ExaClient:
         )
         return filtered
 
-    def _build_cache(self, papers: list[Paper], k: int, query: str) -> CachedSearch | None:
+    def _build_cache(
+        self, papers: list[Paper], k: int, query: str
+    ) -> CachedSearch | None:
         """Construct a CachedSearch object from *papers* if possible.
 
         The helper converts the list into the dict/ordering structure required
@@ -960,10 +1113,14 @@ class ExaClient:
                 from services.paper.text_extractor import TextExtractor
 
                 asyncio.create_task(
-                    TextExtractor.instance().ensure_cached(main_paper.url, main_paper.id)
+                    TextExtractor.instance().ensure_cached(
+                        main_paper.url, main_paper.id
+                    )
                 )
             except Exception as bg_exc:
-                logger.debug("TextExtractor background task failed to start: {}", bg_exc)
+                logger.debug(
+                    "TextExtractor background task failed to start: {}", bg_exc
+                )
             pinned_id = main_paper.id if main_paper.id else None
 
         # Compute composite relevance scores for all papers in the URL pool
@@ -1069,7 +1226,9 @@ class ExaClient:
                 title=meta.get("title", "No Title Provided"),
                 url=_paper_utils._coerce_http_url(url),
             )
-            cached_paper = cast(Paper, _paper_utils.update_paper_from_meta(cached_paper, meta))
+            cached_paper = cast(
+                Paper, _paper_utils.update_paper_from_meta(cached_paper, meta)
+            )
             return cached_paper
 
         from services.paper.metadata.metadata_enricher import MetadataEnricher
@@ -1080,7 +1239,9 @@ class ExaClient:
             try:
                 return await asyncio.wait_for(enricher.enrich(url), timeout=timeout)
             except asyncio.TimeoutError:
-                logger.warning("enrich_url timed out for {} after {:.1f}s", url, timeout)
+                logger.warning(
+                    "enrich_url timed out for {} after {:.1f}s", url, timeout
+                )
                 return None
 
         # Determine if we're already inside an event loop.  Creating the coroutine only
@@ -1103,7 +1264,9 @@ class ExaClient:
                 fut = _ENRICH_POOL.submit(_thread_runner)
                 paper = fut.result(timeout=timeout + 1.0)
             except Exception as exc:
-                logger.warning("enrich_url failed in worker thread for {} - {}", url, exc)
+                logger.warning(
+                    "enrich_url failed in worker thread for {} - {}", url, exc
+                )
                 return None
 
         if paper is None:
@@ -1113,15 +1276,23 @@ class ExaClient:
         self._cache.upsert(paper.id, paper.model_dump(), complete_now)
         return paper
 
-    def search_papers(self, query: str, num_results: int = 10, **kwargs: Any) -> list[Paper]:
+    def search_papers(
+        self, query: str, num_results: int = 10, **kwargs: Any
+    ) -> list[Paper]:
         """Run **metadata-only** Exa search and convert to :class:`Paper` list."""
         # Exa SDK requires date parameters as ISO 8601 strings.
         if "start_published_date" in kwargs and isinstance(
             kwargs["start_published_date"], datetime
         ):
-            kwargs["start_published_date"] = kwargs["start_published_date"].date().isoformat()
-        if "end_published_date" in kwargs and isinstance(kwargs["end_published_date"], datetime):
-            kwargs["end_published_date"] = kwargs["end_published_date"].date().isoformat()
+            kwargs["start_published_date"] = (
+                kwargs["start_published_date"].date().isoformat()
+            )
+        if "end_published_date" in kwargs and isinstance(
+            kwargs["end_published_date"], datetime
+        ):
+            kwargs["end_published_date"] = (
+                kwargs["end_published_date"].date().isoformat()
+            )
 
         try:
             # v2: use auto search for best recall (blends neural + keyword);
