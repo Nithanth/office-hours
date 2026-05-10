@@ -495,3 +495,51 @@ body {
   .blog-article pre { padding: 16px; border-radius: 8px; }
   .blog-mermaid-wrapper { padding: 16px; border-radius: 12px; }
 }
+
+/* ---- Print / Save-as-PDF ---- */
+/* `body.blog-printing` is set by the Save-PDF button right before the print
+   dialog opens, then removed after. The same rules also apply to the native
+   browser print/Cmd+P flow via @media print. */
+@media print {
+  /* Force light theme for printed output (ink-on-paper). */
+  html[data-theme="dark"], html[data-theme="dark"] body {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+  }
+  html[data-theme="dark"] {
+    --blog-bg: #ffffff;
+    --blog-text: #1a1a1a;
+    --blog-text-secondary: #444;
+    --blog-text-muted: #666;
+    --blog-border: #e5e7eb;
+    --blog-card-bg: #fafafa;
+  }
+  body { background: #ffffff !important; }
+  /* Hide chrome that shouldn't print. */
+  .blog-nav,
+  .blog-progress-bar,
+  .blog-toast,
+  .blog-loading,
+  .blog-footer { display: none !important; }
+  /* Make hero compact on print. */
+  .blog-hero { padding: 24px 0 16px !important; }
+  /* Prevent fade-in animations being mid-flight on print. */
+  .blog-fade-in,
+  .blog-article * { animation: none !important; opacity: 1 !important; transform: none !important; }
+  /* Avoid awkward page breaks inside structural blocks. */
+  .blog-article h2, .blog-article h3, .blog-article h4 { break-after: avoid; page-break-after: avoid; }
+  .blog-article pre, .blog-article blockquote, .blog-mermaid-wrapper, .blog-article table {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .blog-article img { max-width: 100% !important; }
+  /* Tighten margins so the printed page uses the paper area. */
+  @page { margin: 18mm 16mm; }
+}
+
+/* Same rules apply when the body is forced into print state by the JS
+   button so previewers also see them on screen briefly. */
+body.blog-printing .blog-nav,
+body.blog-printing .blog-progress-bar,
+body.blog-printing .blog-toast,
+body.blog-printing .blog-loading,
+body.blog-printing .blog-footer { display: none !important; }
