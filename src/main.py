@@ -13,6 +13,7 @@ Main responsibilities:
 import asyncio
 import html
 import logging
+import os
 import pathlib as _pathlib
 import sys
 import time
@@ -20,6 +21,11 @@ import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Optional
+
+# Silence the lance Rust crate's tracing output (the "[... WARN  lance::...] No
+# existing dataset, it will be created" lines printed on every cold-cache
+# vector index build). Must happen before lance is imported anywhere.
+os.environ.setdefault("RUST_LOG", "lance=error")
 
 # ---------------------------------------------------------------------------
 # Imports – *keep minimal globals above to avoid slow cold-start*
@@ -94,6 +100,16 @@ class DropSSE204Filter(logging.Filter):
 
 
 logging.getLogger("uvicorn.access").addFilter(DropSSE204Filter())
+
+# --- Silence noisy third-party loggers ------------------------------------
+# - pdfminer: emits dozens of "gray stroke color because /'P4' is an invalid
+#   float value" lines per quirky PDF. Cosmetic, doesn't affect text extraction.
+# - google.genai.types: warns "thought_signature ... returning concatenated text"
+#   on every Gemini response — expected behavior, not actionable.
+for _noisy in ("pdfminer", "pdfminer.pdfinterp", "pdfminer.cmapdb", "pdfminer.pdfpage"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
+for _noisy in ("google.genai", "google.genai.types", "google_genai"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
 
 # --- Bridge stdlib logging → Loguru ---------------------------------------
 
@@ -183,7 +199,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         try:
                             SessionStateCache.delete(sid)
                         except Exception as exc:  # noqa: BLE001
-                            logger.debug("gc_disk_delete_failed", session_id=sid, err=str(exc))
+                            logger.debug(
+                                "gc_disk_delete_failed", session_id=sid, err=str(exc)
+                            )
                         removed += 1
                 if removed:
                     logger.info("chatstate_gc", evicted=removed)
@@ -286,14 +304,18 @@ from starlette.middleware.base import (
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: D401
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:  # noqa: D401
         response: Response = await call_next(request)
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload"
         )
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "same-origin")
-        response.headers.setdefault("Permissions-Policy", "clipboard-read=*, clipboard-write=*")
+        response.headers.setdefault(
+            "Permissions-Policy", "clipboard-read=*, clipboard-write=*"
+        )
         response.headers.setdefault("X-Frame-Options", "DENY")
         # Very restrictive CSP; adjust 'img-src' and 'media-src' as needed.
         response.headers.setdefault(
@@ -315,7 +337,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class AuthGateMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:  # noqa: D401
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:  # noqa: D401
         if not config.config.REQUIRE_LOGIN:
             return await call_next(request)
 
@@ -345,7 +369,9 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
         next_url = str(request.url.path)
         if request.url.query:
             next_url += "?" + request.url.query
-        return RedirectResponse(f"/auth/google/login?next={urllib.parse.quote(next_url)}")
+        return RedirectResponse(
+            f"/auth/google/login?next={urllib.parse.quote(next_url)}"
+        )
 
 
 app.add_middleware(ChatSessionMiddleware)
@@ -376,14 +402,18 @@ def _html_error_banner(message: str) -> str:  # helper
 
 
 @app.exception_handler(HTTPException)
-async def _http_exception_handler(request: Request, exc: HTTPException) -> HTMLResponse:  # noqa: D401
+async def _http_exception_handler(
+    request: Request, exc: HTTPException
+) -> HTMLResponse:  # noqa: D401
     """Convert HTTPException to a styled banner so HTMX swaps show feedback."""
     banner = _html_error_banner(exc.detail if exc.detail else "Request failed")
     return HTMLResponse(content=banner, status_code=exc.status_code)
 
 
 @app.exception_handler(Exception)
-async def _unhandled_exception_handler(request: Request, exc: Exception) -> HTMLResponse:  # noqa: D401
+async def _unhandled_exception_handler(
+    request: Request, exc: Exception
+) -> HTMLResponse:  # noqa: D401
     """Catch-all fallback – log & return user-friendly banner."""
     logger.exception("unhandled_exception", err=str(exc))
     banner = _html_error_banner("Unexpected server error – please try again.")
@@ -410,7 +440,9 @@ else:
 # --- Manual Uvicorn entrypoint (only when python main.py) ------------------
 
 if __name__ == "__main__":
-    print(f"Starting Uvicorn server on http://{config.config.HOST}:{config.config.PORT}")
+    print(
+        f"Starting Uvicorn server on http://{config.config.HOST}:{config.config.PORT}"
+    )
     uvicorn.run(
         "main:app",
         host=config.config.HOST,
