@@ -361,7 +361,7 @@ function buildBlogPopupShell(theme) {
   const accent = isDark ? "#818cf8" : "#6366f1";
   return (
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
-    '<title>Composing your blog… — Lux Scholar</title>' +
+    '<title>Composing your blog… — Nithu&#39;s PhD intern</title>' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<style>' +
     '*{box-sizing:border-box;margin:0;padding:0}' +
@@ -381,7 +381,7 @@ function buildBlogPopupShell(theme) {
     '@keyframes ring{0%{transform:scale(0.6);opacity:0.6}100%{transform:scale(1.7);opacity:0}}' +
     '@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}100%{content:""}}' +
     '</style></head><body>' +
-    '<div class="brand">Lux Scholar</div>' +
+    '<div class="brand">Nithu&#39;s PhD intern</div>' +
     '<div class="icon" aria-hidden="true">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />' +

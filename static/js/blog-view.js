@@ -313,20 +313,112 @@ function initActions(rawMd) {
     showToast("Downloaded");
   });
 
-  document.getElementById("blog-save-html-btn")?.addEventListener("click", () => {
-    const htmlContent = document.documentElement.outerHTML;
-    const blob = new Blob(["<!DOCTYPE html>\n" + htmlContent], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement("a"), {
-      href: url,
-      download: "research_blog.html",
-    });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showToast("Saved as HTML");
+  document.getElementById("blog-save-html-btn")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    if (btn.dataset.busy) return;
+    btn.dataset.busy = "1";
+    const original = btn.textContent;
+    btn.textContent = "Saving…";
+    try {
+      const html = await buildSelfContainedHtml();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement("a"), {
+        href: url,
+        download: "research_blog.html",
+      });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("Saved as HTML");
+    } catch (err) {
+      console.error("[blog] save-html failed", err);
+      showToast("Save failed — see console");
+    } finally {
+      btn.textContent = original;
+      delete btn.dataset.busy;
+    }
   });
+
+  document.getElementById("blog-save-pdf-btn")?.addEventListener("click", () => {
+    // Use the browser's native print → "Save as PDF". A `@media print` block
+    // in blog.css hides the nav/buttons and forces light theme for ink.
+    document.body.classList.add("blog-printing");
+    // Defer to next frame so the class is applied before the print dialog opens.
+    requestAnimationFrame(() => {
+      window.print();
+      // Clean up shortly after dialog returns.
+      setTimeout(() => document.body.classList.remove("blog-printing"), 1000);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Self-contained HTML export
+// ---------------------------------------------------------------------------
+// Walks every <link rel="stylesheet"> and inlines its CSS into a <style> tag
+// so the saved file renders correctly when opened offline. Same-origin CSS is
+// fetched via fetch(); cross-origin CSS we leave as a <link> (Google Fonts,
+// KaTeX, highlight.js — all have permissive CDN caching), which means the
+// saved file still needs internet for fonts/icons but renders fully styled.
+async function buildSelfContainedHtml() {
+  const clone = document.documentElement.cloneNode(true);
+
+  // Remove the runtime token script — it's session-bound and useless after save.
+  clone.querySelectorAll("script").forEach((s) => {
+    const txt = s.textContent || "";
+    if (txt.includes("__BLOG_TOKEN__")) s.remove();
+    if (s.id && s.id.startsWith("blog-dep-")) s.remove();
+  });
+  // Remove the blog-view.js loader script — the saved file is static.
+  clone.querySelectorAll('script[src*="/static/js/blog-view.js"]').forEach((s) => s.remove());
+  // Remove dynamically-injected dep stylesheets (we'll inline them instead).
+  clone.querySelectorAll('link[id^="blog-dep-"]').forEach((l) => l.remove());
+
+  // Inline all <link rel="stylesheet">. Same-origin: fetch + replace with <style>.
+  // Cross-origin: leave as-is (CORS prevents reading the bytes).
+  const links = Array.from(clone.querySelectorAll('link[rel="stylesheet"]'));
+  await Promise.all(links.map(async (link) => {
+    const href = link.getAttribute("href") || "";
+    if (!href) return;
+    let absHref;
+    try {
+      absHref = new URL(href, document.baseURI).href;
+    } catch (_) { return; }
+    const sameOrigin = new URL(absHref).origin === window.location.origin;
+    if (!sameOrigin) {
+      // Make sure cross-origin <link>s have absolute hrefs in the saved file.
+      link.setAttribute("href", absHref);
+      return;
+    }
+    try {
+      const resp = await fetch(absHref);
+      if (!resp.ok) return;
+      let css = await resp.text();
+      // Rewrite url(...) refs to absolute URLs so fonts/images still resolve.
+      css = css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, q, u) => {
+        if (/^(data:|https?:|\/\/)/i.test(u)) return m;
+        try {
+          const abs = new URL(u, absHref).href;
+          return `url(${q}${abs}${q})`;
+        } catch (_) { return m; }
+      });
+      const style = document.createElement("style");
+      style.setAttribute("data-from", absHref);
+      style.textContent = css;
+      link.replaceWith(style);
+    } catch (_) {
+      // Network/CORS failure → leave the link element in place.
+    }
+  }));
+
+  // Promote <html data-theme="dark"> attribute into the saved markup.
+  if (document.documentElement.dataset.theme === "dark") {
+    clone.dataset.theme = "dark";
+  }
+
+  return "<!DOCTYPE html>\n" + clone.outerHTML;
 }
 
 // ---------------------------------------------------------------------------
@@ -399,7 +491,7 @@ function renderError(article, message) {
     '<div class="blog-error" style="padding:2rem;border:1px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,0.08);">' +
     '<h2 style="margin-top:0;">We couldn’t load this blog</h2>' +
     '<p style="opacity:0.85;"></p>' +
-    '<p style="margin-top:1rem;"><a href="/">← Back to Lux Scholar</a></p>' +
+    '<p style="margin-top:1rem;"><a href="/">← Back to Nithu&#39;s PhD intern</a></p>' +
     "</div>";
   const p = article.querySelector(".blog-error p:first-of-type");
   if (p) p.textContent = safe;
@@ -429,7 +521,7 @@ async function initBlog() {
       console.error("[blog] failed to fetch markdown", err);
       stopRotator();
       if (heroTitle) heroTitle.textContent = "Couldn’t load blog";
-      document.title = "Blog — Lux Scholar";
+      document.title = "Blog — Nithu's PhD intern";
       renderError(articleEl, err && err.message ? err.message : String(err));
       document.body.classList.remove("blog-is-loading");
       return;
@@ -445,7 +537,7 @@ async function initBlog() {
 
   if (heroTitle) heroTitle.textContent = title || "Research Blog";
   if (metaTime) metaTime.textContent = readingTime(rawMd) + " min read";
-  document.title = (title || "Blog") + " — Lux Scholar";
+  document.title = (title || "Blog") + " — Nithu's PhD intern";
 
   // Load libs
   await loadAllDeps();
