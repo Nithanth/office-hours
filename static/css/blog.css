@@ -281,6 +281,62 @@ body {
   height: auto;
 }
 
+/* Vega-Lite interactive charts */
+.blog-vega-wrapper {
+  margin: 40px 0;
+  padding: 24px 20px;
+  background: var(--blog-surface);
+  border: 1px solid var(--blog-border);
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.blog-vega-host {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.blog-vega-host .vega-bindings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 8px 0 0 0;
+  font-size: 13px;
+  color: var(--blog-text-secondary);
+}
+
+.blog-vega-host .vega-bindings .vega-bind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blog-vega-host .vega-bindings .vega-bind input[type="range"] {
+  accent-color: var(--blog-accent);
+}
+
+.blog-vega-host .vega-actions {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.blog-vega-error {
+  text-align: left;
+  padding: 16px;
+  background: rgba(245, 158, 11, 0.06);
+  border-radius: 8px;
+}
+
+.blog-vega-error pre {
+  background: var(--blog-card-bg);
+  border: 1px solid var(--blog-border);
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 240px;
+}
+
 /* Math (KaTeX) */
 .blog-article .katex-display {
   margin: 32px 0;
@@ -494,6 +550,7 @@ body {
   .blog-article h3 { font-size: 20px; }
   .blog-article pre { padding: 16px; border-radius: 8px; }
   .blog-mermaid-wrapper { padding: 16px; border-radius: 12px; }
+  .blog-vega-wrapper { padding: 12px; border-radius: 12px; }
 }
 
 /* ---- Print / Save-as-PDF ---- */
@@ -528,9 +585,12 @@ body {
   .blog-article * { animation: none !important; opacity: 1 !important; transform: none !important; }
   /* Avoid awkward page breaks inside structural blocks. */
   .blog-article h2, .blog-article h3, .blog-article h4 { break-after: avoid; page-break-after: avoid; }
-  .blog-article pre, .blog-article blockquote, .blog-mermaid-wrapper, .blog-article table {
+  .blog-article pre, .blog-article blockquote, .blog-mermaid-wrapper, .blog-vega-wrapper, .blog-article table {
     break-inside: avoid; page-break-inside: avoid;
   }
+  /* Vega-Lite charts won't be interactive on paper. Print just the SVG/canvas. */
+  .blog-vega-host .vega-bindings,
+  .blog-vega-host .vega-actions { display: none !important; }
   .blog-article img { max-width: 100% !important; }
   /* Tighten margins so the printed page uses the paper area. */
   @page { margin: 18mm 16mm; }

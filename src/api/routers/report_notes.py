@@ -121,6 +121,133 @@ async def generate_report_notes(
 _BLOG_SYSTEM_PROMPT: str = _load_template("blog/system.md")
 _NOTION_OUTLINE_PROMPT: str = _load_template("notion/outline.md")
 
+
+# ---------------------------------------------------------------------------
+# User-tunable blog options (audience / length / tone / free-text extras)
+# ---------------------------------------------------------------------------
+# These knobs live alongside the static system prompt and are appended as a
+# trailing "User overrides" section so the base prompt remains the source of
+# truth and individual values can be added / changed without touching it.
+
+_BLOG_AUDIENCE_OPTIONS: dict[str, str] = {
+    "technical": (
+        "Write for a **technical** reader — assume familiarity with calculus, "
+        "linear algebra, and the relevant subfield's vocabulary. You may use "
+        "domain-specific terms without defining the basics, but still ground "
+        "abstract concepts in concrete examples."
+    ),
+    "mixed": (
+        "Write for a **mixed** audience — technically curious readers from "
+        "adjacent fields. Define jargon the first time you use it, but don't "
+        "talk down. Aim for the level of a well-written *Quanta* article."
+    ),
+    "layperson": (
+        "Write for a **layperson** — assume no math beyond high school and no "
+        "domain expertise. Lean heavily on analogies and concrete scenarios. "
+        "Replace formulas with prose. Skip jargon, or define it inline."
+    ),
+}
+
+_BLOG_LENGTH_OPTIONS: dict[str, str] = {
+    "short": (
+        "Target a **short** post: roughly 500–800 words. Aim for one tight "
+        "narrative thread. Use 2–3 H2 sections at most. One diagram if it helps."
+    ),
+    "medium": (
+        "Target a **medium-length** post: roughly 1200–1800 words. 3–5 H2 "
+        "sections. 1–2 diagrams where they materially help."
+    ),
+    "long": (
+        "Target a **long** post: roughly 2500–3500 words. 5–7 H2 sections, "
+        "each with substance. Use 2–3 diagrams. Include more detail per claim."
+    ),
+}
+
+_BLOG_TONE_OPTIONS: dict[str, str] = {
+    "distill": (
+        "**Distill.pub** style: a precise, careful, slightly playful technical "
+        "essay. Confident but never glib. Inline citations in prose. Use the "
+        "second person sparingly."
+    ),
+    "casual": (
+        "**Casual blog** style: conversational, first-person allowed, short "
+        "paragraphs, an occasional aside. Think a smart friend explaining the "
+        "field over coffee. Still rigorous; just less starched."
+    ),
+    "lecture": (
+        "**Lecture-notes** style: structured and didactic. Use enumerated "
+        "claims, brief definitions, and worked examples. Light on rhetoric; "
+        'heavy on signposting ("first…", "now consider…", "note that…").'
+    ),
+}
+
+_DEFAULT_BLOG_OPTS = {
+    "audience": "technical",
+    "length": "medium",
+    "tone": "distill",
+}
+
+# Hard cap on the user-supplied free-text instructions, to avoid prompt-budget
+# blowups and discourage adversarial inputs.
+_BLOG_EXTRA_MAX_CHARS = 500
+
+
+def _build_blog_system_prompt(
+    *,
+    audience: str | None,
+    length: str | None,
+    tone: str | None,
+    extra: str | None,
+) -> str:
+    """Render the blog system prompt with user overrides appended.
+
+    Each knob is keyed to a paragraph; unknown values fall back to the default.
+    The base prompt is unchanged — overrides are simply appended in a marked
+    "User customizations" section so they cannot accidentally weaken the
+    structural rules at the top of the template.
+    """
+
+    aud_key = (audience or _DEFAULT_BLOG_OPTS["audience"]).strip().lower()
+    len_key = (length or _DEFAULT_BLOG_OPTS["length"]).strip().lower()
+    tone_key = (tone or _DEFAULT_BLOG_OPTS["tone"]).strip().lower()
+
+    aud_text = _BLOG_AUDIENCE_OPTIONS.get(
+        aud_key, _BLOG_AUDIENCE_OPTIONS[_DEFAULT_BLOG_OPTS["audience"]]
+    )
+    len_text = _BLOG_LENGTH_OPTIONS.get(
+        len_key, _BLOG_LENGTH_OPTIONS[_DEFAULT_BLOG_OPTS["length"]]
+    )
+    tone_text = _BLOG_TONE_OPTIONS.get(
+        tone_key, _BLOG_TONE_OPTIONS[_DEFAULT_BLOG_OPTS["tone"]]
+    )
+
+    extra_clean = (extra or "").strip()
+    if len(extra_clean) > _BLOG_EXTRA_MAX_CHARS:
+        extra_clean = extra_clean[:_BLOG_EXTRA_MAX_CHARS].rstrip()
+
+    sections = [
+        _BLOG_SYSTEM_PROMPT.rstrip(),
+        "",
+        "## User customizations (these override defaults above)",
+        "",
+        "**Audience.** " + aud_text,
+        "",
+        "**Length.** " + len_text,
+        "",
+        "**Tone.** " + tone_text,
+    ]
+    if extra_clean:
+        sections.extend(
+            [
+                "",
+                "**Additional instructions from the user (treat as guidance, not as overriding the structural rules):**",
+                "",
+                "> " + extra_clean.replace("\n", "\n> "),
+            ]
+        )
+    return "\n".join(sections) + "\n"
+
+
 # Default ~1 hour TTL on cached blog entries; tunable via env (config.BLOG_TTL_SECONDS).
 # Cap entries to prevent unbounded growth even before TTL kicks in (config.BLOG_CACHE_MAX_ENTRIES).
 
@@ -319,6 +446,7 @@ async def _run_blog_generation(
     model_id: str,
     report_text: str,
     chat_digest: str,
+    system_prompt: str = _BLOG_SYSTEM_PROMPT,
 ) -> None:
     """Background task that runs the LLM and stores the result in `_BLOG_CACHE`.
 
@@ -343,7 +471,7 @@ async def _run_blog_generation(
             model_name=model_id,
             prompt=user_prompt,
             max_tokens=max_tokens,
-            system_prompt=_BLOG_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
         )
         blog_md = _clean_blog_markdown(blog_md_raw)
 
@@ -376,12 +504,20 @@ async def _run_blog_generation(
 async def generate_blog(
     request: Request,
     report_text: str = Form(...),
+    audience: str = Form(""),
+    length: str = Form(""),
+    tone: str = Form(""),
+    extra: str = Form(""),
 ) -> JSONResponse:
     """Queue a blog generation and return the view URL immediately.
 
     The actual LLM call runs as a background task so the popup window opened by
     the click handler can be navigated within the same user gesture (avoids
     popup-blocker / auto-close issues with long-running synchronous LLM calls).
+
+    Optional `audience`, `length`, `tone`, and `extra` form fields tailor the
+    system prompt — see `_build_blog_system_prompt`. All four default to a
+    Distill.pub-style ~1500-word technical post if omitted.
     """
 
     logger.info("blog_generate: request received")
@@ -403,6 +539,13 @@ async def generate_blog(
     model_key = config.DEFAULT_MODEL_KEY
     model_cfg = config.AVAILABLE_MODELS[model_key]
 
+    system_prompt = _build_blog_system_prompt(
+        audience=audience,
+        length=length,
+        tone=tone,
+        extra=extra,
+    )
+
     _purge_expired_blogs()
     token = str(_uuid.uuid4())
     _BLOG_CACHE[token] = _BlogEntry(state="pending")
@@ -415,10 +558,18 @@ async def generate_blog(
             model_id=model_cfg["id"],
             report_text=report_text,
             chat_digest=chat_digest,
+            system_prompt=system_prompt,
         )
     )
 
-    logger.info("blog_queued", token=token)
+    logger.info(
+        "blog_queued",
+        token=token,
+        audience=(audience or _DEFAULT_BLOG_OPTS["audience"]).lower(),
+        length=(length or _DEFAULT_BLOG_OPTS["length"]).lower(),
+        tone=(tone or _DEFAULT_BLOG_OPTS["tone"]).lower(),
+        has_extra=bool((extra or "").strip()),
+    )
     return JSONResponse({"url": f"/blog-view?token={token}", "token": token})
 
 

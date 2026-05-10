@@ -150,6 +150,10 @@ const actionsObserver = new MutationObserver(() => {
       blogBtn.removeAttribute("disabled");
       blogBtn.title = "Generate Blog Post";
     }
+    const blogCustomizeBtn = el.querySelector("#report-blog-customize-btn");
+    if (blogCustomizeBtn) {
+      blogCustomizeBtn.removeAttribute("disabled");
+    }
     const notionBtn = el.querySelector("#report-notion-btn");
     if (notionBtn) {
       notionBtn.removeAttribute("disabled");
@@ -430,6 +434,14 @@ function handleBlogClick(ev) {
   const fd = new FormData();
   fd.append("report_text", cleaned);
 
+  // If the user opened the customize panel and changed any defaults, ship the
+  // selections along. The backend tolerates blanks and falls back to defaults.
+  const opts = readBlogOptions();
+  if (opts.audience) fd.append("audience", opts.audience);
+  if (opts.length)   fd.append("length",   opts.length);
+  if (opts.tone)     fd.append("tone",     opts.tone);
+  if (opts.extra)    fd.append("extra",    opts.extra);
+
   fetch("/generate-blog", { method: "POST", body: fd })
     .then((r) => {
       if (!r.ok) throw new Error(`Server responded ${r.status}`);
@@ -456,6 +468,45 @@ function handleBlogClick(ev) {
 }
 
 document.addEventListener("click", handleBlogClick);
+
+// ---------------------------------------------------------------------------
+// Blog customize panel — toggle visibility, read selections on submit.
+// ---------------------------------------------------------------------------
+function handleBlogCustomizeToggle(ev) {
+  const btn = ev.target.closest("#report-blog-customize-btn");
+  if (!btn) return;
+  ev.preventDefault();
+  const panel = document.getElementById("report-blog-options");
+  if (!panel) return;
+  const isHidden = panel.classList.toggle("hidden");
+  btn.setAttribute("aria-expanded", isHidden ? "false" : "true");
+  btn.classList.toggle("active", !isHidden);
+  if (!isHidden) {
+    // Scroll panel into view so the user sees their controls without scrolling.
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const firstInput = panel.querySelector("input, textarea");
+    if (firstInput) firstInput.focus({ preventScroll: true });
+  }
+}
+
+document.addEventListener("click", handleBlogCustomizeToggle);
+
+// Read the customize-panel selections. Returns an object whose keys may be
+// missing if the user never opened the panel (defaults are applied server-side).
+function readBlogOptions() {
+  const panel = document.getElementById("report-blog-options");
+  if (!panel) return {};
+  const aud = panel.querySelector('input[name="blog-audience"]:checked');
+  const len = panel.querySelector('input[name="blog-length"]:checked');
+  const tone = panel.querySelector('input[name="blog-tone"]:checked');
+  const extraEl = panel.querySelector('textarea[name="blog-extra"]');
+  return {
+    audience: aud ? aud.value : "",
+    length:   len ? len.value : "",
+    tone:    tone ? tone.value : "",
+    extra:   extraEl ? extraEl.value.trim().slice(0, 500) : "",
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Notion export – POST report text, open Notion page in new tab
