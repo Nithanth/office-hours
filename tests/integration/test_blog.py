@@ -86,3 +86,39 @@ def test_blog_view_does_not_pop_cache(client: TestClient) -> None:
 def test_blog_view_404_for_unknown_token(client: TestClient) -> None:
     resp = client.get("/blog-view", params={"token": "nope"})
     assert resp.status_code == 404
+
+
+def test_generate_blog_accepts_customization_options(client: TestClient) -> None:
+    """POST /generate-blog accepts audience/length/tone/extra without erroring."""
+
+    resp = client.post(
+        "/generate-blog",
+        data={
+            "report_text": "A real research report.",
+            "audience": "layperson",
+            "length": "short",
+            "tone": "casual",
+            "extra": "Emphasise reproducibility.",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "token" in body and body["token"]
+    # Generation must still complete cleanly with the customized prompt.
+    body_status = _wait_for_ready(client, body["token"])
+    assert body_status["state"] == "ready", body_status
+
+
+def test_generate_blog_tolerates_unknown_option_values(client: TestClient) -> None:
+    """Unknown values fall back to defaults silently — no 4xx/5xx."""
+
+    resp = client.post(
+        "/generate-blog",
+        data={
+            "report_text": "Report.",
+            "audience": "space-alien",  # not in the option dict
+            "length": "enormous",
+            "tone": "haiku",
+        },
+    )
+    assert resp.status_code == 200

@@ -48,6 +48,31 @@ Then write. Do NOT include the plan itself in the output.
 
    Bias toward including at least one diagram if any of the papers describe a pipeline, architecture, or comparison.
 
+   **Interactive visuals (use sparingly).** In addition to Mermaid, you may emit a fenced code block with the `vega-lite` language tag to embed an interactive [Vega-Lite v5](https://vega.github.io/vega-lite/) chart. The frontend renders the JSON spec via `vega-embed`. Use this only when a slider, dropdown, or selection genuinely helps the reader build intuition — typical wins are distributions, parameter sensitivity, decision boundaries, or before/after comparisons. **Do not** replicate a static plot with a slider that changes nothing meaningful. **At most one** interactive chart per post unless two ideas truly benefit. Example — a Gaussian PDF with sliders for mean and std-dev:
+
+   ````vega-lite
+   {
+     "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+     "width": 480,
+     "height": 240,
+     "params": [
+       {"name": "mu",    "value": 0, "bind": {"input": "range", "min": -3,   "max": 3, "step": 0.1, "name": "mean μ"}},
+       {"name": "sigma", "value": 1, "bind": {"input": "range", "min": 0.2,  "max": 3, "step": 0.1, "name": "std σ"}}
+     ],
+     "data": {"sequence": {"start": -5, "stop": 5.01, "step": 0.05, "as": "x"}},
+     "transform": [
+       {"calculate": "(1 / (sigma * sqrt(2*PI))) * exp(-pow(datum.x - mu, 2) / (2*pow(sigma, 2)))", "as": "y"}
+     ],
+     "mark": {"type": "line", "strokeWidth": 2},
+     "encoding": {
+       "x": {"field": "x", "type": "quantitative", "title": "x"},
+       "y": {"field": "y", "type": "quantitative", "title": "p(x)"}
+     }
+   }
+   ````
+
+   Other useful patterns: a `point` selection on a scatter plot to highlight a hovered datum (`"selection": {"hover": {"type": "point", "on": "mouseover"}}`), a dropdown that switches between two methods (`"bind": {"input": "select", "options": [...]}`), or a brush over a histogram to filter a downstream chart. Keep specs valid against the v5 schema.
+
 5. **Key takeaways** — 3–5 bullets, each one full sentence with substance. Not "X is important" — instead "X matters because Y, which means Z for practitioners".
 6. **Looking ahead** — 1–2 paragraphs on implications, open questions, or future directions. End on something concrete, not a vague hope.
 

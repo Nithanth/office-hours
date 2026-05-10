@@ -102,7 +102,8 @@ def _format_sse_event(event_name: str, payload: str = "") -> str:
 def _iter_sse_chunks(payload: str) -> list[str]:
     """Yield `data:` lines respecting the browser EventSource line-size limit."""
     return [
-        f"data: {payload[i : i + _SSE_CHUNK_SIZE]}" for i in range(0, len(payload), _SSE_CHUNK_SIZE)
+        f"data: {payload[i : i + _SSE_CHUNK_SIZE]}"
+        for i in range(0, len(payload), _SSE_CHUNK_SIZE)
     ]
 
 
@@ -142,7 +143,9 @@ async def generate_report_incremental(  # noqa: PLR0913
         from services.persistence.repositories import daily_usage_count
 
         async for session in session_scope():
-            used = await daily_usage_count(session, user_id=user_id, event_type="report_generated")
+            used = await daily_usage_count(
+                session, user_id=user_id, event_type="report_generated"
+            )
         if used >= config.BETA_DAILY_REPORT_LIMIT:
             return HTMLResponse(
                 "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
@@ -197,20 +200,53 @@ async def generate_report_incremental(  # noqa: PLR0913
     REPORT_REQUEST_CACHE[token] = payload
     _save_report_request(token, payload)
 
-    logger.info("report_incremental_received", token=token, is_url_input_form=is_url_input)
+    logger.info(
+        "report_incremental_received", token=token, is_url_input_form=is_url_input
+    )
 
     # Schedule cleanup in case the SSE stream never connects
     asyncio.create_task(_del_cache_later(token, delay=120))
 
     sse_url = f"/report/stream?token={token}"
 
+    # Customize panel: hidden, mirrors the one rendered by ReportGenerator on
+    # cached/historical reports. Defaults must match `_DEFAULT_BLOG_OPTS` in
+    # api/routers/report_notes.py.
+    blog_options_panel = (
+        '<div id="report-blog-options" class="hidden mt-3 w-full text-sm rounded-md border border-gray-700 bg-gray-900/40 p-4 space-y-3">'
+        '<div class="text-xs uppercase tracking-wide opacity-70 font-semibold mb-1">Customize the next blog (optional)</div>'
+        '<div class="flex flex-wrap gap-x-6 gap-y-2">'
+        '<fieldset class="space-y-1"><legend class="font-medium opacity-90">Audience</legend>'
+        '<label class="block"><input type="radio" name="blog-audience" value="technical" checked> Technical</label>'
+        '<label class="block"><input type="radio" name="blog-audience" value="mixed"> Mixed</label>'
+        '<label class="block"><input type="radio" name="blog-audience" value="layperson"> Layperson</label>'
+        "</fieldset>"
+        '<fieldset class="space-y-1"><legend class="font-medium opacity-90">Length</legend>'
+        '<label class="block"><input type="radio" name="blog-length" value="short"> Short (~600 w)</label>'
+        '<label class="block"><input type="radio" name="blog-length" value="medium" checked> Medium (~1500 w)</label>'
+        '<label class="block"><input type="radio" name="blog-length" value="long"> Long (~3000 w)</label>'
+        "</fieldset>"
+        '<fieldset class="space-y-1"><legend class="font-medium opacity-90">Tone</legend>'
+        '<label class="block"><input type="radio" name="blog-tone" value="distill" checked> Distill.pub</label>'
+        '<label class="block"><input type="radio" name="blog-tone" value="casual"> Casual blog</label>'
+        '<label class="block"><input type="radio" name="blog-tone" value="lecture"> Lecture notes</label>'
+        "</fieldset>"
+        "</div>"
+        '<label class="block space-y-1">'
+        '<span class="font-medium opacity-90">Additional instructions (optional, max 500 chars)</span>'
+        '<textarea name="blog-extra" rows="2" maxlength="500" class="w-full rounded bg-gray-800/60 border border-gray-700 p-2 text-sm" '
+        'placeholder="e.g. emphasise reproducibility / keep it under 1000 words / no jargon"></textarea>'
+        "</label>"
+        "</div>"
+    )
+
     html_skeleton = f"""
-    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex justify-end gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
+    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
         </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
-        </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
+        </button>\n        <button id=\"report-blog-customize-btn\" class=\"btn-secondary report-blog-customize-toggle\" title=\"Customize the next blog (audience / length / tone)\" type=\"button\" aria-expanded=\"false\" aria-controls=\"report-blog-options\" disabled>\n          <i class=\"fa-solid fa-sliders\"></i>\n        </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>
-        </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
+        </button>\n      </div>\n      {blog_options_panel}\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
       <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>
     """
     return HTMLResponse(content=html_skeleton)
@@ -343,7 +379,9 @@ async def report_stream(
         logger.info("topic_overview_raw", preview=overview_text[:300])
 
         dur = time.perf_counter() - start_ts
-        logger.info("summary_block_ready", role="topic_overview", duration_sec=round(dur, 2))
+        logger.info(
+            "summary_block_ready", role="topic_overview", duration_sec=round(dur, 2)
+        )
 
         html_block = (
             "<div class='topic-summary'><h3>Overview</h3>"
@@ -356,10 +394,14 @@ async def report_stream(
         start_ts = time.perf_counter()
         prompt_len_label = summary_size.upper()
         normalized_size = (
-            prompt_len_label if prompt_len_label in rg.QUALITATIVE_LENGTH_GUIDANCE else "M"
+            prompt_len_label
+            if prompt_len_label in rg.QUALITATIVE_LENGTH_GUIDANCE
+            else "M"
         )
         tok_target = rg._get_output_token_target(audience_type, normalized_size, False)
-        snippet_limit = rg._get_max_content_snippet_chars(audience_type, normalized_size, False)
+        snippet_limit = rg._get_max_content_snippet_chars(
+            audience_type, normalized_size, False
+        )
         full_text = paper.text_content or ""
         snippet = full_text[:snippet_limit]
 
@@ -377,13 +419,19 @@ async def report_stream(
         )["paper"]
         prompt = active_paper_prompt_template.format(
             paper_title=html.escape(paper.title or "N/A"),
-            paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
-            paper_publication_date=html.escape(rg._get_formatted_date_str(paper.published_date)),
+            paper_authors=html.escape(
+                ", ".join(paper.authors) if paper.authors else "N/A"
+            ),
+            paper_publication_date=html.escape(
+                rg._get_formatted_date_str(paper.published_date)
+            ),
             paper_content_snippet=snippet,
             overall_instructions=rg.QUALITATIVE_LENGTH_GUIDANCE[normalized_size],
             target_audience=audience_type,
         )
-        summary = await rg._generate_single_summary(prompt, tok_target, semaphore=semaphore)
+        summary = await rg._generate_single_summary(
+            prompt, tok_target, semaphore=semaphore
+        )
         dur = time.perf_counter() - start_ts
         logger.info(
             "summary_block_ready",
@@ -469,7 +517,9 @@ async def report_stream(
                         or Paper(
                             id="N/A",
                             title="Unknown",
-                            url=_paper_utils._coerce_http_url("https://example.com/unknown"),
+                            url=_paper_utils._coerce_http_url(
+                                "https://example.com/unknown"
+                            ),
                         )
                     ).title
                 )
@@ -484,7 +534,9 @@ async def report_stream(
             # Send JSON envelope alongside for consumers needing structure
             block_meta = json.dumps(
                 {
-                    "block_type": _role_label if _role_label != "main" else "paper_summary",
+                    "block_type": _role_label
+                    if _role_label != "main"
+                    else "paper_summary",
                     "paper_id": getattr(task_paper_map.get(t), "id", None),
                     "source": "url_input"
                     if (_role_label == "main" and is_url_input_flag)
@@ -503,7 +555,10 @@ async def report_stream(
         # Finalise - send empty payload
         if user_id:
             try:
-                from services.persistence.database import database_available, session_scope
+                from services.persistence.database import (
+                    database_available,
+                    session_scope,
+                )
                 from services.persistence.repositories import create_report
 
                 if database_available():
@@ -511,7 +566,8 @@ async def report_stream(
                         saved = await create_report(
                             session,
                             user_id=str(user_id),
-                            title=str(payload["original_query"])[:300] or "Research Report",
+                            title=str(payload["original_query"])[:300]
+                            or "Research Report",
                             original_query=str(payload["original_query"]),
                             audience_type=audience_type,
                             summary_size=summary_size,
@@ -525,7 +581,9 @@ async def report_stream(
                         json.dumps({"report_id": saved.id}, separators=(",", ":")),
                     )
                     logger.info("report_persisted", report_id=saved.id, user_id=user_id)
-            except Exception as exc:  # noqa: BLE001 - persistence must not break streaming
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - persistence must not break streaming
                 logger.warning("report_persist_failed", user_id=user_id, error=str(exc))
 
         yield _format_sse_event("done", "")

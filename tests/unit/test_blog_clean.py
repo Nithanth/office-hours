@@ -160,3 +160,76 @@ def test_normalise_title_idempotent() -> None:
 def test_normalise_title_nested_wrappers() -> None:
     # Model wraps in **__title__** — strip both.
     assert _normalise_blog_title("**__Real Title__**") == "Real Title"
+
+
+# ---------------------------------------------------------------------------
+# `_build_blog_system_prompt` – user-tunable audience / length / tone / extra
+# ---------------------------------------------------------------------------
+from api.routers.report_notes import (  # noqa: E402  (import after assertions for visual grouping)
+    _BLOG_SYSTEM_PROMPT,
+    _build_blog_system_prompt,
+)
+
+
+def test_build_prompt_defaults_to_technical_medium_distill() -> None:
+    out = _build_blog_system_prompt(audience=None, length=None, tone=None, extra=None)
+    assert out.startswith(_BLOG_SYSTEM_PROMPT.rstrip()), "base prompt must come first"
+    assert "**Audience.** Write for a **technical** reader" in out
+    assert "**Length.** Target a **medium-length** post" in out
+    assert "**Tone.** **Distill.pub** style" in out
+    assert "Additional instructions from the user" not in out
+
+
+def test_build_prompt_layperson_short_casual() -> None:
+    out = _build_blog_system_prompt(
+        audience="layperson", length="short", tone="casual", extra=None
+    )
+    assert "**Audience.** Write for a **layperson**" in out
+    assert "**Length.** Target a **short** post" in out
+    assert "**Tone.** **Casual blog** style" in out
+
+
+def test_build_prompt_unknown_values_fall_back_to_defaults() -> None:
+    out = _build_blog_system_prompt(
+        audience="space-alien", length="enormous", tone="haiku", extra=None
+    )
+    # Unknown values silently fall back to the defaults — never raise.
+    assert "**Audience.** Write for a **technical** reader" in out
+    assert "**Length.** Target a **medium-length** post" in out
+    assert "**Tone.** **Distill.pub** style" in out
+
+
+def test_build_prompt_extra_is_blockquoted_and_preserved() -> None:
+    extra = "Emphasise reproducibility.\nKeep diagrams minimal."
+    out = _build_blog_system_prompt(
+        audience="technical", length="medium", tone="distill", extra=extra
+    )
+    assert "Additional instructions from the user" in out
+    assert "> Emphasise reproducibility." in out
+    assert "> Keep diagrams minimal." in out
+
+
+def test_build_prompt_extra_is_truncated_at_max_chars() -> None:
+    long_extra = "A" * 800
+    out = _build_blog_system_prompt(
+        audience="technical", length="medium", tone="distill", extra=long_extra
+    )
+    # The block-quoted extra section must contain at most 500 'A's.
+    assert "> " + ("A" * 500) in out
+    assert "> " + ("A" * 501) not in out
+
+
+def test_build_prompt_blank_extra_omits_section() -> None:
+    out = _build_blog_system_prompt(
+        audience="technical", length="medium", tone="distill", extra="   \n  "
+    )
+    assert "Additional instructions from the user" not in out
+
+
+def test_build_prompt_case_insensitive_keys() -> None:
+    out = _build_blog_system_prompt(
+        audience="LAYPERSON", length="LONG", tone="LECTURE", extra=None
+    )
+    assert "**Audience.** Write for a **layperson**" in out
+    assert "**Length.** Target a **long** post" in out
+    assert "**Tone.** **Lecture-notes** style" in out

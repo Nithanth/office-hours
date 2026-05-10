@@ -8,7 +8,7 @@
  * Lux's localStorage 'theme' key so the blog page matches the main app.
  */
 
-/* globals: marked, DOMPurify, mermaid, katex, renderMathInElement, hljs */
+/* globals: marked, DOMPurify, mermaid, katex, renderMathInElement, hljs, vegaEmbed */
 
 // ---------------------------------------------------------------------------
 // Theme — driven by Lux's localStorage 'theme' key for cross-page consistency
@@ -97,11 +97,25 @@ async function loadAllDeps() {
 function renderMarkdown(md) {
   // Extract mermaid blocks before marked processes them
   const mermaidBlocks = [];
-  const mdProcessed = md.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
+  let mdProcessed = md.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
     const idx = mermaidBlocks.length;
     mermaidBlocks.push(code.trim());
     return `<div class="blog-mermaid-wrapper blog-fade-in" data-mermaid-idx="${idx}"></div>`;
   });
+
+  // Extract vega-lite blocks (also accept "vegalite" / "vl" aliases). The JSON
+  // spec is rendered later by `vega-embed`; here we just stash the raw text
+  // and leave a placeholder div with a payload script for a CSP-friendly
+  // round-trip through marked + DOMPurify.
+  const vegaBlocks = [];
+  mdProcessed = mdProcessed.replace(
+    /```(?:vega-lite|vegalite|vl)\n([\s\S]*?)```/g,
+    (_, code) => {
+      const idx = vegaBlocks.length;
+      vegaBlocks.push(code.trim());
+      return `<div class="blog-vega-wrapper blog-fade-in" data-vega-idx="${idx}"></div>`;
+    }
+  );
 
   // Configure marked
   if (window.marked) {
@@ -124,11 +138,11 @@ function renderMarkdown(md) {
   html = window.DOMPurify
     ? DOMPurify.sanitize(html, {
         ADD_TAGS: ["div"],
-        ADD_ATTR: ["data-mermaid-idx", "class"],
+        ADD_ATTR: ["data-mermaid-idx", "data-vega-idx", "class"],
       })
     : html;
 
-  return { html, mermaidBlocks };
+  return { html, mermaidBlocks, vegaBlocks };
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +227,112 @@ async function renderMermaidDiagrams(mermaidBlocks) {
 }
 
 // ---------------------------------------------------------------------------
+// Render Vega-Lite charts
+// ---------------------------------------------------------------------------
+// Lazy-loaded only when the rendered post actually contains a `vega-lite`
+// fenced block. The CDN bundle is ~330KB gzip combined; we don't pay the
+// download cost on posts that have no interactive charts.
+const VEGA_DEPS = [
+  { id: "vega",       src: "https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js" },
+  { id: "vega-lite",  src: "https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js" },
+  { id: "vega-embed", src: "https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js" },
+];
+
+async function loadVegaDeps() {
+  // Dependencies must load in order — vega-lite needs vega, vega-embed needs both.
+  for (const dep of VEGA_DEPS) {
+    try {
+      await loadDep(dep);
+    } catch (err) {
+      throw new Error(`Failed to load ${dep.id}`);
+    }
+  }
+}
+
+async function renderVegaCharts(vegaBlocks) {
+  if (!vegaBlocks || vegaBlocks.length === 0) return;
+  const wrappers = document.querySelectorAll("[data-vega-idx]");
+  if (wrappers.length === 0) return;
+
+  try {
+    await loadVegaDeps();
+  } catch (err) {
+    console.warn("[blog] vega-embed CDN load failed", err);
+    wrappers.forEach((w) => {
+      const idx = parseInt(w.dataset.vegaIdx, 10);
+      const spec = vegaBlocks[idx] || "";
+      w.innerHTML = vegaErrorMarkup("Could not load Vega-Lite library.", spec);
+    });
+    return;
+  }
+
+  if (typeof window.vegaEmbed !== "function") {
+    wrappers.forEach((w) => {
+      const idx = parseInt(w.dataset.vegaIdx, 10);
+      const spec = vegaBlocks[idx] || "";
+      w.innerHTML = vegaErrorMarkup("vegaEmbed not available.", spec);
+    });
+    return;
+  }
+
+  const isDark = currentTheme() === "dark";
+  const embedConfig = {
+    actions: { export: true, source: true, compiled: false, editor: true },
+    theme: isDark ? "dark" : undefined,
+    renderer: "canvas",
+    config: {
+      background: "transparent",
+      view: { stroke: "transparent" },
+      axis: isDark
+        ? { labelColor: "#94a3b8", titleColor: "#e2e8f0", gridColor: "#1e293b" }
+        : undefined,
+    },
+  };
+
+  for (const wrapper of wrappers) {
+    const idx = parseInt(wrapper.dataset.vegaIdx, 10);
+    const rawSpec = vegaBlocks[idx];
+    if (!rawSpec) continue;
+
+    let spec;
+    try {
+      spec = JSON.parse(rawSpec);
+    } catch (err) {
+      console.warn("[blog] Vega-Lite spec is not valid JSON for block", idx, err);
+      wrapper.innerHTML = vegaErrorMarkup("Invalid JSON spec: " + (err && err.message ? err.message : String(err)), rawSpec);
+      wrapper.style.borderColor = "#f59e0b";
+      continue;
+    }
+
+    try {
+      // Mount inside a child div so we can preserve our wrapper styling.
+      const host = document.createElement("div");
+      host.className = "blog-vega-host";
+      wrapper.innerHTML = "";
+      wrapper.appendChild(host);
+      await window.vegaEmbed(host, spec, embedConfig);
+    } catch (err) {
+      console.warn("[blog] Vega-Lite render failed for block", idx, err);
+      wrapper.innerHTML = vegaErrorMarkup("Failed to render: " + (err && err.message ? err.message : String(err)), rawSpec);
+      wrapper.style.borderColor = "#f59e0b";
+    }
+  }
+}
+
+function vegaErrorMarkup(message, rawSpec) {
+  const safeMsg = String(message).replace(/[<&>]/g, (c) => ({"<":"&lt;","&":"&amp;",">":"&gt;"}[c]));
+  const safeSpec = String(rawSpec || "").replace(/[<&>]/g, (c) => ({"<":"&lt;","&":"&amp;",">":"&gt;"}[c]));
+  return (
+    '<div class="blog-vega-error">' +
+    '<p style="margin:0 0 8px 0;color:#f59e0b;font-weight:600;">⚠ Interactive chart could not be rendered</p>' +
+    `<p style="margin:0 0 12px 0;opacity:0.8;font-size:13px;">${safeMsg}</p>` +
+    '<details><summary style="cursor:pointer;font-size:13px;opacity:0.8;">Show spec</summary>' +
+    `<pre style="text-align:left;margin-top:8px;font-size:12px;overflow-x:auto;"><code>${safeSpec}</code></pre>` +
+    "</details></div>"
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Render KaTeX
 // ---------------------------------------------------------------------------
 function renderKaTeX() {
@@ -271,7 +391,7 @@ function addFadeInClasses() {
   const article = document.querySelector(".blog-article");
   if (!article) return;
 
-  const targets = article.querySelectorAll("h2, h3, p, ul, ol, blockquote, pre, table, .blog-mermaid-wrapper, hr");
+  const targets = article.querySelectorAll("h2, h3, p, ul, ol, blockquote, pre, table, .blog-mermaid-wrapper, .blog-vega-wrapper, hr");
   targets.forEach((el) => {
     if (!el.classList.contains("blog-fade-in")) {
       el.classList.add("blog-fade-in");
@@ -543,12 +663,13 @@ async function initBlog() {
   await loadAllDeps();
 
   // Render markdown
-  const { html, mermaidBlocks } = renderMarkdown(body);
+  const { html, mermaidBlocks, vegaBlocks } = renderMarkdown(body);
   if (articleEl) articleEl.innerHTML = html;
 
   // Post-processing
   addFadeInClasses();
   await renderMermaidDiagrams(mermaidBlocks);
+  await renderVegaCharts(vegaBlocks);
   renderKaTeX();
   initScrollAnimations();
   initActions(rawMd);
