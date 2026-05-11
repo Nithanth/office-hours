@@ -107,6 +107,45 @@ body {
   background: var(--blog-accent-soft);
 }
 
+/* Visibly grey-out + block interaction on disabled nav buttons. The
+ * `disabled` attribute already blocks the click event, but without this rule
+ * the buttons look identical to enabled ones, which makes users think they
+ * can download the blog mid-generation. */
+.blog-nav-btn[disabled],
+.blog-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.blog-nav-btn[disabled]:hover,
+.blog-nav-btn:disabled:hover {
+  border-color: var(--blog-border);
+  color: var(--blog-text-secondary);
+  background: none;
+}
+
+/* "Writing blog…" pill shown in the nav while body.blog-is-loading is set.
+ * Hidden once initBlog() finishes and removes the loading class. */
+.blog-writing-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--blog-accent);
+  color: var(--blog-accent);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  margin-right: 4px;
+}
+.blog-writing-pill .lux-spinner.small {
+  width: 12px;
+  height: 12px;
+}
+body:not(.blog-is-loading) .blog-writing-pill {
+  display: none;
+}
+
 /* ---- Hero / header ---- */
 .blog-hero {
   max-width: var(--blog-max-w);

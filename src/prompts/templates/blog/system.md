@@ -46,9 +46,17 @@ Then write. Do NOT include the plan itself in the output.
      D --> E[Output]
    ```
 
-   Bias toward including at least one diagram if any of the papers describe a pipeline, architecture, or comparison.
+   **Diagram budget — REQUIRED.** Every blog must include at least one diagram. For longer posts, more:
 
-   **Interactive visuals (use sparingly).** In addition to Mermaid, you may emit a fenced code block with the `vega-lite` language tag to embed an interactive [Vega-Lite v5](https://vega.github.io/vega-lite/) chart. The frontend renders the JSON spec via `vega-embed`. Use this only when a slider, dropdown, or selection genuinely helps the reader build intuition — typical wins are distributions, parameter sensitivity, decision boundaries, or before/after comparisons. **Do not** replicate a static plot with a slider that changes nothing meaningful. **At most one** interactive chart per post unless two ideas truly benefit. Example — a Gaussian PDF with sliders for mean and std-dev:
+   | Length    | Required diagrams (Mermaid OR Vega-Lite) |
+   |-----------|------------------------------------------|
+   | Short     | **at least 1** (usually Mermaid)         |
+   | Medium    | **at least 1, ideally 2**                |
+   | Long      | **at least 2, ideally 3**                |
+
+   Pick the right tool. **Use Vega-Lite when any quantity is parameter-sensitive** (a distribution, decision boundary, learning curve, capacity / variance trade-off, before/after comparison) — sliders let the reader actually feel the relationship. **Use Mermaid for everything else**: concept maps across papers, methodology flowcharts, side-by-side comparison subgraphs, timelines, architecture/pipeline diagrams. A blog with the wrong type of diagram is worse than no diagram — never use Mermaid for something quantitative.
+
+   **Interactive visuals (Vega-Lite).** Emit a fenced code block with the `vega-lite` language tag to embed an interactive [Vega-Lite v5](https://vega.github.io/vega-lite/) chart. The frontend renders the JSON spec via `vega-embed`. Use sliders / dropdowns / selections only when they actually change what the reader sees — never a slider that does nothing meaningful. Up to **two** interactive charts per post. Example — a Gaussian PDF with sliders for mean and std-dev:
 
    ````vega-lite
    {

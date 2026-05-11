@@ -233,3 +233,103 @@ def test_build_prompt_case_insensitive_keys() -> None:
     assert "**Audience.** Write for a **layperson**" in out
     assert "**Length.** Target a **long** post" in out
     assert "**Tone.** **Lecture-notes** style" in out
+
+
+# ---------------------------------------------------------------------------
+# Bare-bold title promotion (Fix #1: title asterisks regression)
+# ---------------------------------------------------------------------------
+# When the model emits the title as `**Title**` instead of `# Title`, the
+# old extractTitle picked it up with the literal asterisks. _clean_blog_markdown
+# now promotes a leading bare-emphasis line to a proper H1 so the page renders
+# clean.
+
+
+def test_promote_bare_bold_title_to_h1() -> None:
+    md = (
+        "**Why Transformers Won the Race**\n\nIn 2017 the original Transformer paper..."
+    )
+    cleaned = _clean_blog_markdown(md)
+    assert cleaned.startswith("# Why Transformers Won the Race")
+    assert "**Why Transformers" not in cleaned.splitlines()[0]
+
+
+def test_promote_bare_underscore_title_to_h1() -> None:
+    md = "__Calibrating Diffusion Models__\n\nA new study..."
+    cleaned = _clean_blog_markdown(md)
+    assert cleaned.startswith("# Calibrating Diffusion Models")
+
+
+def test_promote_bare_italic_title_to_h1() -> None:
+    md = "*A Quick Tour of MoE Routing*\n\nMixture-of-Experts..."
+    cleaned = _clean_blog_markdown(md)
+    assert cleaned.startswith("# A Quick Tour of MoE Routing")
+
+
+def test_promote_escaped_bold_title_to_h1() -> None:
+    # Some models escape the asterisks (`\*\*Title\*\*`); we should still strip.
+    md = r"\*\*Beyond Scaling Laws\*\*" + "\n\nThe field has matured..."
+    cleaned = _clean_blog_markdown(md)
+    assert cleaned.startswith("# Beyond Scaling Laws"), cleaned[:80]
+
+
+def test_promote_skips_paragraph_with_emphasis() -> None:
+    # Long lines that happen to start with emphasis aren't titles — they're
+    # body paragraphs (>120 char threshold). Leave them alone.
+    long_line = "**Note:** This is a long paragraph that opens with bold text " * 4
+    md = long_line + "\n\nMore body."
+    cleaned = _clean_blog_markdown(md)
+    # No H1 should be invented from a body paragraph.
+    assert not cleaned.startswith("# Note:"), cleaned[:120]
+
+
+def test_promote_handles_existing_h1_unchanged() -> None:
+    md = "# Already An H1\n\n**Bold paragraph that should not become H1.**\n\nBody."
+    cleaned = _clean_blog_markdown(md)
+    # The H1 stays; the bold paragraph is body and should remain bold.
+    assert cleaned.startswith("# Already An H1")
+    assert "**Bold paragraph" in cleaned
+
+
+# ---------------------------------------------------------------------------
+# Per-length diagram budget (Fix #4: prompt updates)
+# ---------------------------------------------------------------------------
+
+
+def test_diagram_budget_short_length() -> None:
+    from api.routers.report_notes import _build_blog_system_prompt
+
+    out = _build_blog_system_prompt(
+        audience="technical", length="short", tone="distill", extra=None
+    )
+    assert "SHORT post" in out
+    assert "at least one diagram" in out
+
+
+def test_diagram_budget_medium_length() -> None:
+    from api.routers.report_notes import _build_blog_system_prompt
+
+    out = _build_blog_system_prompt(
+        audience="technical", length="medium", tone="distill", extra=None
+    )
+    assert "MEDIUM post" in out
+    assert "at least 1 and ideally 2 diagrams" in out
+
+
+def test_diagram_budget_long_length() -> None:
+    from api.routers.report_notes import _build_blog_system_prompt
+
+    out = _build_blog_system_prompt(
+        audience="technical", length="long", tone="distill", extra=None
+    )
+    assert "LONG post" in out
+    assert "at least 2 and ideally 3 diagrams" in out
+
+
+def test_diagram_budget_unknown_length_falls_back_to_default() -> None:
+    from api.routers.report_notes import _build_blog_system_prompt
+
+    out = _build_blog_system_prompt(
+        audience="technical", length="absurdly-long", tone="distill", extra=None
+    )
+    # Unknown length falls back to the medium default in _DEFAULT_BLOG_OPTS.
+    assert "MEDIUM post" in out

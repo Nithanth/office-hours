@@ -190,3 +190,138 @@ body.lux-dark .pdf-viewer .chat-column {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* ============================================================ */
+/* Blog customization modal                                       */
+/* ============================================================ */
+/* Used by the Blog button on the report page and by the "Revise"
+ * button on the blog-view page. The base .modal / .modal-content
+ * classes above handle the backdrop/centering; these rules style
+ * the form contents. */
+
+.lux-blog-modal {
+  max-width: 640px;
+  width: 92%;
+  padding: 1.25rem 1.5rem;
+  font-family: var(--lux-font, "Inter", system-ui, sans-serif);
+}
+
+.lux-blog-modal .modal-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--lux-fg, #111);
+}
+body.lux-dark .lux-blog-modal .modal-header h2,
+[data-theme="dark"] .lux-blog-modal .modal-header h2 {
+  color: #e6e6e6;
+}
+
+#blog-modal-subtitle {
+  margin: 0 0 0.5rem 0;
+  color: var(--lux-fg-muted, #555);
+  line-height: 1.4;
+}
+body.lux-dark #blog-modal-subtitle,
+[data-theme="dark"] #blog-modal-subtitle {
+  color: #aaa;
+}
+
+.lux-blog-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 0.5rem 0 0.75rem 0;
+}
+
+.lux-blog-modal-fs {
+  border: 1px solid var(--lux-border, #d5d5d5);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem 0.7rem 0.75rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+body.lux-dark .lux-blog-modal-fs,
+[data-theme="dark"] .lux-blog-modal-fs {
+  border-color: #444;
+}
+
+.lux-blog-modal-fs legend {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0 0.35rem;
+  color: var(--lux-fg, #111);
+}
+body.lux-dark .lux-blog-modal-fs legend,
+[data-theme="dark"] .lux-blog-modal-fs legend {
+  color: #e6e6e6;
+}
+
+.lux-blog-modal-fs label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+  color: var(--lux-fg, #222);
+}
+body.lux-dark .lux-blog-modal-fs label,
+[data-theme="dark"] .lux-blog-modal-fs label {
+  color: #ddd;
+}
+
+.lux-blog-modal-fs input[type="radio"] {
+  margin: 0;
+  accent-color: var(--lux-accent, #2563eb);
+}
+
+.lux-blog-modal-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--lux-border, #d5d5d5);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 4.5rem;
+  background: var(--lux-bg, #fff);
+  color: var(--lux-fg, #111);
+}
+.lux-blog-modal-textarea:focus {
+  outline: 2px solid var(--lux-accent, #2563eb);
+  outline-offset: 0;
+  border-color: var(--lux-accent, #2563eb);
+}
+body.lux-dark .lux-blog-modal-textarea,
+[data-theme="dark"] .lux-blog-modal-textarea {
+  background: #1f1f1f;
+  color: #e6e6e6;
+  border-color: #444;
+}
+
+.lux-blog-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--lux-border, #ececec);
+}
+body.lux-dark .lux-blog-modal-footer,
+[data-theme="dark"] .lux-blog-modal-footer {
+  border-top-color: #3a3a3a;
+}
+
+/* Lock background scroll while the modal is open. */
+body.lux-modal-open {
+  overflow: hidden;
+}
+
+/* Hidden state — the base .modal rule always uses flex display, so we use
+ * !important to win over it without rewriting the cascade. */
+.modal.hidden {
+  display: none !important;
+}

@@ -28,6 +28,11 @@ import { ensureMarkdownLibs } from "./chat/markdown.js?v=2";
 // Kick off background load early; no await needed.
 ensureMarkdownLibs();
 
+// Shared blog customization modal (used by report.js + blog-view.js).
+// Imported before report.js so window.luxBlog.openCustomizeModal is registered
+// by the time the Blog button click handler attaches.
+import "./blog-modal.js?v=1";
+
 // Report page helpers (copy button, etc.)
 import "./report.js?v=2";
 

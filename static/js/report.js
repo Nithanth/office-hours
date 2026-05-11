@@ -148,11 +148,7 @@ const actionsObserver = new MutationObserver(() => {
     const blogBtn = el.querySelector("#report-blog-btn");
     if (blogBtn) {
       blogBtn.removeAttribute("disabled");
-      blogBtn.title = "Generate Blog Post";
-    }
-    const blogCustomizeBtn = el.querySelector("#report-blog-customize-btn");
-    if (blogCustomizeBtn) {
-      blogCustomizeBtn.removeAttribute("disabled");
+      blogBtn.title = "Generate Blog Post (opens customization)";
     }
     const notionBtn = el.querySelector("#report-notion-btn");
     if (notionBtn) {
@@ -399,28 +395,64 @@ function buildBlogPopupShell(theme) {
   );
 }
 
+// Top-level click router for `#report-blog-btn`. Opens the customization
+// modal; the actual blog launch happens inside the modal's submit handler so
+// `window.open()` runs synchronously from a real user gesture (otherwise
+// browsers block the popup).
 function handleBlogClick(ev) {
   const btn = ev.target.closest("#report-blog-btn");
   if (!btn) return;
-
+  ev.preventDefault();
   const reportEl = document.getElementById("report-content");
   if (!reportEl) return;
+  if (btn.disabled) return;
+  openBlogCustomizeModal({
+    onSubmit: (opts) => {
+      launchBlogGeneration({ btn, reportEl, opts });
+    },
+  });
+}
 
-  btn.disabled = true;
-  const origHtml = btn.innerHTML;
-  btn.innerHTML =
-    '<span class="lux-spinner small" style="vertical-align:middle;"></span> Writing…';
+document.addEventListener("click", handleBlogClick);
 
-  // Open the window synchronously (inside the click handler) so browsers
-  // don't block it as a popup, and IMMEDIATELY paint a themed loading shell
-  // so users never see the about:blank flash while the LLM warms up.
+// ---------------------------------------------------------------------------
+// Blog customization modal
+// ---------------------------------------------------------------------------
+// The modal itself is defined in `static/js/blog-modal.js` so it can be shared
+// with the blog-view page (which uses it for the Revise button). This module
+// just delegates to `window.luxBlog.openCustomizeModal`.
+
+function openBlogCustomizeModal(opts) {
+  if (window.luxBlog && window.luxBlog.openCustomizeModal) {
+    return window.luxBlog.openCustomizeModal(opts);
+  }
+  console.error("[lux] blog-modal.js not loaded — falling back to defaults");
+  if (opts && typeof opts.onSubmit === "function") {
+    opts.onSubmit({ audience: "technical", length: "medium", tone: "distill", extra: "" });
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Launch a blog generation — opens the popup synchronously and posts the form.
+// Called from inside a real user-gesture handler (modal submit / regenerate
+// button) so window.open() isn't popup-blocked.
+// ---------------------------------------------------------------------------
+function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog", extraFields = {} }) {
+  const originalHtml = btn ? btn.innerHTML : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML =
+      '<span class="lux-spinner small" style="vertical-align:middle;"></span> Writing…';
+  }
+
+  // Synchronous popup so the browser counts it as a user-initiated open.
   const blogWindow = window.open("about:blank", "_blank");
   if (blogWindow) {
     try {
       const theme = (function () {
-        try {
-          return localStorage.getItem("theme") === "dark" ? "dark" : "light";
-        } catch (_) { return "light"; }
+        try { return localStorage.getItem("theme") === "dark" ? "dark" : "light"; }
+        catch (_) { return "light"; }
       })();
       blogWindow.document.open();
       blogWindow.document.write(buildBlogPopupShell(theme));
@@ -430,19 +462,20 @@ function handleBlogClick(ev) {
     }
   }
 
-  const cleaned = getCleanReportText(reportEl);
   const fd = new FormData();
-  fd.append("report_text", cleaned);
+  const cleaned = reportEl ? getCleanReportText(reportEl) : "";
+  if (cleaned) fd.append("report_text", cleaned);
+  if (opts) {
+    if (opts.audience) fd.append("audience", opts.audience);
+    if (opts.length)   fd.append("length",   opts.length);
+    if (opts.tone)     fd.append("tone",     opts.tone);
+    if (opts.extra)    fd.append("extra",    opts.extra);
+  }
+  for (const [k, v] of Object.entries(extraFields || {})) {
+    if (v != null) fd.append(k, v);
+  }
 
-  // If the user opened the customize panel and changed any defaults, ship the
-  // selections along. The backend tolerates blanks and falls back to defaults.
-  const opts = readBlogOptions();
-  if (opts.audience) fd.append("audience", opts.audience);
-  if (opts.length)   fd.append("length",   opts.length);
-  if (opts.tone)     fd.append("tone",     opts.tone);
-  if (opts.extra)    fd.append("extra",    opts.extra);
-
-  fetch("/generate-blog", { method: "POST", body: fd })
+  fetch(endpoint, { method: "POST", body: fd })
     .then((r) => {
       if (!r.ok) throw new Error(`Server responded ${r.status}`);
       return r.json();
@@ -451,7 +484,6 @@ function handleBlogClick(ev) {
       if (data.url && blogWindow) {
         blogWindow.location.href = data.url;
       } else if (data.url) {
-        // Fallback if the window was blocked despite our efforts
         window.open(data.url, "_blank");
       }
     })
@@ -462,51 +494,18 @@ function handleBlogClick(ev) {
       alert("Failed to generate blog post. Please try again.");
     })
     .finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = origHtml;
+      if (btn) {
+        btn.disabled = false;
+        if (originalHtml != null) btn.innerHTML = originalHtml;
+      }
     });
 }
 
-document.addEventListener("click", handleBlogClick);
-
-// ---------------------------------------------------------------------------
-// Blog customize panel — toggle visibility, read selections on submit.
-// ---------------------------------------------------------------------------
-function handleBlogCustomizeToggle(ev) {
-  const btn = ev.target.closest("#report-blog-customize-btn");
-  if (!btn) return;
-  ev.preventDefault();
-  const panel = document.getElementById("report-blog-options");
-  if (!panel) return;
-  const isHidden = panel.classList.toggle("hidden");
-  btn.setAttribute("aria-expanded", isHidden ? "false" : "true");
-  btn.classList.toggle("active", !isHidden);
-  if (!isHidden) {
-    // Scroll panel into view so the user sees their controls without scrolling.
-    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    const firstInput = panel.querySelector("input, textarea");
-    if (firstInput) firstInput.focus({ preventScroll: true });
-  }
-}
-
-document.addEventListener("click", handleBlogCustomizeToggle);
-
-// Read the customize-panel selections. Returns an object whose keys may be
-// missing if the user never opened the panel (defaults are applied server-side).
-function readBlogOptions() {
-  const panel = document.getElementById("report-blog-options");
-  if (!panel) return {};
-  const aud = panel.querySelector('input[name="blog-audience"]:checked');
-  const len = panel.querySelector('input[name="blog-length"]:checked');
-  const tone = panel.querySelector('input[name="blog-tone"]:checked');
-  const extraEl = panel.querySelector('textarea[name="blog-extra"]');
-  return {
-    audience: aud ? aud.value : "",
-    length:   len ? len.value : "",
-    tone:    tone ? tone.value : "",
-    extra:   extraEl ? extraEl.value.trim().slice(0, 500) : "",
-  };
-}
+// Expose report-page-specific helpers. The modal itself is already registered
+// on `window.luxBlog.openCustomizeModal` by blog-modal.js.
+window.luxBlog = window.luxBlog || {};
+window.luxBlog.launch = launchBlogGeneration;
+window.luxBlog.buildPopupShell = buildBlogPopupShell;
 
 // ---------------------------------------------------------------------------
 // Notion export – POST report text, open Notion page in new tab

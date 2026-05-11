@@ -225,6 +225,10 @@ def _build_blog_system_prompt(
     if len(extra_clean) > _BLOG_EXTRA_MAX_CHARS:
         extra_clean = extra_clean[:_BLOG_EXTRA_MAX_CHARS].rstrip()
 
+    diagram_directive = _BLOG_DIAGRAM_BUDGETS.get(
+        len_key, _BLOG_DIAGRAM_BUDGETS[_DEFAULT_BLOG_OPTS["length"]]
+    )
+
     sections = [
         _BLOG_SYSTEM_PROMPT.rstrip(),
         "",
@@ -235,6 +239,8 @@ def _build_blog_system_prompt(
         "**Length.** " + len_text,
         "",
         "**Tone.** " + tone_text,
+        "",
+        "**Diagram requirement (non-negotiable).** " + diagram_directive,
     ]
     if extra_clean:
         sections.extend(
@@ -246,6 +252,31 @@ def _build_blog_system_prompt(
             ]
         )
     return "\n".join(sections) + "\n"
+
+
+# Per-length diagram requirement injected into the prompt. The base template
+# already explains the diagram budget; this duplicates it at the bottom of the
+# prompt so it's the *last* thing the model reads before generating, which we
+# found empirically encourages compliance better than just the upstream rule.
+_BLOG_DIAGRAM_BUDGETS: dict[str, str] = {
+    "short": (
+        "This is a SHORT post — emit at least one diagram (Mermaid for a "
+        "concept map / pipeline, OR Vega-Lite for a parameter-tunable plot). "
+        "Pick whichever genuinely helps; do not skip diagrams entirely."
+    ),
+    "medium": (
+        "This is a MEDIUM post — emit at least 1 and ideally 2 diagrams. "
+        "Mix Mermaid (concept maps / methodology / comparison) with Vega-Lite "
+        "(parameter-sensitive quantities). At least one diagram is required."
+    ),
+    "long": (
+        "This is a LONG post — emit at least 2 and ideally 3 diagrams. "
+        "Long posts have room to develop ideas visually: use Mermaid for "
+        "structural relationships and Vega-Lite for any quantity where a "
+        "slider or dropdown helps the reader build intuition. Skipping "
+        "diagrams in a long post wastes the format."
+    ),
+}
 
 
 # Default ~1 hour TTL on cached blog entries; tunable via env (config.BLOG_TTL_SECONDS).
@@ -260,6 +291,15 @@ class _BlogEntry:
     markdown: str = ""
     error: str = ""
     created_at: float = field(default_factory=_time.time)
+    # The inputs that produced this blog. Stored so /regenerate-blog can
+    # recover the source material + previous customization without requiring
+    # the client to round-trip them. Truncated to the same snippet length the
+    # original generation used so cache memory stays bounded.
+    report_text: str = ""
+    audience: str = ""
+    length: str = ""
+    tone: str = ""
+    extra: str = ""
 
     @property
     def expires_at(self) -> float:
@@ -371,16 +411,68 @@ def _clean_blog_markdown(md: str) -> str:
     #    and escaped asterisks. The H1 is rendered as bold by the page
     #    already; the model habitually adds redundant bold, which then either
     #    double-bolds or leaves literal asterisks visible.
+    h1_found = False
     for idx, line in enumerate(lines):
         stripped = line.lstrip()
         if stripped.startswith("# "):
             prefix = line[: len(line) - len(stripped)] + "# "
             title = stripped[2:].strip()
             lines[idx] = prefix + _normalise_blog_title(title)
+            h1_found = True
+            break
+
+    # 4b. If no H1 was emitted, look for a leading bare-emphasis line
+    #     (e.g. `**Title**`) and promote it to an H1. Frontend `extractTitle`
+    #     would otherwise pick up that line with the literal asterisks.
+    if not h1_found:
+        for idx, line in enumerate(lines):
+            if not line.strip():
+                continue
+            promoted = _promote_bare_bold_title(line)
+            if promoted is not None:
+                lines[idx] = promoted
             break
 
     cleaned = "\n".join(lines).strip()
     return cleaned or md.strip()
+
+
+# Matches a line that is *only* an emphasis-wrapped string with no leading `#`
+# heading marker. Used to detect model output like `**My Title**\n\n…` so we
+# can promote it to a proper H1 before downstream renderers see it.
+_BARE_EMPHASIS_TITLE_RE = _re.compile(
+    r"""^\s*                # optional leading whitespace
+        (?:\\?\*{1,3}|_{1,3}|`)   # opening run of *, **, ***, _, __, ___ or `, optionally escaped
+        \s*
+        (?P<inner>.+?)             # the actual title text (non-greedy)
+        \s*
+        (?:\\?\*{1,3}|_{1,3}|`)   # closing run (we don't require it to match exactly)
+        \s*$
+    """,
+    _re.VERBOSE,
+)
+
+
+def _promote_bare_bold_title(line: str) -> str | None:
+    """If *line* is just an emphasis-wrapped title, return `# <clean title>`.
+
+    Returns None if the line doesn't look like a bare emphasis title.
+    """
+    m = _BARE_EMPHASIS_TITLE_RE.match(line)
+    if not m:
+        return None
+    inner = m.group("inner").strip()
+    # Run through the full normaliser so nested escapes (`\*Title\*`) get
+    # stripped too.
+    cleaned = _normalise_blog_title(inner)
+    if not cleaned:
+        return None
+    # Bail out on lines that look like body content masquerading as emphasis.
+    # Heuristic: a real title is rarely more than ~120 chars and rarely ends
+    # with a sentence-final period — body sentences in bold usually do.
+    if len(cleaned) > 120:
+        return None
+    return "# " + cleaned
 
 
 # Wrappers we strip from the start/end of the H1 line. Order matters — strip
@@ -447,8 +539,14 @@ async def _run_blog_generation(
     report_text: str,
     chat_digest: str,
     system_prompt: str = _BLOG_SYSTEM_PROMPT,
+    user_prompt: str | None = None,
 ) -> None:
     """Background task that runs the LLM and stores the result in `_BLOG_CACHE`.
+
+    If `user_prompt` is provided, it is used verbatim (used by /regenerate-blog
+    which constructs a revision-flavoured prompt). Otherwise the default
+    "Transform the following research report..." prompt is built from
+    `report_text` + `chat_digest`.
 
     Any exception is captured into the cache entry as `state="error"`; we
     intentionally swallow it here so the asyncio task does not bubble up an
@@ -457,12 +555,13 @@ async def _run_blog_generation(
 
     try:
         snippet_chars = config.PAPER_MAX_CONTENT_SNIPPET_CHARS
-        user_prompt = (
-            "Transform the following research report into a compelling blog post.\n\n"
-            "REPORT:\n" + report_text.strip()[:snippet_chars]
-        )
-        if chat_digest:
-            user_prompt += "\n\nADDITIONAL INSIGHTS FROM CHAT:\n" + chat_digest
+        if user_prompt is None:
+            user_prompt = (
+                "Transform the following research report into a compelling blog post.\n\n"
+                "REPORT:\n" + report_text.strip()[:snippet_chars]
+            )
+            if chat_digest:
+                user_prompt += "\n\nADDITIONAL INSIGHTS FROM CHAT:\n" + chat_digest
 
         max_tokens = int(config.BLOG_MAX_TOKENS)
 
@@ -548,7 +647,15 @@ async def generate_blog(
 
     _purge_expired_blogs()
     token = str(_uuid.uuid4())
-    _BLOG_CACHE[token] = _BlogEntry(state="pending")
+    snippet_chars = config.PAPER_MAX_CONTENT_SNIPPET_CHARS
+    _BLOG_CACHE[token] = _BlogEntry(
+        state="pending",
+        report_text=report_text.strip()[:snippet_chars],
+        audience=(audience or "").strip().lower(),
+        length=(length or "").strip().lower(),
+        tone=(tone or "").strip().lower(),
+        extra=(extra or "").strip()[:_BLOG_EXTRA_MAX_CHARS],
+    )
 
     asyncio.create_task(
         _run_blog_generation(
@@ -571,6 +678,126 @@ async def generate_blog(
         has_extra=bool((extra or "").strip()),
     )
     return JSONResponse({"url": f"/blog-view?token={token}", "token": token})
+
+
+@limiter.limit("10/5minute")
+@router.post("/regenerate-blog")
+async def regenerate_blog(
+    request: Request,
+    token: str = Form(...),
+    audience: str = Form(""),
+    length: str = Form(""),
+    tone: str = Form(""),
+    extra: str = Form(""),
+) -> JSONResponse:
+    """Revise an existing cached blog using natural-language feedback.
+
+    Looks up the original report text + previous markdown via `token`, builds
+    a revision-flavoured user prompt, and queues a new background generation.
+    Returns the URL to the *new* blog page (a fresh token). The original
+    cache entry is preserved (read-only) so the user can flip back if needed.
+    """
+
+    logger.info("blog_regenerate: request received")
+
+    _purge_expired_blogs()
+    prev = _BLOG_CACHE.get(token)
+    if prev is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Previous blog not found or expired. Generate a fresh one.",
+        )
+    if prev.state != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail="Previous blog is still being written. Wait until it finishes.",
+        )
+    if not prev.report_text.strip():
+        # Pre-PR cache entries may not have report_text populated.
+        raise HTTPException(
+            status_code=410,
+            detail="Original report no longer cached. Regenerate from the report page.",
+        )
+
+    feedback_clean = (extra or "").strip()
+    if not feedback_clean:
+        raise HTTPException(
+            status_code=400,
+            detail="Please describe what you'd like changed about the blog.",
+        )
+    # Allow a longer feedback than the initial 500 cap — revisions tend to be
+    # more detailed than initial customizations.
+    if len(feedback_clean) > 1000:
+        feedback_clean = feedback_clean[:1000].rstrip()
+
+    llm_service: LLMService | None = get_llm_service()
+    if llm_service is None:
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
+
+    model_key = config.DEFAULT_MODEL_KEY
+    model_cfg = config.AVAILABLE_MODELS[model_key]
+
+    # Use new audience/length/tone if provided, otherwise inherit previous.
+    eff_audience = (audience or prev.audience or "").strip().lower()
+    eff_length = (length or prev.length or "").strip().lower()
+    eff_tone = (tone or prev.tone or "").strip().lower()
+
+    system_prompt = _build_blog_system_prompt(
+        audience=eff_audience,
+        length=eff_length,
+        tone=eff_tone,
+        extra="",  # feedback goes in the user prompt below for emphasis
+    )
+
+    snippet_chars = config.PAPER_MAX_CONTENT_SNIPPET_CHARS
+    user_prompt = (
+        "You previously wrote the blog post below. The reader has asked for "
+        "revisions. Rewrite the post to address their feedback while keeping "
+        "what's strong (structure, factual grounding, diagrams that still "
+        "make sense). Apply the revised audience / length / tone if changed. "
+        "Treat the original research report as the source of truth — do not "
+        "hallucinate findings not present in it.\n\n"
+        "USER FEEDBACK (apply this):\n"
+        + feedback_clean
+        + "\n\nPREVIOUS DRAFT:\n"
+        + prev.markdown.strip()[: max(snippet_chars - 4000, 4000)]
+        + "\n\nORIGINAL REPORT (for grounding):\n"
+        + prev.report_text.strip()[:snippet_chars]
+    )
+
+    new_token = str(_uuid.uuid4())
+    _BLOG_CACHE[new_token] = _BlogEntry(
+        state="pending",
+        report_text=prev.report_text,
+        audience=eff_audience,
+        length=eff_length,
+        tone=eff_tone,
+        extra=feedback_clean,
+    )
+
+    asyncio.create_task(
+        _run_blog_generation(
+            new_token,
+            llm_service=llm_service,
+            provider=model_cfg["provider"],
+            model_id=model_cfg["id"],
+            report_text=prev.report_text,
+            chat_digest="",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+    )
+
+    logger.info(
+        "blog_regenerate_queued",
+        prev_token=token,
+        new_token=new_token,
+        audience=eff_audience or _DEFAULT_BLOG_OPTS["audience"],
+        length=eff_length or _DEFAULT_BLOG_OPTS["length"],
+        tone=eff_tone or _DEFAULT_BLOG_OPTS["tone"],
+        feedback_chars=len(feedback_clean),
+    )
+    return JSONResponse({"url": f"/blog-view?token={new_token}", "token": new_token})
 
 
 @router.get("/blog-status")
@@ -630,6 +857,8 @@ async def blog_view(
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/blog.css">
+  <!-- modal.css supplies styles for the customize modal triggered by Revise. -->
+  <link rel="stylesheet" href="/static/css/modal.css">
 </head>
 <body class="blog-is-loading">
 
@@ -640,11 +869,17 @@ async def blog_view(
   <nav class="blog-nav">
     <a href="/" class="blog-nav-brand">Nithu's PhD intern</a>
     <div class="blog-nav-actions">
+      <!-- "Writing blog…" pill shown while body.blog-is-loading is set. Hidden when initBlog() finishes. -->
+      <span class="blog-writing-pill" aria-live="polite">
+        <span class="lux-spinner small"></span>
+        <span>Writing blog…</span>
+      </span>
       <button id="blog-theme-toggle" class="blog-nav-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown" disabled>Copy MD</button>
-      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md" disabled>Download MD</button>
-      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as self-contained HTML" disabled>Save HTML</button>
-      <button id="blog-save-pdf-btn" class="blog-nav-btn" title="Save as PDF (uses your browser's print dialog)" disabled>Save PDF</button>
+      <button id="blog-revise-btn" class="blog-nav-btn" title="Revise this blog (audience / length / tone / feedback)" disabled>Revise</button>
+      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown (available once blog finishes)" disabled>Copy MD</button>
+      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md (available once blog finishes)" disabled>Download MD</button>
+      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as self-contained HTML (available once blog finishes)" disabled>Save HTML</button>
+      <button id="blog-save-pdf-btn" class="blog-nav-btn" title="Save as PDF (available once blog finishes)" disabled>Save PDF</button>
     </div>
   </nav>
 
@@ -683,6 +918,9 @@ async def blog_view(
 
   <!-- Token consumed by blog-view.js to poll /blog-status -->
   <script>window.__BLOG_TOKEN__ = "{safe_token}";</script>
+  <!-- Shared customization modal (used by the Revise button). Loaded before
+       blog-view.js so window.luxBlog.openCustomizeModal is available. -->
+  <script src="/static/js/blog-modal.js"></script>
   <script src="/static/js/blog-view.js"></script>
 </body>
 </html>"""
