@@ -44,4 +44,4 @@ readability-lxml~=0.8.4
 python-docx~=1.2
 
 # Notion integration
-notion-client~=2.3
+notion-client~=3.0
