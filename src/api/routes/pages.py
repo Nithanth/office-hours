@@ -14,7 +14,9 @@ from pages.main_page import (
     home_page,
     render_error_message,
     render_report_config_form,
+    welcome_page,
 )
+from services.auth.session import get_auth_user_id
 
 # No module-level singleton to avoid stale DI instances.
 
@@ -32,6 +34,13 @@ async def get_home(
 
     logger.info("home_request", query=search_query)
     page_data = SharedPageData(current_query=search_query)
+
+    # When login is required and the visitor isn't signed in, swap the home
+    # page for a dedicated welcome / sign-in card. Without this, an
+    # unauthenticated user sees the full home UI (search bar, etc.) but every
+    # action they take 302s to Google, which is confusing.
+    if settings.REQUIRE_LOGIN and not get_auth_user_id(request):
+        return HTMLResponse(f"<!DOCTYPE html>{str(welcome_page(page_data=page_data))}")
 
     # Always clear any previous in-memory search cache so hard refresh starts clean.
     try:
@@ -65,7 +74,9 @@ async def get_home(
                     page_data.search_results = papers
                 except Exception as exc:  # log and fall back
                     logger.exception(
-                        "home_initial_search_error", query=search_query.strip(), error=str(exc)
+                        "home_initial_search_error",
+                        query=search_query.strip(),
+                        error=str(exc),
                     )
                     page_data.search_results = []
 
@@ -114,7 +125,8 @@ async def show_report_config(
             context="paper_deserialization_error_show_config",
         ).render()
         return HTMLResponse(
-            error_html, headers={"HX-Retarget": "#report-config-area", "HX-Reswap": "innerHTML"}
+            error_html,
+            headers={"HX-Retarget": "#report-config-area", "HX-Reswap": "innerHTML"},
         )
 
     if not deserialized_papers:
@@ -123,7 +135,8 @@ async def show_report_config(
             context="no_valid_papers_processed",
         ).render()
         return HTMLResponse(
-            error_html, headers={"HX-Retarget": "#report-config-area", "HX-Reswap": "innerHTML"}
+            error_html,
+            headers={"HX-Retarget": "#report-config-area", "HX-Reswap": "innerHTML"},
         )
 
     logger.info(
