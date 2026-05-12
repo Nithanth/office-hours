@@ -60,7 +60,10 @@ def render_error_message(message: str, context: str = "general") -> Div:
 
 
 def render_report_config_form(
-    original_query: str, selected_papers_json_list: list[str], num_selected: int, is_url_input: bool
+    original_query: str,
+    selected_papers_json_list: list[str],
+    num_selected: int,
+    is_url_input: bool,
 ) -> Div:
     """Renders the form for configuring report parameters."""
     if num_selected == 0:
@@ -116,7 +119,9 @@ def render_report_config_form(
     )
 
 
-def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool = False) -> LI:
+def _render_paper_item(
+    paper: Paper, is_main_paper: bool = False, wildcard: bool = False
+) -> LI:
     """Helper function to render a single paper item for the search results list."""
     formatted_date = "Unknown date"
     if paper.published_date:
@@ -160,7 +165,9 @@ def _render_paper_item(paper: Paper, is_main_paper: bool = False, wildcard: bool
 
     authors_display = "Author(s): N/A"
     if paper.authors:
-        if len(paper.authors) > config.config.MAX_AUTHORS_DISPLAY:  # Using config.config
+        if (
+            len(paper.authors) > config.config.MAX_AUTHORS_DISPLAY
+        ):  # Using config.config
             authors_display = f"Author(s): {', '.join(paper.authors[: config.config.MAX_AUTHORS_DISPLAY])}, et al."
         else:
             authors_display = f"Author(s): {', '.join(paper.authors)}"
@@ -484,7 +491,12 @@ def render_search_results(
                     Br(),
                     Div(
                         Select(
-                            Option("Select Report Size", value="", disabled=True, selected=True),
+                            Option(
+                                "Select Report Size",
+                                value="",
+                                disabled=True,
+                                selected=True,
+                            ),
                             Option("S (Concise)", value="S"),
                             Option("M (Standard)", value="M"),
                             Option("L (Detailed)", value="L"),
@@ -691,7 +703,9 @@ def home_page(page_data: SharedPageData) -> Body:
         ),
         # Comma added above to separate Head component from next Body child
         Div(
-            Link("█▓▒░ Nithu's PhD Student ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
+            Link(
+                "█▓▒░ Nithu's PhD Student ░▒▓█", href="/", cls="text-lg font-bold mr-4"
+            ),
             Div("", style="flex:1"),
             Select(
                 Option("Audience", value="", disabled=True, selected=True),
@@ -785,7 +799,9 @@ def home_page(page_data: SharedPageData) -> Body:
                                                 id=f"src-{dom.split('.')[0]}",
                                                 cls="source-checkbox",
                                             ),
-                                            Span(f" {label}", style="font-size:0.8rem;"),
+                                            Span(
+                                                f" {label}", style="font-size:0.8rem;"
+                                            ),
                                             style="display:flex;align-items:center;gap:4px;padding:3px 8px;cursor:pointer;",
                                         )
                                         for dom, label in [
@@ -848,11 +864,120 @@ def home_page(page_data: SharedPageData) -> Body:
             cls="search-card",
         ),
         Footer(
-            P(f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."),
+            P(
+                f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
+            ),
             style="padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; font-size:0.75rem; color:#aaa;",
         ),
         **{"hx-push-url": "false"},
     )  # Close Body
+
+
+def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
+    """Dedicated sign-in landing page for unauthenticated visitors.
+
+    Shown only when ``REQUIRE_LOGIN=1`` and the request has no auth cookie.
+    Renders a single centered card with the app name, a one-line tagline,
+    a "Continue with Google" button, and a handful of feature bullets.
+    Uses the same Head/CSS as the home page so theme + font cascade match.
+    """
+
+    sign_in_href = "/auth/google/login?next=" + urllib.parse.quote(
+        next_url, safe="/?&="
+    )
+
+    return Body(
+        Head(
+            Title(page_data.title),
+            Link(rel="stylesheet", href="/static/css/spinners.css"),
+            Link(rel="stylesheet", href="/static/css/base.css"),
+            Link(rel="stylesheet", href="/static/css/top-bar.css"),
+            Link(rel="stylesheet", href="/static/css/utilities.css"),
+            Link(rel="stylesheet", href="/static/css/misc.css"),
+            Link(rel="stylesheet", href="/static/css/welcome.css"),
+            Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
+            # settings.js handles the dark-mode toggle + persistence; we reuse
+            # the same script so the welcome page respects the user's theme.
+            Script(src="/static/js/settings.js"),
+        ),
+        Div(
+            Link(
+                "█▓▒░ Nithu's PhD Student ░▒▓█", href="/", cls="text-lg font-bold mr-4"
+            ),
+            Div("", style="flex:1"),
+            BUTTON(
+                "🌙 Dark",
+                id="lux-dark-toggle",
+                aria_label="Toggle dark mode",
+                type="button",
+            ),
+            cls="top-bar",
+        ),
+        Div(
+            Div(
+                Div(
+                    "Nithu's PhD intern",
+                    cls="welcome-brand",
+                ),
+                P(
+                    "An AI research assistant for paper discovery, deep-dive "
+                    "reports, and blog-style synthesis.",
+                    cls="welcome-tagline",
+                ),
+                A(
+                    Span("Continue with Google", cls="welcome-cta-label"),
+                    href=sign_in_href,
+                    cls="welcome-cta",
+                    rel="nofollow",
+                ),
+                Div(
+                    Div(
+                        Span("🔎", cls="welcome-feature-icon"),
+                        Span(
+                            "Search the literature with semantic + keyword retrieval",
+                            cls="welcome-feature-text",
+                        ),
+                        cls="welcome-feature",
+                    ),
+                    Div(
+                        Span("📄", cls="welcome-feature-icon"),
+                        Span(
+                            "Generate audience-aware reports across multiple papers",
+                            cls="welcome-feature-text",
+                        ),
+                        cls="welcome-feature",
+                    ),
+                    Div(
+                        Span("✍️", cls="welcome-feature-icon"),
+                        Span(
+                            "Turn any report into a Distill-style blog with "
+                            "diagrams and interactive charts",
+                            cls="welcome-feature-text",
+                        ),
+                        cls="welcome-feature",
+                    ),
+                    cls="welcome-features",
+                ),
+                P(
+                    "Private beta — sign in with the Google account you "
+                    "shared with Nithu.",
+                    cls="welcome-fineprint",
+                ),
+                cls="welcome-card",
+            ),
+            cls="welcome-shell",
+        ),
+        Footer(
+            P(
+                f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
+            ),
+            style=(
+                "padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; "
+                "font-size:0.75rem; color:#aaa;"
+            ),
+        ),
+        **{"hx-push-url": "false"},
+    )
 
 
 # Close HTML
