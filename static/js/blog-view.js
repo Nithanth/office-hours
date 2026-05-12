@@ -167,8 +167,48 @@ function extractTitleAndBody(md) {
     break;
   }
 
+  // Defensive: even though the backend `_normalise_blog_title` runs on every
+  // H1, model output still slips wrapper chars through occasionally (esp. when
+  // it emits the title as a non-H1 bold line). Mirror the Python logic here
+  // so the hero never shows literal asterisks.
+  title = normaliseTitleClient(title);
+
   const body = lines.slice(bodyStart).join("\n").trim();
   return { title, body };
+}
+
+// Mirror of `_normalise_blog_title` in `src/api/routers/report_notes.py`.
+// Iteratively peels symmetric emphasis wrappers (escaped or not), quotes, and
+// stray leading `# ` markers from a title string.
+const TITLE_WRAPPER_PAIRS = [
+  ["\\*\\*", "\\*\\*"],
+  ["\\*", "\\*"],
+  ["***", "***"],
+  ["**", "**"],
+  ["__", "__"],
+  ["*", "*"],
+  ["_", "_"],
+  ["`", "`"],
+  ['"', '"'],
+  ["'", "'"],
+];
+
+function normaliseTitleClient(title) {
+  let s = (title || "").trim();
+  // Drop redundant "# " prefixes like "# # Real Title".
+  while (s.startsWith("# ")) s = s.slice(2).trimStart();
+  let changed = true;
+  while (changed && s) {
+    changed = false;
+    for (const [left, right] of TITLE_WRAPPER_PAIRS) {
+      if (s.length > left.length + right.length && s.startsWith(left) && s.endsWith(right)) {
+        s = s.slice(left.length, s.length - right.length).trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  return s.replace(/\s+/g, " ").trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -414,12 +454,22 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove("show"), 2500);
 }
 
+// Defensive: refuse any download / copy action while the blog is still being
+// generated. The buttons are also `disabled` in HTML and visibly greyed via
+// CSS (blog.css `.blog-nav-btn[disabled]`), but if a stale handler somehow
+// fires we toast and bail instead of saving an empty file.
+function isBlogStillLoading() {
+  return document.body.classList.contains("blog-is-loading");
+}
+
 function initActions(rawMd) {
   document.getElementById("blog-copy-btn")?.addEventListener("click", () => {
+    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
     navigator.clipboard.writeText(rawMd).then(() => showToast("Copied to clipboard"));
   });
 
   document.getElementById("blog-download-btn")?.addEventListener("click", () => {
+    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
     const blob = new Blob([rawMd], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = Object.assign(document.createElement("a"), {
@@ -434,6 +484,7 @@ function initActions(rawMd) {
   });
 
   document.getElementById("blog-save-html-btn")?.addEventListener("click", async (ev) => {
+    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
     const btn = ev.currentTarget;
     if (btn.dataset.busy) return;
     btn.dataset.busy = "1";
@@ -462,6 +513,7 @@ function initActions(rawMd) {
   });
 
   document.getElementById("blog-save-pdf-btn")?.addEventListener("click", () => {
+    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
     // Use the browser's native print → "Save as PDF". A `@media print` block
     // in blog.css hides the nav/buttons and forces light theme for ink.
     document.body.classList.add("blog-printing");
@@ -538,7 +590,21 @@ async function buildSelfContainedHtml() {
     clone.dataset.theme = "dark";
   }
 
-  return "<!DOCTYPE html>\n" + clone.outerHTML;
+  // Strip the in-page action buttons (Copy / Download / Save / Revise / theme
+  // toggle) from the saved file — they're useless in a static export and would
+  // be broken without their JS handlers.
+  clone.querySelectorAll(".blog-nav-actions, .blog-progress-bar, .blog-loading, .blog-toast, #blog-customize-modal, #report-blog-popup-loader").forEach((n) => n.remove());
+
+  const docComment =
+    "<!--\n" +
+    "  Saved by Nithu's PhD intern.\n" +
+    "  Self-contained for blog page styles (CSS inlined). Math (KaTeX),\n" +
+    "  diagrams (Mermaid), and interactive charts (Vega-Lite) are loaded\n" +
+    "  from public CDNs; open this file with internet access for full\n" +
+    "  rendering. Theme and colors are baked in.\n" +
+    "-->\n";
+
+  return "<!DOCTYPE html>\n" + docComment + clone.outerHTML;
 }
 
 // ---------------------------------------------------------------------------
@@ -673,6 +739,7 @@ async function initBlog() {
   renderKaTeX();
   initScrollAnimations();
   initActions(rawMd);
+  initReviseButton(token);
 
   // Enable nav-bar action buttons now that content is ready.
   document.querySelectorAll(".blog-nav-btn[disabled]").forEach((b) => {
@@ -681,6 +748,80 @@ async function initBlog() {
 
   // Remove loading state
   document.body.classList.remove("blog-is-loading");
+}
+
+// ---------------------------------------------------------------------------
+// Revise (regenerate) button
+// ---------------------------------------------------------------------------
+// Opens the same customization modal (from report.js) in "regenerate" mode and
+// POSTs to /regenerate-blog with the previous blog's token + new options +
+// feedback. On success, navigates the current tab to the new blog URL.
+function initReviseButton(prevToken) {
+  const btn = document.getElementById("blog-revise-btn");
+  if (!btn || !prevToken) return;
+  btn.addEventListener("click", () => {
+    if (isBlogStillLoading()) {
+      showToast("Blog is still being written");
+      return;
+    }
+    const openModal = window.luxBlog && window.luxBlog.openCustomizeModal;
+    if (!openModal) {
+      console.error("[blog] customize modal not available (luxBlog missing)");
+      return;
+    }
+    // Pre-populate with the previous blog's metadata when the server exposes
+    // it (only available after a future round-trip; for now defaults are fine
+    // and the user can adjust everything in the modal anyway).
+    openModal({
+      mode: "regenerate",
+      current: { audience: "", length: "", tone: "", extra: "" },
+      onSubmit: (opts) => launchRegenerate(prevToken, opts),
+    });
+  });
+}
+
+function launchRegenerate(prevToken, opts) {
+  const original = document.getElementById("blog-revise-btn");
+  if (original) {
+    original.disabled = true;
+    original.textContent = "Revising…";
+  }
+  // Re-enter the loading state so the page shows progress + disables actions.
+  document.body.classList.add("blog-is-loading");
+  const heroTitle = document.querySelector(".blog-hero h1");
+  if (heroTitle) heroTitle.textContent = "Revising your blog";
+
+  const fd = new FormData();
+  fd.append("token", prevToken);
+  if (opts.audience) fd.append("audience", opts.audience);
+  if (opts.length) fd.append("length", opts.length);
+  if (opts.tone) fd.append("tone", opts.tone);
+  if (opts.extra) fd.append("extra", opts.extra);
+
+  fetch("/regenerate-blog", { method: "POST", body: fd })
+    .then((r) => {
+      if (!r.ok) {
+        return r.json().then((j) => { throw new Error(j.detail || `Server ${r.status}`); }).catch(() => {
+          throw new Error(`Server responded ${r.status}`);
+        });
+      }
+      return r.json();
+    })
+    .then((data) => {
+      if (data.url) {
+        // Same-tab navigation so the user doesn't accumulate orphan tabs.
+        window.location.href = data.url;
+      }
+    })
+    .catch((err) => {
+      console.error("[blog] regenerate failed", err);
+      showToast("Revision failed: " + (err.message || err));
+      document.body.classList.remove("blog-is-loading");
+      if (original) {
+        original.disabled = false;
+        original.textContent = "Revise";
+      }
+    });
 }
 
 // Run on DOM ready

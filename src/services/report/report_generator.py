@@ -26,46 +26,6 @@ from utils.html_builder import text_to_html_paragraphs
 logger = logger.bind(component="ReportGenerator")
 
 
-# HTML for the collapsible "customize the next blog" panel that lives inside
-# `#report-actions`. Hidden by default; toggled by `#report-blog-customize-btn`.
-# Defaults match `_DEFAULT_BLOG_OPTS` in api/routers/report_notes.py — keep
-# in sync. The panel emits standard `<input name=...>` so the report.js click
-# handler can serialize it via FormData without needing a separate JSON shape.
-_BLOG_OPTIONS_PANEL_HTML: str = (
-    "<div id='report-blog-options' class='hidden mt-3 w-full text-sm rounded-md "
-    "border border-gray-700 bg-gray-900/40 p-4 space-y-3'>"
-    "<div class='text-xs uppercase tracking-wide opacity-70 font-semibold mb-1'>"
-    "Customize the next blog (optional)</div>"
-    "<div class='flex flex-wrap gap-x-6 gap-y-2'>"
-    "<fieldset class='space-y-1'>"
-    "<legend class='font-medium opacity-90'>Audience</legend>"
-    "<label class='block'><input type='radio' name='blog-audience' value='technical' checked> Technical</label>"
-    "<label class='block'><input type='radio' name='blog-audience' value='mixed'> Mixed</label>"
-    "<label class='block'><input type='radio' name='blog-audience' value='layperson'> Layperson</label>"
-    "</fieldset>"
-    "<fieldset class='space-y-1'>"
-    "<legend class='font-medium opacity-90'>Length</legend>"
-    "<label class='block'><input type='radio' name='blog-length' value='short'> Short (~600 w)</label>"
-    "<label class='block'><input type='radio' name='blog-length' value='medium' checked> Medium (~1500 w)</label>"
-    "<label class='block'><input type='radio' name='blog-length' value='long'> Long (~3000 w)</label>"
-    "</fieldset>"
-    "<fieldset class='space-y-1'>"
-    "<legend class='font-medium opacity-90'>Tone</legend>"
-    "<label class='block'><input type='radio' name='blog-tone' value='distill' checked> Distill.pub</label>"
-    "<label class='block'><input type='radio' name='blog-tone' value='casual'> Casual blog</label>"
-    "<label class='block'><input type='radio' name='blog-tone' value='lecture'> Lecture notes</label>"
-    "</fieldset>"
-    "</div>"
-    "<label class='block space-y-1'>"
-    "<span class='font-medium opacity-90'>Additional instructions (optional, max 500 chars)</span>"
-    "<textarea name='blog-extra' rows='2' maxlength='500' "
-    "class='w-full rounded bg-gray-800/60 border border-gray-700 p-2 text-sm' "
-    "placeholder='e.g. emphasise reproducibility / keep it under 1000 words / no jargon'></textarea>"
-    "</label>"
-    "</div>"
-)
-
-
 class ReportGenerator:
     # Average characters per token, can be adjusted based on observations
     AVG_CHARS_PER_TOKEN: int = 4
@@ -672,13 +632,8 @@ class ReportGenerator:
             "<button id='report-notes-btn' class='btn-secondary' title='Generate Notes' type='button'>"
             "<i class='fa-solid fa-wand-magic-sparkles'></i>&nbsp;Generate Notes"
             "</button>"
-            "<button id='report-blog-btn' class='btn-secondary' title='Generate Blog Post' type='button'>"
+            "<button id='report-blog-btn' class='btn-secondary' title='Generate Blog Post (opens customization)' type='button'>"
             "<i class='fa-solid fa-pen-nib'></i>&nbsp;Blog"
-            "</button>"
-            "<button id='report-blog-customize-btn' class='btn-secondary report-blog-customize-toggle' "
-            "title='Customize the next blog (audience / length / tone)' "
-            "type='button' aria-expanded='false' aria-controls='report-blog-options'>"
-            "<i class='fa-solid fa-sliders'></i>"
             "</button>"
             "<button id='report-notion-btn' class='btn-secondary' title='Export to Notion' type='button'>"
             "<i class='fa-solid fa-arrow-up-right-from-square'></i>&nbsp;Notion"
@@ -686,7 +641,7 @@ class ReportGenerator:
             "<button id='copy-report-btn' class='copy-icon-btn' title='Copy text' type='button'>"
             "<i class='fa-solid fa-copy'></i>"
             "</button>"
-            "</div>" + _BLOG_OPTIONS_PANEL_HTML
+            "</div>"
         )
 
         return (

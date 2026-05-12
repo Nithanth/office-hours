@@ -209,44 +209,13 @@ async def generate_report_incremental(  # noqa: PLR0913
 
     sse_url = f"/report/stream?token={token}"
 
-    # Customize panel: hidden, mirrors the one rendered by ReportGenerator on
-    # cached/historical reports. Defaults must match `_DEFAULT_BLOG_OPTS` in
-    # api/routers/report_notes.py.
-    blog_options_panel = (
-        '<div id="report-blog-options" class="hidden mt-3 w-full text-sm rounded-md border border-gray-700 bg-gray-900/40 p-4 space-y-3">'
-        '<div class="text-xs uppercase tracking-wide opacity-70 font-semibold mb-1">Customize the next blog (optional)</div>'
-        '<div class="flex flex-wrap gap-x-6 gap-y-2">'
-        '<fieldset class="space-y-1"><legend class="font-medium opacity-90">Audience</legend>'
-        '<label class="block"><input type="radio" name="blog-audience" value="technical" checked> Technical</label>'
-        '<label class="block"><input type="radio" name="blog-audience" value="mixed"> Mixed</label>'
-        '<label class="block"><input type="radio" name="blog-audience" value="layperson"> Layperson</label>'
-        "</fieldset>"
-        '<fieldset class="space-y-1"><legend class="font-medium opacity-90">Length</legend>'
-        '<label class="block"><input type="radio" name="blog-length" value="short"> Short (~600 w)</label>'
-        '<label class="block"><input type="radio" name="blog-length" value="medium" checked> Medium (~1500 w)</label>'
-        '<label class="block"><input type="radio" name="blog-length" value="long"> Long (~3000 w)</label>'
-        "</fieldset>"
-        '<fieldset class="space-y-1"><legend class="font-medium opacity-90">Tone</legend>'
-        '<label class="block"><input type="radio" name="blog-tone" value="distill" checked> Distill.pub</label>'
-        '<label class="block"><input type="radio" name="blog-tone" value="casual"> Casual blog</label>'
-        '<label class="block"><input type="radio" name="blog-tone" value="lecture"> Lecture notes</label>'
-        "</fieldset>"
-        "</div>"
-        '<label class="block space-y-1">'
-        '<span class="font-medium opacity-90">Additional instructions (optional, max 500 chars)</span>'
-        '<textarea name="blog-extra" rows="2" maxlength="500" class="w-full rounded bg-gray-800/60 border border-gray-700 p-2 text-sm" '
-        'placeholder="e.g. emphasise reproducibility / keep it under 1000 words / no jargon"></textarea>'
-        "</label>"
-        "</div>"
-    )
-
     html_skeleton = f"""
     <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
-        </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
-        </button>\n        <button id=\"report-blog-customize-btn\" class=\"btn-secondary report-blog-customize-toggle\" title=\"Customize the next blog (audience / length / tone)\" type=\"button\" aria-expanded=\"false\" aria-controls=\"report-blog-options\" disabled>\n          <i class=\"fa-solid fa-sliders\"></i>\n        </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
+        </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post (opens customization)\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
+        </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>
-        </button>\n      </div>\n      {blog_options_panel}\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
+        </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
       <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>
     """
     return HTMLResponse(content=html_skeleton)

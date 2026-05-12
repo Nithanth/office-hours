@@ -122,3 +122,131 @@ def test_generate_blog_tolerates_unknown_option_values(client: TestClient) -> No
         },
     )
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# /regenerate-blog endpoint (Fix #6: revise with feedback)
+# ---------------------------------------------------------------------------
+
+
+def test_regenerate_blog_rejects_unknown_token(client: TestClient) -> None:
+    resp = client.post(
+        "/regenerate-blog",
+        data={"token": "does-not-exist", "extra": "make it shorter"},
+    )
+    assert resp.status_code == 404
+
+
+def test_regenerate_blog_rejects_empty_feedback(client: TestClient) -> None:
+    """A regeneration without feedback is meaningless — must reject."""
+
+    # First produce a real cache entry.
+    orig = client.post("/generate-blog", data={"report_text": "Source report."})
+    token = orig.json()["token"]
+    _wait_for_ready(client, token)
+
+    resp = client.post(
+        "/regenerate-blog",
+        data={"token": token, "extra": "   "},
+    )
+    assert resp.status_code == 400
+
+
+def test_regenerate_blog_rejects_in_flight_token(client: TestClient) -> None:
+    """Trying to regenerate while the original is still being written → 409."""
+    from api.routers.report_notes import _BLOG_CACHE, _BlogEntry
+
+    # Manually drop a pending entry into the cache so we don't have to race
+    # the LLM. report_text is set so the "no source" check passes.
+    _BLOG_CACHE["pending-tok"] = _BlogEntry(state="pending", report_text="src")
+    try:
+        resp = client.post(
+            "/regenerate-blog",
+            data={"token": "pending-tok", "extra": "shorter please"},
+        )
+        assert resp.status_code == 409
+    finally:
+        _BLOG_CACHE.pop("pending-tok", None)
+
+
+def test_regenerate_blog_happy_path_returns_new_token(client: TestClient) -> None:
+    """Successful regen returns a fresh token + URL, leaves original intact."""
+
+    orig = client.post(
+        "/generate-blog",
+        data={
+            "report_text": "Source report for revision.",
+            "audience": "technical",
+            "length": "medium",
+            "tone": "distill",
+        },
+    )
+    assert orig.status_code == 200
+    orig_token = orig.json()["token"]
+    _wait_for_ready(client, orig_token)
+
+    resp = client.post(
+        "/regenerate-blog",
+        data={
+            "token": orig_token,
+            "audience": "layperson",
+            "length": "short",
+            "tone": "casual",
+            "extra": "Make it more accessible to a non-technical reader, please.",
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["token"] != orig_token
+    assert body["url"] == f"/blog-view?token={body['token']}"
+
+    # The original entry should still exist (regenerate does not pop).
+    from api.routers.report_notes import _BLOG_CACHE
+
+    assert orig_token in _BLOG_CACHE, "original cache entry should be preserved"
+
+    # The new entry should complete.
+    new_body = _wait_for_ready(client, body["token"])
+    assert new_body["state"] == "ready"
+
+
+def test_regenerate_truncates_oversize_feedback(client: TestClient) -> None:
+    """Feedback over 1000 chars is silently truncated, not rejected."""
+
+    orig = client.post("/generate-blog", data={"report_text": "Src."})
+    token = orig.json()["token"]
+    _wait_for_ready(client, token)
+
+    resp = client.post(
+        "/regenerate-blog",
+        data={"token": token, "extra": "A" * 2000},
+    )
+    # Truncated, not rejected.
+    assert resp.status_code == 200
+    new_body = _wait_for_ready(client, resp.json()["token"])
+    assert new_body["state"] == "ready"
+
+
+def test_blog_view_includes_revise_button(client: TestClient) -> None:
+    """Blog-view shell renders the Revise button + loads blog-modal.js."""
+
+    resp = client.post("/generate-blog", data={"report_text": "Src."})
+    token = resp.json()["token"]
+    _wait_for_ready(client, token)
+
+    page = client.get("/blog-view", params={"token": token}).text
+    assert 'id="blog-revise-btn"' in page
+    assert "blog-modal.js" in page
+
+
+def test_blog_view_includes_writing_pill_and_disabled_buttons(
+    client: TestClient,
+) -> None:
+    """Blog page shell includes the 'Writing blog…' pill + initially disabled actions."""
+
+    resp = client.post("/generate-blog", data={"report_text": "Src."})
+    token = resp.json()["token"]
+    page = client.get("/blog-view", params={"token": token}).text
+    assert "blog-writing-pill" in page
+    assert 'id="blog-save-html-btn"' in page
+    assert "disabled" in page
