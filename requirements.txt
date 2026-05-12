@@ -22,7 +22,7 @@ loguru~=0.7
 nltk~=3.9
 sentence-transformers~=5.0
 lancedb~=0.6
-tiktoken~=0.6
+tiktoken~=0.12
 prometheus_client~=0.22
 slowapi~=0.1
 aiohttp
