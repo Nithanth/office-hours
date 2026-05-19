@@ -33,7 +33,7 @@ asyncpg~=0.31
 alembic~=1.13
 
 # Data Validation & Modeling
-pydantic~=2.11
+pydantic~=2.13
 pdfminer.six==20250506
 pymupdf~=1.24  # Fast PDF text extraction (PyMuPDF)
 pytesseract~=0.3
