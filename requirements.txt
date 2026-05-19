@@ -6,7 +6,7 @@ fastapi~=0.136  # Added for direct FastAPI imports
 
 # Environment & Configuration
 python-dotenv~=1.1
-cryptography>=42
+cryptography>=48.0.0
 
 # API Clients & HTTP
 httpx~=0.28
