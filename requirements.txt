@@ -34,7 +34,7 @@ alembic~=1.13
 
 # Data Validation & Modeling
 pydantic~=2.11
-pdfminer.six==20250506
+pdfminer.six==20260107
 pymupdf~=1.24  # Fast PDF text extraction (PyMuPDF)
 pytesseract~=0.3
 pillow>=11.1
