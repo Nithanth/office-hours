@@ -55,13 +55,15 @@ DIRECT_QUERY_USER_PREFIX: str = (
 # Instruction header for the study-notes generator.  This stays separate from
 # the bulky report/chat text that follows, making the generator code cleaner.
 STUDY_NOTES_INSTR_BLOCK: str = (
-    "You are preparing STUDY NOTES for the user. "
-    "Follow the bullet-list OUTPUT FORMAT rules given in the system prompt. "
-    "Use bullets only (no paragraphs) with ≤3 levels of nesting. "
-    "For EACH paper, cover: problem/motivation, method, results (with numbers), "
-    "limitations, and practical implications. "
-    "Weave in *non-redundant* CHAT insights under the relevant sub-bullets. "
-    "Be comprehensive — aim for 5-10 bullets per paper with sub-bullets."
+    "You are preparing LECTURE-STYLE OUTLINE NOTES for the user. "
+    "Follow the nested bullet OUTPUT FORMAT rules in the system prompt. "
+    "Structure each paper as a mini-lecture: context → core approach → results → limitations → connections. "
+    "Nest DEEPLY (3-4 levels) — sub-bullets elaborate their parent, not just list facts. "
+    "The notes must read cohesively top-to-bottom like attending a seminar. "
+    "Include concrete numbers, architecture details, and dataset names. "
+    "Weave chat insights naturally under the relevant concept. "
+    "Show cross-paper connections with explicit signposting. "
+    "Aim for 8-15 top-level bullets per paper with generous sub-nesting."
 )
 
 

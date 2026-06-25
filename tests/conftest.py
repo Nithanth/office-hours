@@ -406,8 +406,22 @@ class _FakeSentenceTransformer:  # noqa: D101
     def __init__(self, *a: Any, **k: Any):
         pass
 
-    def encode(self, *a: Any, **k: Any):  # noqa: D401
-        return [[]]
+    def encode(self, texts: Any, *a: Any, **k: Any):  # noqa: D401
+        import numpy as _np
+
+        n = len(texts) if hasattr(texts, "__len__") else 1
+        # Return deterministic pseudo-embeddings seeded by text content
+        # so clustering tests produce meaningful (non-identical) vectors.
+        rng = _np.random.RandomState(42)
+        vecs = rng.randn(n, 384).astype(_np.float32)
+        # Make each vector slightly different based on input text hash
+        for i, t in enumerate(texts if hasattr(texts, "__iter__") else [texts]):
+            seed = hash(str(t)) % 2**31
+            vecs[i] += _np.random.RandomState(seed).randn(384).astype(_np.float32) * 0.5
+        # L2 normalize (matching real model behavior)
+        norms = _np.linalg.norm(vecs, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        return vecs / norms
 
 
 class _FakeCosResult(float):  # noqa: D101
@@ -453,6 +467,9 @@ def _safe_read_text(self: _pl.Path, *args: Any, **kwargs: Any):  # noqa: D401
     try:
         return _orig_read_text(self, *args, **kwargs)
     except FileNotFoundError:
+        # Return valid JSON for .json files (numpy/scipy metadata reads these)
+        if self.suffix == ".json":
+            return "{}"
         return "STUB TEMPLATE"  # minimal placeholder
 
 

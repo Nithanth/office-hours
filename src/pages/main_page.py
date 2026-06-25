@@ -448,8 +448,19 @@ def render_search_results(
                         placeholder="Filter by author…",
                         style="font-size:0.85rem;padding:3px 6px;width:14rem;",
                     ),
+                    BUTTON(
+                        I(cls="fa-solid fa-diagram-project"),
+                        " Visualize",
+                        type="button",
+                        id="cluster-viz-btn",
+                        cls="btn-secondary",
+                        title="Cluster papers by topic similarity",
+                        style="font-size:0.8rem;padding:3px 8px;margin-left:8px;",
+                    ),
                     style="display:inline-flex;gap:6px;align-items:center;margin-left:12px;",
                 ),
+                # Cluster visualization container (populated by JS)
+                Div(id="cluster-viz-container", style="display:none;margin:12px 0;"),
                 style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:8px;gap:4px;",
                 id="results-controls",
             )
@@ -699,6 +710,7 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src="/static/js/htmx-url-reset.js", defer=True),
             # Modular JS entry-points
             Script(src="/static/js/main.js?v=2", type="module"),
+            Script(src="/static/js/cluster-viz.js", defer=True),
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
@@ -723,6 +735,12 @@ def home_page(page_data: SharedPageData) -> Body:
                 ],
                 id="model-select",
                 name="model_key",
+            ),
+            Link(
+                "My Reports",
+                href="/reports",
+                cls="top-bar-link",
+                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
             ),
             BUTTON(
                 "💬 Assistant",
@@ -822,7 +840,7 @@ def home_page(page_data: SharedPageData) -> Body:
                         ),
                         cls="search-form-filters",
                     ),
-                    # Action button
+                    # Action button + deep research toggle
                     Div(
                         BUTTON(
                             "Search Papers",
@@ -831,7 +849,22 @@ def home_page(page_data: SharedPageData) -> Body:
                             value="auto",
                             onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
                         ),
-                        style="margin-top:0.4rem;",
+                        Label(
+                            INPUT(
+                                type="checkbox",
+                                name="deep_search",
+                                id="deep-search-toggle",
+                                value="1",
+                                style="margin:0;",
+                            ),
+                            Span(
+                                " Deep Research",
+                                style="font-size:0.78rem;color:var(--fg-muted,#aaa);",
+                            ),
+                            title="Slower but more comprehensive results (uses Exa deep search)",
+                            style="display:inline-flex;align-items:center;gap:3px;margin-left:0.75rem;cursor:pointer;user-select:none;",
+                        ),
+                        style="margin-top:0.4rem;display:flex;align-items:center;",
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",

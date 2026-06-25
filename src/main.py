@@ -181,6 +181,7 @@ from api.routes import admin as _admin_routes
 from api.routes import ask_llm as _ask_llm_routes
 from api.routes import auth as _auth_routes
 from api.routes import chat as _chat_routes
+from api.routes import cluster as _cluster_routes
 from api.routes import history as _history_routes
 from api.routes import integrations as _integration_routes
 from api.routes import metadata as _metadata_routes
@@ -190,6 +191,7 @@ from api.routes import search as _search_routes
 
 for _r in (
     _chat_routes.router,
+    _cluster_routes.router,
     _report_routes.router,
     _search_routes.router,
     _auth_routes.router,

@@ -205,17 +205,24 @@ class ExaClient:
             logger.warning("_get_id_from_url failed for {}: {}", url, e, exc_info=True)
         return None
 
-    def _safe_get_contents(self, url: str) -> Any | None:
+    def _safe_get_contents(self, url: str, *, highlights_only: bool = False) -> Any | None:
         """Best-effort wrapper around `get_contents`.
 
         Returns the first result from Exa if available. Only falls back to a
         search-by-URL lookup when the primary call returns no results at all,
         avoiding unnecessary extra API calls.
+
+        When *highlights_only* is True (or EXA_USE_HIGHLIGHTS config is set),
+        fetches token-efficient highlight excerpts instead of full text.
         """
+        use_highlights = highlights_only or _cfg.config.EXA_USE_HIGHLIGHTS
+        content_params: dict[str, Any] = (
+            {"highlights": True} if use_highlights else {"text": True}
+        )
         try:
-            res = self.client.get_contents([url], text=True)
+            res = self.client.get_contents([url], **content_params)
             if getattr(res, "results", None):
-                logger.debug("_safe_get_contents hit: url={}", url)
+                logger.debug("_safe_get_contents hit: url={} highlights={}", url, use_highlights)
                 return res.results[0]
 
             # Primary returned nothing — try resolving via search
@@ -224,7 +231,7 @@ class ExaClient:
                 logger.debug("_safe_get_contents miss: url={} (no doc_id)", url)
                 return None
 
-            res2 = self.client.get_contents([doc_id], text=True)
+            res2 = self.client.get_contents([doc_id], **content_params)
             if getattr(res2, "results", None):
                 logger.debug(
                     "_safe_get_contents hit via doc_id: url={} doc_id={}", url, doc_id
@@ -1319,10 +1326,11 @@ class ExaClient:
             )
 
         try:
-            # v2: use auto search for best recall (blends neural + keyword);
+            # v2: search type is configurable (auto/neural/keyword/deep).
             # contents=False for metadata-only to avoid fetching full text.
-            kwargs.setdefault("type", "auto")
+            kwargs.setdefault("type", _cfg.config.EXA_SEARCH_TYPE)
             kwargs.setdefault("contents", False)
+            kwargs.setdefault("category", "research paper")
             sdk_res = self.adapter.search(query, num_results=num_results, **kwargs)
         except Exception as exc:
             logger.error("Exa search failed for {} - {}", query, exc)

@@ -74,7 +74,7 @@ fi
 PYTHON_BIN="${PYTHON:-python}"
 if ! "$PYTHON_BIN" -c "import uvicorn" >/dev/null 2>&1; then
   err "uvicorn is not installed in the active Python environment"
-  printf 'Install dependencies with: pip install -r requirements.txt\n' >&2
+  printf 'Install dependencies with: uv sync\n' >&2
   exit 127
 fi
 

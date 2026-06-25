@@ -48,6 +48,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     num_results: int | None = Form(None),  # display count (1–10)
     mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
     include_domains: list[str] | None = Form(None),  # noqa: B008
+    deep_search: str | None = Form(None),  # '1' if Deep Research toggle is on
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> HTMLResponse:
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
@@ -202,6 +203,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             filtered_domains = [d for d in include_domains if d and d.lower() not in {"any", "all"}]
             if filtered_domains:
                 shared_kwargs["include_domains"] = filtered_domains
+        # Deep Research mode override — uses Exa "deep" search type for
+        # more comprehensive results (slower, higher quality)
+        if deep_search == "1":
+            shared_kwargs["type"] = "deep"
 
         is_url_search = _url_utils.is_paper_url(input_query_stripped)
 

@@ -142,6 +142,11 @@ class Config(BaseSettings):
     CE_RERANK_POOL: int = Field(default=40, ge=1)
     ENABLE_CE_RERANK: bool = False
     EXA_POOL_SIZE: int = Field(default=35, ge=1)
+    # Exa search type: "auto" (fast, balanced), "neural" (semantic),
+    # "keyword", or "deep" (higher quality, slower, costs more credits)
+    EXA_SEARCH_TYPE: str = "auto"
+    # Use highlights for token-efficient excerpts (reduces content tokens ~10x)
+    EXA_USE_HIGHLIGHTS: bool = True
 
     # ------------------------------------------------------------------
     # PDF/Text processing
