@@ -1,0 +1,134 @@
+"""Unit tests for Semantic Scholar citation enrichment."""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from models.paper import Paper
+from services.paper.metadata.semantic_scholar import (
+    _fetch_batch,
+    batch_fetch_citations,
+    enrich_papers_with_citations,
+)
+
+
+class TestBatchFetchCitations:
+    """Tests for batch_fetch_citations."""
+
+    def test_empty_input(self):
+        result = batch_fetch_citations([])
+        assert result == {}
+
+    @patch("services.paper.metadata.semantic_scholar._fetch_batch")
+    def test_single_batch(self, mock_fetch):
+        mock_fetch.return_value = {"ARXIV:2106.09685": 5000}
+        result = batch_fetch_citations(["ARXIV:2106.09685"])
+        assert result == {"ARXIV:2106.09685": 5000}
+        mock_fetch.assert_called_once_with(["ARXIV:2106.09685"], timeout=10)
+
+    @patch("services.paper.metadata.semantic_scholar._fetch_batch")
+    def test_multiple_batches(self, mock_fetch):
+        """IDs exceeding 500 get split into multiple batches."""
+        ids = [f"ARXIV:{i}" for i in range(750)]
+        mock_fetch.return_value = {}
+        batch_fetch_citations(ids, timeout=5)
+        # Should have been called twice: 500 + 250
+        assert mock_fetch.call_count == 2
+        first_call_ids = mock_fetch.call_args_list[0][0][0]
+        second_call_ids = mock_fetch.call_args_list[1][0][0]
+        assert len(first_call_ids) == 500
+        assert len(second_call_ids) == 250
+
+
+class TestFetchBatch:
+    """Tests for _fetch_batch (mocking urllib)."""
+
+    @patch("services.paper.metadata.semantic_scholar.urllib.request.urlopen")
+    def test_successful_fetch(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = json.dumps([
+            {"paperId": "abc123", "citationCount": 42, "externalIds": {"ArXiv": "2106.09685"}},
+            None,  # paper not found
+            {"paperId": "def456", "citationCount": 7, "externalIds": {}},
+        ]).encode()
+        # Make json.load work on the context manager
+        import io
+        mock_urlopen.return_value.__enter__.return_value = io.BytesIO(
+            json.dumps([
+                {"paperId": "abc123", "citationCount": 42, "externalIds": {}},
+                None,
+                {"paperId": "def456", "citationCount": 7, "externalIds": {}},
+            ]).encode()
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        ids = ["ARXIV:2106.09685", "ARXIV:9999.99999", "DOI:10.1234/test"]
+        result = _fetch_batch(ids, timeout=5)
+        # First and third should have counts, second (None) should be skipped
+        assert result.get("ARXIV:2106.09685") == 42
+        assert "ARXIV:9999.99999" not in result
+        assert result.get("DOI:10.1234/test") == 7
+
+    @patch("services.paper.metadata.semantic_scholar.urllib.request.urlopen")
+    def test_timeout_returns_empty(self, mock_urlopen):
+        from urllib.error import URLError
+
+        mock_urlopen.side_effect = URLError("timeout")
+        result = _fetch_batch(["ARXIV:2106.09685"], timeout=1)
+        assert result == {}
+
+
+class TestEnrichPapersWithCitations:
+    """Tests for enrich_papers_with_citations."""
+
+    def _make_paper(self, url: str) -> Paper:
+        return Paper(id="test", title="Test", url=url)
+
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_citations")
+    def test_arxiv_id_resolution(self, mock_batch):
+        """arXiv URLs should be resolved to ARXIV: identifiers."""
+        mock_batch.return_value = {"ARXIV:2106.09685": 5000}
+        papers = [self._make_paper("https://arxiv.org/abs/2106.09685")]
+        enrich_papers_with_citations(papers)
+        # Verify the paper was enriched
+        assert papers[0].citation_count == 5000
+        # Verify the correct ID was passed
+        mock_batch.assert_called_once()
+        called_ids = mock_batch.call_args[0][0]
+        assert "ARXIV:2106.09685" in called_ids
+
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_citations")
+    def test_url_fallback(self, mock_batch):
+        """Non-arXiv URLs should fall back to URL: identifiers."""
+        mock_batch.return_value = {"URL:https://example.com/paper": 10}
+        papers = [self._make_paper("https://example.com/paper")]
+        enrich_papers_with_citations(papers)
+        assert papers[0].citation_count == 10
+
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_citations")
+    def test_unresolved_papers_stay_none(self, mock_batch):
+        """Papers not found in S2 keep citation_count=None."""
+        mock_batch.return_value = {}
+        papers = [self._make_paper("https://example.com/paper")]
+        enrich_papers_with_citations(papers)
+        assert papers[0].citation_count is None
+
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_citations")
+    def test_empty_papers_list(self, mock_batch):
+        """Empty paper list shouldn't call the API."""
+        enrich_papers_with_citations([])
+        mock_batch.assert_not_called()
+
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_citations")
+    def test_graceful_on_api_error(self, mock_batch):
+        """API errors shouldn't crash enrichment."""
+        mock_batch.side_effect = Exception("Network error")
+        papers = [self._make_paper("https://arxiv.org/abs/2106.09685")]
+        # Should not raise
+        with pytest.raises(Exception):
+            enrich_papers_with_citations(papers)

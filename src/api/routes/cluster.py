@@ -101,6 +101,7 @@ async def _prepare_paper_dicts(
             "authors": p.authors or [],
             "year": year,
             "highlights": highlights_map.get(url_str, ""),
+            "citation_count": p.citation_count,
         })
 
     return paper_dicts

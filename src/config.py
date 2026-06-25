@@ -52,6 +52,7 @@ class Config(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     XAI_API_KEY: Optional[str] = None
+    SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
 
     # ------------------------------------------------------------------
     # Notion export
@@ -438,13 +439,26 @@ class Config(BaseSettings):
 # Instantiate config for easy import
 config = Config()
 
-# Warn loudly if deploying with insecure session secret
+# Block startup in production with insecure session secret
 if config.ENV == "prod" and config.LUX_SESSION_SECRET == "dev-insecure-secret":
-    import logging as _logging
+    import sys as _sys
 
-    _logging.critical(
-        "LUX_SESSION_SECRET is set to the insecure default in production! "
-        "Set LUX_SESSION_SECRET to a strong random value."
+    print(
+        "\n[FATAL] LUX_SESSION_SECRET is set to the insecure default in production!\n"
+        "Set LUX_SESSION_SECRET to a strong random value (e.g. `python -c "
+        '"import secrets; print(secrets.token_urlsafe(32))"`).\n',
+        file=_sys.stderr,
+    )
+    _sys.exit(1)
+
+elif config.ENV != "test" and config.LUX_SESSION_SECRET == "dev-insecure-secret":
+    import warnings as _warnings
+
+    _warnings.warn(
+        "LUX_SESSION_SECRET is set to the insecure default. "
+        "Set it to a strong random value before deploying.",
+        UserWarning,
+        stacklevel=1,
     )
 
 __all__ = ["Config", "config"]

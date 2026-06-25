@@ -17,6 +17,17 @@ OAUTH_STATE_MAX_AGE = 60 * 10
 _serializer = URLSafeTimedSerializer(_cfg.config.LUX_SESSION_SECRET, salt="lux-auth")
 
 
+def _is_secure_cookie(request: Request) -> bool:
+    """Determine if cookies should be set with Secure flag.
+
+    Always True in production (regardless of proxy scheme detection).
+    In dev, follows the actual scheme.
+    """
+    if _cfg.config.ENV == "prod":
+        return True
+    return request.url.scheme == "https"
+
+
 def get_auth_user_id(request: Request) -> str | None:
     """Return the signed auth user id, if present and valid."""
 
@@ -48,7 +59,7 @@ def set_auth_cookie(response: Response, user_id: str, request: Request) -> None:
         cast(str, value),
         max_age=AUTH_COOKIE_MAX_AGE,
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_is_secure_cookie(request),
         samesite="lax",
         path="/",
     )
@@ -78,7 +89,7 @@ def set_oauth_state_cookie(response: Response, state: str, request: Request) -> 
         state,
         max_age=OAUTH_STATE_MAX_AGE,
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_is_secure_cookie(request),
         samesite="lax",
         path="/",
     )

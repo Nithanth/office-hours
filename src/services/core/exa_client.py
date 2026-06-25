@@ -1006,6 +1006,13 @@ class ExaClient:
                         err=str(exc),
                     )
 
+        # 2c. Batch-fetch citation counts from Semantic Scholar (best-effort)
+        try:
+            from services.paper.metadata.semantic_scholar import enrich_papers_with_citations
+            enrich_papers_with_citations(pre_pool, timeout=8)
+        except Exception as exc:  # noqa: BLE001 – citations are optional
+            logger.debug("s2_citation_enrichment_skipped", err=str(exc))
+
         # 3. Adaptive score / breadth filter -------------------------------
         filtered = _filter_utils.apply_score_threshold(pre_pool, k)
 

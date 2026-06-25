@@ -671,8 +671,11 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
             self._papers = self._papers[1:] + self._papers[:1]
             return self._papers
 
-        def get_cached_search(self):  # noqa: D401
-            return SimpleNamespace(pinned_id="p1")
+        def get_cached_search(self, session_id=None):  # noqa: D401
+            return SimpleNamespace(
+                pinned_id="p1",
+                get_display_papers=lambda: self._papers,
+            )
 
     stub_exa = _StubExaClient()
     monkeypatch.setattr(app_module, "exa_client_instance", stub_exa, raising=False)

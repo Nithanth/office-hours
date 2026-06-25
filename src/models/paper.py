@@ -35,6 +35,12 @@ class Paper(BaseModel):
         description="Computed relevance score (0.00–1.00) factoring in search rank, metadata quality, and source authority.",
     )
 
+    # Citation count from Semantic Scholar (filled during enrichment)
+    citation_count: Optional[int] = Field(
+        default=None,
+        description="Number of citations from Semantic Scholar (None if unknown).",
+    )
+
     # Path to cached full-text file (filled by TextExtractor when available)
     full_text_path: Optional[str] = Field(
         default=None,

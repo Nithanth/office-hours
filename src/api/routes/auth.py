@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from loguru import logger
 
 import config as _cfg
 from services.auth.session import (
@@ -75,26 +76,37 @@ async def google_callback(
         raise HTTPException(status_code=400, detail="OAuth state mismatch.")
 
     payload = verify_oauth_state(state)
-    async with httpx.AsyncClient(timeout=20) as client:
-        token_resp = await client.post(
-            _GOOGLE_TOKEN_URL,
-            data={
-                "client_id": _cfg.config.GOOGLE_CLIENT_ID,
-                "client_secret": _cfg.config.GOOGLE_CLIENT_SECRET,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": _redirect_uri(),
-            },
-        )
-        token_resp.raise_for_status()
-        token_data: dict[str, Any] = token_resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            token_resp = await client.post(
+                _GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": _cfg.config.GOOGLE_CLIENT_ID,
+                    "client_secret": _cfg.config.GOOGLE_CLIENT_SECRET,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": _redirect_uri(),
+                },
+            )
+            token_resp.raise_for_status()
+            token_data: dict[str, Any] = token_resp.json()
 
-        user_resp = await client.get(
-            _GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {token_data['access_token']}"},
-        )
-        user_resp.raise_for_status()
-        userinfo: dict[str, Any] = user_resp.json()
+            user_resp = await client.get(
+                _GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {token_data['access_token']}"},
+            )
+            user_resp.raise_for_status()
+            userinfo: dict[str, Any] = user_resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.error("google_oauth_upstream_error", status=exc.response.status_code)
+        raise HTTPException(
+            status_code=502, detail="Authentication failed. Please try again."
+        ) from exc
+    except (httpx.RequestError, KeyError) as exc:
+        logger.error("google_oauth_network_error", err=str(exc))
+        raise HTTPException(
+            status_code=502, detail="Authentication failed. Please try again."
+        ) from exc
 
     from services.persistence.repositories import upsert_google_user
 

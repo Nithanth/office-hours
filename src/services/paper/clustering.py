@@ -216,6 +216,7 @@ def cluster_papers(
             "title": p.get("title", ""),
             "authors": p.get("authors", []),
             "year": p.get("year", ""),
+            "citation_count": p.get("citation_count"),
         })
 
     result_clusters = []

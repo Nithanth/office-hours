@@ -337,6 +337,37 @@ def _render_paper_item(
         },
     )
 
+    # "More like this" button — find similar papers
+    similar_btn = BUTTON(
+        I(cls="fa-solid fa-wand-magic-sparkles"),
+        type="button",
+        cls="similar-btn",
+        title="Find similar papers",
+        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
+        **{
+            "data-paper-url": str(paper.url) if paper.url else "",
+            "data-paper-title": paper.title or "",
+        },
+    )
+
+    # Citation count badge (from Semantic Scholar)
+    citation_span = None
+    if paper.citation_count is not None and paper.citation_count > 0:
+        citation_span = Span(
+            I(cls="fa-solid fa-quote-left", style="font-size:0.6em;margin-right:2px;"),
+            f"{paper.citation_count:,}",
+            cls="citation-badge",
+            title=f"{paper.citation_count:,} citations (Semantic Scholar)",
+            style="font-size:0.75em; color:var(--fg-muted, #888); margin-left:8px; vertical-align:middle;",
+        )
+
+    # Container for inline similar-paper recommendations (populated by JS)
+    similar_container = Div(
+        cls="similar-container",
+        id=f"similar-{paper.id}",
+        style="display:none;",
+    )
+
     return LI(
         Div(
             *selection_inputs,
@@ -349,12 +380,15 @@ def _render_paper_item(
             enrich_span,
             toggle_btn,
             bibtex_btn,
+            similar_btn,
             Br(),
             EM(authors_display),
             Br(),
             Span(f"Published: {formatted_date}"),
+            citation_span,
             selection_label,
         ),
+        similar_container,
         **li_attrs,
     )
 
@@ -711,6 +745,7 @@ def home_page(page_data: SharedPageData) -> Body:
             # Modular JS entry-points
             Script(src="/static/js/main.js?v=2", type="module"),
             Script(src="/static/js/cluster-viz.js", defer=True),
+            Script(src="/static/js/similar-papers.js", defer=True),
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child

@@ -42,6 +42,13 @@
     return data;
   }
 
+  /** Compute dot size from citation count (log scale, clamped) */
+  function dotSize(citationCount) {
+    if (!citationCount || citationCount <= 0) return 10;
+    // Log scale: 0 cites → 10px, 10 → 13px, 100 → 16px, 1000 → 20px, 10000 → 23px
+    return Math.min(Math.max(10, 7 + Math.log10(citationCount + 1) * 4), 26);
+  }
+
   /** Render the scatter chart */
   function renderChart(container, data) {
     const { papers, clusters } = data;
@@ -57,7 +64,7 @@
         name: cluster.label,
         marker: {
           color: cluster.color,
-          size: 12,
+          size: clusterPapers.map((p) => dotSize(p.citation_count)),
           opacity: 0.85,
           line: { width: 1, color: "#333" },
         },
@@ -67,7 +74,8 @@
             (p.authors.length
               ? `${p.authors.slice(0, 3).join(", ")}${p.authors.length > 3 ? " et al." : ""}<br>`
               : "") +
-            (p.year ? `(${p.year})` : "")
+            (p.year ? `(${p.year})` : "") +
+            (p.citation_count ? ` · ${p.citation_count.toLocaleString()} citations` : "")
         ),
         hoverinfo: "text",
         hoverlabel: {
