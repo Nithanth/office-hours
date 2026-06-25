@@ -22,30 +22,47 @@ from loguru import logger
 
 import config as _cfg
 from models.paper import Paper
-from services.paper.cache.paper_cache import PaperCache
+from services.query.cache import CachedSearch
+
 
 # ---------------------------------------------------------------------------
-# Metadata fetch helpers (moved to services.paper.metadata)
+# Lazy imports for services.paper.* — avoids circular dependency at load time.
+# These are resolved on first call, not at module import.
 # ---------------------------------------------------------------------------
-from services.paper.metadata.metadata_fetchers import (
-    fetch_arxiv_metadata as _fetch_arxiv_metadata,
-)
-from services.paper.metadata.metadata_fetchers import (
-    fetch_arxiv_metadata_batch as _fetch_arxiv_batch,
-)
-from services.paper.metadata.metadata_fetchers import (
-    fetch_crossref_metadata as _fetch_crossref_metadata,
-)
-from services.paper.metadata.metadata_fetchers import (
-    fetch_doi_metadata as _fetch_doi_metadata,
-)
-from services.paper.metadata.metadata_fetchers import (
-    fetch_semantic_scholar_arxiv as _fetch_ss_arxiv,
-)
-from services.paper.metadata.metadata_fetchers import (
-    fetch_semantic_scholar_arxiv_batch as _fetch_ss_arxiv_batch,
-)
-from services.query.cache import CachedSearch
+
+def _get_paper_cache_class():
+    from services.paper.cache.paper_cache import PaperCache
+    return PaperCache
+
+
+def _fetch_arxiv_metadata(*args, **kwargs):
+    from services.paper.metadata.metadata_fetchers import fetch_arxiv_metadata
+    return fetch_arxiv_metadata(*args, **kwargs)
+
+
+def _fetch_arxiv_batch(*args, **kwargs):
+    from services.paper.metadata.metadata_fetchers import fetch_arxiv_metadata_batch
+    return fetch_arxiv_metadata_batch(*args, **kwargs)
+
+
+def _fetch_crossref_metadata(*args, **kwargs):
+    from services.paper.metadata.metadata_fetchers import fetch_crossref_metadata
+    return fetch_crossref_metadata(*args, **kwargs)
+
+
+def _fetch_doi_metadata(*args, **kwargs):
+    from services.paper.metadata.metadata_fetchers import fetch_doi_metadata
+    return fetch_doi_metadata(*args, **kwargs)
+
+
+def _fetch_ss_arxiv(*args, **kwargs):
+    from services.paper.metadata.metadata_fetchers import fetch_semantic_scholar_arxiv
+    return fetch_semantic_scholar_arxiv(*args, **kwargs)
+
+
+def _fetch_ss_arxiv_batch(*args, **kwargs):
+    from services.paper.metadata.metadata_fetchers import fetch_semantic_scholar_arxiv_batch
+    return fetch_semantic_scholar_arxiv_batch(*args, **kwargs)
 
 from .exa_adapter import ExaAdapter
 from .exa_utils import (
@@ -161,7 +178,7 @@ class ExaClient:
         self.client = self.adapter.sync_client
         # Legacy per-request cache objects are now handled via CachedSearch.
         # SQLite paper metadata cache (no external service)
-        self._cache = PaperCache()
+        self._cache = _get_paper_cache_class()()
 
         # Per-session pooled search cache keyed by session_id.
         # Avoids race conditions when multiple users search concurrently.
@@ -1111,11 +1128,18 @@ class ExaClient:
 
             try:
                 from services.paper.text_extractor import TextExtractor
+                from services.tasks import task_queue
 
-                asyncio.create_task(
-                    TextExtractor.instance().ensure_cached(
-                        main_paper.url, main_paper.id
-                    )
+                async def _bg_cache(url: str, pid: str) -> None:
+                    await TextExtractor.instance().ensure_cached(url, pid)
+
+                task_queue.enqueue_fn(
+                    "prewarm",
+                    _bg_cache,
+                    main_paper.url,
+                    main_paper.id,
+                    name=f"prewarm:{main_paper.id[:12]}",
+                    max_retries=1,
                 )
             except Exception as bg_exc:
                 logger.debug(

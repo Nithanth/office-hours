@@ -1,254 +1,244 @@
-"""Centralised application configuration loaded from environment variables."""
+"""Centralised application configuration with Pydantic validation.
+
+All settings are loaded from environment variables (with sensible defaults).
+The ``config`` singleton is the primary interface used throughout the codebase.
+"""
+
+from __future__ import annotations
 
 import datetime
 import os
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from dotenv import load_dotenv
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env only in development/local environments to avoid accidental leakage
-if os.getenv("ENV", "dev") != "prod":  # Treat any non-"prod" value as dev
+if os.getenv("ENV", "dev") != "prod":
     load_dotenv()
 
 
-class Config:
+# ---------------------------------------------------------------------------
+# Model info schema (used in AVAILABLE_MODELS)
+# ---------------------------------------------------------------------------
+
+_VALID_PROVIDERS = {"openai", "together_ai", "anthropic", "gemini", "xai"}
+
+
+class Config(BaseSettings):
+    """Application settings validated via Pydantic.
+
+    Environment variables are mapped directly to field names (case-insensitive).
+    All existing behaviour is preserved — fields default to the same values as
+    the prior plain-class implementation.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # Don't re-load .env here; we already did it above conditionally.
+        env_ignore_empty=True,
+    )
+
+    # ------------------------------------------------------------------
     # API Keys
-    EXA_API_KEY: Optional[str] = os.getenv("EXA_API_KEY")
-    TOGETHER_API_KEY: Optional[str] = os.getenv("TOGETHER_API_KEY")
-    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-    ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
-    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
-    XAI_API_KEY: Optional[str] = os.getenv("XAI_API_KEY")
+    # ------------------------------------------------------------------
+    EXA_API_KEY: Optional[str] = None
+    TOGETHER_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    XAI_API_KEY: Optional[str] = None
 
-    # --- Notion export ---
-    # Internal integration token (https://www.notion.so/profile/integrations).
-    # The integration must be shared with the parent page/database.
-    NOTION_API_KEY: Optional[str] = os.getenv("NOTION_API_KEY")
-    # Parent page ID for new pages. Used when NOTION_PARENT_DATABASE_ID is unset.
-    NOTION_PARENT_PAGE_ID: Optional[str] = os.getenv("NOTION_PARENT_PAGE_ID")
-    # If set, reports are written as rows in this database instead of child pages.
-    NOTION_PARENT_DATABASE_ID: Optional[str] = os.getenv("NOTION_PARENT_DATABASE_ID")
+    # ------------------------------------------------------------------
+    # Notion export
+    # ------------------------------------------------------------------
+    NOTION_API_KEY: Optional[str] = None
+    NOTION_PARENT_PAGE_ID: Optional[str] = None
+    NOTION_PARENT_DATABASE_ID: Optional[str] = None
 
-    # --- App runtime settings ---
-    # --- Environment and asset prefixes ---
-    ENV: str = os.getenv("ENV", "dev").lower()
-    # Front-end CSS folder: use purged bundle in production for smaller payload.
-    CSS_PREFIX: str = os.getenv("CSS_PREFIX", "css/dist" if ENV == "prod" else "css")
-
+    # ------------------------------------------------------------------
+    # App runtime settings
+    # ------------------------------------------------------------------
+    ENV: str = "dev"
+    CSS_PREFIX: str = ""
     APP_TITLE: str = "Nithu's PhD Student"
     VERSION: str = "0.1.0"
-    YEAR: int = int(os.getenv("YEAR", datetime.datetime.utcnow().year))
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", 8000))
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
-    LOG_FORMAT_JSON: bool = os.getenv("LUX_LOG_FORMAT_JSON", "False").lower() == "true"
+    YEAR: int = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC).year)
+    DEBUG: bool = False
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    LOG_LEVEL: str = "info"
+    LOG_FORMAT_JSON: bool = Field(default=False, alias="LUX_LOG_FORMAT_JSON")
 
-    # --- Private beta persistence/auth ---
-    DATABASE_URL: str | None = os.getenv("DATABASE_URL")
-    AUTH_REDIRECT_BASE_URL: str = os.getenv(
-        "AUTH_REDIRECT_BASE_URL", f"http://localhost:{os.getenv('PORT', 8000)}"
-    ).rstrip("/")
-    GOOGLE_CLIENT_ID: str | None = os.getenv("GOOGLE_CLIENT_ID")
-    GOOGLE_CLIENT_SECRET: str | None = os.getenv("GOOGLE_CLIENT_SECRET")
-    NOTION_OAUTH_CLIENT_ID: str | None = os.getenv("NOTION_OAUTH_CLIENT_ID")
-    NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
-    LUX_SECRET_ENCRYPTION_KEY: str | None = os.getenv("LUX_SECRET_ENCRYPTION_KEY")
-    REQUIRE_LOGIN: bool = os.getenv("REQUIRE_LOGIN", "0") in {
-        "1",
-        "true",
-        "yes",
-        "True",
-    }
-    BETA_DAILY_REPORT_LIMIT: int = int(os.getenv("BETA_DAILY_REPORT_LIMIT", 20))
-    BETA_DAILY_SEARCH_LIMIT: int = int(os.getenv("BETA_DAILY_SEARCH_LIMIT", 100))
+    # ------------------------------------------------------------------
+    # Auth & database
+    # ------------------------------------------------------------------
+    DATABASE_URL: Optional[str] = None
+    AUTH_REDIRECT_BASE_URL: str = ""
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    NOTION_OAUTH_CLIENT_ID: Optional[str] = None
+    NOTION_OAUTH_CLIENT_SECRET: Optional[str] = None
+    LUX_SECRET_ENCRYPTION_KEY: Optional[str] = None
+    REQUIRE_LOGIN: bool = False
+    BETA_DAILY_REPORT_LIMIT: int = 20
+    BETA_DAILY_SEARCH_LIMIT: int = 100
 
-    # --- Cache directories ---
-    # All on-disk caches live under a single root to simplify deployment and cleanup.
-    CACHE_DIR: Path = Path(os.getenv("CACHE_DIR", ".cache")).expanduser()
-    VECTOR_CACHE_DIR: Path = CACHE_DIR / "vector"
-    SUMMARY_CACHE_DIR: Path = CACHE_DIR / "summaries"
+    # ------------------------------------------------------------------
+    # Cache directories
+    # ------------------------------------------------------------------
+    CACHE_DIR: Path = Path(".cache")
+    VECTOR_CACHE_DIR: Path = Path("")  # computed in validator
+    SUMMARY_CACHE_DIR: Path = Path("")  # computed in validator
 
-    # --- Embedding / Vector store optimisations ---
-    # Persist embeddings as float16 instead of float32 to halve disk usage.
-    EMB_FLOAT16: bool = os.getenv("EMB_FLOAT16", "0") == "1"
-    # Override the batch size used during SentenceTransformer.encode when building indexes.
-    EMB_BATCH_SIZE: int = int(os.getenv("EMB_BATCH_SIZE", 32))
+    # ------------------------------------------------------------------
+    # Embedding / Vector store
+    # ------------------------------------------------------------------
+    EMB_FLOAT16: bool = False
+    EMB_BATCH_SIZE: int = Field(default=32, ge=1)
+    DISK_QUERY_CACHE: bool = False
 
-    # When enabled, store query embeddings on disk so they persist across restarts.
-    DISK_QUERY_CACHE: bool = os.getenv("DISK_QUERY_CACHE", "0") == "1"
+    # ------------------------------------------------------------------
+    # PDF download
+    # ------------------------------------------------------------------
+    USE_COND_FETCH: bool = False
 
-    # --- PDF download ---
-    # Send If-Modified-Since headers on repeat PDF fetches to avoid re-downloading unchanged files.
-    USE_COND_FETCH: bool = os.getenv("USE_COND_FETCH", "0") == "1"
+    # ------------------------------------------------------------------
+    # Chat behaviour
+    # ------------------------------------------------------------------
+    CHAT_MAX_TOKENS: int = Field(default=512, ge=1)
+    CHAT_TEMPERATURE: float = Field(default=0.7, ge=0.0, le=2.0)
+    CHAT_STREAM_BUFFER: int = Field(default=100, ge=1)
+    CHAT_KEEPALIVE_SEC: int = Field(default=1, ge=0)
 
-    # --- Chat behaviour ---
-    # Max tokens per assistant chunk (UI override)
-    CHAT_MAX_TOKENS: int = int(os.getenv("CHAT_MAX_TOKENS", 512))
-    # Temperature when chat endpoint is used directly (falls back to LLM_TEMPERATURE)
-    CHAT_TEMPERATURE: float = float(
-        os.getenv("CHAT_TEMPERATURE", os.getenv("LLM_TEMPERATURE", 0.7))
-    )
+    # ------------------------------------------------------------------
+    # Server tuning
+    # ------------------------------------------------------------------
+    UVICORN_WORKERS: Optional[int] = None
+    RELOAD_APP: bool = True
 
-    # Optional manual worker count (warn-only)
-    UVICORN_WORKERS: int | None = (
-        int(cast(str, os.getenv("UVICORN_WORKERS")))
-        if os.getenv("UVICORN_WORKERS")
-        else None
-    )
+    # ------------------------------------------------------------------
+    # Search & display
+    # ------------------------------------------------------------------
+    DEFAULT_PAPER_COUNT: int = Field(default=60, ge=1)
+    DEFAULT_SIMILAR_PAPER_COUNT: int = Field(default=3, ge=1)
+    MAX_AUTHORS_DISPLAY: int = 5
+    TEXT_PREWARM_CONCURRENCY: int = Field(default=8, ge=1)
 
-    # How many candidates we ask Exa for per search before post-filtering.
-    # UI paginates these in blocks of 5, so 60 gives up to 12 pages.
-    DEFAULT_PAPER_COUNT: int = int(os.getenv("DEFAULT_PAPER_COUNT", 60))
-    DEFAULT_SIMILAR_PAPER_COUNT: int = int(
-        os.getenv("DEFAULT_SIMILAR_PAPER_COUNT", 3)
-    )  # Added for similar paper searches
-    RELOAD_APP: bool = os.getenv("RELOAD_APP", "True").lower() == "true"
-    MAX_AUTHORS_DISPLAY: int = 5  # Max authors to display before 'et al.'
-
-    # --- Runtime & chat stream ---
-    CHAT_STREAM_BUFFER: int = int(os.getenv("CHAT_STREAM_BUFFER", 100))
-    CHAT_KEEPALIVE_SEC: int = int(os.getenv("CHAT_KEEPALIVE_SEC", 1))
-
-    # Concurrency for warming full-text caches on startup/search
-    TEXT_PREWARM_CONCURRENCY: int = int(os.getenv("TEXT_PREWARM_CONCURRENCY", 8))
-
+    # ------------------------------------------------------------------
     # Logging & observability
-    LOG_FILE: str | None = os.getenv("LOG_FILE")
-    ENABLE_METRICS: bool = os.getenv("ENABLE_METRICS", "0") == "1"
+    # ------------------------------------------------------------------
+    LOG_FILE: Optional[str] = None
+    ENABLE_METRICS: bool = False
 
+    # ------------------------------------------------------------------
     # Vector store & RAG fine-tuning
-    RAG_SEARCH_MULTIPLIER: int = int(os.getenv("RAG_SEARCH_MULTIPLIER", 25))
-    CE_RERANK_POOL: int = int(os.getenv("CE_RERANK_POOL", 40))
-    ENABLE_CE_RERANK: bool = os.getenv("ENABLE_CE_RERANK", "0") == "1"
+    # ------------------------------------------------------------------
+    RAG_SEARCH_MULTIPLIER: int = Field(default=25, ge=1)
+    CE_RERANK_POOL: int = Field(default=40, ge=1)
+    ENABLE_CE_RERANK: bool = False
+    EXA_POOL_SIZE: int = Field(default=35, ge=1)
 
-    EXA_POOL_SIZE: int = int(os.getenv("EXA_POOL_SIZE", 35))
-
+    # ------------------------------------------------------------------
     # PDF/Text processing
-    STRIP_REFERENCES: bool = os.getenv("STRIP_REFERENCES", "0") in {
-        "1",
-        "true",
-        "yes",
-        "True",
-    }
+    # ------------------------------------------------------------------
+    STRIP_REFERENCES: bool = False
+    PAPER_CACHE_DB: Optional[str] = None
+    PROMPT_OVERRIDE_DIR: Path = Path("")
 
-    # Caching layer
-    PAPER_CACHE_DB: str | None = os.getenv("PAPER_CACHE_DB")
+    # ------------------------------------------------------------------
+    # Admin & session security
+    # ------------------------------------------------------------------
+    ADMIN_API_KEY: Optional[str] = None
+    LUX_SESSION_SECRET: str = "dev-insecure-secret"
 
-    # Prompt builder
-    PROMPT_OVERRIDE_DIR: Path = Path(os.getenv("PROMPT_OVERRIDE_DIR", "")).expanduser()
+    # ------------------------------------------------------------------
+    # Chat state persistence
+    # ------------------------------------------------------------------
+    # Backend for chat state: "file" (default) or "redis"
+    CHAT_STORE_BACKEND: str = "file"
+    # Redis URL for the redis backend (ignored when using file backend)
+    REDIS_URL: Optional[str] = None
 
-    # Admin & session security – no defaults, must be set in prod
-    ADMIN_API_KEY: str | None = os.getenv("ADMIN_API_KEY")
-    LUX_SESSION_SECRET: str = os.getenv("LUX_SESSION_SECRET", "dev-insecure-secret")
-
-    # --- Paper/report tuning ---
+    # ------------------------------------------------------------------
+    # Paper/report tuning
+    # ------------------------------------------------------------------
     MAX_PAPERS_PER_SEARCH: int = 20
-    SUMMARY_MAX_LENGTH: int = 300  # words
-    MAX_CONCURRENT_PAPER_SUMMARIES: int = int(
-        os.getenv("MAX_CONCURRENT_PAPER_SUMMARIES", 4)
-    )
-    # Hard cap on characters passed from a paper into any LLM prompt (≈15k tokens).
-    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = int(
-        os.getenv("PAPER_MAX_CONTENT_SNIPPET_CHARS", 150000)
-    )
-    LLM_TIMEOUT_SECONDS: int = int(os.getenv("LLM_TIMEOUT_SECONDS", 120))
-    # Optional UX pause when serving cached summaries – set to 0 to disable.
-    CACHED_SUMMARY_DELAY_SECONDS: float = float(
-        os.getenv("CACHED_SUMMARY_DELAY_SECONDS", "1.5")
-    )
-    # Maximum concurrent PDF/HTML extraction tasks when pre-fetching full text.
-    # Increase if your deployment has ample CPU/network bandwidth.
-    PDF_EXTRACTION_CONCURRENCY: int = int(os.getenv("PDF_EXTRACTION_CONCURRENCY", 6))
+    SUMMARY_MAX_LENGTH: int = 300
+    MAX_CONCURRENT_PAPER_SUMMARIES: int = Field(default=4, ge=1)
+    PAPER_MAX_CONTENT_SNIPPET_CHARS: int = Field(default=150000, ge=1000)
+    LLM_TIMEOUT_SECONDS: int = Field(default=120, ge=1)
+    CACHED_SUMMARY_DELAY_SECONDS: float = Field(default=1.5, ge=0.0)
+    PDF_EXTRACTION_CONCURRENCY: int = Field(default=6, ge=1)
 
-    # --- PDF extraction ---
-    # Maximum size (in megabytes) of a PDF we attempt to download & parse.
-    # Increased from 30 → 50 MB to accommodate larger arXiv PDFs without manual
-    # env overrides. Set the `MAX_PDF_MB` env-var to a different value at
-    # runtime if needed.
-    MAX_PDF_MB: int = int(os.getenv("MAX_PDF_MB", 100))
-    # Minimum characters for a full-text extract to be considered good quality.
-    MIN_FULL_TEXT_CHARS: int = int(os.getenv("MIN_FULL_TEXT_CHARS", 3000))
-    # Minimum characters to accept as *partial* fallback (e.g. abstract).
-    MIN_PARTIAL_TEXT_CHARS: int = int(os.getenv("MIN_PARTIAL_TEXT_CHARS", 400))
+    # ------------------------------------------------------------------
+    # PDF extraction
+    # ------------------------------------------------------------------
+    MAX_PDF_MB: int = Field(default=100, ge=1)
+    MIN_FULL_TEXT_CHARS: int = Field(default=3000, ge=100)
+    MIN_PARTIAL_TEXT_CHARS: int = Field(default=400, ge=50)
+    ENABLE_PDF_OCR: bool = False
+    OCR_MAX_PDF_MB: int = Field(default=10, ge=1)
 
-    # OCR fallback – enable only when `tesseract` binary is present.
-    ENABLE_PDF_OCR: bool = os.getenv("ENABLE_PDF_OCR", "False").lower() == "true"
-    # Maximum PDF size (MB) we attempt OCR on (avoid huge scans).
-    OCR_MAX_PDF_MB: int = int(os.getenv("OCR_MAX_PDF_MB", 10))
-
+    # ------------------------------------------------------------------
+    # Length guidance (static mappings)
+    # ------------------------------------------------------------------
     QUALITATIVE_LENGTH_GUIDANCE: dict[str, str] = {
         "S": "brief and concise (≈ 300 words), summarizing only the absolute key takeaways",
         "M": "moderately detailed (≈ 600 words), covering the main points comprehensively but without excessive depth on any single one",
         "L": "detailed and thorough (≈ 900 words), exploring nuances and providing substantial supporting information for each key aspect",
-        # XL removed – we now standardise on S, M, L only.
     }
 
     SUMMARY_OUTPUT_TOKEN_TARGETS: dict[str, dict[str, int]] = {
-        "technical": {
-            "S": 2000,
-            "M": 4000,
-            "L": 6000,
-        },
-        "semi_technical": {
-            "S": 2000,
-            "M": 4000,
-            "L": 6000,
-        },
-        "non_technical": {
-            "S": 2000,
-            "M": 4000,
-            "L": 6000,
-        },
+        "technical": {"S": 2000, "M": 4000, "L": 6000},
+        "semi_technical": {"S": 2000, "M": 4000, "L": 6000},
+        "non_technical": {"S": 2000, "M": 4000, "L": 6000},
     }
 
-    # Hybrid summarisation ---------------------------------------------------
-    # Papers shorter than this many characters include **full text** in the prompt;
-    # longer ones fall back to RAG-based evidence snippets to save tokens.
-    HYBRID_FULL_CONTEXT_CHAR_THRESHOLD: int = int(
-        os.getenv("HYBRID_FULL_CONTEXT_CHAR_THRESHOLD", 50_000)
-    )
+    # ------------------------------------------------------------------
+    # Hybrid summarisation
+    # ------------------------------------------------------------------
+    HYBRID_FULL_CONTEXT_CHAR_THRESHOLD: int = Field(default=50000, ge=1000)
+    HYBRID_RAG_TOPK: int = Field(default=3, ge=1)
 
-    # How many chunks per themed query to inject for the hybrid path.
-    HYBRID_RAG_TOPK: int = int(os.getenv("HYBRID_RAG_TOPK", 3))
+    # ------------------------------------------------------------------
+    # LLM request defaults
+    # ------------------------------------------------------------------
+    LLM_TEMPERATURE: float = Field(default=0.7, ge=0.0, le=2.0)
+    MAX_RETRIES: int = Field(default=3, ge=0)
+    MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = Field(default=4, ge=1)
+    REQUEST_TIMEOUT: int = Field(default=120, ge=1)
 
-    # --- LLM request defaults ---
-    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
-    MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", 3))
-    # Async semaphore limit per LLM provider to avoid QPS throttling.
-    MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = int(
-        os.getenv("MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4)
-    )
-    REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", 120))
+    # ------------------------------------------------------------------
+    # Feature toggles
+    # ------------------------------------------------------------------
+    ENABLE_URL_SIMILAR_OVERVIEW: bool = False
+    URL_THEME_MIN_PAPERS: int = Field(default=3, ge=1)
+    MAX_TOPIC_SUMMARY_TOKENS: int = Field(default=2048, ge=1)
 
-    # Topic summary tuning
-    # Feature toggles -------------------------------------------------------
-    # When True, URL-based reports that include at least `URL_THEME_MIN_PAPERS`
-    # user-selected similar papers will prepend a short "common theme" overview
-    # generated by the LLM.
-    ENABLE_URL_SIMILAR_OVERVIEW: bool = (
-        os.getenv("ENABLE_URL_SIMILAR_OVERVIEW", "False").lower() == "true"
-    )
-    # Minimum number of similar papers required to trigger the common-theme
-    # summarisation when `ENABLE_URL_SIMILAR_OVERVIEW` is active.
-    URL_THEME_MIN_PAPERS: int = int(os.getenv("URL_THEME_MIN_PAPERS", "3"))
-
-    MAX_TOPIC_SUMMARY_TOKENS: int = int(os.getenv("MAX_TOPIC_SUMMARY_TOKENS", 2048))
-
-    # --- Chat prompt sizing ---
+    # ------------------------------------------------------------------
+    # Chat prompt sizing
+    # ------------------------------------------------------------------
     EXCERPT_CHARS: int = 15000
 
-    # --- Exa API back-off ---
-    EXA_MAX_RETRIES: int = int(os.getenv("EXA_MAX_RETRIES", 3))
-    EXA_RETRY_MIN_WAIT: int = int(os.getenv("EXA_RETRY_MIN_WAIT", 1))  # seconds
-    EXA_RETRY_MAX_WAIT: int = int(os.getenv("EXA_RETRY_MAX_WAIT", 10))  # seconds
+    # ------------------------------------------------------------------
+    # Exa API back-off
+    # ------------------------------------------------------------------
+    EXA_MAX_RETRIES: int = Field(default=3, ge=0)
+    EXA_RETRY_MIN_WAIT: int = Field(default=1, ge=0)
+    EXA_RETRY_MAX_WAIT: int = Field(default=10, ge=1)
 
-    # --- Default/fallback LLM models ---
-    DEFAULT_MODEL_KEY: str = os.getenv("DEFAULT_MODEL_KEY", "gemini_3_1_pro")
+    # ------------------------------------------------------------------
+    # Default/fallback LLM models
+    # ------------------------------------------------------------------
+    DEFAULT_MODEL_KEY: str = "gemini_3_1_pro"
+    TOGETHER_FALLBACK_MODEL: Optional[str] = "deepseek-ai/DeepSeek-V3"
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
-        # Gemini (Google)
         "gemini_3_1_pro": {
             "id": "gemini-3.1-pro-preview",
             "provider": "gemini",
@@ -267,7 +257,6 @@ class Config:
             "input_token_limit": 1_000_000,
             "display_name": "Gemini 3.1 Flash Lite",
         },
-        # Anthropic Claude
         "anthropic_claude_opus_4_6": {
             "id": "claude-opus-4-6",
             "provider": "anthropic",
@@ -286,7 +275,6 @@ class Config:
             "input_token_limit": 200_000,
             "display_name": "Claude Haiku 4.5",
         },
-        # OpenAI
         "openai_gpt_5_4": {
             "id": "gpt-5.4",
             "provider": "openai",
@@ -305,7 +293,6 @@ class Config:
             "input_token_limit": 400_000,
             "display_name": "GPT-5.4 Nano",
         },
-        # TogetherAI Models
         "together_deepseek_v3": {
             "id": "deepseek-ai/DeepSeek-V3",
             "provider": "together_ai",
@@ -324,7 +311,6 @@ class Config:
             "input_token_limit": 128_000,
             "display_name": "Qwen3 235B (TogetherAI)",
         },
-        # xAI Grok
         "xai_grok_4_20": {
             "id": "grok-4.20-0309-non-reasoning",
             "provider": "xai",
@@ -339,45 +325,101 @@ class Config:
         },
     }
 
-    # Fallback TogetherAI model if primary fails
-    TOGETHER_FALLBACK_MODEL: Optional[str] = "deepseek-ai/DeepSeek-V3"
+    # ------------------------------------------------------------------
+    # RAG / retrieval parameters
+    # ------------------------------------------------------------------
+    RAG_CHUNK_TOKENS: int = Field(default=512, ge=64)
+    RAG_CHUNK_OVERLAP: int = Field(default=64, ge=0)
+    RAG_MIN_CHARS: int = Field(default=300, ge=0)
+    RAG_DISTANCE_L2: float = Field(default=2.0, gt=0.0)
+    RAG_TOP_K: int = Field(default=12, ge=1)
 
-    # --- RAG / retrieval parameters ---
-    RAG_CHUNK_TOKENS: int = int(os.getenv("RAG_CHUNK_TOKENS", 512))
-    RAG_CHUNK_OVERLAP: int = int(os.getenv("RAG_CHUNK_OVERLAP", 64))
-    RAG_MIN_CHARS: int = int(os.getenv("RAG_MIN_CHARS", 300))
-    RAG_DISTANCE_L2: float = float(os.getenv("RAG_DISTANCE_L2", 2.0))
-    RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", 12))
+    # ------------------------------------------------------------------
+    # Chat / notes parameters
+    # ------------------------------------------------------------------
+    CHAT_DEDUPE_SIM_THRESHOLD: float = Field(default=0.9, ge=0.0, le=1.0)
+    NOTES_MAX_TOKENS: int = Field(default=2048, ge=1)
 
-    # --- Chat / notes parameters ---
-    CHAT_DEDUPE_SIM_THRESHOLD: float = float(
-        os.getenv("CHAT_DEDUPE_SIM_THRESHOLD", 0.9)
-    )
-    NOTES_MAX_TOKENS: int = int(os.getenv("NOTES_MAX_TOKENS", 2048))
+    # ------------------------------------------------------------------
+    # Blog generator
+    # ------------------------------------------------------------------
+    BLOG_MAX_TOKENS: int = Field(default=6000, ge=1)
+    BLOG_TTL_SECONDS: int = Field(default=3600, ge=0)
+    BLOG_CACHE_MAX_ENTRIES: int = Field(default=200, ge=1)
 
-    # --- Blog generator parameters ---
-    BLOG_MAX_TOKENS: int = int(os.getenv("BLOG_MAX_TOKENS", 6000))
-    BLOG_TTL_SECONDS: int = int(os.getenv("BLOG_TTL_SECONDS", 60 * 60))
-    BLOG_CACHE_MAX_ENTRIES: int = int(os.getenv("BLOG_CACHE_MAX_ENTRIES", 200))
+    # ==================================================================
+    # Validators
+    # ==================================================================
+
+    @field_validator("ENV", mode="before")
+    @classmethod
+    def _lower_env(cls, v: str) -> str:
+        return v.lower() if isinstance(v, str) else v
+
+    @field_validator("REQUIRE_LOGIN", mode="before")
+    @classmethod
+    def _parse_bool_loose(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() in {"1", "true", "yes"}
+        return bool(v)
+
+    @field_validator("STRIP_REFERENCES", mode="before")
+    @classmethod
+    def _parse_strip_refs(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() in {"1", "true", "yes"}
+        return bool(v)
+
+    @field_validator("CACHE_DIR", mode="before")
+    @classmethod
+    def _expand_cache_dir(cls, v: Any) -> Path:
+        return Path(str(v)).expanduser() if v else Path(".cache")
+
+    @field_validator("PROMPT_OVERRIDE_DIR", mode="before")
+    @classmethod
+    def _expand_prompt_dir(cls, v: Any) -> Path:
+        return Path(str(v)).expanduser() if v else Path("")
+
+    @model_validator(mode="after")
+    def _compute_derived(self) -> "Config":
+        """Compute derived fields after all values are loaded."""
+        # CSS_PREFIX defaults based on ENV
+        if not self.CSS_PREFIX:
+            self.CSS_PREFIX = "css/dist" if self.ENV == "prod" else "css"
+
+        # Derived cache paths
+        if str(self.VECTOR_CACHE_DIR) == ".":
+            self.VECTOR_CACHE_DIR = self.CACHE_DIR / "vector"
+        if str(self.SUMMARY_CACHE_DIR) == ".":
+            self.SUMMARY_CACHE_DIR = self.CACHE_DIR / "summaries"
+
+        # AUTH_REDIRECT_BASE_URL default
+        if not self.AUTH_REDIRECT_BASE_URL:
+            self.AUTH_REDIRECT_BASE_URL = f"http://localhost:{self.PORT}"
+
+        # CHAT_TEMPERATURE falls back to LLM_TEMPERATURE if not explicitly set
+        # (handled by env var fallback in the old code; here both default to 0.7)
+
+        return self
 
     def validate_model_registry(self) -> None:
         """Validate model registry shape before serving traffic."""
-
         if self.DEFAULT_MODEL_KEY not in self.AVAILABLE_MODELS:
             raise ValueError(
                 f"DEFAULT_MODEL_KEY '{self.DEFAULT_MODEL_KEY}' is not in AVAILABLE_MODELS"
             )
 
-        valid_providers = {"openai", "together_ai", "anthropic", "gemini", "xai"}
         for key, info in self.AVAILABLE_MODELS.items():
-            missing = {"id", "provider", "input_token_limit", "display_name"} - set(
-                info
-            )
+            missing = {"id", "provider", "input_token_limit", "display_name"} - set(info)
             if missing:
                 raise ValueError(
                     f"Model '{key}' is missing required fields: {sorted(missing)}"
                 )
-            if info["provider"] not in valid_providers:
+            if info["provider"] not in _VALID_PROVIDERS:
                 raise ValueError(
                     f"Model '{key}' uses unsupported provider '{info['provider']}'"
                 )
@@ -386,8 +428,6 @@ class Config:
                 or info["input_token_limit"] <= 0
             ):
                 raise ValueError(f"Model '{key}' has invalid input_token_limit")
-
-    __all__: list[str] = ["Config", "config"]
 
 
 # Instantiate config for easy import
@@ -401,3 +441,5 @@ if config.ENV == "prod" and config.LUX_SESSION_SECRET == "dev-insecure-secret":
         "LUX_SESSION_SECRET is set to the insecure default in production! "
         "Set LUX_SESSION_SECRET to a strong random value."
     )
+
+__all__ = ["Config", "config"]

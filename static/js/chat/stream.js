@@ -5,6 +5,9 @@ import { dbg, decodeEntities } from "../util.js?v=2";
 import { getModalParts, setControlsEnabled, addCopyButtons, scrollToBottom } from "./ui.js?v=2";
 import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded, ensureKatexLoaded } from "./markdown.js?v=2";
 
+// Pre-load markdown libs so they're available for progressive rendering
+ensureMarkdownLibs();
+
 // Map<Element, Entry> tracking in-flight SSE token buffers
 const _pendingTokenBuffers = new Map();
 
@@ -27,6 +30,7 @@ function _startTypingIndicator(targetEl, batchMs) {
   const entry = {
     buf: [],
     lastFlush: performance.now(),
+    lastRender: 0,
     flushTimer: null,
     first: true,
     batchMs,
@@ -92,7 +96,55 @@ function _flushTokens(targetEl) {
   tokenBatch = decodeEntities(tokenBatch).replace(/<br\s*\/?>/gi, "\n");
   entry.md += tokenBatch;
   entry.lastFlush = performance.now();
-  entry.contentEl.textContent = entry.md; // raw until finalised (placeholder)
+
+  // --- Progressive markdown rendering (throttled) ---
+  const now = performance.now();
+  if (window.marked && (now - entry.lastRender >= 100)) {
+    try {
+      // Protect LaTeX from marked.js
+      const mathPlaceholders = [];
+      let protectedMd = entry.md;
+
+      protectedMd = protectedMd.replace(/\$\$([\s\S]*?)\$\$/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+      protectedMd = protectedMd.replace(/\\\[([\s\S]*?)\\\]/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+      protectedMd = protectedMd.replace(/\$([^\$\n]+?)\$/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+      protectedMd = protectedMd.replace(/\\\((.*?)\\\)/g, (m) => {
+        mathPlaceholders.push(m);
+        return `%%MATH${mathPlaceholders.length - 1}%%`;
+      });
+
+      // Close any open code fences so marked doesn't choke on incomplete blocks
+      const fenceCt = (protectedMd.match(/```/g) || []).length;
+      const mdSrc = fenceCt % 2 === 1 ? `${protectedMd}\n\n\`\`\`` : protectedMd;
+
+      // Parse with marked (skip DOMPurify, KaTeX, highlight.js for perf – applied on finalize)
+      let html = window.marked.parse(mdSrc, { gfm: true, breaks: true });
+
+      // Restore math placeholders
+      mathPlaceholders.forEach((original, i) => {
+        html = html.replace(`%%MATH${i}%%`, original);
+      });
+
+      entry.contentEl.innerHTML = html;
+      entry.lastRender = now;
+    } catch (e) {
+      // If marked throws, fall back to plain text
+      entry.contentEl.textContent = entry.md;
+    }
+  } else if (!window.marked) {
+    // marked.js not yet loaded – fall back to raw text
+    entry.contentEl.textContent = entry.md;
+  }
+  // If marked is available but throttle hasn't elapsed, skip render (keep previous innerHTML)
 
   // Keep viewport pinned to bottom as tokens flush
   const container = targetEl.closest(".chat-log-container");

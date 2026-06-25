@@ -30,8 +30,14 @@ async def build_prompt(
     audience_type: str = "semi_technical",
     max_history: int = 10,
     excerpt_chars: int | None = None,
-) -> str:
-    """Construct prompt with recent chat + paper excerpt."""
+) -> str | tuple[str, list[str]]:
+    """Construct prompt with recent chat + paper excerpt.
+
+    Returns either a plain prompt string (for text-only models) or a tuple of
+    (prompt, figure_image_paths) when multimodal context is available.  Callers
+    should check the return type to decide whether to include images in the LLM
+    call.
+    """
 
     # ------------------------------------------------------------------
     # Determine excerpt length: prefer explicit argument, then app config,
@@ -64,6 +70,7 @@ async def build_prompt(
     # latest question to fetch the most relevant chunks and build *context*.
     # ------------------------------------------------------------------
     context_chunks = ""
+    figure_image_paths: list[str] = []  # paths to figure images for vision LLM
     try:
         import importlib
         import sys
@@ -101,6 +108,30 @@ async def build_prompt(
                     chunks=len(matches),
                     chars=len(context_chunks),
                 )
+
+                # If any retrieved chunks are figure descriptions, collect
+                # the corresponding image paths for multimodal context.
+                try:
+                    from services.paper.figure_extractor import FigureExtractor
+
+                    _fig_ext = FigureExtractor()
+                    cached_figs = _fig_ext.get_cached_figures(paper_id)
+                    if cached_figs:
+                        for m in matches:
+                            if m.get("is_figure") and cached_figs:
+                                # Match figure by page number from chunk text
+                                import re as _re
+
+                                page_match = _re.search(r"page (\d+)", m.get("text", ""))
+                                if page_match:
+                                    page_num = int(page_match.group(1))
+                                    for fig in cached_figs:
+                                        if fig.page_number == page_num:
+                                            figure_image_paths.append(fig.image_path)
+                                            break
+                except Exception as _fig_err:
+                    logger.debug("figure_image_lookup_failed", error=str(_fig_err))
+
     except Exception as _e:  # pragma: no cover
         logger.warning("rag_failed", paper_id=paper_id, error=str(_e))
 
@@ -207,4 +238,8 @@ async def build_prompt(
         )
 
     prompt = f"{sys_prompt}\n\nConversation:\n{history_txt}\n\nContext:\n{excerpt}\n\nAssistant:"
+
+    # Return with figure image paths if multimodal context is available.
+    if figure_image_paths:
+        return (prompt, figure_image_paths)
     return prompt

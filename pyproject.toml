@@ -1,25 +1,81 @@
+[project]
+name = "lux-scholar"
+version = "0.1.0"
+description = "AI-powered research paper assistant"
+requires-python = ">=3.11"
+dependencies = [
+    # Core Web Framework & Server
+    "python-fasthtml~=0.12",
+    "uvicorn~=0.38",
+    "fastapi~=0.136",
+    # Environment & Configuration
+    "python-dotenv~=1.1",
+    "cryptography>=42",
+    # API Clients & HTTP
+    "httpx~=0.28",
+    "exa_py~=2.11",
+    "openai~=2.36",
+    "anthropic~=0.53",
+    "together~=1.4",
+    "google-genai~=1.19",
+    "xai-sdk~=1.11",
+    "google-api-core~=2.25",
+    "tenacity~=9.1",
+    "loguru~=0.7",
+    "nltk~=3.9",
+    "sentence-transformers~=5.0",
+    "lancedb~=0.6",
+    "tiktoken~=0.12",
+    "prometheus_client~=0.22",
+    "slowapi~=0.1",
+    "aiohttp>=3.9",
+    "pdfplumber>=0.10",
+    "pandas>=2.0",
+    "sqlalchemy[asyncio]~=2.0",
+    "asyncpg~=0.31",
+    "alembic~=1.13",
+    # Data Validation & Modeling
+    "pydantic~=2.11",
+    "pdfminer.six>=20231228",
+    "pymupdf~=1.24",
+    "pytesseract~=0.3",
+    "pillow>=11.1",
+    "readability-lxml~=0.8.4",
+    # Document generation
+    "python-docx~=1.2",
+    # Notion integration
+    "notion-client~=3.0",
+    "pydantic-settings>=2.14.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+]
+
 [tool.ruff]
-# Assume Python 3.10, align with your .env if different
-# target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
-# E = pycodestyle errors
-# F = pyflakes
-# W = pycodestyle warnings
-# I = isort (import sorting)
-# UP = pyupgrade (modernize Python syntax)
-# B = flake8-bugbear (finds potential bugs)
-# SIM = flake8-simplify (simplifies code)
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 ignore = [
-    "E501", # Line too long, handled by formatter if you use one like Black, or by ruff format
-    "UP007", # Allow Optional[...] syntax for now
-    "UP045", # Allow Optional[...] syntax for now
+    "E501",  # Line too long
+    "UP007", # Allow Optional[...] syntax
+    "UP045", # Allow Optional[...] syntax
 ]
 
-# Exclude common directories
 exclude = [
     ".bzr",
     ".direnv",
@@ -40,30 +96,24 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    "migrations", # Often auto-generated and less strict
+    "migrations",
     "scripts/**",
 ]
 
 [tool.ruff.format]
-# If you want Ruff to also format your code (like Black)
-# quote-style = "double"
-# indent-style = "space"
-# skip-magic-trailing-comma = false
-# line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.10" # Or your project's Python version
+python_version = "3.11"
 ignore_missing_imports = true
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 explicit_package_bases = true
-# Exclude test files from strict type checking – keeps CI noise low
 exclude = "^(tests/|scripts/|migrations/|venv/|node_modules/|build/|dist/|__pycache__/)"
-# You might want to add specific paths to check, or it will check all by default
-# files = ["app.py", "services/", "models/", "pages/", "config.py"]
 
-# Per-module settings if needed, e.g., for libraries without stubs
-# [[tool.mypy.overrides]]
-# module = "some_untyped_library.*"
-# ignore_missing_imports = true
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

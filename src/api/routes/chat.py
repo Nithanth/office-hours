@@ -256,7 +256,14 @@ async def chat_stream(
 
                     if chat_state.last_role(paper_id) == "user":
                         # Build prompt with requested audience style.
-                        prompt = await build_prompt(chat_state, paper_id, audience_type)
+                        # build_prompt returns str or (str, list[str]) when figures are available.
+                        prompt_result = await build_prompt(chat_state, paper_id, audience_type)
+                        _figure_paths: list[str] = []
+                        if isinstance(prompt_result, tuple):
+                            prompt, _figure_paths = prompt_result
+                        else:
+                            prompt = prompt_result
+
                         async with get_semaphore(session_id, paper_id):
                             # Choose model based on user selection (fallback to default).
                             selected_key = model_key or settings.DEFAULT_MODEL_KEY
@@ -264,6 +271,11 @@ async def chat_stream(
                                 selected_key = settings.DEFAULT_MODEL_KEY
                             model_cfg = settings.AVAILABLE_MODELS[selected_key]
 
+                            # TODO: When _figure_paths is non-empty, use a vision-capable
+                            # streaming endpoint to include images in the LLM context.
+                            # For now, figure descriptions are included as text in the
+                            # prompt context (via RAG retrieval), which provides good
+                            # coverage without requiring streaming vision support.
                             stream_iter = await llm_service.generate_completion_stream(
                                 provider_name=model_cfg["provider"],
                                 model_name=model_cfg["id"],

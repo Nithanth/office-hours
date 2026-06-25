@@ -1,4 +1,4 @@
-"""Health-check and small admin utilities (cache flush, metadata recheck)."""
+"""Health-check and small admin utilities (cache flush, metadata recheck, task status)."""
 
 from typing import Any
 
@@ -9,6 +9,7 @@ from loguru import logger
 import config as _cfg
 from api.deps import get_exa_client
 from services.report.report_utils import SummaryCache
+from services.tasks import task_queue
 
 _admin_security = HTTPBearer(auto_error=False)
 
@@ -117,4 +118,29 @@ async def notion_status(request: Request) -> dict[str, Any]:
         "has_api_key": has_key,
         "has_parent": has_parent,
         "target_type": "database" if db_id else ("page" if page_id else "none"),
+    }
+
+
+@router.get("/admin/tasks", tags=["admin"])
+async def task_queue_status(
+    creds: HTTPAuthorizationCredentials | None = Depends(_admin_security),  # noqa: B008
+) -> dict[str, Any]:
+    """Return current background task queue status and recent tasks."""
+    _require_admin(creds)
+
+    recent = task_queue.recent(limit=20)
+    return {
+        "counts": task_queue.status(),
+        "pending": task_queue.pending_count,
+        "recent": [
+            {
+                "id": t.id,
+                "category": t.category,
+                "name": t.name,
+                "status": t.status.value,
+                "attempts": t.attempts,
+                "error": t.error,
+            }
+            for t in recent
+        ],
     }

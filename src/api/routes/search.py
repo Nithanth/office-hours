@@ -17,26 +17,22 @@ from pages.main_page import render_search_results
 from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
 from services.report.report_generator import ReportGenerator
+from services.tasks import task_queue
 from utils.date_utils import parse_user_date
 from utils.rate_limit import limiter
 from utils.search_utils import clean_query
 
 router = APIRouter()
 
-# Concurrency guard for background text prewarm tasks
-_PREWARM_SEMA = asyncio.Semaphore(_cfg.config.TEXT_PREWARM_CONCURRENCY)
+# Set concurrency for prewarm tasks via the task queue
+task_queue.set_concurrency("prewarm", _cfg.config.TEXT_PREWARM_CONCURRENCY)
 
 
 async def _prewarm_cached(url: str, paper_id: str) -> None:
-    """Background fetch & cache of paper full-text to speed up later summaries."""
-
+    """Fetch & cache paper full-text to speed up later summaries."""
     from services.paper.text_extractor import TextExtractor
 
-    async with _PREWARM_SEMA:
-        try:
-            await TextExtractor.instance().ensure_cached(url, paper_id)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("prewarm_failed", paper_id=paper_id, err=str(exc))
+    await TextExtractor.instance().ensure_cached(url, paper_id)
 
 
 # Track currently running direct-query tasks per session to avoid cross-user cancellation.
@@ -249,7 +245,15 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
         # Fire-and-forget pre-warm of text cache for top 5 results -----------------
         for paper in exa_results[:5]:
-            asyncio.create_task(_prewarm_cached(str(paper.url), paper.id))
+            task_queue.enqueue_fn(
+                "prewarm",
+                _prewarm_cached,
+                str(paper.url),
+                paper.id,
+                name=f"prewarm:{paper.id[:12]}",
+                max_retries=1,
+                retry_backoff=2.0,
+            )
 
         return HTMLResponse(
             content=str(results_component),

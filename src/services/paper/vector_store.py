@@ -1,8 +1,11 @@
-"""Per-paper vector store built on *lancedb*.
+"""Unified vector store built on *lancedb*.
 
-Each paper is indexed once (after full-text extraction).  We store the index
-under ``.vector_cache/<sha>.lance`` so it is easy to ship / purge while keeping
-it outside git.
+All papers share a single LanceDB table called ``"papers"`` with a ``paper_id``
+column on every row.  This enables cross-paper search while keeping per-paper
+operations (index, delete, search) fast via filtered queries.
+
+Legacy per-paper tables (created by earlier versions) are migrated into the
+shared table on first access (best-effort).
 """
 
 from __future__ import annotations
@@ -50,6 +53,9 @@ _DISTANCE_THRESH = config.RAG_DISTANCE_L2
 # Tunable via env var `RAG_SEARCH_MULTIPLIER`, default 25 → 100 candidates for
 # the common `top_k=4`.
 _SEARCH_MULTIPLIER = config.RAG_SEARCH_MULTIPLIER
+
+# Name of the single shared table
+_TABLE_NAME = "papers"
 
 # ---------------------------------------------------------------------------
 # Optional cross-encoder rerank (query ⊕ chunk for fine-grained scoring)
@@ -119,27 +125,150 @@ def _safe_name(paper_id: str) -> str:
     return h
 
 
-def index_path(paper_id: str) -> Path:
-    """Return absolute path to Lance index directory for *paper_id*.
+def _get_db() -> lancedb.DBConnection:
+    """Return a connection to the shared LanceDB database."""
+    return lancedb.connect(str(_VECTOR_ROOT))
 
-    Prior versions mistakenly appended a ``.lance`` suffix even though
-    ``lancedb`` creates a *directory* named exactly after the table.  This
-    caused `index_exists()` to always miss the on-disk dataset and trigger
-    expensive rebuilds on every call.  We now generate the correct path and
-    fall back to the legacy suffix for backwards-compatibility.
+
+def _table_names(db: lancedb.DBConnection) -> list[str]:
+    """Return table names, handling API deprecation (table_names -> list_tables)."""
+    try:
+        result = db.table_names()
+        return list(result) if result else []
+    except (AttributeError, TypeError):
+        pass
+    # Fallback: newer API returns a response object with a .tables attribute
+    try:
+        resp = db.list_tables()
+        if hasattr(resp, "tables"):
+            return list(resp.tables)
+        return list(resp)
+    except Exception:
+        return []
+
+
+def _open_shared_table(db: lancedb.DBConnection):
+    """Open the shared papers table, returning None if it doesn't exist."""
+    if _TABLE_NAME not in _table_names(db):
+        return None
+    try:
+        return db.open_table(_TABLE_NAME, mode="r")
+    except TypeError:
+        return db.open_table(_TABLE_NAME)
+
+
+def _open_shared_table_rw(db: lancedb.DBConnection):
+    """Open the shared papers table in read-write mode, returning None if it doesn't exist."""
+    if _TABLE_NAME not in _table_names(db):
+        return None
+    try:
+        return db.open_table(_TABLE_NAME)
+    except TypeError:
+        return db.open_table(_TABLE_NAME)
+
+
+# ---------------------------------------------------------------------------
+# Legacy migration
+# ---------------------------------------------------------------------------
+
+_MIGRATION_DONE: bool = False
+
+
+def _migrate_legacy_tables() -> None:
+    """Best-effort migration of legacy per-paper tables into the shared table.
+
+    Legacy tables are identified as any table name that is NOT the shared table
+    name.  Each legacy table's rows are augmented with a ``paper_id`` column
+    (set to the table name / hash) and appended to the shared table.
     """
+    global _MIGRATION_DONE
+    if _MIGRATION_DONE:
+        return
+    _MIGRATION_DONE = True
 
-    root = Path(_VECTOR_ROOT)
-    name = _safe_name(paper_id)
+    db = _get_db()
+    all_tables = _table_names(db)
 
-    # Preferred (correct) location
-    new_path = root / name
+    # Also check for legacy .lance directories on disk that lancedb might
+    # not list (older versions created directories with .lance suffix).
+    legacy_names: list[str] = []
+    for name in all_tables:
+        if name != _TABLE_NAME:
+            legacy_names.append(name)
 
-    # Legacy location created by earlier buggy versions
-    legacy_path = root / f"{name}.lance"
+    # Check for .lance directories on disk that might not be in table_names
+    for p in _VECTOR_ROOT.iterdir():
+        if p.is_dir() and p.name.endswith(".lance"):
+            stem = p.name[: -len(".lance")]
+            if stem != _TABLE_NAME and stem not in legacy_names:
+                legacy_names.append(stem)
 
-    # If only the legacy path exists, keep using it to avoid rebuilding indexes
-    return legacy_path if legacy_path.exists() and not new_path.exists() else new_path
+    if not legacy_names:
+        return
+
+    logger.info(
+        "vector_store_migration_start",
+        legacy_tables=len(legacy_names),
+    )
+
+    shared_table = _open_shared_table_rw(db)
+
+    for legacy_name in legacy_names:
+        try:
+            # Try to open the legacy table
+            try:
+                ltable = db.open_table(legacy_name, mode="r")
+            except TypeError:
+                ltable = db.open_table(legacy_name)
+            except Exception:
+                # Table might not be openable (e.g. .lance dir not registered)
+                continue
+
+            # Read all rows
+            try:
+                rows = ltable.to_arrow().to_pylist()
+            except Exception:
+                try:
+                    rows = ltable.to_pandas().to_dict("records")
+                except Exception:
+                    logger.warning(
+                        "vector_store_migration_skip",
+                        table=legacy_name,
+                        reason="cannot read rows",
+                    )
+                    continue
+
+            if not rows:
+                continue
+
+            # Add paper_id column – use the legacy hash as paper_id
+            for row in rows:
+                row["paper_id"] = legacy_name
+
+            # Insert into shared table
+            if shared_table is None:
+                db.create_table(_TABLE_NAME, data=rows, mode="overwrite")
+                shared_table = _open_shared_table_rw(db)
+            else:
+                shared_table.add(rows)
+
+            # Drop the legacy table
+            try:
+                db.drop_table(legacy_name)
+            except Exception:
+                pass
+
+            logger.info(
+                "vector_store_migrated_table",
+                legacy_name=legacy_name,
+                rows=len(rows),
+            )
+        except Exception as exc:
+            logger.warning(
+                "vector_store_migration_failed",
+                table=legacy_name,
+                error=str(exc),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +277,34 @@ def index_path(paper_id: str) -> Path:
 
 
 def index_exists(paper_id: str) -> bool:
-    return index_path(paper_id).exists()
+    """Check if rows exist for *paper_id* in the shared table."""
+    _migrate_legacy_tables()
+
+    db = _get_db()
+    table = _open_shared_table(db)
+    if table is None:
+        return False
+
+    # Use pyarrow filtering (fast, no vector needed).
+    try:
+        import pyarrow.compute as pc
+
+        arrow_tbl = table.to_arrow()
+        mask = pc.equal(arrow_tbl.column("paper_id"), paper_id)
+        filtered = arrow_tbl.filter(mask)
+        return len(filtered) > 0
+    except Exception:
+        # Last resort: scan with SQL-like filter
+        try:
+            results = (
+                table.search()
+                .where(f"paper_id = '{paper_id}'")
+                .limit(1)
+                .to_list()
+            )
+            return len(results) > 0
+        except Exception:
+            return False
 
 
 def save_index(
@@ -158,23 +314,22 @@ def save_index(
     *,
     headings: list[str] | None = None,
 ) -> None:
-    """Write (or overwrite) the Lance index for *paper_id*."""
+    """Write (or overwrite) rows for *paper_id* in the shared table."""
 
     if embeddings.shape[0] != len(chunks):
         raise ValueError("embeddings/chunks length mismatch")
 
-    db = lancedb.connect(str(_VECTOR_ROOT))
-    name = _safe_name(paper_id)
+    _migrate_legacy_tables()
 
-    # drop existing to avoid schema mismatch; safe because idempotent rebuilds
-    if name in db.table_names():
-        db.drop_table(name)
+    db = _get_db()
 
+    # Build row data
     data: list[dict[str, Any]] = []
     for idx, (vec, txt) in enumerate(zip(embeddings, chunks, strict=False)):
         stripped = txt.lstrip()
         heading_val = headings[idx] if headings else ""
         meta = {
+            "paper_id": paper_id,
             "vector": vec.tolist(),
             "text": txt,
             "is_table": stripped.startswith("=== TABLE"),
@@ -182,85 +337,40 @@ def save_index(
             "section": heading_val,
         }
         data.append(meta)
-    db.create_table(name, data=data, mode="overwrite")
+
+    # Check if shared table exists
+    table = _open_shared_table_rw(db)
+    if table is None:
+        # Create the shared table with the first batch of data
+        db.create_table(_TABLE_NAME, data=data, mode="overwrite")
+    else:
+        # Delete existing rows for this paper_id, then add new ones
+        try:
+            table.delete(f"paper_id = '{paper_id}'")
+        except Exception as exc:
+            logger.warning(
+                "vector_store_delete_failed",
+                paper_id=paper_id,
+                error=str(exc),
+            )
+        table.add(data)
+
     logger.info("vector_index_built", paper_id=paper_id, chunks=len(chunks))
 
 
-def search(
-    paper_id: str,
-    query_embedding: np.ndarray,
-    *,
-    query_text: str = "",
-    top_k: int = 12,
-) -> list[dict]:
-    """Return *top_k* records most relevant to *query_text*.
+def _apply_filtering(
+    candidates: list[dict[str, Any]],
+    query_text: str,
+    top_k: int,
+    t_search_ms: float,
+) -> list[dict[str, Any]]:
+    """Apply two-phase filtering logic to candidate results.
 
-    Two-phase filtering:
-    1. Strict → distance + length thresholds.
-    2. Relaxed → apply only length, then boost rows whose content shares
-       keywords with *query_text* (helps surface `=== TABLE` chunks when the
-       user explicitly mentions a metric or "table").
+    Shared by both search() and search_all().
     """
-
-    db = lancedb.connect(str(_VECTOR_ROOT))
-    name = _safe_name(paper_id)
-    if name not in db.table_names():
-        return []
-
-    # Start elapsed-time measurement for search + optional rerank
-    t0 = time.perf_counter()
-
-    # LanceDB >=0.4 removed the `mode` kwarg.  Fall back gracefully.
-    try:
-        table = db.open_table(name, mode="r")  # old API (<=0.3)
-    except TypeError:
-        table = db.open_table(name)  # new API – defaults to read-only
-
-    # Fetch a wider pool to avoid missing relevant sections that are slightly
-    # further down the similarity ranking.
-    # Compatibility: older lancedb versions expose .to_pandas() but not .to_list().
-    try:
-        candidates = (
-            table.search(query_embedding.tolist())
-            .limit(top_k * _SEARCH_MULTIPLIER)
-            .to_list()
-        )
-    except AttributeError:
-        try:
-            candidates = (
-                table.search(query_embedding.tolist())
-                .limit(top_k * _SEARCH_MULTIPLIER)
-                .to_pandas()
-                .to_dict("records")
-            )
-        except AttributeError:
-            # Final fallback – get N rows and convert via arrow / pylist.
-            arrow_tbl = (
-                table.search(query_embedding.tolist())
-                .limit(top_k * _SEARCH_MULTIPLIER)
-                .to_arrow()
-            )
-            candidates = arrow_tbl.to_pylist()
-
-    t_search_ms = round((time.perf_counter() - t0) * 1000, 1)
-
-    # -------- optional cross-encoder rerank --------
-    if config.ENABLE_CE_RERANK and query_text:
-        pool = candidates[:_CE_POOL]
-        candidates = _rerank(query_text, pool) + candidates[_CE_POOL:]
-        t_total_ms = round((time.perf_counter() - t0) * 1000, 1)
-        logger.debug(
-            "rag_phase",
-            phase="ce_rerank",
-            kept=len(pool),
-            search_ms=t_search_ms,
-            total_ms=t_total_ms,
-        )
-        logger.debug("rag_phase", phase="ce_rerank", kept=len(pool))
 
     def _is_special(txt: str) -> bool:
         """Return True for table or figure sentinel chunks."""
-
         stripped = txt.lstrip()
         return stripped.startswith("=== TABLE") or stripped.startswith("=== FIGURE")
 
@@ -332,8 +442,142 @@ def search(
     return []
 
 
-def build_index_from_text(paper_id: str, text: str) -> None:
-    """Chunk *text*, embed each chunk, and persist the LanceDB index."""
+def _do_search(
+    query_embedding: np.ndarray,
+    *,
+    query_text: str = "",
+    top_k: int = 12,
+    where_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Core search logic shared by search() and search_all().
+
+    Performs vector search on the shared table, optionally filtered by
+    *where_filter*, applies two-phase filtering, and optional cross-encoder
+    reranking.
+    """
+    _migrate_legacy_tables()
+
+    db = _get_db()
+    table = _open_shared_table(db)
+    if table is None:
+        return []
+
+    # Start elapsed-time measurement for search + optional rerank
+    t0 = time.perf_counter()
+
+    # Fetch a wider pool to avoid missing relevant sections that are slightly
+    # further down the similarity ranking.
+    limit = top_k * _SEARCH_MULTIPLIER
+
+    try:
+        query_builder = table.search(query_embedding.tolist())
+        if where_filter:
+            query_builder = query_builder.where(where_filter)
+        candidates = query_builder.limit(limit).to_list()
+    except AttributeError:
+        try:
+            query_builder = table.search(query_embedding.tolist())
+            if where_filter:
+                query_builder = query_builder.where(where_filter)
+            candidates = (
+                query_builder.limit(limit).to_pandas().to_dict("records")
+            )
+        except AttributeError:
+            query_builder = table.search(query_embedding.tolist())
+            if where_filter:
+                query_builder = query_builder.where(where_filter)
+            arrow_tbl = query_builder.limit(limit).to_arrow()
+            candidates = arrow_tbl.to_pylist()
+
+    t_search_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    # -------- optional cross-encoder rerank --------
+    if config.ENABLE_CE_RERANK and query_text:
+        pool = candidates[:_CE_POOL]
+        candidates = _rerank(query_text, pool) + candidates[_CE_POOL:]
+        t_total_ms = round((time.perf_counter() - t0) * 1000, 1)
+        logger.debug(
+            "rag_phase",
+            phase="ce_rerank",
+            kept=len(pool),
+            search_ms=t_search_ms,
+            total_ms=t_total_ms,
+        )
+
+    return _apply_filtering(candidates, query_text, top_k, t_search_ms)
+
+
+def search(
+    paper_id: str,
+    query_embedding: np.ndarray,
+    *,
+    query_text: str = "",
+    top_k: int = 12,
+) -> list[dict]:
+    """Return *top_k* records most relevant to *query_text* for a single paper.
+
+    Two-phase filtering:
+    1. Strict → distance + length thresholds.
+    2. Relaxed → apply only length, then boost rows whose content shares
+       keywords with *query_text* (helps surface `=== TABLE` chunks when the
+       user explicitly mentions a metric or "table").
+    """
+    where_filter = f"paper_id = '{paper_id}'"
+    return _do_search(
+        query_embedding,
+        query_text=query_text,
+        top_k=top_k,
+        where_filter=where_filter,
+    )
+
+
+def search_all(
+    query_embedding: np.ndarray,
+    *,
+    query_text: str = "",
+    top_k: int = 12,
+    paper_ids: list[str] | None = None,
+) -> list[dict]:
+    """Search across ALL papers (or a subset if *paper_ids* is provided).
+
+    Returns results with ``paper_id`` included in each dict.  Uses the same
+    two-phase filtering and optional cross-encoder reranking as ``search()``.
+    """
+    where_filter: str | None = None
+    if paper_ids is not None and len(paper_ids) > 0:
+        # Build an IN filter for the subset
+        escaped = [pid.replace("'", "''") for pid in paper_ids]
+        in_list = ", ".join(f"'{pid}'" for pid in escaped)
+        where_filter = f"paper_id IN ({in_list})"
+
+    return _do_search(
+        query_embedding,
+        query_text=query_text,
+        top_k=top_k,
+        where_filter=where_filter,
+    )
+
+
+def build_index_from_text(
+    paper_id: str,
+    text: str,
+    *,
+    figure_descriptions: list[tuple[str, int]] | None = None,
+) -> None:
+    """Chunk *text*, embed each chunk, and persist the LanceDB index.
+
+    Parameters
+    ----------
+    paper_id
+        Unique paper identifier.
+    text
+        Full extracted text of the paper.
+    figure_descriptions
+        Optional list of (description_text, page_number) tuples from the
+        figure extractor.  Each description is added as an additional chunk
+        with ``is_figure=True`` so it is retrievable when users ask about
+        figures/diagrams.
+    """
 
     chunk_tuples = list(_chunk_text(text))  # (chunk_text, heading)
     if not chunk_tuples:
@@ -341,6 +585,13 @@ def build_index_from_text(paper_id: str, text: str) -> None:
 
     chunk_texts = [c for c, _ in chunk_tuples]
     headings = [h for _, h in chunk_tuples]
+
+    # Append figure description chunks so they are searchable via RAG.
+    if figure_descriptions:
+        for desc, page_num in figure_descriptions:
+            if desc.strip():
+                chunk_texts.append(f"=== FIGURE (page {page_num}) ===\n{desc}")
+                headings.append(f"Figure (page {page_num})")
 
     # Batch size can be tuned via EMB_BATCH_SIZE env var inside embed_texts()
     embeddings = embed_texts(chunk_texts)

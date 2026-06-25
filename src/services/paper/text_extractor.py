@@ -458,16 +458,77 @@ class TextExtractor:
                 logger.debug("metadata_write_failed", err=str(_meta_exc))
 
             # Build RAG vector index asynchronously (best-effort, non-blocking).
+            # If figures are extracted from the PDF, their descriptions are
+            # included as additional searchable chunks in the vector index.
             try:
                 if paper_id:
                     from services.paper import (
                         vector_store as _vs,
                     )  # local import to avoid cycles
 
+                    # --- Figure extraction (best-effort) ---
+                    # Figures are extracted from PDF URLs by re-downloading the PDF
+                    # to a temp file. This only runs once per paper since results
+                    # are cached in {CACHE_DIR}/figures/{paper_id}/.
+                    figure_descriptions: list[tuple[str, int]] | None = None
+                    try:
+                        from services.paper.figure_extractor import FigureExtractor
+
+                        _fig_ext = FigureExtractor()
+                        # Check if figures are already cached for this paper.
+                        cached_figs = _fig_ext.get_cached_figures(paper_id)
+                        if cached_figs is None and (
+                            url.lower().endswith(".pdf") or "/pdf/" in url.lower()
+                        ):
+                            # Download PDF to a temp file for figure extraction.
+                            import tempfile
+
+                            async with (
+                                aiohttp.ClientSession() as _fig_session,
+                                _fig_session.get(
+                                    url,
+                                    timeout=aiohttp.ClientTimeout(total=30),
+                                ) as _fig_resp,
+                            ):
+                                if _fig_resp.status == 200:
+                                    _pdf_data = await _fig_resp.read()
+                                    with tempfile.NamedTemporaryFile(
+                                        suffix=".pdf", delete=False
+                                    ) as _tmp:
+                                        _tmp.write(_pdf_data)
+                                        _tmp_path = _tmp.name
+                                    try:
+                                        cached_figs = _fig_ext.extract_figures(
+                                            _tmp_path, paper_id
+                                        )
+                                    finally:
+                                        Path(_tmp_path).unlink(missing_ok=True)
+
+                        if cached_figs:
+                            figure_descriptions = [
+                                (f.description or f.caption, f.page_number)
+                                for f in cached_figs
+                                if f.description or f.caption
+                            ]
+                    except Exception as _fig_exc:
+                        logger.debug(
+                            "figure_extraction_skipped",
+                            paper_id=paper_id,
+                            error=str(_fig_exc),
+                        )
+
                     if not _vs.index_exists(paper_id):
-                        _vs.build_index_from_text(paper_id, extracted)
+                        _vs.build_index_from_text(
+                            paper_id,
+                            extracted,
+                            figure_descriptions=figure_descriptions,
+                        )
                     if url != paper_id and not _vs.index_exists(url):
-                        _vs.build_index_from_text(url, extracted)
+                        _vs.build_index_from_text(
+                            url,
+                            extracted,
+                            figure_descriptions=figure_descriptions,
+                        )
             except Exception as _exc:  # pragma: no cover
                 logger.warning("vector_index_error", paper_id=paper_id, error=str(_exc))
 

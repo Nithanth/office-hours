@@ -1,8 +1,9 @@
-"""Per-session chat state with disk persistence.
+"""Per-session chat state with pluggable persistence backend.
 
-Previously this was in-memory only, causing issues with multiple uvicorn workers.
-Now session state is loaded from disk on each access and saved after modifications,
-enabling seamless conversation persistence across server restarts.
+The ``ChatState`` dataclass holds in-memory conversation state (stream buffers,
+per-paper history) and delegates persistence to the configured ``ChatStore``
+backend (file or Redis). This enables seamless conversation persistence across
+server restarts and multi-worker/multi-instance deployments.
 """
 
 import html
@@ -35,10 +36,11 @@ class ChatMessage:
 
 @dataclass
 class ChatState:
-    """Conversation container with disk persistence for multi-worker compatibility.
+    """Conversation container with pluggable persistence backend.
 
-    Session state is loaded from disk on access and saved after modifications.
-    This enables conversations to survive across uvicorn workers and server restarts.
+    Session state is loaded from the store on access and saved after
+    modifications. This enables conversations to survive across uvicorn
+    workers and server restarts.
 
     Attributes
     ----------
@@ -81,51 +83,56 @@ class ChatState:
         self.next_token_idx = 0
 
     def push_token(self, token: str) -> None:
-        """Add token to ring buffer keeping only last 100."""
+        """Add token to ring buffer keeping only last N."""
         self.stream_buffer.append((self.next_token_idx, token))
         self.next_token_idx += 1
-        # respect configurable cap
         if len(self.stream_buffer) > self._buf_cap:
             self.stream_buffer = self.stream_buffer[-self._buf_cap :]
 
-    # Public helpers – per-paper chat history
+    # ------------------------------------------------------------------
+    # Persistence via ChatStore backend
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_store():
+        """Lazy import to avoid circular dependencies at module load time."""
+        from services.chat.stores import get_store
+
+        return get_store()
 
     def _save_to_disk(self) -> None:
-        """Persist current state to disk for multi-worker compatibility."""
+        """Persist current session metadata to the configured store."""
         if not self._session_id:
             return
 
         try:
-            from services.chat.session_state_cache import SessionStateCache
-
+            store = self._get_store()
             state = {
                 "paper_cache": self.paper_cache,
-                # NOTE: stream_active and busy_retries are intentionally NOT
-                # persisted — they are transient per-worker flags.  Persisting
-                # them would cause a stuck-stream on restart.
                 "_last_t": self._last_t,
-                "_histories_keys": list(self._histories.keys()),  # Track which papers have history
+                "_histories_keys": list(self._histories.keys()),
             }
-            SessionStateCache.save(self._session_id, state)
+            store.save_session(self._session_id, state)
         except Exception as exc:  # noqa: BLE001
             logger.warning("chat_state_save_failed", session_id=self._session_id, err=str(exc))
 
     def _load_from_disk(self) -> None:
-        """Load session state from disk."""
+        """Load session metadata from the configured store."""
         if not self._session_id:
             return
 
         try:
-            from services.chat.session_state_cache import SessionStateCache
-
-            state = SessionStateCache.load(self._session_id)
+            store = self._get_store()
+            state = store.load_session(self._session_id)
             if state:
                 self.paper_cache = state.get("paper_cache", {})
-                # stream_active / busy_retries are NOT loaded — they are
-                # transient per-worker state.
                 self._last_t = state.get("_last_t", time.time())
         except Exception as exc:  # noqa: BLE001
             logger.warning("chat_state_load_failed", session_id=self._session_id, err=str(exc))
+
+    # ------------------------------------------------------------------
+    # Public helpers – per-paper chat history
+    # ------------------------------------------------------------------
 
     def append(self, paper_id: str, msg: ChatMessage) -> None:
         """Append message *msg* to the chat history for *paper_id*."""
@@ -134,14 +141,10 @@ class ChatState:
         history.append(msg)
         self._histories[paper_id] = history[-self._cap :]
 
-        # Persist to on-disk cache so history survives restarts.
+        # Persist to store so history survives restarts.
         try:
-            from services.chat.chat_history_cache import (
-                ChatHistoryCache as _CHC,
-            )  # local import
-
-            # Serialise to plain dicts for JSON
-            _CHC.save(
+            store = self._get_store()
+            store.save_history(
                 self._session_id,
                 paper_id,
                 [m.serialise() for m in self._histories[paper_id]],
@@ -149,25 +152,24 @@ class ChatState:
         except Exception as exc:  # noqa: BLE001 – persistence is best-effort
             logger.warning("chat_history_save_failed", paper_id=paper_id, err=str(exc))
 
-        # Also persist session state for multi-worker compatibility
+        # Also persist session state
         self._save_to_disk()
 
     def get_conversation(self, paper_id: str) -> list[ChatMessage]:  # noqa: D401 - helper
         """Return a copy of the history list for *paper_id*.
 
         If the paper has no in-memory history, attempt to restore from the
-        on-disk chat cache so conversations survive server restarts.
+        store so conversations survive server restarts.
 
-        Also syncs session state from disk for multi-worker compatibility.
+        Also syncs session state from store for multi-worker compatibility.
         """
-        # Sync session state from disk first (for multi-worker compatibility)
+        # Sync session state first (for multi-worker compatibility)
         self._load_from_disk()
 
         if paper_id not in self._histories:
             try:
-                from services.chat.chat_history_cache import ChatHistoryCache as _CHC
-
-                turns = _CHC.load(self._session_id, paper_id)
+                store = self._get_store()
+                turns = store.load_history(self._session_id, paper_id)
                 if turns:
                     self._histories[paper_id] = [
                         ChatMessage(role=t["role"], content=t["content"]) for t in turns
@@ -188,16 +190,12 @@ _chat_states: dict[str, ChatState] = {}
 def get_chat_state(session_id: str) -> ChatState:
     """Return the ChatState object for *session_id*, creating if missing.
 
-    This function is now multi-worker safe. Session state is loaded from disk
-    when accessed, ensuring consistency across uvicorn workers.
+    This function is now multi-worker safe. Session state is loaded from the
+    configured store when accessed, ensuring consistency across workers.
     """
     if session_id not in _chat_states:
-        # Create new ChatState with session ID for disk persistence
         state = ChatState(_session_id=session_id)
-
-        # Try to load existing session state from disk (multi-worker compatibility)
         state._load_from_disk()
-
         _chat_states[session_id] = state
         logger.debug("chat_state_loaded", session_id=session_id)
 
