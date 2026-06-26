@@ -46,6 +46,8 @@ dependencies = [
     # Notion integration
     "notion-client~=3.0",
     "pydantic-settings>=2.14.2",
+    # Markdown rendering (research profile output)
+    "markdown~=3.7",
 ]
 
 [project.optional-dependencies]

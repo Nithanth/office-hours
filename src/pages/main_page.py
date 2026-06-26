@@ -815,7 +815,7 @@ def home_page(page_data: SharedPageData) -> Body:
         Div(
             Div(
                 P(
-                    I("Enter a research topic, query, or paper link:"),
+                    I("Enter a research topic, query, paper link, or author name:"),
                     style="margin-bottom:0.5rem;",
                 ),
                 FORM(  # Search Form
@@ -884,14 +884,33 @@ def home_page(page_data: SharedPageData) -> Body:
                         ),
                         cls="search-form-filters",
                     ),
-                    # Action button + deep research toggle
+                    # Action buttons + deep research toggle
                     Div(
                         BUTTON(
                             "Search Papers",
                             type="submit",
                             name="mode",
                             value="auto",
+                            id="search-papers-btn",
                             onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
+                        ),
+                        BUTTON(
+                            I(cls="fa-solid fa-user-graduate"),
+                            " Search by Author",
+                            type="button",
+                            id="search-author-btn",
+                            cls="btn-secondary",
+                            title="Search for a researcher by name (Semantic Scholar)",
+                            style="font-size:0.85rem;padding:5px 10px;margin-left:6px;",
+                            onclick=(
+                                "var f=document.getElementById('paper-search-form');"
+                                "var q=document.getElementById('search_query').value;"
+                                "if(!q.trim()){return;}"
+                                "document.getElementById('lux-loading-text').textContent='Searching authors...';"
+                                "f.setAttribute('hx-post','/author/search');"
+                                "htmx.trigger(f,'submit');"
+                                "setTimeout(function(){f.setAttribute('hx-post','/search');},200);"
+                            ),
                         ),
                         Label(
                             INPUT(

@@ -188,6 +188,7 @@ from api.routes import metadata as _metadata_routes
 from api.routes import pages as _pages_routes
 from api.routes import report as _report_routes
 from api.routes import search as _search_routes
+from api.routes import author as _author_routes
 from api.routes import similar as _similar_routes
 
 for _r in (
@@ -202,6 +203,7 @@ for _r in (
     _ask_llm_routes.router,
     _admin_routes.router,
     _similar_routes.router,
+    _author_routes.router,
     _chat_modal_router.router,
     _report_stream_router.router,
     _report_notes_router.router,
