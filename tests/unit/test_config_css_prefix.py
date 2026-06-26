@@ -22,9 +22,9 @@ def test_css_prefix(monkeypatch, env: str, css_prefix_env: str | None, expected:
     # Reset module state between parameter sets
     monkeypatch.delenv("CSS_PREFIX", raising=False)
     monkeypatch.setenv("ENV", env)
-    # Prod requires a non-default session secret to avoid sys.exit(1)
-    if env == "prod":
-        monkeypatch.setenv("LUX_SESSION_SECRET", "test-secret-for-prod-css-prefix")
+    # Non-dev/test envs require a non-default session secret to avoid sys.exit(1)
+    if env not in ("dev", "test"):
+        monkeypatch.setenv("LUX_SESSION_SECRET", "test-secret-for-css-prefix")
     if css_prefix_env is not None:
         monkeypatch.setenv("CSS_PREFIX", css_prefix_env)
 

@@ -193,6 +193,17 @@ document.body.addEventListener("htmx:sseMessage", (evt) => {
   }
 });
 
+document.body.addEventListener("htmx:sseMessage", (evt) => {
+  if (evt.detail?.type !== "report-save-error") return;
+  const msg = evt.detail.data || "Report could not be saved.";
+  const banner = document.createElement("div");
+  banner.className = "error-banner";
+  banner.style.cssText = "padding:10px 16px;margin:8px 0;border-radius:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:var(--lux-text,#e0e0e0);font-size:0.85rem;";
+  banner.textContent = msg;
+  const target = document.getElementById("report-display-area") || document.getElementById("report-content");
+  if (target) target.prepend(banner);
+});
+
 // ---------------------------------------------------------------------------
 // Reveal action buttons when report streaming finishes (HTMX/SSE)
 // ---------------------------------------------------------------------------

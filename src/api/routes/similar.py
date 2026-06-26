@@ -18,6 +18,7 @@ from loguru import logger
 from api.deps import get_exa_client, get_session_id
 from models.paper import Paper
 from services.core.exa_client import ExaClient
+from utils.rate_limit import limiter
 
 router = APIRouter(prefix="/api", tags=["similar"])
 
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/api", tags=["similar"])
 _MAX_SIMILAR = 5
 
 
+@limiter.limit("30/5minute")
 @router.post("/similar", response_class=HTMLResponse)
 async def find_similar(
     request: Request,
@@ -124,7 +126,7 @@ def _render_similar_fragment(papers: list[Paper], anchor_title: str) -> str:
             f"<input type='checkbox' name='selected_papers_json' value='{paper_json}' "
             f"class='paper-select-checkbox similar-paper-checkbox' style='margin-top:3px;'>"
             f"<span>"
-            f"<a href='{html.escape(url_str)}' target='_blank' "
+            f"<a href='{html.escape(url_str)}' target='_blank' rel='noopener noreferrer' "
             f"style='font-size:0.9rem;'>{html.escape(title_str)}</a><br>"
             f"<span style='font-size:0.78rem;color:var(--fg-muted,#888);'>{meta_line}</span>"
             f"</span>"

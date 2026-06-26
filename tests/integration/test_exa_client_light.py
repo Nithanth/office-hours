@@ -76,6 +76,11 @@ def _stub_exa_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
             results = [_FakeResult(i) for i in range(5)]
             return _FakeResponse(results)
 
+        def find_similar(self, url: str, **kwargs: Any) -> _FakeResponse:  # noqa: D401
+            # Mirrors find_similar_and_contents for the metadata-only path.
+            results = [_FakeResult(i) for i in range(5)]
+            return _FakeResponse(results)
+
     # Install stubs
     monkeypatch.setattr("services.core.exa_client.ExaAdapter", _FakeAdapter)
     # Skip network-heavy enrichment entirely - just echo the Paper back.

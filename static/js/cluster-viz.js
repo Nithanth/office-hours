@@ -177,8 +177,11 @@
       btn.classList.add("active");
     } catch (err) {
       container.style.display = "block";
-      container.innerHTML = `<div style="padding:8px;color:#e15759;font-size:0.85rem;">
-        Clustering failed: ${err.message}</div>`;
+      const errDiv = document.createElement("div");
+      errDiv.style.cssText = "padding:8px;color:#e15759;font-size:0.85rem;";
+      errDiv.textContent = "Clustering failed: " + (err.message || "Unknown error");
+      container.innerHTML = "";
+      container.appendChild(errDiv);
     } finally {
       isLoading = false;
       btn.disabled = false;

@@ -38,10 +38,18 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         assert create_async_engine is not None
         assert async_sessionmaker is not None
+        connect_args: dict[str, object] = {}
+        if _cfg.config.ENV == "prod":
+            # Require TLS for production database connections
+            import ssl
+
+            ssl_ctx = ssl.create_default_context()
+            connect_args["ssl"] = ssl_ctx
         _engine = create_async_engine(
             _cfg.config.DATABASE_URL,
             pool_pre_ping=True,
             future=True,
+            connect_args=connect_args,
         )
         _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
     return _engine

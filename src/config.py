@@ -439,26 +439,26 @@ class Config(BaseSettings):
 # Instantiate config for easy import
 config = Config()
 
-# Block startup in production with insecure session secret
-if config.ENV == "prod" and config.LUX_SESSION_SECRET == "dev-insecure-secret":
-    import sys as _sys
+# Block startup in non-dev environments with insecure session secret
+if config.LUX_SESSION_SECRET == "dev-insecure-secret":
+    if config.ENV not in ("dev", "test"):
+        import sys as _sys
 
-    print(
-        "\n[FATAL] LUX_SESSION_SECRET is set to the insecure default in production!\n"
-        "Set LUX_SESSION_SECRET to a strong random value (e.g. `python -c "
-        '"import secrets; print(secrets.token_urlsafe(32))"`).\n',
-        file=_sys.stderr,
-    )
-    _sys.exit(1)
+        print(
+            "\n[FATAL] LUX_SESSION_SECRET is set to the insecure default!\n"
+            "Set LUX_SESSION_SECRET to a strong random value (e.g. `python -c "
+            '"import secrets; print(secrets.token_urlsafe(32))"`).\n',
+            file=_sys.stderr,
+        )
+        _sys.exit(1)
+    elif config.ENV == "dev":
+        import warnings as _warnings
 
-elif config.ENV != "test" and config.LUX_SESSION_SECRET == "dev-insecure-secret":
-    import warnings as _warnings
-
-    _warnings.warn(
-        "LUX_SESSION_SECRET is set to the insecure default. "
-        "Set it to a strong random value before deploying.",
-        UserWarning,
-        stacklevel=1,
-    )
+        _warnings.warn(
+            "LUX_SESSION_SECRET is set to the insecure default. "
+            "Set it to a strong random value before deploying.",
+            UserWarning,
+            stacklevel=1,
+        )
 
 __all__ = ["Config", "config"]

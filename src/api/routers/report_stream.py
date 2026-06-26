@@ -36,6 +36,8 @@ router: APIRouter = APIRouter(tags=["report-incremental"])
 # Payload values may be str, list[str], or bool – use Any to satisfy mypy.
 REPORT_REQUEST_CACHE: dict[str, dict[str, Any]] = {}
 _REPORT_REQUEST_DIR = Path(config.CACHE_DIR) / "report_requests"
+# Safety-cleanup tasks keyed by token so we can cancel them once the stream starts.
+_cleanup_tasks: dict[str, asyncio.Task[None]] = {}
 
 # Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars
@@ -204,8 +206,9 @@ async def generate_report_incremental(  # noqa: PLR0913
         "report_incremental_received", token=token, is_url_input_form=is_url_input
     )
 
-    # Schedule cleanup in case the SSE stream never connects
-    asyncio.create_task(_del_cache_later(token, delay=120))
+    # Schedule cleanup in case the SSE stream never connects.
+    # The task is stored so report_stream() can cancel it once the stream starts.
+    _cleanup_tasks[token] = asyncio.create_task(_del_cache_later(token, delay=120))
 
     sse_url = f"/report/stream?token={token}"
 
@@ -237,6 +240,11 @@ async def report_stream(
         # does NOT exponentially retry (avoids endless 404 log spam).
         return Response(status_code=204)
 
+    # Cancel the safety-cleanup timer now that the stream has connected.
+    safety_task = _cleanup_tasks.pop(token, None)
+    if safety_task and not safety_task.done():
+        safety_task.cancel()
+
     selected_papers_json = payload["selected_papers_json"]
     audience_type = payload["audience_type"]
     summary_size = payload["summary_size"]
@@ -251,7 +259,16 @@ async def report_stream(
         try:
             papers_list.append(Paper.model_validate_json(p_json))
         except Exception:  # noqa: BLE001
+            logger.warning("report_paper_deserialize_skip", raw=p_json[:200])
             continue
+
+    if not papers_list:
+        logger.error("report_stream_no_valid_papers", token=token)
+        return HTMLResponse(
+            "<p class='error-banner' style='padding:12px;'>No valid papers could be loaded. "
+            "Please go back and try again.</p>",
+            status_code=422,
+        )
 
     # Derive main/ similar/ topic papers same as synchronous path — here we
     # assume the first paper (if any) is the main; rest are similar.
@@ -409,7 +426,7 @@ async def report_stream(
             duration_sec=round(dur, 2),
         )
         html_block = (
-            f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank'>{html.escape(paper.title or 'Paper')}</a></h4>"
+            f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
             f"{rg._text_to_html_paragraphs(summary)}"
             f"<button class='ask-assistant-btn' style='position:static;display:inline-block;margin-top:0.75rem;' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
             "</div>"
@@ -521,7 +538,7 @@ async def report_stream(
         if failed_titles:
             yield _format_sse_event("failures", json.dumps(failed_titles))
 
-        # Finalise - send empty payload
+        # Finalise - persist report to database
         if user_id:
             try:
                 from services.persistence.database import (
@@ -531,12 +548,24 @@ async def report_stream(
                 from services.persistence.repositories import create_report
 
                 if database_available():
+                    # Generate a concise title from the report content.
+                    report_title = str(payload["original_query"])[:300] or "Research Report"
+                    try:
+                        report_body = "\n".join(persisted_blocks)
+                        title_result = await rg._generate_report_title(
+                            report_body, selected_model_key
+                        )
+                        if title_result and title_result.strip():
+                            report_title = title_result.strip()[:300]
+                    except Exception:  # noqa: BLE001 - title gen is best-effort
+                        pass
+
+                    saved = None
                     async for session in session_scope():
                         saved = await create_report(
                             session,
                             user_id=str(user_id),
-                            title=str(payload["original_query"])[:300]
-                            or "Research Report",
+                            title=report_title,
                             original_query=str(payload["original_query"]),
                             audience_type=audience_type,
                             summary_size=summary_size,
@@ -545,15 +574,20 @@ async def report_stream(
                             report_html="\n".join(persisted_blocks),
                             papers=papers_list,
                         )
-                    yield _format_sse_event(
-                        "report-saved",
-                        json.dumps({"report_id": saved.id}, separators=(",", ":")),
-                    )
-                    logger.info("report_persisted", report_id=saved.id, user_id=user_id)
+                    if saved is not None:
+                        yield _format_sse_event(
+                            "report-saved",
+                            json.dumps({"report_id": saved.id}, separators=(",", ":")),
+                        )
+                        logger.info("report_persisted", report_id=saved.id, user_id=user_id)
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - persistence must not break streaming
                 logger.warning("report_persist_failed", user_id=user_id, error=str(exc))
+                yield _format_sse_event(
+                    "report-save-error",
+                    "Report generated but could not be saved. You can still export it.",
+                )
 
         yield _format_sse_event("done", "")
         # Also signal done for JSON stream so any listener can clean up.
@@ -570,6 +604,7 @@ async def report_stream(
             loaded_flag=payload.get("is_url_input"),
         )
 
+        _cleanup_tasks.pop(token, None)
         await _del_cache_later(token)
 
     return StreamingResponse(

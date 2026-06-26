@@ -16,10 +16,12 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_session_id
 from services.core.exa_client import ExaClient
+from utils.rate_limit import limiter
 
 router = APIRouter(prefix="/api", tags=["cluster"])
 
 
+@limiter.limit("10/5minute")
 @router.post("/cluster")
 async def cluster_papers_endpoint(request: Request) -> JSONResponse:
     """Compute paper clusters for the current session's search results.

@@ -158,6 +158,28 @@ function _flushTokens(targetEl) {
 // ---------------------------------------------------------------------------
 /* legacy markdown helpers removed – now using chat/markdown.js */
 
+/** Add a "Copy" button to an assistant message bubble (copies plain text). */
+function _addMessageCopyButton(bubbleEl) {
+  if (!bubbleEl || !bubbleEl.classList.contains("assistant-message")) return;
+  if (bubbleEl.querySelector(".msg-copy-btn")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "msg-copy-btn";
+  btn.title = "Copy message";
+  btn.setAttribute("aria-label", "Copy message");
+  btn.textContent = "Copy";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const text = bubbleEl.innerText.replace(/Copy$/, "").trim();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+    });
+  });
+  bubbleEl.style.position = "relative";
+  bubbleEl.appendChild(btn);
+}
+
 /** Render final markdown & clean up timers, attributes, UI state. */
 function _finalizeBubble(targetEl) {
   console.debug('[lux] _finalizeBubble enter', { id: targetEl?.id, interrupted: targetEl?.dataset?.interrupted });
@@ -251,6 +273,7 @@ function _finalizeBubble(targetEl) {
     .then(() => {
       targetEl.querySelectorAll("pre code").forEach((block) => window.hljs && window.hljs.highlightElement(block));
       addCopyButtons(targetEl);
+      _addMessageCopyButton(targetEl);
     })
     .finally(doneCleanup)
     .catch((e) => console.error("markdown render error", e));
@@ -264,7 +287,6 @@ function _finalizeBubble(targetEl) {
       entry.first = false;
     }
     _pendingTokenBuffers.delete(targetEl);
-    if (typeof window.enableShuffle === "function") window.enableShuffle();
 
     // Re-enable modal controls
     const modal = targetEl.closest(".modal");

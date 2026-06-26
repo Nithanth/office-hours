@@ -43,12 +43,16 @@ class ChatSessionMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         if cookie_to_set:
+            secure = (
+                _cfg.config.ENV == "prod"
+                or request.url.scheme == "https"
+            )
             response.set_cookie(
                 COOKIE_NAME,
                 cast(str, cookie_to_set),
                 max_age=COOKIE_MAX_AGE,
                 httponly=True,
-                secure=request.url.scheme == "https",
+                secure=secure,
                 samesite="lax",
                 path="/",
             )

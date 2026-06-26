@@ -249,3 +249,27 @@ body.lux-dark .sources-toggle { color: #666; }
 .modal-content:not(.pdf-viewer) .assistant-message {
   font-size: 0.85rem;
 }
+
+/* ---- Message-level copy button (assistant bubbles) ---- */
+.msg-copy-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--lux-border, #555);
+  background: var(--container-bg, #2a2a2a);
+  color: var(--fg, #ccc);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.assistant-message:hover .msg-copy-btn {
+  opacity: 1;
+}
+.msg-copy-btn:hover {
+  background: var(--lux-accent, #2563eb);
+  color: #fff;
+  border-color: transparent;
+}

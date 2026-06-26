@@ -2,8 +2,6 @@
 // This file bootstraps split modules to keep the bundle manageable and ensure
 // shared helpers are loaded site-wide.
 
-// Controls for shuffle/reset buttons (defines window.disableShuffle etc.)
-import "./shuffle_controls.js";
 // Ensure HTMX opens multiple SSE streams concurrently (chat + report, etc.)
 // Script is idempotent; importing here avoids separate <script> tag.
 import "./htmx-sse-pool.js";

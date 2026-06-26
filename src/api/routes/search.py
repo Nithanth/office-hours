@@ -109,6 +109,20 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
     input_query_stripped = clean_query(search_query.strip())
 
+    # Reject empty or excessively long queries early.
+    if not input_query_stripped:
+        return HTMLResponse(
+            "<div class='error-banner' style='padding:12px;border-radius:6px;"
+            "background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
+            "color:var(--lux-text,#e0e0e0);margin-top:8px;'>"
+            "Please enter a search query.</div>",
+            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+        )
+
+    _MAX_QUERY_LEN = 500
+    if len(input_query_stripped) > _MAX_QUERY_LEN:
+        input_query_stripped = input_query_stripped[:_MAX_QUERY_LEN]
+
     # ------------------------------------------------------------------
     # Prune completed tasks to prevent unbounded dict growth
     # ------------------------------------------------------------------

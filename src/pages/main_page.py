@@ -516,7 +516,16 @@ def render_search_results(
         pass
 
     if not has_results:
-        pass
+        results_content.append(
+            Div(
+                P(
+                    "No papers found for this query. Try different keywords or broaden your search.",
+                    style="opacity:0.7;",
+                ),
+                style="padding:24px;text-align:center;border:1px dashed var(--lux-border,#444);"
+                "border-radius:8px;margin-top:12px;",
+            )
+        )
 
     # Add inline size dropdown form and generate button only if there are selectable papers
     if has_results:

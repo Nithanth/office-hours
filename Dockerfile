@@ -1,24 +1,27 @@
 # -------- Builder stage --------
-FROM python:3.10-slim AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
 # Ensure Python can find modules inside /app/src when executed as a package
 ENV PYTHONPATH="/app/src"
 
-# Install build deps
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
+# Install build deps + uv (fast Python package manager)
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
-# Copy dependency list & install into a temp dir (keeps final image slim)
-COPY requirements.txt .
-RUN python -m pip install --upgrade pip \
-    && pip install --no-warn-script-location --no-cache-dir --prefix=/install -r requirements.txt
+# Copy dependency manifests first (layer caching)
+COPY pyproject.toml uv.lock ./
 
-# Copy application source (needed for static analysis & runtime)
+# Install production dependencies into a prefix dir (keeps final image slim)
+RUN uv pip install --system --no-cache --prefix=/install -r pyproject.toml
+
+# Copy application source
 COPY . .
 
 # -------- Runtime stage --------
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 ENV PYTHONPATH="/app/src" PYTHONUNBUFFERED=1

@@ -251,6 +251,17 @@ async def _unhandled_exception_handler(
 
 
 # ---------------------------------------------------------------------------
+# Health check endpoint (used by load balancers, container orchestration)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/healthz")
+async def healthz() -> Response:
+    """Lightweight liveness probe. Returns 200 if the process is running."""
+    return Response(content="ok", media_type="text/plain")
+
+
+# ---------------------------------------------------------------------------
 # Static file mounting
 # ---------------------------------------------------------------------------
 

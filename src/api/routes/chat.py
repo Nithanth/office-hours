@@ -87,7 +87,8 @@ async def chat_post(
     # Reset counter on successful accept
     chat_state.busy_retries = 0
 
-    clean_msg = message.strip()
+    _MAX_MSG_CHARS = 3000  # generous cap; frontend limits to 2400
+    clean_msg = message.strip()[:_MAX_MSG_CHARS]
     # Ignore empty/whitespace-only submits - return 204 so HTMX no-ops.
     if not clean_msg:
         return Response(status_code=204)
@@ -289,11 +290,13 @@ async def chat_stream(
                             _batch_last_flush = time.perf_counter()
                             _BATCH_INTERVAL = 0.08  # flush every ~80ms
 
+                            _client_disconnected = False
+
                             async for token in stream_iter:
                                 if await request.is_disconnected():
                                     if hasattr(stream_iter, "aclose"):
                                         asyncio.create_task(stream_iter.aclose())
-                                    completed_successfully = False
+                                    _client_disconnected = True
                                     print("Client disconnected mid-stream - cancelling generation.")
                                     break
 
@@ -322,7 +325,9 @@ async def chat_stream(
                                 safe_chunk = html.escape(chunk).replace("\n", "<br/>")
                                 yield f"event: assistant\ndata: {safe_chunk}\n\n"
 
-                            if completed_successfully is False:
+                            if _client_disconnected:
+                                completed_successfully = False
+                            else:
                                 completed_successfully = True
                                 log.info(
                                     "chat_stream_complete",

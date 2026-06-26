@@ -5,6 +5,7 @@ from typing import Any, Final
 from loguru import logger
 from tenacity import (
     retry,
+    retry_base,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -19,6 +20,30 @@ except ModuleNotFoundError as exc:  # pragma: no cover - dev mis-config
         "The 'exa_py' package is required but not installed. Add it to your "
         "environment or requirements.txt."
     ) from exc
+
+
+def _is_retryable_http_error(exc: BaseException) -> bool:
+    """Return True for HTTP 429 (rate-limit) or 5xx (server) errors."""
+    try:
+        import httpx
+
+        if isinstance(exc, httpx.HTTPStatusError):
+            return exc.response.status_code == 429 or exc.response.status_code >= 500
+    except ImportError:
+        pass
+    return False
+
+
+class _RetryTransient(retry_base):
+    """Retry on connection/timeout errors and HTTP 429/5xx."""
+
+    def __call__(self, retry_state: Any) -> bool:  # noqa: ANN401
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        if exc is None:
+            return False
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            return True
+        return _is_retryable_http_error(exc)
 
 
 class ExaAdapter:
@@ -36,6 +61,8 @@ class ExaAdapter:
         TimeoutError,
     )
 
+    _RETRY_POLICY: Final = _RetryTransient()
+
     def __init__(self, api_key: str) -> None:
         if not api_key:
             raise ValueError("Exa API key is required to instantiate ExaAdapter.")
@@ -46,7 +73,7 @@ class ExaAdapter:
     # ---------------------------------------------------------------------
 
     @retry(
-        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        retry=_RETRY_POLICY,
         wait=wait_exponential(multiplier=1, min=1, max=10),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -74,7 +101,7 @@ class ExaAdapter:
     # ------------------------------------------------------------------
 
     @retry(
-        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        retry=_RETRY_POLICY,
         wait=wait_exponential(multiplier=1, min=1, max=10),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -96,7 +123,7 @@ class ExaAdapter:
     # ------------------------------------------------------------------
 
     @retry(
-        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        retry=_RETRY_POLICY,
         wait=wait_exponential(multiplier=1, min=1, max=10),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -114,7 +141,7 @@ class ExaAdapter:
     # ------------------------------------------------------------------
 
     @retry(
-        retry=retry_if_exception_type(_RETRIABLE_EXCEPTIONS),
+        retry=_RETRY_POLICY,
         wait=wait_exponential(multiplier=1, min=1, max=10),
         stop=stop_after_attempt(3),
         reraise=True,
