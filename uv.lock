@@ -1756,7 +1756,7 @@ requires-dist = [
     { name = "anthropic", specifier = "~=0.53" },
     { name = "asyncpg", specifier = "~=0.31" },
     { name = "cryptography", specifier = ">=42" },
-    { name = "exa-py", specifier = "~=2.11" },
+    { name = "exa-py", specifier = ">=1.13" },
     { name = "fastapi", specifier = "~=0.136" },
     { name = "google-api-core", specifier = "~=2.25" },
     { name = "google-genai", specifier = "~=1.19" },

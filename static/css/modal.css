@@ -277,6 +277,15 @@ body.lux-dark .lux-blog-modal-fs label,
   accent-color: var(--lux-accent, #2563eb);
 }
 
+.theme-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
 .lux-blog-modal-textarea {
   width: 100%;
   box-sizing: border-box;

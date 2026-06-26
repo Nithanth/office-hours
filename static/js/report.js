@@ -469,6 +469,7 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
     if (opts.audience) fd.append("audience", opts.audience);
     if (opts.length)   fd.append("length",   opts.length);
     if (opts.tone)     fd.append("tone",     opts.tone);
+    if (opts.theme)    fd.append("theme",    opts.theme);
     if (opts.extra)    fd.append("extra",    opts.extra);
   }
   for (const [k, v] of Object.entries(extraFields || {})) {

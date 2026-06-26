@@ -57,7 +57,13 @@ const CDN_DEPS = [
   { id: "katex-css", href: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css", tag: "link" },
   { id: "katex", src: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js" },
   { id: "katex-auto", src: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/contrib/auto-render.min.js" },
-  { id: "hljs-css", href: "https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css", tag: "link" },
+  {
+    id: "hljs-css",
+    href: currentTheme() === "dark"
+      ? "https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css"
+      : "https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css",
+    tag: "link",
+  },
 ];
 
 function loadDep(dep) {
@@ -387,6 +393,22 @@ function renderKaTeX() {
       { left: "\\(", right: "\\)", display: false },
     ],
     throwOnError: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Image fade-in on load
+// ---------------------------------------------------------------------------
+function initImageFadeIn() {
+  const article = document.querySelector(".blog-article");
+  if (!article) return;
+  article.querySelectorAll("img").forEach((img) => {
+    if (img.complete) {
+      img.classList.add("loaded");
+    } else {
+      img.addEventListener("load", () => img.classList.add("loaded"), { once: true });
+      img.addEventListener("error", () => img.classList.add("loaded"), { once: true });
+    }
   });
 }
 
@@ -734,6 +756,7 @@ async function initBlog() {
 
   // Post-processing
   addFadeInClasses();
+  initImageFadeIn();
   await renderMermaidDiagrams(mermaidBlocks);
   await renderVegaCharts(vegaBlocks);
   renderKaTeX();
@@ -769,12 +792,11 @@ function initReviseButton(prevToken) {
       console.error("[blog] customize modal not available (luxBlog missing)");
       return;
     }
-    // Pre-populate with the previous blog's metadata when the server exposes
-    // it (only available after a future round-trip; for now defaults are fine
-    // and the user can adjust everything in the modal anyway).
+    // Pre-populate with the current blog's accent theme so it stays selected.
+    const currentAccent = window.__BLOG_ACCENT__ || document.documentElement.dataset.accent || "indigo";
     openModal({
       mode: "regenerate",
-      current: { audience: "", length: "", tone: "", extra: "" },
+      current: { audience: "", length: "", tone: "", theme: currentAccent, extra: "" },
       onSubmit: (opts) => launchRegenerate(prevToken, opts),
     });
   });
@@ -796,6 +818,7 @@ function launchRegenerate(prevToken, opts) {
   if (opts.audience) fd.append("audience", opts.audience);
   if (opts.length) fd.append("length", opts.length);
   if (opts.tone) fd.append("tone", opts.tone);
+  if (opts.theme) fd.append("theme", opts.theme);
   if (opts.extra) fd.append("extra", opts.extra);
 
   fetch("/regenerate-blog", { method: "POST", body: fd })

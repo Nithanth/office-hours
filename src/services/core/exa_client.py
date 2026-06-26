@@ -90,9 +90,14 @@ _ENRICH_POOL = _ThreadPoolExecutor(max_workers=4)
 
 
 def _paper_dedup_key(url: str | None) -> str:
-    """Return the single strongest dedup key for *url* (arXiv id / DOI / host+path)."""
+    """Return the single strongest dedup key for *url* (arXiv id / DOI / host+path).
+
+    Returns a unique random key for papers with no URL so they never
+    accidentally collide with each other in dedup dicts.
+    """
     if not url:
-        return ""
+        import uuid
+        return f"_no_url:{uuid.uuid4().hex}"
     aid = _url_utils.extract_arxiv_id(url)
     if aid:
         return f"arxiv:{aid}"
@@ -136,22 +141,7 @@ class ExaAPIError(ExaClientError):
     pass
 
 
-class ExaRateLimitError(ExaAPIError):
-    """Raised for Exa API rate limit errors."""
 
-    pass
-
-
-class ExaAuthenticationError(ExaClientError):
-    """Raised for Exa API authentication errors."""
-
-    pass
-
-
-class ExaInvalidRequestError(ExaClientError):
-    """Raised for invalid requests to the Exa API."""
-
-    pass
 
 
 class ExaClient:
@@ -262,15 +252,15 @@ class ExaClient:
             external_meta: dict[str, Any] | None = None
             url_lower = str(paper.url).lower() if paper.url else ""
 
-            is_arxiv_like = (
-                "arxiv.org" in url_lower or "ar5iv.org" in url_lower
-            ) and _url_utils.extract_arxiv_id(url_lower)
-
             arxiv_id_early: str | None = None
             doi_val_early: str | None = None
 
-            if is_arxiv_like:
+            if "arxiv.org" in url_lower or "ar5iv.org" in url_lower:
                 arxiv_id_early = _url_utils.extract_arxiv_id(url_lower)
+
+            is_arxiv_like = bool(arxiv_id_early)
+
+            if is_arxiv_like:
                 logger.debug("Detected arXiv-like URL - id={}", arxiv_id_early)
                 if arxiv_id_early:
                     logger.debug("Fetching arXiv metadata for {}", arxiv_id_early)
@@ -487,7 +477,7 @@ class ExaClient:
                 complete_now = bool(paper.authors and paper.published_date)
                 self._cache.upsert(doc_id, paper.model_dump(), complete_now)
         except Exception as exc:
-            logger.debug("Metadata enrichment failed for {} - {}", doc_id, exc)
+            logger.warning("Metadata enrichment failed for {} - {}", doc_id, exc)
         logger.debug(
             "END _enrich_paper_metadata {} - final authors={} pub_date={}",
             doc_id,
@@ -588,7 +578,7 @@ class ExaClient:
         """
         desired_count = min(num_results, self.MAX_RETURNED_PAPERS)
         request_count = (
-            60  # Fetch up to 40 papers to ensure we get enough after filtering
+            60  # Fetch up to 60 papers to ensure we get enough after filtering
         )
 
         paper_url_norm = paper_url
@@ -897,7 +887,7 @@ class ExaClient:
                 if enriched_main is not None:
                     main_paper_object = _paper_utils.update_paper_from_meta(
                         main_paper_object,
-                        enriched_main.dict(exclude_none=True),
+                        enriched_main.model_dump(exclude_none=True),
                     )
             except Exception as enr_exc:  # noqa: BLE001
                 logger.warning(

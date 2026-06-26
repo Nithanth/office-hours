@@ -98,4 +98,4 @@ Then write. Do NOT include the plan itself in the output.
 
 ## Output
 
-Respond with **only** the Markdown blog post. The first line must begin with `# `. The last line must be the final sentence of the conclusion. No code-fence wrapper around the whole response.
+Respond with **only** the Markdown blog post. The first line must begin with `#` followed by a space. The last line must be the final sentence of the conclusion. No code-fence wrapper around the whole response.

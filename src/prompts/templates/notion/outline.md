@@ -8,23 +8,27 @@ Given a research report, produce a clean structured outline in Markdown. The out
 
 ## Output Format
 
-# [Report Title — derive from content]
+`# [Report Title — derive from content]`
 
 ## Key Takeaways
+
 - 3-5 bullet points capturing the most important findings
 
 ## Paper Summaries
 
 ### [Paper 1 Title]
+
 - Key finding or contribution
 - Methodology or approach (1 line)
 - Notable result or metric
 - [Source](url-if-available)
 
 ### [Paper 2 Title]
+
 - (same structure)
 
 ## Connections & Themes
+
 - 2-3 cross-cutting insights linking the papers together
 
 TAGS: Domain/Topic, Domain/Topic, Domain/Topic

@@ -14,6 +14,7 @@
     audience: "technical",
     length: "medium",
     tone: "distill",
+    theme: "indigo",
     extra: "",
   };
 
@@ -51,10 +52,17 @@
               '<label><input type="radio" name="tone" value="casual"> Casual blog</label>' +
               '<label><input type="radio" name="tone" value="lecture"> Lecture notes</label>' +
             '</fieldset>' +
+            '<fieldset class="lux-blog-modal-fs">' +
+              '<legend>Visual Theme</legend>' +
+              '<label><input type="radio" name="theme" value="indigo" checked> <span class="theme-dot" style="background:#6366f1;"></span> Indigo</label>' +
+              '<label><input type="radio" name="theme" value="emerald"> <span class="theme-dot" style="background:#10b981;"></span> Emerald</label>' +
+              '<label><input type="radio" name="theme" value="amber"> <span class="theme-dot" style="background:#f59e0b;"></span> Amber</label>' +
+              '<label><input type="radio" name="theme" value="rose"> <span class="theme-dot" style="background:#f43f5e;"></span> Rose</label>' +
+            '</fieldset>' +
           '</div>' +
           '<label class="block">' +
             '<span class="font-medium block mb-1" id="blog-extra-label">Additional instructions (optional)</span>' +
-            '<textarea name="extra" rows="3" maxlength="1000" ' +
+            '<textarea name="extra" rows="3" maxlength="500" ' +
               'class="lux-blog-modal-textarea" ' +
               'placeholder="e.g. emphasise reproducibility / keep it under 1000 words / no jargon"></textarea>' +
             '<small class="opacity-60 block mt-1"><span data-blog-extra-count>0</span>/<span data-blog-extra-max>500</span> chars</small>' +
@@ -109,7 +117,7 @@
     }
 
     const init = Object.assign({}, BLOG_CUSTOMIZE_DEFAULTS, current || {});
-    for (const k of ["audience", "length", "tone"]) {
+    for (const k of ["audience", "length", "tone", "theme"]) {
       const radio = modal.querySelector(`input[name="${k}"][value="${CSS.escape(init[k])}"]`);
       if (radio) radio.checked = true;
     }
@@ -148,6 +156,7 @@
         audience: String(fd.get("audience") || "").trim() || BLOG_CUSTOMIZE_DEFAULTS.audience,
         length:   String(fd.get("length")   || "").trim() || BLOG_CUSTOMIZE_DEFAULTS.length,
         tone:     String(fd.get("tone")     || "").trim() || BLOG_CUSTOMIZE_DEFAULTS.tone,
+        theme:    String(fd.get("theme")    || "").trim() || BLOG_CUSTOMIZE_DEFAULTS.theme,
         extra:    String(fd.get("extra")    || "").trim().slice(0, cap),
       };
       if (isRegen && !opts.extra) {
