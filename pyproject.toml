@@ -7,7 +7,7 @@ dependencies = [
     # Core Web Framework & Server
     "python-fasthtml~=0.12",
     "uvicorn~=0.38",
-    "fastapi~=0.136",
+    "fastapi~=0.138",
     # Environment & Configuration
     "python-dotenv~=1.1",
     "cryptography>=42",
