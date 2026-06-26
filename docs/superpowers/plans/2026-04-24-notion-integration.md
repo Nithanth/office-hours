@@ -13,7 +13,7 @@
 ## File Map
 
 | File | Action | Responsibility |
-|------|--------|---------------|
+| ---- | ------ | -------------- |
 | `src/prompts/templates/notion/outline.md` | Create | System prompt for LLM outline + tag generation |
 | `src/services/notion/notion_exporter.py` | Modify | Add `Tags` multi_select + `Type` select to `_database_properties` |
 | `src/api/routers/report_notes.py` | Modify | Add LLM outline generation in `export_notion()`, parse tags |
@@ -27,11 +27,12 @@
 ### Task 1: Create the Notion outline prompt template
 
 **Files:**
+
 - Create: `src/prompts/templates/notion/outline.md`
 
 - [ ] **Step 1: Create the prompt template file**
 
-```markdown
+````markdown
 # Notion Outline Generator
 
 You are a research assistant that distills academic reports into structured outlines for a Notion knowledge base.
@@ -81,7 +82,7 @@ If the paper topic doesn't fit a canonical domain, create a new one — but keep
 - Keep bullet points to 1 sentence each.
 - Do not include the word "TAGS" anywhere else in the output.
 - Output only the Markdown outline. No meta-commentary.
-```
+````
 
 - [ ] **Step 2: Verify the template loads**
 
@@ -101,6 +102,7 @@ git commit -m "feat: add Notion outline prompt template with hierarchical tag ta
 ### Task 2: Add Tags and Type to Notion database properties
 
 **Files:**
+
 - Modify: `src/services/notion/notion_exporter.py:92-120`
 
 - [ ] **Step 1: Update `_database_properties` to include Tags and Type**
@@ -164,6 +166,7 @@ git commit -m "feat: add Tags (multi_select) and Type (select) to Notion databas
 ### Task 3: Add LLM outline generation to the Notion export endpoint
 
 **Files:**
+
 - Modify: `src/api/routers/report_notes.py:249-309`
 
 - [ ] **Step 1: Update the `export_notion` function to generate an outline via LLM**
@@ -300,6 +303,7 @@ git commit -m "feat: generate LLM outline with auto-tags before Notion export"
 ### Task 4: Fix Notion popup blocker and send audience/model metadata
 
 **Files:**
+
 - Modify: `static/js/report.js:380-421`
 
 - [ ] **Step 1: Update `handleNotionClick` to open window synchronously and include metadata**
@@ -376,6 +380,7 @@ git commit -m "fix: prevent popup blocker on Notion export, send audience/model 
 ### Task 5: Add Notion status endpoint
 
 **Files:**
+
 - Modify: `src/api/routes/admin.py`
 
 - [ ] **Step 1: Add the `GET /api/notion-status` endpoint**
@@ -428,6 +433,7 @@ git commit -m "feat: add GET /api/notion-status endpoint for settings modal"
 ### Task 6: Add gear icon to the top bar
 
 **Files:**
+
 - Modify: `src/pages/main_page.py:700-718`
 
 - [ ] **Step 1: Add a gear icon button to the top bar**
@@ -477,6 +483,7 @@ git commit -m "feat: add gear icon to top bar for settings modal"
 ### Task 7: Add settings modal with Notion connection status
 
 **Files:**
+
 - Modify: `static/js/settings.js`
 
 - [ ] **Step 1: Add the settings modal handler**

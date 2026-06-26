@@ -65,14 +65,14 @@ The prompt includes a canonical domain list so the LLM reuses existing categorie
 
 ### Database properties
 
-| Property   | Notion Type   | Source                          |
-|------------|---------------|---------------------------------|
-| Name       | title         | First heading extracted from report |
-| Type       | select        | Hardcoded `"Report"`            |
-| Audience   | select        | From form field                 |
-| Model      | rich_text     | From form field                 |
-| Source URL  | url           | From form field                 |
-| Tags       | multi_select  | LLM-generated, 2-3 per report  |
+| Property   | Notion Type  | Source                              |
+| ---------- | ------------ | ----------------------------------- |
+| Name       | title        | First heading extracted from report |
+| Type       | select       | Hardcoded `"Report"`                |
+| Audience   | select       | From form field                     |
+| Model      | rich_text    | From form field                     |
+| Source URL | url          | From form field                     |
+| Tags       | multi_select | LLM-generated, 2-3 per report      |
 
 `Created time` is automatic in Notion — no need to set it.
 
@@ -88,18 +88,20 @@ The LLM is instructed to emit `TAGS: tag1, tag2, tag3` as the final line. Backen
 ### Error handling
 
 Existing error handling in `/export-notion` covers:
+
 - Missing `NOTION_API_KEY` → 400
 - Missing parent page/database ID → 400
 - Notion API rejection (wrong ID, not shared) → 502 with Notion's error message
 - Frontend shows errors via `alert()`
 
 New failure mode:
+
 - LLM outline generation fails → fall back to exporting raw report text (no outline). Log warning, don't block the export.
 
-### Files changed
+### Files changed (structured export)
 
 | File | Change |
-|------|--------|
+| ---- | ------ |
 | `src/api/routers/report_notes.py` | Add LLM outline generation step in `export_notion()` before calling `NotionExporter`. Parse tags from output. |
 | `src/services/notion/notion_exporter.py` | Add `Tags` multi_select to `_database_properties()`. |
 | `src/prompts/templates/notion/outline.md` | **New file.** System prompt for structured outline + tag generation. |
@@ -127,6 +129,7 @@ New failure mode:
 `GET /api/notion-status`
 
 Response:
+
 ```json
 {
   "connected": true,
@@ -138,10 +141,10 @@ Response:
 
 No secrets exposed. `database_id` is masked (only last 8 chars). Endpoint checks whether `config.NOTION_API_KEY` and either `config.NOTION_PARENT_PAGE_ID` or `config.NOTION_PARENT_DATABASE_ID` are non-empty strings.
 
-### Files changed
+### Files changed (settings modal)
 
 | File | Change |
-|------|--------|
+| ---- | ------ |
 | `src/api/routes/admin.py` | Add `GET /api/notion-status` endpoint. |
 | `src/pages/main_page.py` | Add gear icon button to toolbar. |
 | `static/js/settings.js` | Add modal injection and fetch-on-click handler. |

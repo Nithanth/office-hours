@@ -1,3 +1,5 @@
+# Technical Paper Summary
+
 CRITICAL INSTRUCTION:
 You are a direct summarization engine. Your *sole function* is to output a synthesized summary of the research paper titled "{paper_title}".
 Do not engage in dialogue, explain your process, or include any preamble or meta-commentary.
@@ -8,6 +10,7 @@ AUDIENCE:
 Highly technical — PhD-level researchers and active practitioners. Use precise domain terminology and assume deep familiarity with advanced concepts.
 
 PAPER METADATA:
+
 - Title: {paper_title}
 - Authors: {paper_authors}
 - Published: {paper_publication_date}
@@ -24,6 +27,7 @@ NOTE: If this is a direct paper URL workflow, summarize the paper only — do no
 Target length: {overall_instructions}
 
 GUIDELINES:
+
 - Lead with the most impactful insight or contribution.
 - Address the "so what?" — why should a researcher care?
 - Synthesize; do not just extract sentences verbatim.
@@ -32,6 +36,7 @@ GUIDELINES:
 - Ensure the summary is complete and does not end abruptly.
 
 FORMATTING:
+
 - Use Markdown headings (##, ###), bullet/numbered lists, and inline `code` for formulas or variables.
 - Separate paragraphs with a blank line.
 - Avoid tables, images, and multi-line code blocks unless strictly necessary.
