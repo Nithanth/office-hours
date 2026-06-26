@@ -221,11 +221,15 @@ _stub_llm = _types.ModuleType("services.core.llm_service")
 # ---------------------------------------------------------------------------
 
 
-class _LLMConfigurationError(Exception):
+class _LLMError(Exception):
+    """Base exception for all LLM-related issues."""
+
+
+class _LLMConfigurationError(_LLMError):
     """Raised when provider configuration (e.g. API key) is missing."""
 
 
-class _LLMProviderError(Exception):
+class _LLMProviderError(_LLMError):
     """Generic wrapper mimicking production LLMProviderError signature."""
 
     def __init__(
@@ -234,7 +238,7 @@ class _LLMProviderError(Exception):
         message: str,
         original_exception: Exception | None = None,
     ) -> None:
-        super().__init__(message)
+        super().__init__(f"[{provider}] {message}")
         self.provider = provider
         self.message = message
         self.original_exception = original_exception
@@ -252,11 +256,22 @@ class _LLMRateLimitError(_LLMProviderError):
         super().__init__(provider, message, original_exception)
 
 
+class _LLMResponseError(_LLMError):
+    """Raised when the provider returns an unexpected or unsafe response."""
+
+    def __init__(self, provider: str, message: str, is_safety_issue: bool = False) -> None:
+        super().__init__(f"[{provider}] {message}")
+        self.provider = provider
+        self.is_safety_issue = is_safety_issue
+
+
 _stub_llm.LLMService = _FakeLLMService
 _stub_llm.app_config = SimpleNamespace()
+_stub_llm.LLMError = _LLMError
 _stub_llm.LLMConfigurationError = _LLMConfigurationError
 _stub_llm.LLMProviderError = _LLMProviderError
 _stub_llm.LLMRateLimitError = _LLMRateLimitError
+_stub_llm.LLMResponseError = _LLMResponseError
 
 _sys.modules["services.core.llm_service"] = _stub_llm
 
@@ -267,9 +282,11 @@ _stub_llm_utils = _types.ModuleType("services.core.llm_utils")
 
 # errors module
 _errors_mod = _types.ModuleType("services.core.llm_utils.errors")
+_errors_mod.LLMError = _LLMError
 _errors_mod.LLMConfigurationError = _LLMConfigurationError
 _errors_mod.LLMProviderError = _LLMProviderError
 _errors_mod.LLMRateLimitError = _LLMRateLimitError
+_errors_mod.LLMResponseError = _LLMResponseError
 
 # providers module
 _providers_mod = _types.ModuleType("services.core.llm_utils.providers")
@@ -310,10 +327,16 @@ class TogetherAIProvider(LLMProvider):
         return "together"
 
 
+class XAIProvider(LLMProvider):
+    async def generate_text(self, *a: Any, **k: Any):  # noqa: D401
+        return "xai"
+
+
 _providers_mod.AnthropicProvider = AnthropicProvider
 _providers_mod.GeminiProvider = GeminiProvider
 _providers_mod.OpenAIProvider = OpenAIProvider
 _providers_mod.TogetherAIProvider = TogetherAIProvider
+_providers_mod.XAIProvider = XAIProvider
 
 # attach submodules to llm_utils
 _stub_llm_utils.errors = _errors_mod  # type: ignore[attr-defined]
