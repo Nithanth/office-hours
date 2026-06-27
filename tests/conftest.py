@@ -136,6 +136,7 @@ class _FakeLLMService:  # noqa: D101
             ("together_ai", TogetherAIProvider, "TOGETHER_API_KEY", "TOGETHER_DEFAULT_MODEL"),
             ("anthropic", AnthropicProvider, "ANTHROPIC_API_KEY", "ANTHROPIC_DEFAULT_MODEL"),
             ("gemini", GeminiProvider, "GEMINI_API_KEY", "GEMINI_DEFAULT_MODEL"),
+            ("openrouter", OpenRouterProvider, "OPENROUTER_API_KEY", "OPENROUTER_DEFAULT_MODEL"),
         ]
 
         # Determine which keys are missing before instantiation
@@ -332,11 +333,17 @@ class XAIProvider(LLMProvider):
         return "xai"
 
 
+class OpenRouterProvider(LLMProvider):
+    async def generate_text(self, *a: Any, **k: Any):  # noqa: D401
+        return "openrouter"
+
+
 _providers_mod.AnthropicProvider = AnthropicProvider
 _providers_mod.GeminiProvider = GeminiProvider
 _providers_mod.OpenAIProvider = OpenAIProvider
 _providers_mod.TogetherAIProvider = TogetherAIProvider
 _providers_mod.XAIProvider = XAIProvider
+_providers_mod.OpenRouterProvider = OpenRouterProvider
 
 # attach submodules to llm_utils
 _stub_llm_utils.errors = _errors_mod  # type: ignore[attr-defined]

@@ -11,6 +11,7 @@ class ProviderName(str, Enum):
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
     XAI = "xai"
+    OPENROUTER = "openrouter"
 
 
 class LLMResult(TypedDict):

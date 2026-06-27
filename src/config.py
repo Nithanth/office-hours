@@ -24,7 +24,7 @@ if os.getenv("ENV", "dev") != "prod":
 # Model info schema (used in AVAILABLE_MODELS)
 # ---------------------------------------------------------------------------
 
-_VALID_PROVIDERS = {"openai", "together_ai", "anthropic", "gemini", "xai"}
+_VALID_PROVIDERS = {"openai", "together_ai", "anthropic", "gemini", "xai", "openrouter"}
 
 
 class Config(BaseSettings):
@@ -52,6 +52,7 @@ class Config(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     XAI_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None  # OpenRouter for OS models (GLM, Qwen, etc.)
     SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
 
     # ------------------------------------------------------------------
@@ -245,17 +246,18 @@ class Config(BaseSettings):
     TOGETHER_FALLBACK_MODEL: Optional[str] = "deepseek-ai/DeepSeek-V3"
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
+        # --- Google Gemini (direct) ---
         "gemini_3_1_pro": {
             "id": "gemini-3.1-pro-preview",
             "provider": "gemini",
             "input_token_limit": 1_000_000,
             "display_name": "Gemini 3.1 Pro",
         },
-        "gemini_3_flash": {
-            "id": "gemini-3-flash-preview",
+        "gemini_3_5_flash": {
+            "id": "gemini-3.5-flash",
             "provider": "gemini",
             "input_token_limit": 1_000_000,
-            "display_name": "Gemini 3 Flash",
+            "display_name": "Gemini 3.5 Flash",
         },
         "gemini_3_1_flash_lite": {
             "id": "gemini-3.1-flash-lite-preview",
@@ -263,11 +265,12 @@ class Config(BaseSettings):
             "input_token_limit": 1_000_000,
             "display_name": "Gemini 3.1 Flash Lite",
         },
-        "anthropic_claude_opus_4_6": {
-            "id": "claude-opus-4-6",
+        # --- Anthropic Claude (direct) ---
+        "anthropic_claude_opus_4_8": {
+            "id": "claude-opus-4-8",
             "provider": "anthropic",
             "input_token_limit": 1_000_000,
-            "display_name": "Claude Opus 4.6",
+            "display_name": "Claude Opus 4.8",
         },
         "anthropic_claude_sonnet_4_6": {
             "id": "claude-sonnet-4-6",
@@ -281,11 +284,18 @@ class Config(BaseSettings):
             "input_token_limit": 200_000,
             "display_name": "Claude Haiku 4.5",
         },
-        "openai_gpt_5_4": {
-            "id": "gpt-5.4",
+        # --- OpenAI GPT (direct) ---
+        "openai_gpt_5_5": {
+            "id": "gpt-5.5",
             "provider": "openai",
-            "input_token_limit": 1_000_000,
-            "display_name": "GPT-5.4",
+            "input_token_limit": 1_050_000,
+            "display_name": "GPT-5.5",
+        },
+        "openai_gpt_5_5_pro": {
+            "id": "gpt-5.5-pro",
+            "provider": "openai",
+            "input_token_limit": 1_050_000,
+            "display_name": "GPT-5.5 Pro",
         },
         "openai_gpt_5_4_mini": {
             "id": "gpt-5.4-mini",
@@ -293,29 +303,12 @@ class Config(BaseSettings):
             "input_token_limit": 400_000,
             "display_name": "GPT-5.4 Mini",
         },
-        "openai_gpt_5_4_nano": {
-            "id": "gpt-5.4-nano",
-            "provider": "openai",
-            "input_token_limit": 400_000,
-            "display_name": "GPT-5.4 Nano",
-        },
-        "together_deepseek_v3": {
-            "id": "deepseek-ai/DeepSeek-V3",
-            "provider": "together_ai",
-            "input_token_limit": 131_000,
-            "display_name": "DeepSeek V3 (TogetherAI)",
-        },
-        "together_llama_4_maverick": {
-            "id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-            "provider": "together_ai",
-            "input_token_limit": 950_000,
-            "display_name": "Llama 4 Maverick (TogetherAI)",
-        },
-        "together_qwen3_235b": {
-            "id": "Qwen/Qwen3-235B-A22B-fp8-tput",
-            "provider": "together_ai",
-            "input_token_limit": 128_000,
-            "display_name": "Qwen3 235B (TogetherAI)",
+        # --- xAI Grok (direct) ---
+        "xai_grok_4_3": {
+            "id": "grok-4.3",
+            "provider": "xai",
+            "input_token_limit": 1_000_000,
+            "display_name": "Grok 4.3 (xAI)",
         },
         "xai_grok_4_20": {
             "id": "grok-4.20-0309-non-reasoning",
@@ -323,11 +316,30 @@ class Config(BaseSettings):
             "input_token_limit": 2_000_000,
             "display_name": "Grok 4.20 (xAI)",
         },
-        "xai_grok_4_1_fast": {
-            "id": "grok-4-1-fast-non-reasoning",
-            "provider": "xai",
-            "input_token_limit": 2_000_000,
-            "display_name": "Grok 4.1 Fast (xAI)",
+        # --- OpenRouter: OS models ---
+        "openrouter_glm_5_2": {
+            "id": "z-ai/glm-5.2",
+            "provider": "openrouter",
+            "input_token_limit": 1_000_000,
+            "display_name": "GLM 5.2 (Z.ai via OpenRouter)",
+        },
+        "openrouter_glm_5_1": {
+            "id": "z-ai/glm-5.1",
+            "provider": "openrouter",
+            "input_token_limit": 200_000,
+            "display_name": "GLM 5.1 (Z.ai via OpenRouter)",
+        },
+        "openrouter_qwen3_7_max": {
+            "id": "qwen/qwen3.7-max",
+            "provider": "openrouter",
+            "input_token_limit": 1_000_000,
+            "display_name": "Qwen3.7 Max (OpenRouter)",
+        },
+        "openrouter_qwen3_7_plus": {
+            "id": "qwen/qwen3.7-plus",
+            "provider": "openrouter",
+            "input_token_limit": 1_000_000,
+            "display_name": "Qwen3.7 Plus (OpenRouter)",
         },
     }
 

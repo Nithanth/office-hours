@@ -181,6 +181,73 @@ class OpenAIProvider(LLMProvider):
             raise LLMProviderError("openai", f"Unexpected error: {e}", e) from e
 
 
+class OpenRouterProvider(LLMProvider):
+    """OpenRouter provider — OpenAI-compatible API with a custom base_url.
+
+    OpenRouter routes to 400+ models (GLM, Qwen, DeepSeek, etc.) through a
+    single endpoint.  Model IDs use the ``author/slug`` format (e.g.
+    ``z-ai/glm-5.2``).
+    """
+
+    _async_client: Optional[AsyncOpenAI] = None
+    _BASE_URL = "https://openrouter.ai/api/v1"
+
+    async def initialize_client(self) -> None:
+        """Instantiate the async OpenAI client pointed at OpenRouter."""
+        if self._async_client is None:
+            logger.debug("Initializing OpenRouter client for {}", self.default_model)
+            self._async_client = AsyncOpenAI(
+                api_key=self.api_key,
+                base_url=self._BASE_URL,
+            )
+
+    async def close(self) -> None:
+        """Explicitly close underlying HTTP session."""
+        if self._async_client:
+            await self._async_client.close()
+            self._async_client = None
+
+    async def generate_text(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = 2048,
+        system_prompt: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Return a chat completion via OpenRouter (OpenAI-compatible)."""
+        await self.initialize_client()
+        selected_model = model or self.default_model
+        actual_temperature = self._get_effective_temperature(temperature)
+
+        messages_payload: list[dict[str, str]] = []
+        if system_prompt:
+            messages_payload.append({"role": "system", "content": system_prompt})
+        messages_payload.append({"role": "user", "content": prompt})
+
+        assert self._async_client is not None
+        client = self._async_client
+
+        try:
+            response = await client.chat.completions.create(
+                model=selected_model,
+                messages=cast(list[Any], messages_payload),
+                temperature=actual_temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+            if not response.choices or response.choices[0].message.content is None:
+                raise LLMProviderError("openrouter", "Invalid response structure")
+            return str(response.choices[0].message.content).strip()
+        except OpenAIRateLimitError as e:
+            raise LLMRateLimitError("openrouter", "Rate limit exceeded", e) from e
+        except OpenAIAPIError as e:
+            raise LLMProviderError("openrouter", f"API request failed: {e}", e) from e
+        except Exception as e:
+            raise LLMProviderError("openrouter", f"Unexpected error: {e}", e) from e
+
+
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude messages provider (Async)."""
 

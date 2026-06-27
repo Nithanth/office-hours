@@ -49,7 +49,7 @@ class LLMService:
 
         self._semaphores: dict[ProviderName, asyncio.Semaphore] = {
             name: asyncio.Semaphore(concurrency_limit)
-            for name in ("together_ai", "openai", "anthropic", "gemini", "xai")
+            for name in ("together_ai", "openai", "anthropic", "gemini", "xai", "openrouter")
         }
 
         # ---------------- Provider configuration ----------------
@@ -78,6 +78,11 @@ class LLMService:
                 "api_key": app_config.XAI_API_KEY,
                 "default_model": self._resolve_default_model("xai"),
                 "ProviderClass": llm_providers.XAIProvider,
+            },
+            "openrouter": {
+                "api_key": app_config.OPENROUTER_API_KEY,
+                "default_model": self._resolve_default_model("openrouter"),
+                "ProviderClass": llm_providers.OpenRouterProvider,
             },
         }
 
@@ -430,6 +435,49 @@ class LLMService:
                 self.logger.warning("xai_stream_setup_failed", err=str(exc))
                 return _fallback_stream()
 
+        # OpenRouter native streaming (OpenAI-compatible)
+        if provider_name == "openrouter":
+            try:
+                from openai import AsyncOpenAI
+
+                or_client = cast(AsyncOpenAI, provider._async_client)
+                if or_client is None:
+                    return _fallback_stream()
+
+                msgs: list[dict[str, str]] = []
+                if system_prompt:
+                    msgs.append({"role": "system", "content": system_prompt})
+                msgs.append({"role": "user", "content": prompt})
+
+                effective_temp: float = temperature if temperature is not None else 0.7
+
+                async def _openrouter_stream() -> AsyncIterator[str]:
+                    try:
+                        resp = await or_client.chat.completions.create(
+                            model=model_name,
+                            messages=msgs,  # type: ignore[arg-type]
+                            max_tokens=max_tokens,
+                            temperature=effective_temp,
+                            stop=stop_sequences,
+                            stream=True,
+                        )
+                        resp_iter = cast(AsyncIterator[Any], resp)
+                        async for chunk in resp_iter:
+                            delta = chunk.choices[0].delta
+                            if delta and delta.content is not None:
+                                yield str(delta.content)
+                    except Exception as exc:  # noqa: BLE001
+                        self.logger.exception(
+                            "OpenRouter streaming failed - falling back", exc_info=exc
+                        )
+                        async for tok in _fallback_stream():
+                            yield tok
+
+                return _openrouter_stream()
+            except Exception as exc:
+                self.logger.warning("openrouter_stream_setup_failed", err=str(exc))
+                return _fallback_stream()
+
         # Default fallback – should rarely be reached if all provider branches handled.
         return _fallback_stream()
 
@@ -566,6 +614,7 @@ class LLMService:
             "anthropic": "ANTHROPIC_DEFAULT_MODEL",
             "gemini": "GEMINI_DEFAULT_MODEL",
             "xai": "XAI_DEFAULT_MODEL",
+            "openrouter": "OPENROUTER_DEFAULT_MODEL",
         }
 
         override_attr = override_map.get(provider)
