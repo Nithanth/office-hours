@@ -180,13 +180,15 @@ async def generate_report_incremental(  # noqa: PLR0913
         )
         return HTMLResponse(content=error_html)
 
-    if selected_model_key not in config.AVAILABLE_MODELS:
+    resolved_model_key = config.resolve_model_key(selected_model_key)
+    if resolved_model_key is None:
         error_html = (
             "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
             "Unknown model selected. Please choose a valid model and retry."
             "</div>"
         )
         return HTMLResponse(content=error_html)
+    selected_model_key = resolved_model_key
 
     # --- Cache payload and generate token (only after validation) ---
     token = str(uuid.uuid4())

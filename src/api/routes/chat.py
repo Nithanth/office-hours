@@ -278,9 +278,10 @@ async def chat_stream(
 
                         async with get_semaphore(session_id, paper_id):
                             # Choose model based on user selection (fallback to default).
-                            selected_key = model_key or settings.DEFAULT_MODEL_KEY
-                            if selected_key not in settings.AVAILABLE_MODELS:
-                                selected_key = settings.DEFAULT_MODEL_KEY
+                            selected_key = (
+                                settings.resolve_model_key(model_key)
+                                or settings.DEFAULT_MODEL_KEY
+                            )
                             model_cfg = settings.AVAILABLE_MODELS[selected_key]
 
                             # TODO: When _figure_paths is non-empty, use a vision-capable
