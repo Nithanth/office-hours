@@ -23,6 +23,7 @@ from api.deps import get_llm_service, get_session_id
 from config import config
 from prompts.prompt_builder import _load_template
 from services.chat.chat_state import ChatState, get_chat_state
+from services.core import model_prefs
 from services.core.llm_service import LLMService
 from services.notes.notes_generator import NotesGenerator
 from utils.dedupe import deduplicate_chat
@@ -94,7 +95,7 @@ async def generate_report_notes(
     model_cfg = config.AVAILABLE_MODELS[model_key]
 
     provider = model_cfg["provider"]
-    model_id = model_cfg["id"]
+    model_id = model_prefs.resolve_model_id(model_key)
 
     try:
         content, media_type, filename = await NotesGenerator.generate(
@@ -665,7 +666,7 @@ async def generate_blog(
             token,
             llm_service=llm_service,
             provider=model_cfg["provider"],
-            model_id=model_cfg["id"],
+            model_id=model_prefs.resolve_model_id(model_key),
             report_text=report_text,
             chat_digest=chat_digest,
             system_prompt=system_prompt,
@@ -787,7 +788,7 @@ async def regenerate_blog(
             new_token,
             llm_service=llm_service,
             provider=model_cfg["provider"],
-            model_id=model_cfg["id"],
+            model_id=model_prefs.resolve_model_id(model_key),
             report_text=prev.report_text,
             chat_digest="",
             system_prompt=system_prompt,
@@ -1044,7 +1045,7 @@ async def export_notion(
             )
             raw_outline = await llm_service.generate_completion(
                 provider_name=model_cfg["provider"],
-                model_name=model_cfg["id"],
+                model_name=model_prefs.resolve_model_id(model_key),
                 prompt=user_prompt,
                 max_tokens=1024,
                 system_prompt=_NOTION_OUTLINE_PROMPT,

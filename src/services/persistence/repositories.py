@@ -21,6 +21,7 @@ from services.persistence.models import (
     UsageEvent,
     User,
     UserIntegration,
+    UserPreference,
 )
 
 
@@ -362,3 +363,57 @@ async def record_export(
         )
     )
     await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# User preferences (model pins, BYOK)
+# ---------------------------------------------------------------------------
+
+
+async def get_user_preference(
+    session: AsyncSession, *, owner_id: str
+) -> UserPreference | None:
+    return await session.get(UserPreference, owner_id)
+
+
+async def upsert_model_pins(
+    session: AsyncSession, *, owner_id: str, pins: dict[str, str]
+) -> UserPreference:
+    pref = await session.get(UserPreference, owner_id)
+    if pref is None:
+        pref = UserPreference(owner_id=owner_id, model_pins=dict(pins))
+        session.add(pref)
+    else:
+        # Reassign (not mutate) so SQLAlchemy tracks the JSON change.
+        pref.model_pins = dict(pins)
+    await session.commit()
+    await session.refresh(pref)
+    return pref
+
+
+async def set_openrouter_key(
+    session: AsyncSession, *, owner_id: str, api_key: str
+) -> UserPreference:
+    pref = await session.get(UserPreference, owner_id)
+    encrypted = encrypt_secret(api_key)
+    if pref is None:
+        pref = UserPreference(owner_id=owner_id, openrouter_key_encrypted=encrypted)
+        session.add(pref)
+    else:
+        pref.openrouter_key_encrypted = encrypted
+    await session.commit()
+    await session.refresh(pref)
+    return pref
+
+
+async def delete_openrouter_key(session: AsyncSession, *, owner_id: str) -> None:
+    pref = await session.get(UserPreference, owner_id)
+    if pref is not None:
+        pref.openrouter_key_encrypted = None
+        await session.commit()
+
+
+def openrouter_api_key(pref: UserPreference) -> str | None:
+    if not pref.openrouter_key_encrypted:
+        return None
+    return str(decrypt_secret(pref.openrouter_key_encrypted))

@@ -22,7 +22,7 @@ from typing import Optional
 # Silence the lance Rust crate's tracing output before any imports.
 os.environ.setdefault("RUST_LOG", "lance=error")
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -167,7 +167,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # App creation
 # ---------------------------------------------------------------------------
 
-app = FastAPI(lifespan=lifespan)
+from services.core.model_prefs import load_model_context
+
+# App-level dependency: loads the request owner's model pins / BYOK key
+# into a contextvar before any route runs (deep call sites read it
+# without signature plumbing).
+app = FastAPI(lifespan=lifespan, dependencies=[Depends(load_model_context)])
 
 # Observability (request-ID middleware + /metrics endpoint)
 setup_observability(app)
@@ -191,6 +196,7 @@ from api.routes import metadata as _metadata_routes
 from api.routes import pages as _pages_routes
 from api.routes import report as _report_routes
 from api.routes import search as _search_routes
+from api.routes import settings_routes as _settings_routes
 from api.routes import similar as _similar_routes
 
 for _r in (
@@ -210,6 +216,7 @@ for _r in (
     _report_stream_router.router,
     _report_notes_router.router,
     _metadata_routes.router,
+    _settings_routes.router,
 ):
     app.include_router(_r)
 

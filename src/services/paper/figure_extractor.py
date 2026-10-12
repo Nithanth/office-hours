@@ -17,6 +17,7 @@ import fitz
 from loguru import logger
 
 from config import config
+from services.core import model_prefs
 
 if TYPE_CHECKING:
     from services.core.llm_service import LLMService
@@ -473,7 +474,11 @@ class FigureExtractor:
             model_info = config.AVAILABLE_MODELS.get(resolved_key or model_key)
             if model_info:
                 provider = model_info.get("provider")
-                model_id = model_info.get("id")
+                model_id = (
+                    model_prefs.resolve_model_id(resolved_key)
+                    if resolved_key
+                    else model_info.get("id")
+                )
                 if provider and llm_service.is_provider_initialized(provider):
                     return str(provider), str(model_id)
 

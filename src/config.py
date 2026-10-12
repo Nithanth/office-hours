@@ -264,6 +264,19 @@ class Config(BaseSettings):
     OPENROUTER_MODEL_STANDARD: Optional[str] = None
     OPENROUTER_MODEL_DEEP: Optional[str] = None
 
+    # Models offered in the per-user tier picker (OpenRouter author/slug IDs).
+    # Users can also enter any catalog ID; this list is just the curated set.
+    CURATED_OPENROUTER_MODELS: list[dict[str, str]] = [
+        {"id": "google/gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
+        {"id": "anthropic/claude-sonnet-4.6", "label": "Claude Sonnet 4.6"},
+        {"id": "google/gemini-3.1-pro-preview", "label": "Gemini 3.1 Pro"},
+        {"id": "anthropic/claude-opus-4.8", "label": "Claude Opus 4.8"},
+        {"id": "openai/gpt-5.5", "label": "GPT-5.5"},
+        {"id": "openai/gpt-5.5-pro", "label": "GPT-5.5 Pro"},
+        {"id": "z-ai/glm-5.2", "label": "GLM 5.2 (Z.ai)"},
+        {"id": "deepseek/deepseek-v3.2", "label": "DeepSeek v3.2"},
+    ]
+
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
         # Three task tiers, all routed through OpenRouter. Tier names are
         # what the UI shows; the model IDs are pinned here and can be
