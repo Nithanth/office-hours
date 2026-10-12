@@ -24,6 +24,23 @@ from services.chat.chat_components import ChatBubble, ChatModal
 
 router: APIRouter = APIRouter()
 
+
+async def _warm_paper_cache(paper_id: str) -> None:
+    """Start full-text extraction + vector indexing for *paper_id*.
+
+    Runs as a response ``BackgroundTask`` when a chat surface opens so the
+    first message doesn't wait on the PDF download/extract pipeline.
+    """
+    if not paper_id or paper_id == "global":
+        return
+    try:
+        paper_service = get_paper_service()
+        if paper_service:
+            await paper_service.get_paper_content_from_id(paper_id)
+    except Exception as exc:  # noqa: BLE001 - prefetch must never break requests
+        logger.debug("chat_warm_failed", paper_id=paper_id, error=str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Shared httpx client pool (reuses TCP connections across proxy requests)
 # ---------------------------------------------------------------------------
@@ -277,7 +294,9 @@ async def chat_modal(
     dur_ms = int((time.perf_counter() - start_ts) * 1000)
     logger.info("chat_modal_ready", paper_id=paper_id, duration_ms=dur_ms)
 
-    return HTMLResponse(content=modal_html)
+    return HTMLResponse(
+        content=modal_html, background=BackgroundTask(_warm_paper_cache, paper_id)
+    )
 
 
 @router.get("/chat-panel", response_class=HTMLResponse)
@@ -353,7 +372,9 @@ async def chat_panel(
 </div>
 """
 
-    return HTMLResponse(content=panel_html)
+    return HTMLResponse(
+        content=panel_html, background=BackgroundTask(_warm_paper_cache, paper_id)
+    )
 
 
 # ---------------------------------------------------------------------------

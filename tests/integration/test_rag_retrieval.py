@@ -65,3 +65,42 @@ def test_chat_rag_retrieval(monkeypatch, client):
 
     # Ensure proper SSE termination events still emitted.
     assert "event: done" in body and "event: sse-close" in body
+
+
+@pytest.mark.integration
+def test_chat_sources_and_status_events(monkeypatch, client):
+    """Stream emits numbered `sources` (for citations) and `status` SSE events."""
+
+    dummy_hits = [
+        {"text": "Alpha chunk text.", "section": "Introduction"},
+        {"text": "Beta chunk text.", "section": "Methods"},
+    ]
+
+    vs_stub = types.ModuleType("services.paper.vector_store")
+    vs_stub.index_exists = lambda pid: True
+    vs_stub.search = lambda *a, **k: dummy_hits
+    sys.modules["services.paper.vector_store"] = vs_stub
+
+    emb_stub = types.ModuleType("services.paper.embedding")
+    emb_stub.embed_query = lambda q: [0.0]
+    sys.modules["services.paper.embedding"] = emb_stub
+
+    resp = client.post("/chat", data={"message": "q?", "paper_id": "rag-src"})
+    assert resp.status_code == 200
+
+    stream = client.get("/chat/stream", params={"paper_id": "rag-src"})
+    assert stream.status_code == 200
+    body = stream.text
+
+    # sources event carries the numbered chunks matching the prompt's [n] cites
+    import json
+    import re as _re
+
+    m = _re.search(r"^event: sources\ndata: (\[.*\])$", body, _re.MULTILINE)
+    assert m, "sources SSE event not emitted"
+    sources = json.loads(m.group(1))
+    assert [s["n"] for s in sources] == [1, 2]
+    assert sources[0]["section"] == "Introduction"
+
+    # status events give the UI a "Thinking…" style label before tokens arrive
+    assert "event: status" in body
