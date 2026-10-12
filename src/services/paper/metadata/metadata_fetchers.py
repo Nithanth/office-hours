@@ -37,7 +37,7 @@ def fetch_arxiv_metadata(arxiv_id: str, timeout: int = 10) -> dict[str, Any]:
     api_url = f"https://export.arxiv.org/api/query?id_list={arxiv_id}"
     req = urllib.request.Request(
         api_url,
-        headers={"User-Agent": "LuxScholarBot/0.1 (metadata enrichment)"},
+        headers={"User-Agent": "OfficeHoursBot/0.1 (metadata enrichment)"},
     )
 
     try:
@@ -91,7 +91,7 @@ def _arxiv_batch_chunk(ids: list[str], timeout: int) -> dict[str, dict[str, Any]
     )
     req = urllib.request.Request(
         api_url,
-        headers={"User-Agent": "LuxScholarBot/0.1 (batch metadata enrichment)"},
+        headers={"User-Agent": "OfficeHoursBot/0.1 (batch metadata enrichment)"},
     )
 
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -316,7 +316,7 @@ def fetch_semantic_scholar_arxiv(arxiv_id: str, timeout: int = 10) -> dict[str, 
     api_url = f"https://api.semanticscholar.org/graph/v1/paper/ARXIV:{arxiv_id}?fields=title,authors,year"
     try:
         req = urllib.request.Request(
-            api_url, headers={"User-Agent": "LuxScholarBot/0.1"}
+            api_url, headers={"User-Agent": "OfficeHoursBot/0.1"}
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data: Mapping[str, Any] = json.load(resp)
@@ -366,7 +366,10 @@ def fetch_semantic_scholar_arxiv_batch(
     req = urllib.request.Request(
         api_url,
         data=payload,
-        headers={"User-Agent": "LuxScholarBot/0.1", "Content-Type": "application/json"},
+        headers={
+            "User-Agent": "OfficeHoursBot/0.1",
+            "Content-Type": "application/json",
+        },
         method="POST",
     )
     try:

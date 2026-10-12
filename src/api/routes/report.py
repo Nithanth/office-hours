@@ -92,7 +92,9 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
             break
 
     if not actual_model_key_in_config:
-        logger.error("report_invalid_model_key", model_key=selected_model_key, **log_params)
+        logger.error(
+            "report_invalid_model_key", model_key=selected_model_key, **log_params
+        )
         error_html = render_error_message(
             f"The selected model '{html.escape(selected_model_key)}' is not recognized. Please choose a valid model.",
             context="invalid_model_key",
@@ -108,7 +110,9 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
     selected_model_input_token_limit = selected_model_details["input_token_limit"]
 
     try:
-        deserialized_papers = [Paper.model_validate_json(p_json) for p_json in selected_papers_json]
+        deserialized_papers = [
+            Paper.model_validate_json(p_json) for p_json in selected_papers_json
+        ]
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "report_deserialize_error",
@@ -128,7 +132,8 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
     if not deserialized_papers:
         logger.warning("report_no_papers_after_deserialize", **log_params)
         error_html = render_error_message(
-            "No papers were selected to generate a report.", context="no_papers_for_report"
+            "No papers were selected to generate a report.",
+            context="no_papers_for_report",
         ).render()
         return HTMLResponse(
             content=error_html,
@@ -173,12 +178,16 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
 
         if main_paper_for_report is not None:
             main_id = main_paper_for_report.id
-            similar_papers_for_report = [p for p in similar_candidates if p.id != main_id]
+            similar_papers_for_report = [
+                p for p in similar_candidates if p.id != main_id
+            ]
         else:
             similar_papers_for_report = similar_candidates
         logger.info(
             "report_url_mode",
-            main_paper_title=(main_paper_for_report.title if main_paper_for_report else "<none>"),
+            main_paper_title=(
+                main_paper_for_report.title if main_paper_for_report else "<none>"
+            ),
             num_similar=len(similar_papers_for_report),
         )
     else:
@@ -194,7 +203,8 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         return HTMLResponse(content=error_html)
     if (not is_url_input) and not topic_papers_for_report:
         error_html = render_error_message(
-            "No papers were selected to generate a report.", context="no_topic_papers_for_report"
+            "No papers were selected to generate a report.",
+            context="no_topic_papers_for_report",
         ).render()
         return HTMLResponse(content=error_html)
 

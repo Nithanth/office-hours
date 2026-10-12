@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock, patch
-
-import pytest
+from urllib.error import URLError
 
 from models.paper import Paper
 from services.paper.metadata.semantic_scholar import (
@@ -51,19 +50,28 @@ class TestFetchBatch:
         mock_response = MagicMock()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
-        mock_response.read.return_value = json.dumps([
-            {"paperId": "abc123", "citationCount": 42, "externalIds": {"ArXiv": "2106.09685"}},
-            None,  # paper not found
-            {"paperId": "def456", "citationCount": 7, "externalIds": {}},
-        ]).encode()
+        mock_response.read.return_value = json.dumps(
+            [
+                {
+                    "paperId": "abc123",
+                    "citationCount": 42,
+                    "externalIds": {"ArXiv": "2106.09685"},
+                },
+                None,  # paper not found
+                {"paperId": "def456", "citationCount": 7, "externalIds": {}},
+            ]
+        ).encode()
         # Make json.load work on the context manager
         import io
+
         mock_urlopen.return_value.__enter__.return_value = io.BytesIO(
-            json.dumps([
-                {"paperId": "abc123", "citationCount": 42, "externalIds": {}},
-                None,
-                {"paperId": "def456", "citationCount": 7, "externalIds": {}},
-            ]).encode()
+            json.dumps(
+                [
+                    {"paperId": "abc123", "citationCount": 42, "externalIds": {}},
+                    None,
+                    {"paperId": "def456", "citationCount": 7, "externalIds": {}},
+                ]
+            ).encode()
         )
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -124,11 +132,10 @@ class TestEnrichPapersWithCitations:
         enrich_papers_with_citations([])
         mock_batch.assert_not_called()
 
-    @patch("services.paper.metadata.semantic_scholar.batch_fetch_citations")
-    def test_graceful_on_api_error(self, mock_batch):
+    @patch("services.paper.metadata.semantic_scholar.urllib.request.urlopen")
+    def test_graceful_on_api_error(self, mock_urlopen):
         """API errors shouldn't crash enrichment."""
-        mock_batch.side_effect = Exception("Network error")
+        mock_urlopen.side_effect = URLError("Network error")
         papers = [self._make_paper("https://arxiv.org/abs/2106.09685")]
-        # Should not raise
-        with pytest.raises(Exception):
-            enrich_papers_with_citations(papers)
+        enrich_papers_with_citations(papers)
+        assert papers[0].citation_count is None

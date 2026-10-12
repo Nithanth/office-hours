@@ -112,9 +112,8 @@ async def chat_modal(
     paper_id: str = Query(..., description="ID of the paper to chat about"),
     title: str | None = Query(None, description="(Optional) Paper title to display"),
     paper_url: str | None = Query(None, description="(Optional) Paper URL for link"),
-    audience_type: str | None = Query(
-        None, description="(Optional) Audience type key from toolbar"
-    ),
+    audience_type: str
+    | None = Query(None, description="(Optional) Audience type key from toolbar"),
     model_key: str | None = Query(None, description="(Optional) Selected model key"),
     report_id: str | None = Query(None, description="(Optional) saved report id"),
 ) -> HTMLResponse:  # noqa: D401 - pydantic description fine
@@ -145,7 +144,9 @@ async def chat_modal(
             try:
                 paper = await paper_service.get_paper_metadata(paper_id)
             except Exception as exc:  # noqa: BLE001 - best effort
-                logger.warning(f"chat_modal: metadata lookup failed for {paper_id}: {exc}")
+                logger.warning(
+                    f"chat_modal: metadata lookup failed for {paper_id}: {exc}"
+                )
 
     # Default title if no metadata is found
     if paper_id != "global":
@@ -214,7 +215,9 @@ async def chat_modal(
 
     # Find the chat-log div and replace its contents
     _open_tag = f"{_search}>"
-    _open_repl = f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden">'
+    _open_repl = (
+        f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden">'
+    )
     modal_html = modal_html.replace(_open_tag, _open_repl, 1)
 
     # If we have history, replace the empty hint with conversation bubbles
@@ -246,7 +249,8 @@ async def chat_modal(
         else ""
     )
     modal_html = modal_html.replace(
-        "<textarea", hidden_input + hidden_aud + hidden_model + hidden_report + "<textarea"
+        "<textarea",
+        hidden_input + hidden_aud + hidden_model + hidden_report + "<textarea",
     )
 
     # Replace underscored HX attributes with hyphenated versions expected by HTMX
@@ -542,7 +546,9 @@ async def viewer_modal(
     is_pdf = safe_url.lower().endswith(".pdf")
 
     # Determine display title – fall back to generic label when no explicit title given.
-    display_title = html.escape(title) if title else ("PDF" if is_pdf else "Web") + " Viewer"
+    display_title = (
+        html.escape(title) if title else ("PDF" if is_pdf else "Web") + " Viewer"
+    )
 
     # Build chat-panel URL with optional context parameters
     panel_q = f"/chat-panel?paper_id={html.escape(paper_id)}"

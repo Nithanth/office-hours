@@ -33,11 +33,15 @@ async def ask_llm(
 
     if llm_service is None or not llm_service._initialized:
         logger.error("llm_service_unavailable")
-        return HTMLResponse("<p>Server error: LLM service unavailable.</p>", status_code=503)
+        return HTMLResponse(
+            "<p>Server error: LLM service unavailable.</p>", status_code=503
+        )
 
     if exa_client is None:
         logger.error("exa_client_unavailable")
-        return HTMLResponse("<p>Server error: Exa client unavailable.</p>", status_code=503)
+        return HTMLResponse(
+            "<p>Server error: Exa client unavailable.</p>", status_code=503
+        )
 
     selected_key = model_key or settings.DEFAULT_MODEL_KEY
     if selected_key not in settings.AVAILABLE_MODELS:

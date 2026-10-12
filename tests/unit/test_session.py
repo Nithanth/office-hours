@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # OAuth state signing
@@ -64,11 +61,11 @@ def test_clear_auth_cookie_sets_delete_header():
     assert any(AUTH_COOKIE_NAME in h for h in cookie_headers)
 
 
-def test_auth_cookie_name_is_luxauth():
-    """AUTH_COOKIE_NAME should be 'luxauth'."""
+def test_auth_cookie_name_is_oh_auth():
+    """AUTH_COOKIE_NAME should be 'oh_auth'."""
     from services.auth.session import AUTH_COOKIE_NAME
 
-    assert AUTH_COOKIE_NAME == "luxauth"
+    assert AUTH_COOKIE_NAME == "oh_auth"
 
 
 def test_auth_cookie_max_age_is_30_days():
@@ -91,9 +88,8 @@ def test_get_auth_user_id_returns_none_without_cookie(client):
 
 def test_signed_cookie_accepted_by_auth_gate(client, monkeypatch):
     """A correctly-signed auth cookie should pass the auth gate."""
-    from services.auth.session import AUTH_COOKIE_NAME, _serializer
-
     import config as _cfg
+    from services.auth.session import AUTH_COOKIE_NAME, _serializer
 
     monkeypatch.setattr(_cfg.config, "REQUIRE_LOGIN", True, raising=False)
 
@@ -110,9 +106,8 @@ def test_signed_cookie_accepted_by_auth_gate(client, monkeypatch):
 
 def test_bad_cookie_rejected_by_auth_gate(client, monkeypatch):
     """A tampered auth cookie should be treated as unauthenticated."""
-    from services.auth.session import AUTH_COOKIE_NAME
-
     import config as _cfg
+    from services.auth.session import AUTH_COOKIE_NAME
 
     monkeypatch.setattr(_cfg.config, "REQUIRE_LOGIN", True, raising=False)
 

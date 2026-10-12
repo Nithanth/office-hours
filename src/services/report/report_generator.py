@@ -204,7 +204,7 @@ class ReportGenerator:
                     content = await asyncio.wait_for(_call_llm(), timeout=timeout_sec)
             else:
                 content = await asyncio.wait_for(_call_llm(), timeout=timeout_sec)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "llm call timed out",
                 timeout=timeout_sec,

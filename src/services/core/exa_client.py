@@ -1,12 +1,14 @@
 """High-level Exa search/orchestration service.
 
-This module bridges Lux Scholar functionality with the official `exa_py` SDK.
+This module bridges Office Hours functionality with the official `exa_py` SDK.
 It converts high-level application workflows (search, similarity, answer, and
 enrichment) into concrete SDK calls, adds local caching & retry logic, and
 maps Exa SDK results into first-class `Paper` domain objects.  Pure stateless
 helpers live in `services.core.exa_utils`; any orchestration that requires
 network access or shared caches remains here.
 """
+
+from __future__ import annotations
 
 import asyncio
 import re
@@ -16,53 +18,13 @@ from collections import Counter
 # Shared thread pool for enrich_url calls (avoids creating a new pool per call)
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from loguru import logger
 
 import config as _cfg
 from models.paper import Paper
 from services.query.cache import CachedSearch
-
-
-# ---------------------------------------------------------------------------
-# Lazy imports for services.paper.* — avoids circular dependency at load time.
-# These are resolved on first call, not at module import.
-# ---------------------------------------------------------------------------
-
-def _get_paper_cache_class():
-    from services.paper.cache.paper_cache import PaperCache
-    return PaperCache
-
-
-def _fetch_arxiv_metadata(*args, **kwargs):
-    from services.paper.metadata.metadata_fetchers import fetch_arxiv_metadata
-    return fetch_arxiv_metadata(*args, **kwargs)
-
-
-def _fetch_arxiv_batch(*args, **kwargs):
-    from services.paper.metadata.metadata_fetchers import fetch_arxiv_metadata_batch
-    return fetch_arxiv_metadata_batch(*args, **kwargs)
-
-
-def _fetch_crossref_metadata(*args, **kwargs):
-    from services.paper.metadata.metadata_fetchers import fetch_crossref_metadata
-    return fetch_crossref_metadata(*args, **kwargs)
-
-
-def _fetch_doi_metadata(*args, **kwargs):
-    from services.paper.metadata.metadata_fetchers import fetch_doi_metadata
-    return fetch_doi_metadata(*args, **kwargs)
-
-
-def _fetch_ss_arxiv(*args, **kwargs):
-    from services.paper.metadata.metadata_fetchers import fetch_semantic_scholar_arxiv
-    return fetch_semantic_scholar_arxiv(*args, **kwargs)
-
-
-def _fetch_ss_arxiv_batch(*args, **kwargs):
-    from services.paper.metadata.metadata_fetchers import fetch_semantic_scholar_arxiv_batch
-    return fetch_semantic_scholar_arxiv_batch(*args, **kwargs)
 
 from .exa_adapter import ExaAdapter
 from .exa_utils import (
@@ -77,6 +39,59 @@ from .exa_utils import (
 from .exa_utils import (
     url_utils as _url_utils,
 )
+
+if TYPE_CHECKING:
+    from services.paper.cache.paper_cache import PaperCache as _PaperCache
+
+# ---------------------------------------------------------------------------
+# Lazy imports for services.paper.* — avoids circular dependency at load time.
+# These are resolved on first call, not at module import.
+# ---------------------------------------------------------------------------
+
+
+def _get_paper_cache_class() -> type[_PaperCache]:
+    from services.paper.cache.paper_cache import PaperCache
+
+    return cast(type[Any], PaperCache)
+
+
+def _fetch_arxiv_metadata(*args: Any, **kwargs: Any) -> Any:
+    from services.paper.metadata.metadata_fetchers import fetch_arxiv_metadata
+
+    return fetch_arxiv_metadata(*args, **kwargs)
+
+
+def _fetch_arxiv_batch(*args: Any, **kwargs: Any) -> Any:
+    from services.paper.metadata.metadata_fetchers import fetch_arxiv_metadata_batch
+
+    return fetch_arxiv_metadata_batch(*args, **kwargs)
+
+
+def _fetch_crossref_metadata(*args: Any, **kwargs: Any) -> Any:
+    from services.paper.metadata.metadata_fetchers import fetch_crossref_metadata
+
+    return fetch_crossref_metadata(*args, **kwargs)
+
+
+def _fetch_doi_metadata(*args: Any, **kwargs: Any) -> Any:
+    from services.paper.metadata.metadata_fetchers import fetch_doi_metadata
+
+    return fetch_doi_metadata(*args, **kwargs)
+
+
+def _fetch_ss_arxiv(*args: Any, **kwargs: Any) -> Any:
+    from services.paper.metadata.metadata_fetchers import fetch_semantic_scholar_arxiv
+
+    return fetch_semantic_scholar_arxiv(*args, **kwargs)
+
+
+def _fetch_ss_arxiv_batch(*args: Any, **kwargs: Any) -> Any:
+    from services.paper.metadata.metadata_fetchers import (
+        fetch_semantic_scholar_arxiv_batch,
+    )
+
+    return fetch_semantic_scholar_arxiv_batch(*args, **kwargs)
+
 
 _ENRICH_POOL = _ThreadPoolExecutor(max_workers=4)
 
@@ -97,6 +112,7 @@ def _paper_dedup_key(url: str | None) -> str:
     """
     if not url:
         import uuid
+
         return f"_no_url:{uuid.uuid4().hex}"
     aid = _url_utils.extract_arxiv_id(url)
     if aid:
@@ -139,9 +155,6 @@ class ExaAPIError(ExaClientError):
     """Raised for general Exa API errors."""
 
     pass
-
-
-
 
 
 class ExaClient:
@@ -195,7 +208,9 @@ class ExaClient:
             logger.warning("_get_id_from_url failed for {}: {}", url, e, exc_info=True)
         return None
 
-    def _safe_get_contents(self, url: str, *, highlights_only: bool = False) -> Any | None:
+    def _safe_get_contents(
+        self, url: str, *, highlights_only: bool = False
+    ) -> Any | None:
         """Best-effort wrapper around `get_contents`.
 
         Returns the first result from Exa if available. Only falls back to a
@@ -212,7 +227,9 @@ class ExaClient:
         try:
             res = self.client.get_contents([url], **content_params)
             if getattr(res, "results", None):
-                logger.debug("_safe_get_contents hit: url={} highlights={}", url, use_highlights)
+                logger.debug(
+                    "_safe_get_contents hit: url={} highlights={}", url, use_highlights
+                )
                 return res.results[0]
 
             # Primary returned nothing — try resolving via search
@@ -998,7 +1015,10 @@ class ExaClient:
 
         # 2c. Batch-fetch citation counts from Semantic Scholar (best-effort)
         try:
-            from services.paper.metadata.semantic_scholar import enrich_papers_with_citations
+            from services.paper.metadata.semantic_scholar import (
+                enrich_papers_with_citations,
+            )
+
             enrich_papers_with_citations(pre_pool, timeout=8)
         except Exception as exc:  # noqa: BLE001 – citations are optional
             logger.debug("s2_citation_enrichment_skipped", err=str(exc))
@@ -1266,7 +1286,7 @@ class ExaClient:
         async def _runner() -> Paper | None:
             try:
                 return await asyncio.wait_for(enricher.enrich(url), timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "enrich_url timed out for {} after {:.1f}s", url, timeout
                 )

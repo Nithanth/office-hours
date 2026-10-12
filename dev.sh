@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Start Lux Scholar in development mode.
+# Start Office Hours in development mode.
 #
 # Usage:
 #   ./dev.sh                  # start on PORT from .env, default 8000
 #   ./dev.sh --reload-dir docs # pass extra args through to uvicorn
 #
-# Set LUX_DEV_KILL_PORT=1 to terminate an existing listener on PORT before start.
+# Set OH_DEV_KILL_PORT=1 to terminate an existing listener on PORT before start.
 
 set -euo pipefail
 
@@ -28,9 +28,9 @@ msg() { printf '%b▶ %s%b\n' "$CYAN" "$*" "$RESET"; }
 ok() { printf '%b✔ %s%b\n' "$GREEN" "$*" "$RESET"; }
 err() { printf '%b✖ %s%b\n' "$RED" "$*" "$RESET" >&2; }
 
-if [[ -f .env && "${LUX_SKIP_DOTENV:-0}" != "1" ]]; then
+if [[ -f .env && "${OH_SKIP_DOTENV:-${LUX_SKIP_DOTENV:-0}}" != "1" ]]; then
   msg "Loading environment variables from .env"
-  preserved_env_file="$(mktemp "${TMPDIR:-/tmp}/lux-env.XXXXXX")"
+  preserved_env_file="$(mktemp "${TMPDIR:-/tmp}/oh-env.XXXXXX")"
   while IFS= read -r line; do
     line="${line#"${line%%[![:space:]]*}"}"
     [[ -z "$line" || "$line" == \#* ]] && continue
@@ -86,7 +86,7 @@ port_pids() {
 
 pids="$(port_pids)"
 if [[ -n "$pids" ]]; then
-  if [[ "${LUX_DEV_KILL_PORT:-0}" == "1" ]]; then
+  if [[ "${OH_DEV_KILL_PORT:-${LUX_DEV_KILL_PORT:-0}}" == "1" ]]; then
     msg "Stopping existing listener(s) on port $PORT: $pids"
     kill $pids 2>/dev/null || true
     sleep 1
@@ -97,7 +97,7 @@ if [[ -n "$pids" ]]; then
     fi
   else
     err "Port $PORT is already in use by PID(s): $pids"
-    printf 'Set PORT=another_port or run: LUX_DEV_KILL_PORT=1 ./dev.sh\n' >&2
+    printf 'Set PORT=another_port or run: OH_DEV_KILL_PORT=1 ./dev.sh\n' >&2
     exit 1
   fi
 fi

@@ -95,8 +95,12 @@ class MetadataEnricher:
         async with self._exa_sem:
             logger.debug("[enrich] Exa fetch for {}", url)
             # Use new logic inside client (handles pdf→abs fallback)
-            tmp_paper = Paper(id=url, title="No Title", url=_paper_utils._coerce_http_url(url))
-            tmp_paper = await asyncio.to_thread(self.client._enrich_paper_metadata, tmp_paper)
+            tmp_paper = Paper(
+                id=url, title="No Title", url=_paper_utils._coerce_http_url(url)
+            )
+            tmp_paper = await asyncio.to_thread(
+                self.client._enrich_paper_metadata, tmp_paper
+            )
             # Convert to flat meta dict for merge
             return {
                 "title": tmp_paper.title,

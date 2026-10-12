@@ -4,7 +4,7 @@ This module exposes `load_template(template_type, audience)` which returns
 an LLM prompt template string while allowing two layers of flexibility:
 
 1. Developers (or even end-users in a deployed setting) can drop a file at
-   `lux_scholar/prompts/<template_type>/<audience>.md` to override a prompt
+   `<repo>/prompts/<template_type>/<audience>.md` to override a prompt
    without touching any Python code.
 2. If no such file exists the function gracefully falls back to the original
    constants that still live on the `config` object, so existing behaviour is
@@ -35,7 +35,9 @@ from pathlib import Path
 _BASE_DIR = Path(__file__).parent
 
 
-def load_template(template_type: str, audience: str) -> str:  # noqa: D401 – simple loader
+def load_template(
+    template_type: str, audience: str
+) -> str:  # noqa: D401 – simple loader
     """Return the prompt template for (*template_type*, *audience*).
 
     Template location: `prompts/<template_type>/<audience>.md`.

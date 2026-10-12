@@ -75,7 +75,11 @@ def _render_txt(md_text: str) -> str:
             if indent_spaces:
                 level = min(indent_spaces // 2, 2)
             else:
-                level = _PLAIN_BULLETS.index(m.group(2)) if m.group(2) in _PLAIN_BULLETS else 0
+                level = (
+                    _PLAIN_BULLETS.index(m.group(2))
+                    if m.group(2) in _PLAIN_BULLETS
+                    else 0
+                )
 
             prefix = _PLAIN_BULLETS[min(level, 2)] if m_b else m.group(2)
             txt_clean = re.sub(r"[*_]{1,2}(.*?)?[*_]{1,2}", r"\1", m["txt"])
@@ -141,7 +145,9 @@ def _render_docx(md_text: str) -> bytes:
     num_pat = re.compile(r"^(?P<indent>\s*)(\d+[.)])\s+(?P<txt>.+)")
 
     def _add_list_paragraph(text: str, level: int, numbered: bool = False) -> None:
-        style = ("List Number" if numbered else "List Bullet") + (f" {level + 1}" if level else "")
+        style = ("List Number" if numbered else "List Bullet") + (
+            f" {level + 1}" if level else ""
+        )
         p = doc.add_paragraph(text, style=style)
         if level and DocxCm is not None:
             p.paragraph_format.left_indent = DocxCm(0.63 * level)
@@ -154,7 +160,9 @@ def _render_docx(md_text: str) -> bytes:
         # Simple markdown headings
         if raw.lstrip().startswith("#"):
             stripped = raw.lstrip()
-            hashes, rest = stripped.split(maxsplit=1) if " " in stripped else (stripped, "")
+            hashes, rest = (
+                stripped.split(maxsplit=1) if " " in stripped else (stripped, "")
+            )
             heading_level = min(len(hashes), 3)
             doc.add_heading(rest or stripped.lstrip("# "), level=heading_level)
             continue
@@ -207,7 +215,9 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
         """Return *(content, mime_type, filename)* for the generated notes."""
 
         # Remove chat sentences that overlap strongly with the report to save tokens.
-        chat_digest_clean = deduplicate_chat(chat_digest, report_text) if chat_digest else ""
+        chat_digest_clean = (
+            deduplicate_chat(chat_digest, report_text) if chat_digest else ""
+        )
 
         logger.debug(
             "generating_notes",
@@ -252,13 +262,16 @@ class NotesGenerator:  # pylint: disable=too-few-public-methods
                         matches = vs_search(_pid, q_vec, top_k=config.RAG_TOP_K)
                         if matches:
                             rag_blocks.append(
-                                f"## Paper {_pid}\n" + "\n\n".join(m["text"] for m in matches)
+                                f"## Paper {_pid}\n"
+                                + "\n\n".join(m["text"] for m in matches)
                             )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("notes_rag_failed", paper_id=_pid, error=str(exc))
 
             if rag_blocks:
-                user_prompt += "\n\nTOP-K RAG CHUNKS (by paper):\n" + "\n\n".join(rag_blocks)
+                user_prompt += "\n\nTOP-K RAG CHUNKS (by paper):\n" + "\n\n".join(
+                    rag_blocks
+                )
                 logger.debug("notes_rag_added", papers=len(rag_blocks))
 
         # --------------------------------------------------

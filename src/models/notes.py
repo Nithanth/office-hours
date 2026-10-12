@@ -1,4 +1,4 @@
-"""Lux Scholar notes JSON schema (v1).
+"""Office Hours notes JSON schema (v1).
 
 Moved here so all shared Pydantic models live under the top-level ``models``
 package.  Import with::

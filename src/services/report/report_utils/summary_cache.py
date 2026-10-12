@@ -63,9 +63,13 @@ class SummaryCache:
         return h.hexdigest()
 
     @classmethod
-    def get(cls, model_id: str, prompt: str, system_prompt: str | None) -> Optional[str]:
+    def get(
+        cls, model_id: str, prompt: str, system_prompt: str | None
+    ) -> Optional[str]:
         """Return cached result if present, else None."""
-        path = os.path.join(cls._cache_dir, cls._key(model_id, prompt, system_prompt) + ".txt")
+        path = os.path.join(
+            cls._cache_dir, cls._key(model_id, prompt, system_prompt) + ".txt"
+        )
         if os.path.exists(path):
             # If the file is older than TTL, treat as a cache miss and delete.
             with contextlib.suppress(Exception):
@@ -84,7 +88,9 @@ class SummaryCache:
                         CACHE_HIT.inc()
                     return cached
             except OSError as read_err:
-                logger.warning("failed reading cache file", path=path, error=str(read_err))
+                logger.warning(
+                    "failed reading cache file", path=path, error=str(read_err)
+                )
                 return None
         return None
 
@@ -97,7 +103,9 @@ class SummaryCache:
         content: str,
     ) -> None:
         """Persist *content* for the computed key."""
-        path = os.path.join(cls._cache_dir, cls._key(model_id, prompt, system_prompt) + ".txt")
+        path = os.path.join(
+            cls._cache_dir, cls._key(model_id, prompt, system_prompt) + ".txt"
+        )
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)

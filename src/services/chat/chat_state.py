@@ -6,13 +6,19 @@ backend (file or Redis). This enables seamless conversation persistence across
 server restarts and multi-worker/multi-instance deployments.
 """
 
+from __future__ import annotations
+
 import html
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 import config as _cfg
+
+if TYPE_CHECKING:
+    from services.chat.stores.base import ChatStore
 
 
 @dataclass
@@ -94,7 +100,7 @@ class ChatState:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _get_store():
+    def _get_store() -> ChatStore:
         """Lazy import to avoid circular dependencies at module load time."""
         from services.chat.stores import get_store
 
@@ -114,7 +120,9 @@ class ChatState:
             }
             store.save_session(self._session_id, state)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("chat_state_save_failed", session_id=self._session_id, err=str(exc))
+            logger.warning(
+                "chat_state_save_failed", session_id=self._session_id, err=str(exc)
+            )
 
     def _load_from_disk(self) -> None:
         """Load session metadata from the configured store."""
@@ -128,7 +136,9 @@ class ChatState:
                 self.paper_cache = state.get("paper_cache", {})
                 self._last_t = state.get("_last_t", time.time())
         except Exception as exc:  # noqa: BLE001
-            logger.warning("chat_state_load_failed", session_id=self._session_id, err=str(exc))
+            logger.warning(
+                "chat_state_load_failed", session_id=self._session_id, err=str(exc)
+            )
 
     # ------------------------------------------------------------------
     # Public helpers – per-paper chat history
@@ -155,7 +165,9 @@ class ChatState:
         # Also persist session state
         self._save_to_disk()
 
-    def get_conversation(self, paper_id: str) -> list[ChatMessage]:  # noqa: D401 - helper
+    def get_conversation(
+        self, paper_id: str
+    ) -> list[ChatMessage]:  # noqa: D401 - helper
         """Return a copy of the history list for *paper_id*.
 
         If the paper has no in-memory history, attempt to restore from the
@@ -175,7 +187,9 @@ class ChatState:
                         ChatMessage(role=t["role"], content=t["content"]) for t in turns
                     ]
             except Exception as exc:  # noqa: BLE001 – best-effort restore
-                logger.warning("chat_history_restore_failed", paper_id=paper_id, err=str(exc))
+                logger.warning(
+                    "chat_history_restore_failed", paper_id=paper_id, err=str(exc)
+                )
         return list(self._histories.get(paper_id, []))
 
     def last_role(self, paper_id: str) -> str | None:

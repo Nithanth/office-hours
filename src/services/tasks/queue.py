@@ -14,9 +14,11 @@ import asyncio
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Awaitable, Callable
+from enum import StrEnum
+from typing import Any
 
 from loguru import logger
 
@@ -28,7 +30,7 @@ logger = logger.bind(component="TaskQueue")
 # ---------------------------------------------------------------------------
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
@@ -215,10 +217,8 @@ class TaskQueue:
                     )
 
                     if on_success:
-                        try:
+                        with suppress(Exception):
                             on_success(result)
-                        except Exception:
-                            pass
                     return
 
                 except Exception as exc:
@@ -251,10 +251,8 @@ class TaskQueue:
                             "Use enqueue_fn() for retryable tasks.",
                         )
                         if on_failure:
-                            try:
+                            with suppress(Exception):
                                 on_failure(exc)
-                            except Exception:
-                                pass
                         return
                     else:
                         record.status = TaskStatus.FAILED
@@ -267,10 +265,8 @@ class TaskQueue:
                             error=str(exc),
                         )
                         if on_failure:
-                            try:
+                            with suppress(Exception):
                                 on_failure(exc)
-                            except Exception:
-                                pass
                         return
 
     def enqueue_fn(
@@ -300,7 +296,9 @@ class TaskQueue:
         self._tasks[task_id] = record
 
         handle = asyncio.create_task(
-            self._run_fn(record, fn, args, kwargs, retry_backoff, on_success, on_failure)
+            self._run_fn(
+                record, fn, args, kwargs, retry_backoff, on_success, on_failure
+            )
         )
         self._handles.add(handle)
         handle.add_done_callback(self._handles.discard)
@@ -349,10 +347,8 @@ class TaskQueue:
                     )
 
                     if on_success:
-                        try:
+                        with suppress(Exception):
                             on_success(result)
-                        except Exception:
-                            pass
                     return
 
                 except Exception as exc:
@@ -383,8 +379,6 @@ class TaskQueue:
                             error=str(exc),
                         )
                         if on_failure:
-                            try:
+                            with suppress(Exception):
                                 on_failure(exc)
-                            except Exception:
-                                pass
                         return

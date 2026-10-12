@@ -13,7 +13,9 @@ from services.core.exa_client import ExaClient  # noqa: E402
 from services.core.exa_utils import url_utils as _url_utils  # noqa: E402 – helper fns
 
 # Allow `python scripts/test_scratch.py <paper_url>`
-PAPER_URL: str = sys.argv[1] if len(sys.argv) > 1 else "https://arxiv.org/pdf/2103.03123"
+PAPER_URL: str = (
+    sys.argv[1] if len(sys.argv) > 1 else "https://arxiv.org/pdf/2103.03123"
+)
 
 
 def main(url: str) -> None:
@@ -48,12 +50,16 @@ def main(url: str) -> None:
         cr_meta = client.fetch_crossref_metadata(doi_val)
         pprint(cr_meta, compact=True)
     else:
-        print("\n[DOI] No DOI detected in URL – skipping Semantic Scholar / Crossref fetches")
+        print(
+            "\n[DOI] No DOI detected in URL – skipping Semantic Scholar / Crossref fetches"
+        )
 
     # -------------------- Exa get_contents --------------------
     print("\n[Exa] search_and_contents abs page …")
     abs_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else url
-    res = client.adapter.search_and_contents(f'url:"{abs_url}"', num_results=1, text=True)
+    res = client.adapter.search_and_contents(
+        f'url:"{abs_url}"', num_results=1, text=True
+    )
     first = res.results[0] if getattr(res, "results", None) else None
     if first is None:
         print("No results returned from Exa for", abs_url)
@@ -64,7 +70,8 @@ def main(url: str) -> None:
         # Fallback: build a simple dict of common attrs
         preview = {
             "title": getattr(first, "title", None),
-            "authors": getattr(first, "authors", None) or getattr(first, "author", None),
+            "authors": getattr(first, "authors", None)
+            or getattr(first, "author", None),
             "published_date": getattr(first, "published_date", None),
             "url": getattr(first, "url", None),
             "snippet": getattr(first, "snippet", "")[:200],

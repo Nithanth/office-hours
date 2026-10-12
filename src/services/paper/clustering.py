@@ -107,7 +107,9 @@ def _generate_cluster_labels(
             # Top 2-3 terms
             top_indices = row.argsort()[-3:][::-1]
             top_terms = [feature_names[i] for i in top_indices if row[i] > 0]
-            label = " / ".join(top_terms[:2]).title() if top_terms else f"Group {cid + 1}"
+            label = (
+                " / ".join(top_terms[:2]).title() if top_terms else f"Group {cid + 1}"
+            )
             labels[cid] = label
         return labels
     except Exception as exc:
@@ -171,6 +173,7 @@ def cluster_papers(
         }
         # sklearn 1.7+ renamed n_iter → max_iter
         import inspect
+
         tsne_params = inspect.signature(TSNE.__init__).parameters
         if "max_iter" in tsne_params:
             tsne_kwargs["max_iter"] = 1000
@@ -208,25 +211,29 @@ def cluster_papers(
     result_papers = []
     for i, p in enumerate(papers):
         cid = int(labels[i])
-        result_papers.append({
-            "id": p.get("id", ""),
-            "x": round(float(coords[i][0]), 4),
-            "y": round(float(coords[i][1]), 4),
-            "cluster": cid,
-            "title": p.get("title", ""),
-            "authors": p.get("authors", []),
-            "year": p.get("year", ""),
-            "citation_count": p.get("citation_count"),
-        })
+        result_papers.append(
+            {
+                "id": p.get("id", ""),
+                "x": round(float(coords[i][0]), 4),
+                "y": round(float(coords[i][1]), 4),
+                "cluster": cid,
+                "title": p.get("title", ""),
+                "authors": p.get("authors", []),
+                "year": p.get("year", ""),
+                "citation_count": p.get("citation_count"),
+            }
+        )
 
     result_clusters = []
-    for cid in sorted(set(int(l) for l in labels)):
-        result_clusters.append({
-            "id": cid,
-            "label": cluster_labels.get(cid, f"Group {cid + 1}"),
-            "color": _CLUSTER_COLORS[cid % len(_CLUSTER_COLORS)],
-            "count": int((labels == cid).sum()),
-        })
+    for cid in sorted(set(int(label) for label in labels)):
+        result_clusters.append(
+            {
+                "id": cid,
+                "label": cluster_labels.get(cid, f"Group {cid + 1}"),
+                "color": _CLUSTER_COLORS[cid % len(_CLUSTER_COLORS)],
+                "count": int((labels == cid).sum()),
+            }
+        )
 
     logger.info(
         "clustering_complete",

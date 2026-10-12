@@ -10,24 +10,28 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 import config as _cfg
 
-COOKIE_NAME = "luxsid"
+COOKIE_NAME = "oh_sid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
-_SIGN_SECRET = _cfg.config.LUX_SESSION_SECRET
-serializer = URLSafeSerializer(_SIGN_SECRET, salt="lux-chat")
+_SIGN_SECRET = _cfg.config.SESSION_SECRET
+serializer = URLSafeSerializer(_SIGN_SECRET, salt="oh-chat")
 
 
 class ChatSessionMiddleware(BaseHTTPMiddleware):
     """Adds/validates a signed session cookie and stores session_id on request.state."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         cookie_val: str | None = request.cookies.get(COOKIE_NAME)
         session_id: str | None = None
         if cookie_val:
             try:
                 session_id = serializer.loads(cookie_val)
             except BadData:
-                logger.warning("invalid session cookie - regenerating", cookie=cookie_val)
+                logger.warning(
+                    "invalid session cookie - regenerating", cookie=cookie_val
+                )
                 session_id = None
 
         if not session_id:
@@ -43,10 +47,7 @@ class ChatSessionMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         if cookie_to_set:
-            secure = (
-                _cfg.config.ENV == "prod"
-                or request.url.scheme == "https"
-            )
+            secure = _cfg.config.ENV == "prod" or request.url.scheme == "https"
             response.set_cookie(
                 COOKIE_NAME,
                 cast(str, cookie_to_set),

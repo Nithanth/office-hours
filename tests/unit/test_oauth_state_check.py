@@ -1,7 +1,7 @@
 """Unit tests for the OAuth callback's state-cookie comparison logic.
 
 The state token itself is cryptographically signed (URLSafeTimedSerializer
-with LUX_SESSION_SECRET), so an attacker can't forge it. The cookie
+with OH_SESSION_SECRET), so an attacker can't forge it. The cookie
 comparison is defense-in-depth CSRF binding. On localhost over plain HTTP,
 browsers (especially privacy-strict ones) sometimes drop the SameSite=Lax
 state cookie across the Google redirect — producing 400 on every dev sign-in.
@@ -66,7 +66,7 @@ async def _call_callback(
     monkeypatch.setattr(auth_module.httpx, "AsyncClient", _FakeClient)
 
     request = SimpleNamespace(
-        cookies={"luxoauthstate": cookie_value} if cookie_value is not None else {},
+        cookies={"oh_oauth_state": cookie_value} if cookie_value is not None else {},
         url=SimpleNamespace(scheme=scheme, hostname="localhost"),
     )
 
@@ -157,7 +157,7 @@ async def test_missing_code_or_state_still_rejected(
     monkeypatch.setattr(auth_module, "_auth_configured", lambda: True)
 
     request = SimpleNamespace(
-        cookies={"luxoauthstate": "state-abc"},
+        cookies={"oh_oauth_state": "state-abc"},
         url=SimpleNamespace(scheme="http", hostname="localhost"),
     )
 

@@ -12,7 +12,7 @@ import os
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -33,7 +33,7 @@ class FileChatStore(ChatStore):
     """JSON-on-disk chat store with POSIX file locking."""
 
     def __init__(self, base_dir: str | Path | None = None) -> None:
-        self._base = Path(base_dir or os.environ.get("CHAT_CACHE_DIR", ".chat_cache"))
+        self._base = Path(base_dir or os.environ.get("CHAT_CACHE_DIR") or ".chat_cache")
         self._history_dir = self._base / "history"
         self._sessions_dir = self._base / "sessions"
         self._ensure_dirs()
@@ -98,9 +98,7 @@ class FileChatStore(ChatStore):
                 err=str(exc),
             )
 
-    def load_history(
-        self, session_id: str, paper_id: str
-    ) -> list[dict[str, str]]:
+    def load_history(self, session_id: str, paper_id: str) -> list[dict[str, str]]:
         path = self._history_path(session_id, paper_id)
         try:
             with open(path, encoding="utf-8") as fh:
@@ -170,7 +168,10 @@ class FileChatStore(ChatStore):
                     return None
                 try:
                     with open(path, encoding="utf-8") as fh:
-                        return json.load(fh)
+                        session = json.load(fh)
+                    if isinstance(session, dict):
+                        return cast(dict[str, Any], session)
+                    return None
                 finally:
                     self._release_lock(lock_fh.fileno())
         except FileNotFoundError:

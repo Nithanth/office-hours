@@ -13,7 +13,9 @@ from services.paper.text_extractor import TextExtractor
 # Concurrency guard – max 3 concurrent generations per (session, paper)
 _PaperKey = tuple[str, str]  # (session_id, paper_id)
 
-_SEMAPHORES: dict[_PaperKey, asyncio.Semaphore] = defaultdict(lambda: asyncio.Semaphore(3))
+_SEMAPHORES: dict[_PaperKey, asyncio.Semaphore] = defaultdict(
+    lambda: asyncio.Semaphore(3)
+)
 
 
 def get_semaphore(session_id: str, paper_id: str) -> asyncio.Semaphore:
@@ -57,7 +59,8 @@ async def build_prompt(
         from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, CHAT_SYSTEM_PROMPT
 
         sys_prompt = (
-            CHAT_SYSTEM_PROMPT + " Answer the user's latest question clearly and concisely."
+            CHAT_SYSTEM_PROMPT
+            + " Answer the user's latest question clearly and concisely."
         )
         if audience_type in AUDIENCE_PROMPT_MAP:
             sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]
@@ -122,7 +125,9 @@ async def build_prompt(
                                 # Match figure by page number from chunk text
                                 import re as _re
 
-                                page_match = _re.search(r"page (\d+)", m.get("text", ""))
+                                page_match = _re.search(
+                                    r"page (\d+)", m.get("text", "")
+                                )
                                 if page_match:
                                     page_num = int(page_match.group(1))
                                     for fig in cached_figs:
@@ -166,7 +171,9 @@ async def build_prompt(
         loaded_path = await extractor.load_full_text(paper_id)
         if loaded_path:
             full_text_path = loaded_path
-            chat_state.paper_cache.setdefault(paper_id, {})["full_text_path"] = loaded_path
+            chat_state.paper_cache.setdefault(paper_id, {})[
+                "full_text_path"
+            ] = loaded_path
     if full_text_path and os.path.exists(full_text_path):
         need_reload = False
         if excerpt is None:

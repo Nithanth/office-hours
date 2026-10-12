@@ -1,11 +1,11 @@
 """Shared enums and typed helpers used by LLM utilities."""
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TypedDict
 
 
-class ProviderName(str, Enum):
+class ProviderName(StrEnum):
     TOGETHER_AI = "together_ai"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"

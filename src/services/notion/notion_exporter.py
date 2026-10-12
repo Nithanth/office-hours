@@ -1,4 +1,4 @@
-"""Export a Lux Scholar report to Notion as a page or database row."""
+"""Export an Office Hours report to Notion as a page or database row."""
 
 from __future__ import annotations
 
@@ -40,7 +40,9 @@ class NotionExporter:
                 "Verify the ID in .env and share that page/database with your Notion integration."
             )
         if status == 401 or code == "unauthorized":
-            return "Notion rejected NOTION_API_KEY. Verify the integration token in .env."
+            return (
+                "Notion rejected NOTION_API_KEY. Verify the integration token in .env."
+            )
         if status == 400 or code == "validation_error":
             return (
                 "Notion rejected the export payload. If exporting to a database, verify its "
@@ -64,7 +66,9 @@ class NotionExporter:
         child page under ``parent_page_id``.
         """
         if not parent_database_id and not parent_page_id:
-            raise NotionExportError("Configure NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID.")
+            raise NotionExportError(
+                "Configure NOTION_PARENT_PAGE_ID or NOTION_PARENT_DATABASE_ID."
+            )
 
         blocks = markdown_to_blocks(markdown)
         batches = chunk_blocks(blocks)
@@ -92,14 +96,18 @@ class NotionExporter:
                 status=getattr(err, "status", None),
                 code=getattr(err, "code", None),
             )
-            raise NotionExportError(self._create_error_message(err, target_kind)) from err
+            raise NotionExportError(
+                self._create_error_message(err, target_kind)
+            ) from err
 
         page_id = page["id"]
 
         # Append remaining block batches.
         for batch in batches[1:]:
             try:
-                await self._client.blocks.children.append(block_id=page_id, children=batch)
+                await self._client.blocks.children.append(
+                    block_id=page_id, children=batch
+                )
             except Exception as err:
                 logger.warning("notion_append_failed", error=str(err))
                 # Partial export is still useful; don't fail the whole export.
@@ -135,10 +143,14 @@ def _database_properties(title: str, metadata: dict[str, Any]) -> dict[str, Any]
     if audience := metadata.get("audience"):
         props["Audience"] = {"select": {"name": audience}}
     if model := metadata.get("model"):
-        props["Model"] = {"rich_text": [{"type": "text", "text": {"content": model[:200]}}]}
+        props["Model"] = {
+            "rich_text": [{"type": "text", "text": {"content": model[:200]}}]
+        }
     if authors := metadata.get("authors"):
         joined = ", ".join(authors) if isinstance(authors, list) else str(authors)
-        props["Authors"] = {"rich_text": [{"type": "text", "text": {"content": joined[:2000]}}]}
+        props["Authors"] = {
+            "rich_text": [{"type": "text", "text": {"content": joined[:2000]}}]
+        }
     if year := metadata.get("year"):
         with suppress(TypeError, ValueError):
             props["Year"] = {"number": int(year)}
@@ -146,6 +158,8 @@ def _database_properties(title: str, metadata: dict[str, Any]) -> dict[str, Any]
         props["Type"] = {"select": {"name": export_type}}
     if tags := metadata.get("tags"):
         tag_list = tags if isinstance(tags, list) else [tags]
-        props["Tags"] = {"multi_select": [{"name": t.strip()[:100]} for t in tag_list if t.strip()]}
+        props["Tags"] = {
+            "multi_select": [{"name": t.strip()[:100]} for t in tag_list if t.strip()]
+        }
 
     return props

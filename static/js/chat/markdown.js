@@ -6,7 +6,7 @@ import { addCopyButtons } from "./ui.js?v=2";
 import { dbg } from "../util.js?v=2";
 
 // Snapshot dark-mode at module load so we don’t query DOM on every call.
-const _isDarkMode = document.body.classList.contains("lux-dark");
+const _isDarkMode = document.body.classList.contains("oh-dark");
 
 // ---------------------------------------------------------------------------
 // Lazy-loader for marked.js & DOMPurify so we pay the cost only on demand.
@@ -63,7 +63,7 @@ export function ensureHighlightLoaded() {
     };
     s.onload = done;
     s.onerror = () => {
-      console.warn("[lux] highlight.js failed to load - continuing without syntax highlight");
+      console.warn("[oh] highlight.js failed to load - continuing without syntax highlight");
       done();
     };
     // Fallback: some browsers (e.g. Chrome with CORB) may block the response
@@ -98,13 +98,13 @@ export function ensureKatexLoaded() {
       auto.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js";
       auto.onload = () => resolve();
       auto.onerror = () => {
-        console.warn("[lux] auto-render.min.js failed to load");
+        console.warn("[oh] auto-render.min.js failed to load");
         resolve(); // best-effort
       };
       document.head.appendChild(auto);
     };
     s.onerror = () => {
-      console.warn("[lux] katex.min.js failed to load");
+      console.warn("[oh] katex.min.js failed to load");
       resolve(); // best-effort
     };
     document.head.appendChild(s);
@@ -175,7 +175,7 @@ export async function renderMarkdownPartial(el) {
 
     addCopyButtons(el);
   } catch (err) {
-    console.error("[lux] markdown partial render failed", err);
+    console.error("[oh] markdown partial render failed", err);
   }
 }
 
@@ -213,4 +213,4 @@ export function renderStaticMarkdown(container) {
   });
 }
 
-console.debug("[lux] chat/markdown.js loaded");
+console.debug("[oh] chat/markdown.js loaded");

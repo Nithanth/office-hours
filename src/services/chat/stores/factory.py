@@ -13,10 +13,10 @@ from loguru import logger
 if TYPE_CHECKING:
     from services.chat.stores.base import ChatStore
 
-_store_instance: "ChatStore | None" = None
+_store_instance: ChatStore | None = None
 
 
-def get_store() -> "ChatStore":
+def get_store() -> ChatStore:
     """Return the configured ChatStore singleton.
 
     Supported backends:

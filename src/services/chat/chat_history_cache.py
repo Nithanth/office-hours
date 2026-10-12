@@ -32,7 +32,9 @@ class ChatHistoryCache:
     def _path(cls, session_id: str, paper_id: str) -> str:
         safe_session = cls._safe(session_id)
         safe_paper = cls._safe(paper_id)
-        return os.path.join(cls._cache_dir, "history", safe_session, f"{safe_paper}.json")
+        return os.path.join(
+            cls._cache_dir, "history", safe_session, f"{safe_paper}.json"
+        )
 
     # -------- public API ---------
     @classmethod
@@ -41,7 +43,9 @@ class ChatHistoryCache:
         # Ensure directory exists in case it was purged while app is running.
         try:
             Path(cls._cache_dir).mkdir(parents=True, exist_ok=True)
-            Path(cls._path(session_id, paper_id)).parent.mkdir(parents=True, exist_ok=True)
+            Path(cls._path(session_id, paper_id)).parent.mkdir(
+                parents=True, exist_ok=True
+            )
         except OSError:
             # If we cannot create the directory, bail early – persistence is best-effort.
             logger.warning("chat_cache_mkdir_failed", path=cls._cache_dir)

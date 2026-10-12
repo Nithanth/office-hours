@@ -1,6 +1,6 @@
 """Date parsing helpers for user-supplied input."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from loguru import logger
 
@@ -20,7 +20,7 @@ def parse_user_date(date_str: str | None) -> datetime | None:
     for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
         try:
             dt = datetime.strptime(cleaned, fmt)
-            return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+            return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
         except ValueError:
             continue
 

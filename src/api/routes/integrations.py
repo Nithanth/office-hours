@@ -39,17 +39,21 @@ def _notion_oauth_configured() -> bool:
         database_available()
         and _cfg.config.NOTION_OAUTH_CLIENT_ID
         and _cfg.config.NOTION_OAUTH_CLIENT_SECRET
-        and _cfg.config.LUX_SECRET_ENCRYPTION_KEY
+        and _cfg.config.SECRET_ENCRYPTION_KEY
     )
 
 
 def _basic_auth_header() -> str:
-    raw = f"{_cfg.config.NOTION_OAUTH_CLIENT_ID}:{_cfg.config.NOTION_OAUTH_CLIENT_SECRET}"
+    raw = (
+        f"{_cfg.config.NOTION_OAUTH_CLIENT_ID}:{_cfg.config.NOTION_OAUTH_CLIENT_SECRET}"
+    )
     return "Basic " + base64.b64encode(raw.encode()).decode()
 
 
 @router.get("/integrations/notion/connect")
-async def notion_connect(request: Request, next: str = "/") -> RedirectResponse:  # noqa: A002
+async def notion_connect(
+    request: Request, next: str = "/"
+) -> RedirectResponse:  # noqa: A002
     require_auth_user_id(request)
     if not _notion_oauth_configured():
         raise HTTPException(status_code=503, detail="Notion OAuth is not configured.")
@@ -78,11 +82,15 @@ async def notion_callback(
 ) -> RedirectResponse:
     user_id = require_auth_user_id(request)
     if error:
-        raise HTTPException(status_code=400, detail=f"Notion authorization failed: {error}")
+        raise HTTPException(
+            status_code=400, detail=f"Notion authorization failed: {error}"
+        )
     if not _notion_oauth_configured():
         raise HTTPException(status_code=503, detail="Notion OAuth is not configured.")
     if not code or not state:
-        raise HTTPException(status_code=400, detail="Missing Notion OAuth code or state.")
+        raise HTTPException(
+            status_code=400, detail="Missing Notion OAuth code or state."
+        )
     if request.cookies.get(OAUTH_STATE_COOKIE_NAME) != state:
         raise HTTPException(status_code=400, detail="OAuth state mismatch.")
     payload = verify_oauth_state(state)
@@ -130,14 +138,21 @@ async def notion_callback(
 async def notion_destinations(request: Request) -> JSONResponse:
     user_id = require_auth_user_id(request)
     if not database_available():
-        return JSONResponse({"ok": False, "destinations": [], "detail": "Database not configured"})
+        return JSONResponse(
+            {"ok": False, "destinations": [], "detail": "Database not configured"}
+        )
 
-    from services.persistence.repositories import get_notion_integration, notion_access_token
+    from services.persistence.repositories import (
+        get_notion_integration,
+        notion_access_token,
+    )
 
     async for session in session_scope():
         integration = await get_notion_integration(session, user_id=user_id)
     if integration is None:
-        return JSONResponse({"ok": False, "destinations": [], "detail": "Connect Notion first"})
+        return JSONResponse(
+            {"ok": False, "destinations": [], "detail": "Connect Notion first"}
+        )
 
     token = notion_access_token(integration)
     async with httpx.AsyncClient(timeout=20) as client:
@@ -175,7 +190,9 @@ async def notion_destination(
 ) -> JSONResponse:
     user_id = require_auth_user_id(request)
     if destination_type not in {"page", "database"}:
-        raise HTTPException(status_code=400, detail="destination_type must be page or database")
+        raise HTTPException(
+            status_code=400, detail="destination_type must be page or database"
+        )
 
     from services.persistence.repositories import update_notion_destination
 
@@ -184,7 +201,9 @@ async def notion_destination(
             session,
             user_id=user_id,
             parent_page_id=destination_id if destination_type == "page" else None,
-            parent_database_id=destination_id if destination_type == "database" else None,
+            parent_database_id=destination_id
+            if destination_type == "database"
+            else None,
         )
     if integration is None:
         raise HTTPException(status_code=404, detail="Connect Notion first")

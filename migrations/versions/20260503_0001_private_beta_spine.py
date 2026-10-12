@@ -35,7 +35,11 @@ def upgrade() -> None:
     op.create_table(
         "oauth_accounts",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE")),
+        sa.Column(
+            "user_id",
+            sa.String(length=36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+        ),
         sa.Column("provider", sa.String(length=32), nullable=False),
         sa.Column("provider_user_id", sa.String(length=255), nullable=False),
         sa.Column("access_token_encrypted", sa.Text(), nullable=True),
@@ -49,7 +53,11 @@ def upgrade() -> None:
     op.create_table(
         "reports",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE")),
+        sa.Column(
+            "user_id",
+            sa.String(length=36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+        ),
         sa.Column("title", sa.String(length=300), nullable=False),
         sa.Column("original_query", sa.Text(), nullable=False),
         sa.Column("audience_type", sa.String(length=64), nullable=False),
@@ -67,7 +75,9 @@ def upgrade() -> None:
         "report_papers",
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column(
-            "report_id", sa.String(length=36), sa.ForeignKey("reports.id", ondelete="CASCADE")
+            "report_id",
+            sa.String(length=36),
+            sa.ForeignKey("reports.id", ondelete="CASCADE"),
         ),
         sa.Column("paper_id", sa.String(length=255), nullable=False),
         sa.Column("title", sa.Text(), nullable=False),
@@ -82,7 +92,11 @@ def upgrade() -> None:
     op.create_table(
         "chat_threads",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE")),
+        sa.Column(
+            "user_id",
+            sa.String(length=36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+        ),
         sa.Column(
             "report_id",
             sa.String(length=36),
@@ -102,7 +116,9 @@ def upgrade() -> None:
         "chat_messages",
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column(
-            "thread_id", sa.String(length=36), sa.ForeignKey("chat_threads.id", ondelete="CASCADE")
+            "thread_id",
+            sa.String(length=36),
+            sa.ForeignKey("chat_threads.id", ondelete="CASCADE"),
         ),
         sa.Column("role", sa.String(length=32), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
@@ -113,7 +129,11 @@ def upgrade() -> None:
     op.create_table(
         "exports",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE")),
+        sa.Column(
+            "user_id",
+            sa.String(length=36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+        ),
         sa.Column(
             "report_id",
             sa.String(length=36),
@@ -133,7 +153,11 @@ def upgrade() -> None:
     op.create_table(
         "user_integrations",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("user_id", sa.String(length=36), sa.ForeignKey("users.id", ondelete="CASCADE")),
+        sa.Column(
+            "user_id",
+            sa.String(length=36),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+        ),
         sa.Column("provider", sa.String(length=32), nullable=False),
         sa.Column("access_token_encrypted", sa.Text(), nullable=False),
         sa.Column("refresh_token_encrypted", sa.Text(), nullable=True),

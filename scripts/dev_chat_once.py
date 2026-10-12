@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal CLI helper to send one chat message to the local Lux Scholar API
+"""Minimal CLI helper to send one chat message to the local Office Hours API
 and print the assistant response to stdout.
 
 Example usage:
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--server",
         default="http://localhost:8000",
-        help="Base Lux Scholar server URL (default: %(default)s)",
+        help="Base Office Hours server URL (default: %(default)s)",
     )
     args = p.parse_args(argv)
 
@@ -70,13 +70,19 @@ def main(argv: list[str] | None = None) -> None:
         resp.raise_for_status()
         stream_path = _parse_stream_url(resp.text)
         if not stream_path:
-            print("[error] cannot find sse-connect URL in /chat response", file=sys.stderr)
+            print(
+                "[error] cannot find sse-connect URL in /chat response", file=sys.stderr
+            )
             Path("/tmp/chat_stub.html").write_text(resp.text, encoding="utf-8")
-            print("HTML stub saved to /tmp/chat_stub.html for inspection", file=sys.stderr)
+            print(
+                "HTML stub saved to /tmp/chat_stub.html for inspection", file=sys.stderr
+            )
             sys.exit(1)
 
         # Normalize to absolute URL
-        stream_url = stream_path if stream_path.startswith("http") else base_url + stream_path
+        stream_url = (
+            stream_path if stream_path.startswith("http") else base_url + stream_path
+        )
 
         # Step 2. Open SSE stream and relay assistant messages to stdout.
         headers = {"Accept": "text/event-stream"}

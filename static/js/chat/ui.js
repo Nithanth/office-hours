@@ -161,7 +161,7 @@ export function enhanceModal(modal) {
     const last = log.lastElementChild;
     if (last && last.classList.contains("user-message")) zap.push(last);
     zap.forEach((el) => el.remove());
-    if (zap.length) console.debug('[lux] sanitizeLog removed', zap.length, 'stale nodes');
+    if (zap.length) console.debug('[oh] sanitizeLog removed', zap.length, 'stale nodes');
 
     // Always ensure controls are enabled after sanitation
     const ta = modal.querySelector("textarea[name='prompt']");
@@ -201,7 +201,7 @@ export function enhanceModal(modal) {
         if (entry?.typingTimer) clearInterval(entry.typingTimer);
         _pendingBuffers.delete(el);
       });
-      if (toZap.length) console.debug('[lux] cleanUp removed', toZap.length, 'unfinished nodes');
+      if (toZap.length) console.debug('[oh] cleanUp removed', toZap.length, 'unfinished nodes');
 
       // After zapping unfinished assistants, remove ANY user-message that is not
       // immediately followed by an assistant-message. Handles cases where the
@@ -284,7 +284,7 @@ export function enhanceModal(modal) {
     modal.addEventListener("close", cleanUp);
 
     // Expose for external beforeSwap hook
-    modal._luxCleanUp = cleanUp;
+    modal._ohCleanUp = cleanUp;
 
     // 2) Our custom ✕ button empties #modal-container – intercept click BEFORE swap
     const btn = modal.querySelector(".modal-close-btn");
@@ -300,9 +300,9 @@ export function enhanceModal(modal) {
 // One-off style injection for caret, copy-btn, stop spinner, etc.
 // ---------------------------------------------------------------------------
 (function () {
-  if (document.getElementById("lux-extra-styles")) return;
+  if (document.getElementById("oh-extra-styles")) return;
   const style = document.createElement("style");
-  style.id = "lux-extra-styles";
+  style.id = "oh-extra-styles";
   style.textContent = `
     .caret { font-weight: 400; }
     .copy-btn { position: absolute; top:4px; right:4px; border:none; background:transparent; cursor:pointer; }
@@ -310,8 +310,8 @@ export function enhanceModal(modal) {
     .export-btn { background:transparent; border:none; cursor:pointer; margin-left:6px; }
     .response-stopped { font-style: italic; color:#6b7280; }
     .response-stopped .stopped-x { color:#ef4444; margin-right:4px; }
-    .stop-spinner { width:16px;height:16px;border:2px solid #d1d5db;border-top-color:#ef4444;border-radius:50%;animation:lux-spin 0.8s linear infinite;display:inline-block;vertical-align:middle; }
-    @keyframes lux-spin { to { transform: rotate(360deg); } }
+    .stop-spinner { width:16px;height:16px;border:2px solid #d1d5db;border-top-color:#ef4444;border-radius:50%;animation:oh-spin 0.8s linear infinite;display:inline-block;vertical-align:middle; }
+    @keyframes oh-spin { to { transform: rotate(360deg); } }
   `;
   document.head.appendChild(style);
 })();
@@ -332,4 +332,4 @@ document.body.addEventListener("keydown", (evt) => {
   }
 });
 
-console.debug("[lux] chat/ui.js loaded");
+console.debug("[oh] chat/ui.js loaded");

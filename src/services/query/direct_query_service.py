@@ -66,7 +66,9 @@ class DirectQueryService:
         """
 
         # 1) Build system prompt tailored to audience --------------------------------
-        aud_cfg = AUDIENCE_PROMPT_MAP.get(audience_type, AUDIENCE_PROMPT_MAP["technical"])
+        aud_cfg = AUDIENCE_PROMPT_MAP.get(
+            audience_type, AUDIENCE_PROMPT_MAP["technical"]
+        )
         system_prompt = (
             DEFAULT_SYSTEM_PROMPT
             + " "
@@ -75,14 +77,20 @@ class DirectQueryService:
         )
 
         # 2) Fetch grounding passages via Exa Answer API -----------------------------
-        passages_block = await self._fetch_supporting_passages(query, num_supporting_papers)
+        passages_block = await self._fetch_supporting_passages(
+            query, num_supporting_papers
+        )
 
         # 3) Build user prompt -------------------------------------------------------
-        user_prompt = DIRECT_QUERY_USER_PREFIX + "\n\nQuestion: " + query.strip() + passages_block
+        user_prompt = (
+            DIRECT_QUERY_USER_PREFIX + "\n\nQuestion: " + query.strip() + passages_block
+        )
 
         # 4) Call LLM ---------------------------------------------------------------
         max_tokens = (
-            self._HARD_CAP_TOKENS if max_tokens is None else min(max_tokens, self._HARD_CAP_TOKENS)
+            self._HARD_CAP_TOKENS
+            if max_tokens is None
+            else min(max_tokens, self._HARD_CAP_TOKENS)
         )
         start = time.time()
         result = await self.llm_service.generate_completion_safe(
@@ -102,7 +110,7 @@ class DirectQueryService:
 
         cleaned = self._clean_markdown(result["content"].strip())
         html_body = text_to_html_paragraphs(cleaned)
-        return f"<div id='lux-answer' class='direct-query-answer'>{html_body}</div>"
+        return f"<div id='oh-answer' class='direct-query-answer'>{html_body}</div>"
 
     # ---------------------------------------------------------------------
     # Internal helpers

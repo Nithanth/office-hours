@@ -66,17 +66,36 @@ class TogetherAIProvider(LLMProvider):
         primary_model_to_use = model or self.default_model
         try:
             logger.info("TogetherAI generation", model=primary_model_to_use)
-            return await self._attempt_generation_with_model(
-                prompt, primary_model_to_use, temperature, max_tokens, system_prompt, **kwargs
+            return cast(
+                str,
+                await self._attempt_generation_with_model(
+                    prompt,
+                    primary_model_to_use,
+                    temperature,
+                    max_tokens,
+                    system_prompt,
+                    **kwargs,
+                ),
             )
         except (LLMProviderError, RetryError) as e_primary:
             logger.warning("TogetherAI primary model failed", error=str(e_primary))
             fallback_model_to_use = app_config.TOGETHER_FALLBACK_MODEL
-            if not fallback_model_to_use or fallback_model_to_use == primary_model_to_use:
+            if (
+                not fallback_model_to_use
+                or fallback_model_to_use == primary_model_to_use
+            ):
                 raise e_primary
             logger.info("TogetherAI fallback model", model=fallback_model_to_use)
-            return await self._attempt_generation_with_model(
-                prompt, fallback_model_to_use, temperature, max_tokens, system_prompt, **kwargs
+            return cast(
+                str,
+                await self._attempt_generation_with_model(
+                    prompt,
+                    fallback_model_to_use,
+                    temperature,
+                    max_tokens,
+                    system_prompt,
+                    **kwargs,
+                ),
             )
 
     @retry(
@@ -358,7 +377,9 @@ class GeminiProvider(LLMProvider):
         # ------------------------------------------
         # Build kwargs dynamically from signature
         # ------------------------------------------
-        sig_params = set(inspect.signature(gm_client.models.generate_content).parameters)
+        sig_params = set(
+            inspect.signature(gm_client.models.generate_content).parameters
+        )
 
         _req_kwargs: dict[str, Any] = {
             "model": (model or self.default_model),
@@ -385,12 +406,14 @@ class GeminiProvider(LLMProvider):
             # Gracefully handle SDK signature churn or validation issues.
             err_msg = str(gen_exc)
             retriable = any(
-                key in err_msg for key in ("generation_config", "temperature", "system_instruction")
+                key in err_msg
+                for key in ("generation_config", "temperature", "system_instruction")
             )
 
             if retriable:
                 logger.warning(
-                    "GeminiProvider primary call failed - retrying minimal signature", error=err_msg
+                    "GeminiProvider primary call failed - retrying minimal signature",
+                    error=err_msg,
                 )
 
                 # Retry with the absolute minimal supported signature to maximise cross-version compat.
@@ -401,7 +424,9 @@ class GeminiProvider(LLMProvider):
                     )
 
                     if not getattr(response, "text", ""):
-                        raise LLMProviderError("gemini", "Empty response text (fallback)")
+                        raise LLMProviderError(
+                            "gemini", "Empty response text (fallback)"
+                        )
                     return str(response.text).strip()
                 except Exception as fallback_exc:  # noqa: BLE001 – surface below
                     # Chain the original error context for easier debugging.
@@ -459,7 +484,9 @@ class XAIProvider(LLMProvider):
             )
             chat.append(user(prompt))
             response = await chat.sample()
-            content = response.content if hasattr(response, "content") else str(response)
+            content = (
+                response.content if hasattr(response, "content") else str(response)
+            )
             if not content:
                 raise LLMProviderError("xai", "Empty response from Grok")
             return str(content).strip()

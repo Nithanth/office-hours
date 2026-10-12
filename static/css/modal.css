@@ -13,7 +13,7 @@
   justify-content: center;
   z-index: 1000;
 }
-body.lux-dark .modal {
+body.oh-dark .modal {
   background: rgba(0, 0, 0, 0.6);
 }
 
@@ -26,7 +26,7 @@ body.lux-dark .modal {
   width: 90%;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
-body.lux-dark .modal-content {
+body.oh-dark .modal-content {
   background: #2a2a2a;
   border: 1px solid #444;
 }
@@ -58,7 +58,7 @@ body.lux-dark .modal-content {
   cursor: pointer;
   line-height: 1;
 }
-body.lux-dark .modal-close-btn { color: var(--lux-red); }
+body.oh-dark .modal-close-btn { color: var(--oh-red); }
 
 /* -------------------- PDF Viewer Layout -------------------- */
 /* grid fills remaining vertical space flexibly so textarea remains visible */
@@ -93,7 +93,7 @@ body.lux-dark .modal-close-btn { color: var(--lux-red); }
 .pdf-viewer .chat-column {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--lux-border, #ddd);
+  border-left: 1px solid var(--oh-border, #ddd);
   background: #fafafa;
   overflow: hidden;
   font-size: 0.8rem;   /* smaller bubble text */
@@ -102,7 +102,7 @@ body.lux-dark .modal-close-btn { color: var(--lux-red); }
   gap: 0.6rem;               /* vertical breathing room */
   min-width: 320px;       /* chat shouldn't shrink below 320px */
 }
-body.lux-dark .pdf-viewer .chat-column {
+body.oh-dark .pdf-viewer .chat-column {
   background: #1f1f1f;
 }
 
@@ -151,11 +151,11 @@ body.lux-dark .pdf-viewer .chat-column {
 
 /* Blinking caret in streaming assistant bubble */
 .caret {
-  animation: luxCaretBlink 1s steps(1) infinite;
+  animation: ohCaretBlink 1s steps(1) infinite;
   opacity: 1;
 }
 
-@keyframes luxCaretBlink {
+@keyframes ohCaretBlink {
   0%, 100% { opacity: 0; }
   50% { opacity: 1; }
 }
@@ -182,11 +182,11 @@ body.lux-dark .pdf-viewer .chat-column {
 }
 
 .pdf-loading .spin {
-  animation: lux-spin 1s linear infinite;
+  animation: oh-spin 1s linear infinite;
   margin-right: 6px;
 }
 
-@keyframes lux-spin {
+@keyframes oh-spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
@@ -199,42 +199,42 @@ body.lux-dark .pdf-viewer .chat-column {
  * classes above handle the backdrop/centering; these rules style
  * the form contents. */
 
-.lux-blog-modal {
+.oh-blog-modal {
   max-width: 640px;
   width: 92%;
   padding: 1.25rem 1.5rem;
-  font-family: var(--lux-font, "Inter", system-ui, sans-serif);
+  font-family: var(--oh-font, "Inter", system-ui, sans-serif);
 }
 
-.lux-blog-modal .modal-header h2 {
+.oh-blog-modal .modal-header h2 {
   margin: 0;
   font-size: 1.15rem;
-  color: var(--lux-fg, #111);
+  color: var(--oh-fg, #111);
 }
-body.lux-dark .lux-blog-modal .modal-header h2,
-[data-theme="dark"] .lux-blog-modal .modal-header h2 {
+body.oh-dark .oh-blog-modal .modal-header h2,
+[data-theme="dark"] .oh-blog-modal .modal-header h2 {
   color: #e6e6e6;
 }
 
 #blog-modal-subtitle {
   margin: 0 0 0.5rem 0;
-  color: var(--lux-fg-muted, #555);
+  color: var(--oh-fg-muted, #555);
   line-height: 1.4;
 }
-body.lux-dark #blog-modal-subtitle,
+body.oh-dark #blog-modal-subtitle,
 [data-theme="dark"] #blog-modal-subtitle {
   color: #aaa;
 }
 
-.lux-blog-modal-grid {
+.oh-blog-modal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.75rem;
   margin: 0.5rem 0 0.75rem 0;
 }
 
-.lux-blog-modal-fs {
-  border: 1px solid var(--lux-border, #d5d5d5);
+.oh-blog-modal-fs {
+  border: 1px solid var(--oh-border, #d5d5d5);
   border-radius: 8px;
   padding: 0.6rem 0.75rem 0.7rem 0.75rem;
   margin: 0;
@@ -243,38 +243,38 @@ body.lux-dark #blog-modal-subtitle,
   gap: 0.35rem;
   min-width: 0;
 }
-body.lux-dark .lux-blog-modal-fs,
-[data-theme="dark"] .lux-blog-modal-fs {
+body.oh-dark .oh-blog-modal-fs,
+[data-theme="dark"] .oh-blog-modal-fs {
   border-color: #444;
 }
 
-.lux-blog-modal-fs legend {
+.oh-blog-modal-fs legend {
   font-weight: 600;
   font-size: 0.85rem;
   padding: 0 0.35rem;
-  color: var(--lux-fg, #111);
+  color: var(--oh-fg, #111);
 }
-body.lux-dark .lux-blog-modal-fs legend,
-[data-theme="dark"] .lux-blog-modal-fs legend {
+body.oh-dark .oh-blog-modal-fs legend,
+[data-theme="dark"] .oh-blog-modal-fs legend {
   color: #e6e6e6;
 }
 
-.lux-blog-modal-fs label {
+.oh-blog-modal-fs label {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   font-size: 0.88rem;
   cursor: pointer;
-  color: var(--lux-fg, #222);
+  color: var(--oh-fg, #222);
 }
-body.lux-dark .lux-blog-modal-fs label,
-[data-theme="dark"] .lux-blog-modal-fs label {
+body.oh-dark .oh-blog-modal-fs label,
+[data-theme="dark"] .oh-blog-modal-fs label {
   color: #ddd;
 }
 
-.lux-blog-modal-fs input[type="radio"] {
+.oh-blog-modal-fs input[type="radio"] {
   margin: 0;
-  accent-color: var(--lux-accent, #2563eb);
+  accent-color: var(--oh-accent, #2563eb);
 }
 
 .theme-dot {
@@ -286,46 +286,46 @@ body.lux-dark .lux-blog-modal-fs label,
   margin-right: 2px;
 }
 
-.lux-blog-modal-textarea {
+.oh-blog-modal-textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--lux-border, #d5d5d5);
+  border: 1px solid var(--oh-border, #d5d5d5);
   border-radius: 8px;
   font-family: inherit;
   font-size: 0.9rem;
   resize: vertical;
   min-height: 4.5rem;
-  background: var(--lux-bg, #fff);
-  color: var(--lux-fg, #111);
+  background: var(--oh-bg, #fff);
+  color: var(--oh-fg, #111);
 }
-.lux-blog-modal-textarea:focus {
-  outline: 2px solid var(--lux-accent, #2563eb);
+.oh-blog-modal-textarea:focus {
+  outline: 2px solid var(--oh-accent, #2563eb);
   outline-offset: 0;
-  border-color: var(--lux-accent, #2563eb);
+  border-color: var(--oh-accent, #2563eb);
 }
-body.lux-dark .lux-blog-modal-textarea,
-[data-theme="dark"] .lux-blog-modal-textarea {
+body.oh-dark .oh-blog-modal-textarea,
+[data-theme="dark"] .oh-blog-modal-textarea {
   background: #1f1f1f;
   color: #e6e6e6;
   border-color: #444;
 }
 
-.lux-blog-modal-footer {
+.oh-blog-modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--lux-border, #ececec);
+  border-top: 1px solid var(--oh-border, #ececec);
 }
-body.lux-dark .lux-blog-modal-footer,
-[data-theme="dark"] .lux-blog-modal-footer {
+body.oh-dark .oh-blog-modal-footer,
+[data-theme="dark"] .oh-blog-modal-footer {
   border-top-color: #3a3a3a;
 }
 
 /* Lock background scroll while the modal is open. */
-body.lux-modal-open {
+body.oh-modal-open {
   overflow: hidden;
 }
 

@@ -10,8 +10,7 @@ from fastapi import Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
-from config import config
-
+import config as _cfg
 
 # Paths that are always accessible without login.
 _PUBLIC_PREFIXES = (
@@ -30,7 +29,7 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        if not config.REQUIRE_LOGIN:
+        if not _cfg.config.REQUIRE_LOGIN:
             return await call_next(request)
 
         path = request.url.path

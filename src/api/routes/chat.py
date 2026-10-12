@@ -76,7 +76,9 @@ async def chat_post(
         chat_state.busy_retries += 1
         if chat_state.busy_retries >= 6:
             chat_state.busy_retries = 0  # reset after escalation
-            return Response("Assistant still busy - please try again later.", status_code=429)
+            return Response(
+                "Assistant still busy - please try again later.", status_code=429
+            )
         busy_banner = (
             '<div id="status-banner" hx-swap-oob="innerHTML:#status-banner">'
             "Assistant busy - retrying…"
@@ -113,7 +115,9 @@ async def chat_post(
                 )
         except Exception as exc:  # noqa: BLE001
             log.warning("chat_persist_user_failed", user_id=user_id, error=str(exc))
-    log.info("chat_request", session_id=session_id, paper_id=paper_id, chars=len(clean_msg))
+    log.info(
+        "chat_request", session_id=session_id, paper_id=paper_id, chars=len(clean_msg)
+    )
 
     # Reset ring buffer for new assistant response
     chat_state.reset_stream_buffer()
@@ -126,9 +130,7 @@ async def chat_post(
     assistant_response_id = f"assistant-response-{uuid4()}"
     # Full stream URL (used by JS) includes additional audience/model params.
     safe_paper_id = _urlparse.quote_plus(paper_id)
-    stream_url = (
-        f"/chat/stream?paper_id={safe_paper_id}&audience_type={_urlparse.quote_plus(audience_type)}"
-    )
+    stream_url = f"/chat/stream?paper_id={safe_paper_id}&audience_type={_urlparse.quote_plus(audience_type)}"
     if model_key:
         stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
     if report_id:
@@ -177,7 +179,10 @@ async def chat_stream(
         last_idx = chat_state.stream_buffer[-1][0]
         if resume_at >= last_idx:
             log.info(
-                "chat_resume_past_tail", session_id=session_id, requested=resume_at, last=last_idx
+                "chat_resume_past_tail",
+                session_id=session_id,
+                requested=resume_at,
+                last=last_idx,
             )
             return Response(status_code=204)
 
@@ -208,7 +213,9 @@ async def chat_stream(
                         safe_tok = html.escape(tok).replace("\n", "<br/>")
                         yield f"event: assistant\ndata: {safe_tok}\n\n"
                 log.info(
-                    "chat_resume_replay_complete", session_id=session_id, replay_start=resume_at
+                    "chat_resume_replay_complete",
+                    session_id=session_id,
+                    replay_start=resume_at,
                 )
                 return
 
@@ -242,7 +249,9 @@ async def chat_stream(
             if _needs_refresh():
                 path = await paper_service.get_paper_content_from_id(paper_id)
                 if path:
-                    chat_state.paper_cache.setdefault(paper_id, {})["full_text_path"] = path
+                    chat_state.paper_cache.setdefault(paper_id, {})[
+                        "full_text_path"
+                    ] = path
 
             if await _client_gone():
                 yield "event: message_done\ndata: \n\n"
@@ -258,7 +267,9 @@ async def chat_stream(
                     if chat_state.last_role(paper_id) == "user":
                         # Build prompt with requested audience style.
                         # build_prompt returns str or (str, list[str]) when figures are available.
-                        prompt_result = await build_prompt(chat_state, paper_id, audience_type)
+                        prompt_result = await build_prompt(
+                            chat_state, paper_id, audience_type
+                        )
                         _figure_paths: list[str] = []
                         if isinstance(prompt_result, tuple):
                             prompt, _figure_paths = prompt_result
@@ -297,7 +308,9 @@ async def chat_stream(
                                     if hasattr(stream_iter, "aclose"):
                                         asyncio.create_task(stream_iter.aclose())
                                     _client_disconnected = True
-                                    print("Client disconnected mid-stream - cancelling generation.")
+                                    print(
+                                        "Client disconnected mid-stream - cancelling generation."
+                                    )
                                     break
 
                                 assistant_msg += token
@@ -306,11 +319,16 @@ async def chat_stream(
                                 _batch_buf.append(token)
 
                                 # Flush when batch interval elapsed
-                                if time.perf_counter() - _batch_last_flush >= _BATCH_INTERVAL:
+                                if (
+                                    time.perf_counter() - _batch_last_flush
+                                    >= _BATCH_INTERVAL
+                                ):
                                     chunk = "".join(_batch_buf)
                                     _batch_buf = []
                                     _batch_last_flush = time.perf_counter()
-                                    safe_chunk = html.escape(chunk).replace("\n", "<br/>")
+                                    safe_chunk = html.escape(chunk).replace(
+                                        "\n", "<br/>"
+                                    )
                                     yield f"event: assistant\ndata: {safe_chunk}\n\n"
 
                                 if _METRICS_ENABLED and CHAT_TOKEN_LAT:
@@ -347,7 +365,11 @@ async def chat_stream(
                     break
                 except Exception:  # noqa: BLE001
                     # Capture full traceback for debugging
-                    log.exception("chat_stream_exception", session_id=session_id, paper_id=paper_id)
+                    log.exception(
+                        "chat_stream_exception",
+                        session_id=session_id,
+                        paper_id=paper_id,
+                    )
                     error_message = html.escape("Sorry, an error occurred.")
                     yield "event: error\n"
                     yield f"data: {error_message}\n\n"
@@ -362,14 +384,21 @@ async def chat_stream(
                 total_tokens=tok_idx,
             )
             if completed_successfully and assistant_msg:
-                chat_state.append(paper_id, ChatMessage(role="assistant", content=assistant_msg))
+                chat_state.append(
+                    paper_id, ChatMessage(role="assistant", content=assistant_msg)
+                )
                 from services.auth.session import get_auth_user_id
-                from services.persistence.database import database_available, session_scope
+                from services.persistence.database import (
+                    database_available,
+                    session_scope,
+                )
 
                 user_id = get_auth_user_id(request)
                 if user_id and database_available():
                     try:
-                        from services.persistence.repositories import append_chat_message
+                        from services.persistence.repositories import (
+                            append_chat_message,
+                        )
 
                         async for db_session in session_scope():
                             await append_chat_message(
@@ -382,7 +411,9 @@ async def chat_stream(
                             )
                     except Exception as exc:  # noqa: BLE001
                         log.warning(
-                            "chat_persist_assistant_failed", user_id=user_id, error=str(exc)
+                            "chat_persist_assistant_failed",
+                            user_id=user_id,
+                            error=str(exc),
                         )
             else:
                 chat_state.reset_stream_buffer()
@@ -390,7 +421,11 @@ async def chat_stream(
             chat_state.stream_active = False
             chat_state._stream_started_at = 0.0
             try:
-                log.info("chat_sse_emit_done", session_id=session_id, chars=len(assistant_msg))
+                log.info(
+                    "chat_sse_emit_done",
+                    session_id=session_id,
+                    chars=len(assistant_msg),
+                )
                 # Legacy compatibility events expected by tests/frontend
                 yield "event: done\ndata: \n\n"
                 yield "event: message_done\ndata: \n\n"

@@ -86,7 +86,9 @@ def _parse_inline(text: str) -> list[dict[str, Any]]:
     return out
 
 
-def _block(block_type: str, rich_text: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+def _block(
+    block_type: str, rich_text: list[dict[str, Any]], **extra: Any
+) -> dict[str, Any]:
     body: dict[str, Any] = {"rich_text": rich_text, **extra}
     return {"object": "block", "type": block_type, block_type: body}
 
@@ -120,7 +122,9 @@ def markdown_to_blocks(markdown: str) -> list[dict[str, Any]]:
                 _block(
                     "code",
                     _rich_text_segment(code_text),
-                    language=lang.lower() if lang.lower() in _NOTION_CODE_LANGS else "plain text",
+                    language=lang.lower()
+                    if lang.lower() in _NOTION_CODE_LANGS
+                    else "plain text",
                 )
             )
             continue
@@ -129,7 +133,11 @@ def markdown_to_blocks(markdown: str) -> list[dict[str, Any]]:
         heading_match = re.match(r"^(#{1,3})\s+(.+)$", stripped)
         if heading_match:
             level = len(heading_match.group(1))
-            blocks.append(_block(f"heading_{level}", _parse_inline(heading_match.group(2).strip())))
+            blocks.append(
+                _block(
+                    f"heading_{level}", _parse_inline(heading_match.group(2).strip())
+                )
+            )
             i += 1
             continue
 

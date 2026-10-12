@@ -88,7 +88,9 @@ async def notion_status(request: Request) -> dict[str, Any]:
         async for session in session_scope():
             integration = await get_notion_integration(session, user_id=user_id)
         if integration is not None:
-            target_id = integration.parent_database_id or integration.parent_page_id or ""
+            target_id = (
+                integration.parent_database_id or integration.parent_page_id or ""
+            )
             masked_id = f"...{target_id[-8:]}" if len(target_id) > 8 else target_id
             return {
                 "connected": True,

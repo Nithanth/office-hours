@@ -71,7 +71,9 @@ def _stub_exa_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
         # ------------------------------------------------------------------
         # Methods used by ExaClient during these tests
         # ------------------------------------------------------------------
-        def find_similar_and_contents(self, url: str, **kwargs: Any) -> _FakeResponse:  # noqa: D401
+        def find_similar_and_contents(
+            self, url: str, **kwargs: Any
+        ) -> _FakeResponse:  # noqa: D401
             # Always return 5 deterministic fake results irrespective of params.
             results = [_FakeResult(i) for i in range(5)]
             return _FakeResponse(results)

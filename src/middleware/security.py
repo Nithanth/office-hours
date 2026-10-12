@@ -26,10 +26,7 @@ class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
         if _cfg.config.ENV in ("dev", "test"):
             return await call_next(request)
 
-        proto = (
-            request.headers.get("x-forwarded-proto", "")
-            or request.url.scheme
-        )
+        proto = request.headers.get("x-forwarded-proto", "") or request.url.scheme
         if proto != "https":
             url = request.url.replace(scheme="https")
             return RedirectResponse(str(url), status_code=301)

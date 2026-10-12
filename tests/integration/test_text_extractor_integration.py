@@ -14,7 +14,9 @@ EXAMPLE_PDF_URL = "https://arxiv.org/pdf/2103.00020.pdf"  # CLIP paper (~1.7MB)
 
 @pytest.mark.asyncio
 @pytest.mark.network
-async def test_extract_arxiv_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # noqa: D401
+async def test_extract_arxiv_pdf(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:  # noqa: D401
     # Isolate the cache to a temporary directory for this test
     monkeypatch.setattr("services.paper.text_extractor.CACHE_ROOT", tmp_path)
 
@@ -23,7 +25,9 @@ async def test_extract_arxiv_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 
     extractor = TextExtractor.instance()
     # Force prefer_exa=False so we hit PDF layer regardless of Exa account limits
-    path = await extractor.ensure_cached(EXAMPLE_PDF_URL, "clip_test", prefer_exa=False, force=True)
+    path = await extractor.ensure_cached(
+        EXAMPLE_PDF_URL, "clip_test", prefer_exa=False, force=True
+    )
     assert path and os.path.exists(path)
 
     # Read the text we just cached to avoid picking up an old cache file

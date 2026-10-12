@@ -25,8 +25,12 @@ from services.persistence.models import (
 
 
 def html_to_text(value: str) -> str:
-    clean = re.sub(r"<script\b[^<]*(?:(?!</script>)<[^<]*)*</script>", "", value, flags=re.I)
-    clean = re.sub(r"<style\b[^<]*(?:(?!</style>)<[^<]*)*</style>", "", clean, flags=re.I)
+    clean = re.sub(
+        r"<script\b[^<]*(?:(?!</script>)<[^<]*)*</script>", "", value, flags=re.I
+    )
+    clean = re.sub(
+        r"<style\b[^<]*(?:(?!</style>)<[^<]*)*</style>", "", clean, flags=re.I
+    )
     clean = re.sub(r"<[^>]+>", " ", clean)
     clean = re.sub(r"\s+", " ", clean)
     return clean.strip()
@@ -72,8 +76,12 @@ async def upsert_google_user(
         )
     else:
         account.user_id = existing.id
-        account.access_token_encrypted = encrypted_access or account.access_token_encrypted
-        account.refresh_token_encrypted = encrypted_refresh or account.refresh_token_encrypted
+        account.access_token_encrypted = (
+            encrypted_access or account.access_token_encrypted
+        )
+        account.refresh_token_encrypted = (
+            encrypted_refresh or account.refresh_token_encrypted
+        )
         account.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(existing)
@@ -120,7 +128,9 @@ async def usage_count_since(
     return int(count or 0)
 
 
-async def daily_usage_count(session: AsyncSession, *, user_id: str, event_type: str) -> int:
+async def daily_usage_count(
+    session: AsyncSession, *, user_id: str, event_type: str
+) -> int:
     return await usage_count_since(
         session,
         user_id=user_id,
@@ -163,7 +173,9 @@ async def create_report(
                 title=paper.title or "Untitled paper",
                 url=str(paper.url) if paper.url else None,
                 authors={"items": paper.authors or []},
-                published_date=str(paper.published_date) if paper.published_date else None,
+                published_date=str(paper.published_date)
+                if paper.published_date
+                else None,
                 metadata_json={
                     "score": paper.relevance_score,
                     "source": paper.source,
@@ -184,7 +196,9 @@ async def create_report(
     return report
 
 
-async def list_reports(session: AsyncSession, *, user_id: str, limit: int = 50) -> list[Report]:
+async def list_reports(
+    session: AsyncSession, *, user_id: str, limit: int = 50
+) -> list[Report]:
     result = await session.execute(
         select(Report)
         .where(Report.user_id == user_id)
@@ -194,7 +208,9 @@ async def list_reports(session: AsyncSession, *, user_id: str, limit: int = 50) 
     return list(result.scalars().all())
 
 
-async def get_report(session: AsyncSession, *, user_id: str, report_id: str) -> Report | None:
+async def get_report(
+    session: AsyncSession, *, user_id: str, report_id: str
+) -> Report | None:
     return await session.scalar(
         select(Report).where(Report.id == report_id, Report.user_id == user_id)
     )
@@ -218,7 +234,9 @@ async def append_chat_message(
         )
     )
     if thread is None:
-        thread = ChatThread(user_id=user_id, report_id=report_id, paper_id=paper_id, title=title)
+        thread = ChatThread(
+            user_id=user_id, report_id=report_id, paper_id=paper_id, title=title
+        )
         session.add(thread)
         await session.flush()
     else:

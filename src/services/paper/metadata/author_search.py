@@ -68,7 +68,7 @@ class AuthorProfile(BaseModel):
 def _get_headers() -> dict[str, str]:
     """Build request headers, including API key if configured."""
     headers: dict[str, str] = {
-        "User-Agent": "LuxScholar/1.0",
+        "User-Agent": "OfficeHours/1.0",
         "Content-Type": "application/json",
     }
     api_key = getattr(_cfg.config, "SEMANTIC_SCHOLAR_API_KEY", None)
@@ -77,7 +77,9 @@ def _get_headers() -> dict[str, str]:
     return headers
 
 
-def _s2_get(path: str, params: dict[str, str] | None = None, *, timeout: int = 10) -> Any:
+def _s2_get(
+    path: str, params: dict[str, str] | None = None, *, timeout: int = 10
+) -> Any:
     """Make a GET request to the S2 Graph API."""
     url = f"{_S2_BASE}{path}"
     if params:
@@ -126,7 +128,11 @@ def search_authors(
     try:
         data = _s2_get(
             "/author/search",
-            params={"query": query.strip(), "fields": fields, "limit": str(min(limit, 1000))},
+            params={
+                "query": query.strip(),
+                "fields": fields,
+                "limit": str(min(limit, 1000)),
+            },
             timeout=timeout,
         )
     except Exception:
@@ -146,7 +152,12 @@ def search_authors(
             )
         )
 
-    logger.info("s2_author_search", query=query, total=data.get("total", 0), returned=len(results))
+    logger.info(
+        "s2_author_search",
+        query=query,
+        total=data.get("total", 0),
+        returned=len(results),
+    )
     return results
 
 

@@ -1,4 +1,4 @@
-"""Prompt template helpers for Lux Scholar LLM workflows."""
+"""Prompt template helpers for Office Hours LLM workflows."""
 
 # ---------------------------------------------------------------------------
 # Generic template loader (importlib.resources keeps paths portable)
@@ -129,7 +129,9 @@ def get_paper_deep_dive_prompts(
     abstract: str,
     full_text_snippet: Optional[str] = None,  # Snippet of main content, if available
     paper_url: Optional[str] = None,
-    target_audience: Optional[str] = None,  # e.g., "non-technical manager", "peer researcher"
+    target_audience: Optional[
+        str
+    ] = None,  # e.g., "non-technical manager", "peer researcher"
     output_format: Optional[str] = None,  # e.g., "bullet points for key findings"
     **kwargs: Any,  # For future flexibility
 ) -> tuple[str, str]:

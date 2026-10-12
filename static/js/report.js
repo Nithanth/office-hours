@@ -5,10 +5,10 @@
 // ---------------------------------------------------------------------------
 // Inject utility class so we avoid setting style props in JS.
 (function addReportStyles() {
-  if (document.getElementById("lux-report-styles")) return;
+  if (document.getElementById("oh-report-styles")) return;
   const style = document.createElement("style");
-  style.id = "lux-report-styles";
-  style.textContent = ".lux-flex-end{display:flex;justify-content:flex-end;}";
+  style.id = "oh-report-styles";
+  style.textContent = ".oh-flex-end{display:flex;justify-content:flex-end;}";
   document.head.appendChild(style);
 })();
 
@@ -41,9 +41,9 @@ function fallbackCopy(text) {
   ta.select();
   try {
     const ok = document.execCommand("copy");
-    if (!ok) console.warn("[lux] execCommand('copy') returned false");
+    if (!ok) console.warn("[oh] execCommand('copy') returned false");
   } catch (e) {
-    console.warn("[lux] execCommand('copy') failed", e);
+    console.warn("[oh] execCommand('copy') failed", e);
   } finally {
     document.body.removeChild(ta);
   }
@@ -137,7 +137,7 @@ const actionsObserver = new MutationObserver(() => {
 
   document.querySelectorAll("#report-actions.hidden").forEach((el) => {
     el.classList.remove("hidden");
-    el.classList.add("lux-flex-end");
+    el.classList.add("oh-flex-end");
 
     // Enable notes + blog buttons once report finished.
     const notesBtn = el.querySelector("#report-notes-btn");
@@ -189,7 +189,7 @@ document.body.addEventListener("htmx:sseMessage", (evt) => {
     });
     if (window.htmx) window.htmx.process(document.body);
   } catch (err) {
-    console.warn("[lux] could not process report-saved event", err);
+    console.warn("[oh] could not process report-saved event", err);
   }
 });
 
@@ -198,7 +198,7 @@ document.body.addEventListener("htmx:sseMessage", (evt) => {
   const msg = evt.detail.data || "Report could not be saved.";
   const banner = document.createElement("div");
   banner.className = "error-banner";
-  banner.style.cssText = "padding:10px 16px;margin:8px 0;border-radius:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:var(--lux-text,#e0e0e0);font-size:0.85rem;";
+  banner.style.cssText = "padding:10px 16px;margin:8px 0;border-radius:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:var(--oh-text,#e0e0e0);font-size:0.85rem;";
   banner.textContent = msg;
   const target = document.getElementById("report-display-area") || document.getElementById("report-content");
   if (target) target.prepend(banner);
@@ -218,16 +218,16 @@ document.addEventListener("htmx:afterSwap", (evt) => {
     // If the progress spinner has been removed, show the actions
     const progressGone = !document.getElementById("report-progress");
     if (progressGone) {
-      console.debug("[lux] report.js: afterSwap - progress gone, unhide actions");
+      console.debug("[oh] report.js: afterSwap - progress gone, unhide actions");
       const actions = document.getElementById("report-actions");
       if (actions) {
         actions.classList.remove("hidden");
-        actions.classList.add("lux-flex-end");
+        actions.classList.add("oh-flex-end");
 
         // Toast feedback – notify user that report is ready
-        if (window.showToast && !window._luxReportToastShown) {
+        if (window.showToast && !window._ohReportToastShown) {
           window.showToast("Report ready! Click the copy button to grab the text.");
-          window._luxReportToastShown = true;
+          window._ohReportToastShown = true;
         }
 
         // Add generic report heading if backend didn't provide one
@@ -241,7 +241,7 @@ document.addEventListener("htmx:afterSwap", (evt) => {
       }
     }
   } catch (e) {
-    console.warn("[lux] report.js: afterSwap error", e);
+    console.warn("[oh] report.js: afterSwap error", e);
   }
 });
 
@@ -250,13 +250,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const progressGone = !document.getElementById("report-progress");
   const actions = document.getElementById("report-actions");
   if (progressGone && actions && actions.classList.contains("hidden")) {
-    console.debug("[lux] report.js: fallback unhide actions (DOMContentLoaded)");
+    console.debug("[oh] report.js: fallback unhide actions (DOMContentLoaded)");
     actions.classList.remove("hidden");
-    actions.classList.add("lux-flex-end");
+    actions.classList.add("oh-flex-end");
 
-    if (window.showToast && !window._luxReportToastShown) {
+    if (window.showToast && !window._ohReportToastShown) {
       window.showToast("Report ready! Click the copy button to grab the text.");
-      window._luxReportToastShown = true;
+      window._ohReportToastShown = true;
     }
   }
 });
@@ -269,7 +269,7 @@ function openNotesDialog(onConfirm) {
   if (!dlg) {
     document.body.insertAdjacentHTML(
       "beforeend",
-      `<dialog id="notes-dialog" class="lux-modal">
+      `<dialog id="notes-dialog" class="oh-modal">
          <form method="dialog" id="notes-form">
            <h3 style="margin:0 0 12px">Download Report Notes</h3>
 
@@ -321,7 +321,7 @@ function handleNotesClick(ev) {
     btn.disabled = true;
     const origHtml = btn.innerHTML;
     btn.innerHTML =
-      '<span class="lux-spinner small" style="vertical-align:middle;"></span> Generating…';
+      '<span class="oh-spinner small" style="vertical-align:middle;"></span> Generating…';
 
     const cleaned = getCleanReportText(reportEl);
     const fd = new FormData();
@@ -342,7 +342,7 @@ function handleNotesClick(ev) {
         URL.revokeObjectURL(url);
       })
       .catch((err) => {
-        console.error("[lux] notes download failed", err);
+        console.error("[oh] notes download failed", err);
         // eslint-disable-next-line no-alert
         alert("Failed to generate notes. Please try again.");
       })
@@ -372,7 +372,7 @@ function buildBlogPopupShell(theme) {
   const accent = isDark ? "#818cf8" : "#6366f1";
   return (
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
-    '<title>Composing your blog… — Nithu&#39;s PhD intern</title>' +
+    '<title>Composing your blog… — Office Hours</title>' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<style>' +
     '*{box-sizing:border-box;margin:0;padding:0}' +
@@ -392,7 +392,7 @@ function buildBlogPopupShell(theme) {
     '@keyframes ring{0%{transform:scale(0.6);opacity:0.6}100%{transform:scale(1.7);opacity:0}}' +
     '@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}100%{content:""}}' +
     '</style></head><body>' +
-    '<div class="brand">Nithu&#39;s PhD intern</div>' +
+    '<div class="brand">Office Hours</div>' +
     '<div class="icon" aria-hidden="true">' +
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" />' +
@@ -431,13 +431,13 @@ document.addEventListener("click", handleBlogClick);
 // ---------------------------------------------------------------------------
 // The modal itself is defined in `static/js/blog-modal.js` so it can be shared
 // with the blog-view page (which uses it for the Revise button). This module
-// just delegates to `window.luxBlog.openCustomizeModal`.
+// just delegates to `window.ohBlog.openCustomizeModal`.
 
 function openBlogCustomizeModal(opts) {
-  if (window.luxBlog && window.luxBlog.openCustomizeModal) {
-    return window.luxBlog.openCustomizeModal(opts);
+  if (window.ohBlog && window.ohBlog.openCustomizeModal) {
+    return window.ohBlog.openCustomizeModal(opts);
   }
-  console.error("[lux] blog-modal.js not loaded — falling back to defaults");
+  console.error("[oh] blog-modal.js not loaded — falling back to defaults");
   if (opts && typeof opts.onSubmit === "function") {
     opts.onSubmit({ audience: "technical", length: "medium", tone: "distill", extra: "" });
   }
@@ -454,7 +454,7 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
   if (btn) {
     btn.disabled = true;
     btn.innerHTML =
-      '<span class="lux-spinner small" style="vertical-align:middle;"></span> Writing…';
+      '<span class="oh-spinner small" style="vertical-align:middle;"></span> Writing…';
   }
 
   // Synchronous popup so the browser counts it as a user-initiated open.
@@ -469,7 +469,7 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
       blogWindow.document.write(buildBlogPopupShell(theme));
       blogWindow.document.close();
     } catch (writeErr) {
-      console.warn("[lux] could not seed popup loading shell", writeErr);
+      console.warn("[oh] could not seed popup loading shell", writeErr);
     }
   }
 
@@ -500,7 +500,7 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
       }
     })
     .catch((err) => {
-      console.error("[lux] blog generation failed", err);
+      console.error("[oh] blog generation failed", err);
       if (blogWindow) blogWindow.close();
       // eslint-disable-next-line no-alert
       alert("Failed to generate blog post. Please try again.");
@@ -514,10 +514,10 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
 }
 
 // Expose report-page-specific helpers. The modal itself is already registered
-// on `window.luxBlog.openCustomizeModal` by blog-modal.js.
-window.luxBlog = window.luxBlog || {};
-window.luxBlog.launch = launchBlogGeneration;
-window.luxBlog.buildPopupShell = buildBlogPopupShell;
+// on `window.ohBlog.openCustomizeModal` by blog-modal.js.
+window.ohBlog = window.ohBlog || {};
+window.ohBlog.launch = launchBlogGeneration;
+window.ohBlog.buildPopupShell = buildBlogPopupShell;
 
 // ---------------------------------------------------------------------------
 // Notion export – POST report text, open Notion page in new tab
@@ -532,7 +532,7 @@ function handleNotionClick(ev) {
   btn.disabled = true;
   const origHtml = btn.innerHTML;
   btn.innerHTML =
-    '<span class="lux-spinner small" style="vertical-align:middle;"></span> Exporting…';
+    '<span class="oh-spinner small" style="vertical-align:middle;"></span> Exporting…';
 
   // Open window synchronously so browsers don't block it as a popup.
   const notionWindow = window.open("about:blank", "_blank");
@@ -543,7 +543,7 @@ function handleNotionClick(ev) {
 
   // Pull title from the first heading in the report, if any.
   const firstH = reportEl.querySelector("h1, h2, h3");
-  fd.append("title", firstH ? firstH.textContent.trim() : "Lux Scholar Report");
+  fd.append("title", firstH ? firstH.textContent.trim() : "Office Hours Report");
   if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
 
   // Include audience and model so Notion gets structured properties.
@@ -575,7 +575,7 @@ function handleNotionClick(ev) {
       }
     })
     .catch((err) => {
-      console.error("[lux] notion export failed", err);
+      console.error("[oh] notion export failed", err);
       if (notionWindow) notionWindow.close();
       // eslint-disable-next-line no-alert
       alert(err.message || "Failed to export to Notion. Check your NOTION_API_KEY in .env.");

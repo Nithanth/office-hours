@@ -10,8 +10,11 @@ from unittest.mock import AsyncMock, patch
 
 from starlette.testclient import TestClient
 
-from services.paper.metadata.author_search import AuthorPaper, AuthorProfile, AuthorResult
-
+from services.paper.metadata.author_search import (
+    AuthorPaper,
+    AuthorProfile,
+    AuthorResult,
+)
 
 # ---------------------------------------------------------------------------
 # Sample data

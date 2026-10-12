@@ -4,7 +4,7 @@
 //   * static/js/report.js   – initial blog generation from the report page
 //   * static/js/blog-view.js – "Revise" button on the rendered blog page
 //
-// Exposes `window.luxBlog.openCustomizeModal({ mode, current, onSubmit })`.
+// Exposes `window.ohBlog.openCustomizeModal({ mode, current, onSubmit })`.
 // The modal is lazily injected into <body> the first time it's opened.
 //   mode='initial'    – first-time generation. 500 char free-text cap, optional.
 //   mode='regenerate' – revise existing blog. 1000 char free-text cap, required.
@@ -26,33 +26,33 @@
     modal.className = "modal hidden";
     modal.setAttribute("aria-hidden", "true");
     modal.innerHTML =
-      '<div class="modal-content lux-blog-modal" role="dialog" aria-modal="true" aria-labelledby="blog-modal-title">' +
+      '<div class="modal-content oh-blog-modal" role="dialog" aria-modal="true" aria-labelledby="blog-modal-title">' +
         '<div class="modal-header">' +
           '<h2 id="blog-modal-title" class="text-xl font-bold">Customize your blog</h2>' +
           '<button type="button" class="modal-close-btn" aria-label="Close">&times;</button>' +
         '</div>' +
         '<form id="blog-customize-form" class="space-y-4">' +
           '<p id="blog-modal-subtitle" class="text-sm opacity-80"></p>' +
-          '<div class="lux-blog-modal-grid">' +
-            '<fieldset class="lux-blog-modal-fs">' +
+          '<div class="oh-blog-modal-grid">' +
+            '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Audience</legend>' +
               '<label><input type="radio" name="audience" value="technical" checked> Technical</label>' +
               '<label><input type="radio" name="audience" value="mixed"> Mixed</label>' +
               '<label><input type="radio" name="audience" value="layperson"> Layperson</label>' +
             '</fieldset>' +
-            '<fieldset class="lux-blog-modal-fs">' +
+            '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Length</legend>' +
               '<label><input type="radio" name="length" value="short"> Short (~600 w)</label>' +
               '<label><input type="radio" name="length" value="medium" checked> Medium (~1500 w)</label>' +
               '<label><input type="radio" name="length" value="long"> Long (~3000 w)</label>' +
             '</fieldset>' +
-            '<fieldset class="lux-blog-modal-fs">' +
+            '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Tone</legend>' +
               '<label><input type="radio" name="tone" value="distill" checked> Distill.pub</label>' +
               '<label><input type="radio" name="tone" value="casual"> Casual blog</label>' +
               '<label><input type="radio" name="tone" value="lecture"> Lecture notes</label>' +
             '</fieldset>' +
-            '<fieldset class="lux-blog-modal-fs">' +
+            '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Visual Theme</legend>' +
               '<label><input type="radio" name="theme" value="indigo" checked> <span class="theme-dot" style="background:#6366f1;"></span> Indigo</label>' +
               '<label><input type="radio" name="theme" value="emerald"> <span class="theme-dot" style="background:#10b981;"></span> Emerald</label>' +
@@ -63,11 +63,11 @@
           '<label class="block">' +
             '<span class="font-medium block mb-1" id="blog-extra-label">Additional instructions (optional)</span>' +
             '<textarea name="extra" rows="3" maxlength="500" ' +
-              'class="lux-blog-modal-textarea" ' +
+              'class="oh-blog-modal-textarea" ' +
               'placeholder="e.g. emphasise reproducibility / keep it under 1000 words / no jargon"></textarea>' +
             '<small class="opacity-60 block mt-1"><span data-blog-extra-count>0</span>/<span data-blog-extra-max>500</span> chars</small>' +
           '</label>' +
-          '<footer class="lux-blog-modal-footer">' +
+          '<footer class="oh-blog-modal-footer">' +
             '<button type="button" class="btn-secondary" data-action="cancel">Cancel</button>' +
             '<button type="submit" class="btn-primary" data-action="submit">Generate blog</button>' +
           '</footer>' +
@@ -126,7 +126,7 @@
 
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
-    document.body.classList.add("lux-modal-open");
+    document.body.classList.add("oh-modal-open");
 
     const previousFocus = document.activeElement;
     const firstInput = modal.querySelector('input[type="radio"]:checked, input[type="radio"], textarea');
@@ -135,7 +135,7 @@
     function close() {
       modal.classList.add("hidden");
       modal.setAttribute("aria-hidden", "true");
-      document.body.classList.remove("lux-modal-open");
+      document.body.classList.remove("oh-modal-open");
       modal.removeEventListener("click", onBackdrop);
       document.removeEventListener("keydown", onKey);
       form.removeEventListener("submit", onSubmitInner);
@@ -170,7 +170,7 @@
       try {
         if (typeof onSubmit === "function") onSubmit(opts);
       } catch (e) {
-        console.error("[lux] blog modal submit handler threw", e);
+        console.error("[oh] blog modal submit handler threw", e);
       }
     }
     modal.addEventListener("click", onBackdrop);
@@ -178,7 +178,7 @@
     form.addEventListener("submit", onSubmitInner);
   }
 
-  window.luxBlog = window.luxBlog || {};
-  window.luxBlog.openCustomizeModal = openBlogCustomizeModal;
-  window.luxBlog.DEFAULTS = BLOG_CUSTOMIZE_DEFAULTS;
+  window.ohBlog = window.ohBlog || {};
+  window.ohBlog.openCustomizeModal = openBlogCustomizeModal;
+  window.ohBlog.DEFAULTS = BLOG_CUSTOMIZE_DEFAULTS;
 })();

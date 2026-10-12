@@ -24,7 +24,9 @@ class _DummyService:  # very lightweight stub for external services
 
     _initialized: bool = True
 
-    async def __aenter__(self, *args: Any, **kwargs: Any):  # noqa: D401 - contextmanager helpers
+    async def __aenter__(
+        self, *args: Any, **kwargs: Any
+    ):  # noqa: D401 - contextmanager helpers
         return self
 
     async def __aexit__(self, *args: Any, **kwargs: Any):
@@ -80,10 +82,16 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
 
         if hasattr(_rg_mod, "ReportGenerator"):
             monkeypatch.setattr(
-                _rg_mod.ReportGenerator, "generate_direct_query_answer", _fake_answer, raising=False
+                _rg_mod.ReportGenerator,
+                "generate_direct_query_answer",
+                _fake_answer,
+                raising=False,
             )
             monkeypatch.setattr(
-                _rg_mod.ReportGenerator, "generate_report_html", _fake_report, raising=False
+                _rg_mod.ReportGenerator,
+                "generate_report_html",
+                _fake_report,
+                raising=False,
             )
 
     # Stub out UI error rendering – avoids Fasthtml dependency
@@ -93,7 +101,9 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch):
         from pages import main_page as _mp
 
         _fake_div = SimpleNamespace(render=lambda: "<div>stub error</div>")
-        monkeypatch.setattr(_mp, "render_error_message", lambda *a, **k: _fake_div, raising=False)
+        monkeypatch.setattr(
+            _mp, "render_error_message", lambda *a, **k: _fake_div, raising=False
+        )
     except ModuleNotFoundError:
         pass
 

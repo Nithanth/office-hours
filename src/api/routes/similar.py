@@ -9,13 +9,13 @@ from __future__ import annotations
 import asyncio
 import html
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
-from api.deps import get_exa_client, get_session_id
+from api.deps import get_exa_client
 from models.paper import Paper
 from services.core.exa_client import ExaClient
 from utils.rate_limit import limiter
@@ -63,7 +63,9 @@ async def find_similar(
 
     # Best-effort S2 citation enrichment
     try:
-        from services.paper.metadata.semantic_scholar import enrich_papers_with_citations
+        from services.paper.metadata.semantic_scholar import (
+            enrich_papers_with_citations,
+        )
 
         await asyncio.to_thread(enrich_papers_with_citations, similar_papers, timeout=6)
     except Exception as exc:

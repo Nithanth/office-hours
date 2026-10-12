@@ -17,7 +17,7 @@ def _history_shell(items_html: str) -> str:
     return f"""<!DOCTYPE html>
 <html>
 <head>
-  <title>My Reports · Lux Scholar</title>
+  <title>My Reports · Office Hours</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/forms.css">
   <style>
@@ -100,7 +100,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
         f"""<!DOCTYPE html>
 <html>
 <head>
-  <title>{escaped_title} · Lux Scholar</title>
+  <title>{escaped_title} · Office Hours</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/forms.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
@@ -149,7 +149,9 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
 async def reports_api(request: Request) -> JSONResponse:
     user_id = require_auth_user_id(request)
     if not database_available():
-        return JSONResponse({"ok": False, "reports": [], "detail": "Report history not configured"})
+        return JSONResponse(
+            {"ok": False, "reports": [], "detail": "Report history not configured"}
+        )
 
     from services.persistence.repositories import list_reports
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from dotenv import load_dotenv
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env only in development/local environments to avoid accidental leakage
@@ -52,7 +52,9 @@ class Config(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     XAI_API_KEY: Optional[str] = None
-    OPENROUTER_API_KEY: Optional[str] = None  # OpenRouter for OS models (GLM, Qwen, etc.)
+    OPENROUTER_API_KEY: Optional[
+        str
+    ] = None  # OpenRouter for OS models (GLM, Qwen, etc.)
     SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
 
     # ------------------------------------------------------------------
@@ -67,14 +69,17 @@ class Config(BaseSettings):
     # ------------------------------------------------------------------
     ENV: str = "dev"
     CSS_PREFIX: str = ""
-    APP_TITLE: str = "Nithu's PhD Student"
+    APP_TITLE: str = "Office Hours"
     VERSION: str = "0.1.0"
     YEAR: int = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC).year)
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "info"
-    LOG_FORMAT_JSON: bool = Field(default=False, alias="LUX_LOG_FORMAT_JSON")
+    LOG_FORMAT_JSON: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("OH_LOG_FORMAT_JSON", "LUX_LOG_FORMAT_JSON"),
+    )
 
     # ------------------------------------------------------------------
     # Auth & database
@@ -85,7 +90,12 @@ class Config(BaseSettings):
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     NOTION_OAUTH_CLIENT_ID: Optional[str] = None
     NOTION_OAUTH_CLIENT_SECRET: Optional[str] = None
-    LUX_SECRET_ENCRYPTION_KEY: Optional[str] = None
+    SECRET_ENCRYPTION_KEY: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "OH_SECRET_ENCRYPTION_KEY", "LUX_SECRET_ENCRYPTION_KEY"
+        ),
+    )
     REQUIRE_LOGIN: bool = False
     BETA_DAILY_REPORT_LIMIT: int = 20
     BETA_DAILY_SEARCH_LIMIT: int = 100
@@ -161,7 +171,10 @@ class Config(BaseSettings):
     # Admin & session security
     # ------------------------------------------------------------------
     ADMIN_API_KEY: Optional[str] = None
-    LUX_SESSION_SECRET: str = "dev-insecure-secret"
+    SESSION_SECRET: str = Field(
+        default="dev-insecure-secret",
+        validation_alias=AliasChoices("OH_SESSION_SECRET", "LUX_SESSION_SECRET"),
+    )
 
     # ------------------------------------------------------------------
     # Chat state persistence
@@ -403,7 +416,7 @@ class Config(BaseSettings):
         return Path(str(v)).expanduser() if v else Path("")
 
     @model_validator(mode="after")
-    def _compute_derived(self) -> "Config":
+    def _compute_derived(self) -> Config:
         """Compute derived fields after all values are loaded."""
         # CSS_PREFIX defaults based on ENV
         if not self.CSS_PREFIX:
@@ -432,7 +445,9 @@ class Config(BaseSettings):
             )
 
         for key, info in self.AVAILABLE_MODELS.items():
-            missing = {"id", "provider", "input_token_limit", "display_name"} - set(info)
+            missing = {"id", "provider", "input_token_limit", "display_name"} - set(
+                info
+            )
             if missing:
                 raise ValueError(
                     f"Model '{key}' is missing required fields: {sorted(missing)}"
@@ -452,13 +467,13 @@ class Config(BaseSettings):
 config = Config()
 
 # Block startup in non-dev environments with insecure session secret
-if config.LUX_SESSION_SECRET == "dev-insecure-secret":
+if config.SESSION_SECRET == "dev-insecure-secret":
     if config.ENV not in ("dev", "test"):
         import sys as _sys
 
         print(
-            "\n[FATAL] LUX_SESSION_SECRET is set to the insecure default!\n"
-            "Set LUX_SESSION_SECRET to a strong random value (e.g. `python -c "
+            "\n[FATAL] OH_SESSION_SECRET is set to the insecure default!\n"
+            "Set OH_SESSION_SECRET to a strong random value (e.g. `python -c "
             '"import secrets; print(secrets.token_urlsafe(32))"`).\n',
             file=_sys.stderr,
         )
@@ -467,7 +482,7 @@ if config.LUX_SESSION_SECRET == "dev-insecure-secret":
         import warnings as _warnings
 
         _warnings.warn(
-            "LUX_SESSION_SECRET is set to the insecure default. "
+            "OH_SESSION_SECRET is set to the insecure default. "
             "Set it to a strong random value before deploying.",
             UserWarning,
             stacklevel=1,

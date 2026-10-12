@@ -38,7 +38,9 @@ def test_ask_llm_llm_unavailable(client, monkeypatch):
     # Simulate LLM service down
     import main as app_module  # local import to access singleton
 
-    monkeypatch.setattr(app_module.llm_service_instance, "_initialized", False, raising=False)
+    monkeypatch.setattr(
+        app_module.llm_service_instance, "_initialized", False, raising=False
+    )
 
     resp = client.post(
         "/ask-llm",

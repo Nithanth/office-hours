@@ -11,7 +11,10 @@ class LLMProviderError(LLMError):
     """Wraps errors returned directly from a provider SDK/API."""
 
     def __init__(
-        self, provider: str, message: str, original_exception: Optional[Exception] | None = None
+        self,
+        provider: str,
+        message: str,
+        original_exception: Optional[Exception] | None = None,
     ) -> None:
         super().__init__(f"[{provider}] {message}")
         self.provider = provider
@@ -29,7 +32,9 @@ class LLMConfigurationError(LLMError):
 class LLMResponseError(LLMError):
     """Raised when the provider returns an unexpected or unsafe response."""
 
-    def __init__(self, provider: str, message: str, is_safety_issue: bool = False) -> None:
+    def __init__(
+        self, provider: str, message: str, is_safety_issue: bool = False
+    ) -> None:
         super().__init__(f"[{provider}] {message}")
         self.provider = provider
         self.is_safety_issue = is_safety_issue

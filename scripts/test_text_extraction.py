@@ -82,7 +82,11 @@ async def _debug_url(
                     file_path.write_text(result, encoding="utf-8")
 
                     # Optionally write RAW (un-cleaned) version for PDF layers.
-                    if dump_raw and name in {"arxiv_pdf", "pdf_generic", "html_pdf_link"}:
+                    if dump_raw and name in {
+                        "arxiv_pdf",
+                        "pdf_generic",
+                        "html_pdf_link",
+                    }:
                         # Temporarily disable cleaning by monkey-patching _clean_text
                         from services.paper import text_extractor as _te
 
@@ -174,8 +178,12 @@ async def _trace_pymupdf(pdf_bytes: bytes) -> None:
 
 async def _main(argv: list[str]) -> None:
     parser = ArgumentParser()
-    parser.add_argument("--no-exa", action="store_false", dest="use_exa", help="Skip Exa layer")
-    parser.add_argument("--trace-pdf", action="store_true", help="Run low-level PDF trace")
+    parser.add_argument(
+        "--no-exa", action="store_false", dest="use_exa", help="Skip Exa layer"
+    )
+    parser.add_argument(
+        "--trace-pdf", action="store_true", help="Run low-level PDF trace"
+    )
     parser.add_argument(
         "--dump", action="store_true", help="Dump successful layer outputs to files"
     )

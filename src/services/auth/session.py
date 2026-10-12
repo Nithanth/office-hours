@@ -9,12 +9,12 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 
 import config as _cfg
 
-AUTH_COOKIE_NAME = "luxauth"
-OAUTH_STATE_COOKIE_NAME = "luxoauthstate"
+AUTH_COOKIE_NAME = "oh_auth"
+OAUTH_STATE_COOKIE_NAME = "oh_oauth_state"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 OAUTH_STATE_MAX_AGE = 60 * 10
 
-_serializer = URLSafeTimedSerializer(_cfg.config.LUX_SESSION_SECRET, salt="lux-auth")
+_serializer = URLSafeTimedSerializer(_cfg.config.SESSION_SECRET, salt="oh-auth")
 
 
 def _is_secure_cookie(request: Request) -> bool:
@@ -25,7 +25,7 @@ def _is_secure_cookie(request: Request) -> bool:
     """
     if _cfg.config.ENV == "prod":
         return True
-    return request.url.scheme == "https"
+    return bool(request.url.scheme == "https")
 
 
 def get_auth_user_id(request: Request) -> str | None:
@@ -49,7 +49,9 @@ def require_auth_user_id(request: Request) -> str:
     user_id = get_auth_user_id(request)
     if user_id:
         return user_id
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required"
+    )
 
 
 def set_auth_cookie(response: Response, user_id: str, request: Request) -> None:
@@ -77,7 +79,9 @@ def verify_oauth_state(state: str) -> dict[str, Any]:
     try:
         payload = _serializer.loads(state, max_age=OAUTH_STATE_MAX_AGE)
     except BadData as exc:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state") from exc
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired OAuth state"
+        ) from exc
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     return cast(dict[str, Any], payload)
