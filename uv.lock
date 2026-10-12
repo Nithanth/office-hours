@@ -966,7 +966,7 @@ wheels = [
 
 [[package]]
 name = "exa-py"
-version = "2.15.0"
+version = "2.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpcore" },
@@ -977,9 +977,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/4e/baca6add49c57eb1edc62bd2b2a1574b66bdb559a51f6e8c295e7d419e35/exa_py-2.15.0.tar.gz", hash = "sha256:8b3c3dbfe78e57b116e1ef50dec35c921519fb6cee94ed6c986d707b89de44fb", size = 66274, upload-time = "2026-06-24T23:29:07.932Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/f7/89382f6adfb180b879ba6b71e25df857e093d38726d98688652a0c67482f/exa_py-2.25.0.tar.gz", hash = "sha256:4d171a4e099c0af18a725e4f64db6792a5874c3d08cf695334a6ae66f4ca5a92", size = 83644, upload-time = "2026-10-01T21:33:43.817Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/1c/335681b69de8f2659d7555892b35b64fd586739a95623e03e9e92d57f3be/exa_py-2.15.0-py3-none-any.whl", hash = "sha256:12b8f7df70253df4474c9587e8e518934f311199f0e56be267e07268a49a487e", size = 85628, upload-time = "2026-06-24T23:29:06.587Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/36/5b467bcb4bd0612404784779252ccdef98b424d12b3e0e1d472f754e6dce/exa_py-2.25.0-py3-none-any.whl", hash = "sha256:8d44cc80cbb591952a37a186e2af2130a99f00b0e67954139cd5e2fdfda1f561", size = 113156, upload-time = "2026-10-01T21:33:42.514Z" },
 ]
 
 [[package]]
@@ -2634,7 +2634,7 @@ requires-dist = [
     { name = "anthropic", specifier = "~=0.53" },
     { name = "asyncpg", specifier = "~=0.31" },
     { name = "cryptography", specifier = ">=42" },
-    { name = "exa-py", specifier = ">=1.13" },
+    { name = "exa-py", specifier = ">=2.25" },
     { name = "fastapi", specifier = "~=0.136" },
     { name = "google-api-core", specifier = "~=2.25" },
     { name = "google-genai", specifier = "~=1.19" },

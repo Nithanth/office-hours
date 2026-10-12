@@ -248,7 +248,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 **shared_kwargs,
             )
         else:
-            search_kwargs = {"category": "research paper"}
+            search_kwargs = {"category": "publication"}
             search_kwargs.update(shared_kwargs)
             exa_results = await asyncio.to_thread(
                 client.search_and_cache,

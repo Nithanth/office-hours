@@ -107,16 +107,19 @@ class ExaAdapter:
         reraise=True,
     )
     def find_similar(self, url: str, **kwargs: Any) -> Any:  # noqa: ANN401
-        """Find pages similar to *url* via :py:meth:`exa_py.Exa.find_similar`.
+        """Find pages similar to *url*.
 
-        In 2.x, find_similar() returns text contents by default.
+        ``Exa.find_similar`` is deprecated in exa-py 2.x; per the SDK's
+        migration note this calls ``search("pages similar to " + url)``
+        with the same filters.
         """
         kwargs.pop("use_autoprompt", None)
+        query = f"pages similar to {url}"
         logger.debug("Exa find_similar", url=url, params=kwargs)
         if _METRICS_ENABLED and EXA_LAT is not None:
             with EXA_LAT.time():
-                return self._sync.find_similar(url, **kwargs)
-        return self._sync.find_similar(url, **kwargs)
+                return self._sync.search(query, **kwargs)
+        return self._sync.search(query, **kwargs)
 
     # ------------------------------------------------------------------
     # Get contents (still supported in 2.x)
