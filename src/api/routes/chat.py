@@ -2,6 +2,7 @@
 
 import asyncio
 import html
+import json as _json
 import pathlib as _pathlib
 import time
 import urllib.parse as _urlparse
@@ -248,6 +249,7 @@ async def chat_stream(
                     return True
 
             if _needs_refresh():
+                yield "event: status\ndata: Reading the paper\u2026\n\n"
                 path = await paper_service.get_paper_content_from_id(paper_id)
                 if path:
                     chat_state.paper_cache.setdefault(paper_id, {})[
@@ -267,15 +269,14 @@ async def chat_stream(
 
                     if chat_state.last_role(paper_id) == "user":
                         # Build prompt with requested audience style.
-                        # build_prompt returns str or (str, list[str]) when figures are available.
-                        prompt_result = await build_prompt(
-                            chat_state, paper_id, audience_type
-                        )
-                        _figure_paths: list[str] = []
-                        if isinstance(prompt_result, tuple):
-                            prompt, _figure_paths = prompt_result
-                        else:
-                            prompt = prompt_result
+                        bundle = await build_prompt(chat_state, paper_id, audience_type)
+                        prompt = bundle.prompt
+
+                        # Tell the UI which numbered context chunks the prompt
+                        # cites as [n] so it can render citation chips.
+                        if bundle.sources:
+                            yield f"event: sources\ndata: {_json.dumps(bundle.sources)}\n\n"
+                        yield "event: status\ndata: Thinking\u2026\n\n"
 
                         async with get_semaphore(session_id, paper_id):
                             # Choose model based on user selection (fallback to default).
@@ -286,7 +287,7 @@ async def chat_stream(
                             model_cfg = settings.AVAILABLE_MODELS[selected_key]
                             model_id = model_prefs.resolve_model_id(selected_key)
 
-                            # TODO: When _figure_paths is non-empty, use a vision-capable
+                            # TODO: When bundle.figure_paths is non-empty, use a vision-capable
                             # streaming endpoint to include images in the LLM context.
                             # For now, figure descriptions are included as text in the
                             # prompt context (via RAG retrieval), which provides good

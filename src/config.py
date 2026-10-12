@@ -122,7 +122,7 @@ class Config(BaseSettings):
     # ------------------------------------------------------------------
     # Chat behaviour
     # ------------------------------------------------------------------
-    CHAT_MAX_TOKENS: int = Field(default=512, ge=1)
+    CHAT_MAX_TOKENS: int = Field(default=2048, ge=1)
     CHAT_TEMPERATURE: float = Field(default=0.7, ge=0.0, le=2.0)
     CHAT_STREAM_BUFFER: int = Field(default=100, ge=1)
     CHAT_KEEPALIVE_SEC: int = Field(default=1, ge=0)

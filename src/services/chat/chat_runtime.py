@@ -3,12 +3,29 @@
 import asyncio
 import os
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Any
 
 from loguru import logger
 
 from config import config
 from services.chat.chat_state import ChatState
 from services.paper.text_extractor import TextExtractor
+
+
+@dataclass
+class PromptBundle:
+    """Prompt plus auxiliary context for the chat stream.
+
+    ``figure_paths`` holds extracted figure images for multimodal models and
+    ``sources`` the numbered RAG chunks the prompt cites as ``[n]``; the stream
+    endpoint emits ``sources`` as an SSE event so the UI can render citations.
+    """
+
+    prompt: str
+    figure_paths: list[str] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
+
 
 # Concurrency guard – max 3 concurrent generations per (session, paper)
 _PaperKey = tuple[str, str]  # (session_id, paper_id)
@@ -32,13 +49,12 @@ async def build_prompt(
     audience_type: str = "semi_technical",
     max_history: int = 10,
     excerpt_chars: int | None = None,
-) -> str | tuple[str, list[str]]:
+) -> PromptBundle:
     """Construct prompt with recent chat + paper excerpt.
 
-    Returns either a plain prompt string (for text-only models) or a tuple of
-    (prompt, figure_image_paths) when multimodal context is available.  Callers
-    should check the return type to decide whether to include images in the LLM
-    call.
+    Returns a :class:`PromptBundle` carrying the prompt, any figure image
+    paths for multimodal context, and the numbered retrieval sources the
+    prompt instructs the model to cite as ``[n]``.
     """
 
     # ------------------------------------------------------------------
@@ -66,7 +82,7 @@ async def build_prompt(
             sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]
 
         prompt = f"{sys_prompt}\n\nConversation:\n{history_txt}\n\nAssistant:"
-        return prompt
+        return PromptBundle(prompt=prompt)
 
     # ------------------------------------------------------------------
     # RAG retrieval: if a vector index exists for this paper, use the user's
@@ -74,6 +90,7 @@ async def build_prompt(
     # ------------------------------------------------------------------
     context_chunks = ""
     figure_image_paths: list[str] = []  # paths to figure images for vision LLM
+    sources: list[dict[str, Any]] = []  # numbered RAG chunks for inline [n] cites
     try:
         import importlib
         import sys
@@ -95,16 +112,26 @@ async def build_prompt(
                 top_k=config.RAG_TOP_K,
             )
             if matches:
-                # Prefix each chunk with its section heading (if available).
-                from typing import Any, cast
+                # Number each chunk and prefix its section heading (if any) so
+                # the model can cite sources inline as [n].
+                from typing import cast
 
-                def _format_row(r: dict[str, Any]) -> str:
+                def _format_row(idx: int, r: dict[str, Any]) -> str:
                     sec = r.get("section", "")
-                    if sec:
-                        return f"[{sec}]\n{cast(str, r['text'])}"
-                    return cast(str, r["text"])
+                    head = f"[{idx}] {sec}" if sec else f"[{idx}]"
+                    return f"{head}\n{cast(str, r['text'])}"
 
-                context_chunks = "\n\n".join(_format_row(m) for m in matches)
+                context_chunks = "\n\n".join(
+                    _format_row(i + 1, m) for i, m in enumerate(matches)
+                )
+                sources = [
+                    {
+                        "n": i + 1,
+                        "section": str(m.get("section") or ""),
+                        "snippet": cast(str, m.get("text") or "")[:240],
+                    }
+                    for i, m in enumerate(matches)
+                ]
                 logger.debug(
                     "rag_retrieval",
                     paper_id=paper_id,
@@ -224,10 +251,21 @@ async def build_prompt(
     sys_prompt = CHAT_SYSTEM_PROMPT
 
     # Append dynamic instructions specific to the chat context.
+    sys_prompt += " Answer the user's latest question clearly and concisely."
+    if sources:
+        sys_prompt += (
+            " Use information from the numbered *Context* chunks below; when you"
+            " draw on a chunk, cite it inline as [n] (e.g. [1], [3]) matching its"
+            " number. Do not invent citations or cite numbers that do not appear."
+        )
+    else:
+        sys_prompt += (
+            " Use information from the *Context* below;"
+            " do NOT mention the context explicitly."
+        )
     sys_prompt += (
-        " Answer the user's latest question clearly and concisely."
-        " Use information from the *Context* below; do NOT mention the context explicitly."
-        " If the context contains lines starting with '=== TABLE', render them as markdown tables in your answer."
+        " If the context contains lines starting with '=== TABLE',"
+        " render them as markdown tables in your answer."
     )
 
     # Adjust tone suffix based on audience type
@@ -246,7 +284,4 @@ async def build_prompt(
 
     prompt = f"{sys_prompt}\n\nConversation:\n{history_txt}\n\nContext:\n{excerpt}\n\nAssistant:"
 
-    # Return with figure image paths if multimodal context is available.
-    if figure_image_paths:
-        return (prompt, figure_image_paths)
-    return prompt
+    return PromptBundle(prompt=prompt, figure_paths=figure_image_paths, sources=sources)

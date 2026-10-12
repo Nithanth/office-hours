@@ -305,6 +305,20 @@ export function enhanceModal(modal) {
   style.id = "oh-extra-styles";
   style.textContent = `
     .caret { font-weight: 400; }
+    .oh-typing { display:inline-flex; align-items:center; gap:8px; }
+    .oh-typing-dots { display:inline-flex; gap:4px; }
+    .oh-typing-dots i { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.3; animation:oh-dot-pulse 1.2s ease-in-out infinite; }
+    .oh-typing-dots i:nth-child(2) { animation-delay:.15s; }
+    .oh-typing-dots i:nth-child(3) { animation-delay:.3s; }
+    @keyframes oh-dot-pulse { 0%,60%,100% { opacity:.3; transform:translateY(0); } 30% { opacity:1; transform:translateY(-3px); } }
+    .oh-typing-status { font-size:.8em; opacity:.65; font-style:italic; }
+    .stream-cursor { display:inline-block; width:9px; height:1.05em; margin-left:1px; vertical-align:text-bottom; background:currentColor; border-radius:1px; animation:oh-caret-blink 1s steps(2,jump-none) infinite; }
+    @keyframes oh-caret-blink { to { visibility:hidden; } }
+    .chat-cite { color:#2563eb; cursor:help; font-size:.72em; margin-left:1px; }
+    .chat-sources { margin-top:.6rem; padding-top:.45rem; border-top:1px solid rgba(128,128,128,.35); font-size:.8em; opacity:.85; }
+    .chat-sources-label { font-weight:600; margin-bottom:.2em; font-size:.85em; letter-spacing:.02em; }
+    .chat-source-item { margin:.15em 0; }
+    .chat-source-n { color:#2563eb; margin-right:.3em; }
     .copy-btn { position: absolute; top:4px; right:4px; border:none; background:transparent; cursor:pointer; }
     .copy-btn:hover { color:#ef4444; }
     .export-btn { background:transparent; border:none; cursor:pointer; margin-left:6px; }

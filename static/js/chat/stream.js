@@ -11,6 +11,33 @@ ensureMarkdownLibs();
 // Map<Element, Entry> tracking in-flight SSE token buffers
 const _pendingTokenBuffers = new Map();
 
+// ---------------------------------------------------------------------------
+// Auto-scroll: only pin the log to the bottom while the user is near it.
+// Scrolling up sets _ohPinBottom=false so streaming doesn't yank the view.
+// ---------------------------------------------------------------------------
+const _NEAR_BOTTOM_PX = 48;
+
+function _watchScroll(container) {
+  if (!container || container._ohScrollWatched) return;
+  container._ohScrollWatched = true;
+  container._ohPinBottom = true;
+  container.addEventListener(
+    "scroll",
+    () => {
+      container._ohPinBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight <
+        _NEAR_BOTTOM_PX;
+    },
+    { passive: true }
+  );
+}
+
+function _smartScrollToBottom(container) {
+  if (!container) return;
+  _watchScroll(container);
+  if (container._ohPinBottom !== false) scrollToBottom(container);
+}
+
 /**
  * Start animated typing indicator on a just-inserted assistant bubble and register
  * token buffer bookkeeping. Returns the entry stored in _pendingTokenBuffers.
@@ -18,14 +45,22 @@ const _pendingTokenBuffers = new Map();
 function _startTypingIndicator(targetEl, batchMs) {
   dbg("typing-indicator →", { targetEl, batchMs });
 
-  // If HTMX has already swapped some early token content into the bubble
-  // before our listener took over, capture that text so we don't lose it
-  // when we replace the bubble's HTML with the caret span.
-  const preExisting = targetEl.textContent || "";
-
+  // CSS-animated three-dot indicator plus a status label the server drives via
+  // `status` SSE events ("Reading the paper…", "Thinking…").
   const contentSpan = document.createElement("span");
-  contentSpan.className = "caret";
-  contentSpan.textContent = "●"; // cycles through ● ●● ●●●
+  contentSpan.className = "oh-typing";
+  const dots = document.createElement("span");
+  dots.className = "oh-typing-dots";
+  dots.innerHTML = "<i></i><i></i><i></i>";
+  const statusEl = document.createElement("span");
+  statusEl.className = "oh-typing-status";
+  statusEl.textContent = "Thinking…";
+  contentSpan.appendChild(dots);
+  contentSpan.appendChild(statusEl);
+
+  // Blinking block cursor pinned to the end of the streamed text.
+  const cursor = document.createElement("span");
+  cursor.className = "stream-cursor";
 
   const entry = {
     buf: [],
@@ -38,6 +73,8 @@ function _startTypingIndicator(targetEl, batchMs) {
     md: "", // start fresh – ignore placeholder/ellipsis to avoid ".." prefix
     source: null, // EventSource reference
     contentEl: contentSpan,
+    statusEl,
+    cursorEl: cursor,
   };
 
 
@@ -46,13 +83,8 @@ function _startTypingIndicator(targetEl, batchMs) {
 
   // Ensure log stays scrolled while the assistant is typing
   const container = targetEl.closest(".chat-log-container");
-  if (container) scrollToBottom(container);
+  if (container) _smartScrollToBottom(container);
 
-  entry.typingTimer = setInterval(() => {
-    const states = ["●", "●●", "●●●"];
-    const current = contentSpan.textContent;
-    contentSpan.textContent = states[(states.indexOf(current) + 1) % states.length];
-  }, 500);
   _pendingTokenBuffers.set(targetEl, entry);
 
   // Disable chat controls while streaming
@@ -135,20 +167,23 @@ function _flushTokens(targetEl) {
       });
 
       entry.contentEl.innerHTML = html;
+      entry.contentEl.appendChild(entry.cursorEl);
       entry.lastRender = now;
     } catch (e) {
       // If marked throws, fall back to plain text
       entry.contentEl.textContent = entry.md;
+      entry.contentEl.appendChild(entry.cursorEl);
     }
   } else if (!window.marked) {
     // marked.js not yet loaded – fall back to raw text
     entry.contentEl.textContent = entry.md;
+    entry.contentEl.appendChild(entry.cursorEl);
   }
   // If marked is available but throttle hasn't elapsed, skip render (keep previous innerHTML)
 
-  // Keep viewport pinned to bottom as tokens flush
+  // Keep viewport pinned to bottom as tokens flush (unless user scrolled up)
   const container = targetEl.closest(".chat-log-container");
-  if (container) scrollToBottom(container);
+  if (container) _smartScrollToBottom(container);
   console.debug('[oh]  flushTokens',
     { id: targetEl.id, mdLen: entry.md.length, first: entry.first });
 }
@@ -252,6 +287,9 @@ function _finalizeBubble(targetEl) {
         finalHtml = finalHtml.replace(`%%MATH${i}%%`, original);
       });
       targetEl.innerHTML = finalHtml;
+      // Convert [n] markers to citation chips and append a Sources footer
+      // when the stream announced numbered context chunks.
+      _applyCitations(targetEl, targetEl._ohSources);
     })
     // --- KaTeX math rendering --------------------------------------------
     .then(() => ensureKatexLoaded())
@@ -292,9 +330,9 @@ function _finalizeBubble(targetEl) {
     const modal = targetEl.closest(".modal");
     if (modal) setControlsEnabled(modal, true);
 
-    // Final scroll to show completed message
+    // Final scroll to show completed message (respects user scroll-up)
     const container = targetEl.closest(".chat-log-container");
-    if (container) scrollToBottom(container);
+    if (container) _smartScrollToBottom(container);
 
     // Persist transcript *after* final HTML render so cache stays clean
     _debouncedSave(targetEl, true);
@@ -314,6 +352,68 @@ function _finalizeBubble(targetEl) {
         textSample: targetEl.textContent.slice(0, 120) });
     // Persist transcript (debounced)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Citations: [n] markers → superscript chips + Sources footer
+// ---------------------------------------------------------------------------
+function _renderSourcesFooter(bubbleEl, sources) {
+  const footer = document.createElement("div");
+  footer.className = "chat-sources";
+  const label = document.createElement("div");
+  label.className = "chat-sources-label";
+  label.textContent = "Sources";
+  footer.appendChild(label);
+  for (const s of sources) {
+    const item = document.createElement("div");
+    item.className = "chat-source-item";
+    item.title = s.snippet || "";
+    const num = document.createElement("span");
+    num.className = "chat-source-n";
+    num.textContent = `[${s.n}]`;
+    const txt = document.createElement("span");
+    txt.textContent = s.section || "Paper excerpt";
+    item.appendChild(num);
+    item.appendChild(txt);
+    footer.appendChild(item);
+  }
+  bubbleEl.appendChild(footer);
+}
+
+function _applyCitations(bubbleEl, sources) {
+  if (!Array.isArray(sources) || !sources.length) return;
+  const byNum = new Map(sources.map((s) => [s.n, s]));
+  const walker = document.createTreeWalker(bubbleEl, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let node;
+  while ((node = walker.nextNode())) nodes.push(node);
+  const re = /\[(\d{1,2})\]/g;
+  for (const tn of nodes) {
+    const parent = tn.parentElement;
+    if (!parent || parent.closest("pre, code, a, .chat-cite, .chat-sources")) continue;
+    const text = tn.nodeValue;
+    re.lastIndex = 0;
+    if (!re.test(text)) continue;
+    re.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      const src = byNum.get(parseInt(m[1], 10));
+      if (!src) continue; // [n] outside the known chunks stays plain text
+      frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const sup = document.createElement("sup");
+      sup.className = "chat-cite";
+      sup.textContent = `[${m[1]}]`;
+      sup.title = (src.section ? src.section + "\n" : "") + (src.snippet || "");
+      frag.appendChild(sup);
+      last = m.index + m[0].length;
+    }
+    if (last === 0) continue;
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    parent.replaceChild(frag, tn);
+  }
+  if (!bubbleEl.querySelector(".chat-sources")) _renderSourcesFooter(bubbleEl, sources);
 }
 
 // ---------------------------------------------------------------------------
@@ -425,17 +525,36 @@ function _attachEventSource(bubbleEl) {
   let entry = null;
   const batchMs = parseInt(bubbleEl.dataset.batchMs || "20", 10);
 
-  const onAssistant = (evt) => {
+  const ensureEntry = () => {
+    // Reuse an indicator the afterSwap handler may already have created.
     if (!entry) {
-      entry = _startTypingIndicator(bubbleEl, batchMs);
+      entry = _pendingTokenBuffers.get(bubbleEl) || _startTypingIndicator(bubbleEl, batchMs);
       entry.source = es;
     }
-    entry.buf.push(evt.data);
+    return entry;
+  };
+
+  const onAssistant = (evt) => {
+    const e = ensureEntry();
+    e.buf.push(evt.data);
     const now = performance.now();
-    if (now - entry.lastFlush > entry.batchMs) {
+    if (now - e.lastFlush > e.batchMs) {
       _flushTokens(bubbleEl);
     }
   };
+
+  es.addEventListener("status", (evt) => {
+    const e = ensureEntry();
+    if (e.first && e.statusEl) e.statusEl.textContent = evt.data || "Thinking…";
+  });
+
+  es.addEventListener("sources", (evt) => {
+    try {
+      bubbleEl._ohSources = JSON.parse(evt.data);
+    } catch (_) {
+      /* malformed sources payload – skip citations */
+    }
+  });
 
   es.addEventListener("assistant", onAssistant);
   es.addEventListener("message_done", () => {
