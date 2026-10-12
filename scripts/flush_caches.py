@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Utility for clearing Lux Scholar caches.
+"""Utility for clearing Office Hours caches.
 
 Usage examples:
 
@@ -105,7 +105,7 @@ def _clear_vector_cache() -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Clear Lux Scholar caches")
+    parser = argparse.ArgumentParser(description="Clear Office Hours caches")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--summary",

@@ -46,7 +46,7 @@ def _render_author_card(author: AuthorResult) -> str:
     )
 
     return (
-        f"<div class='author-card' style='padding:12px;border:1px solid var(--lux-border,#444);"
+        f"<div class='author-card' style='padding:12px;border:1px solid var(--oh-border,#444);"
         f"border-radius:8px;margin-bottom:8px;cursor:pointer;transition:border-color 0.15s;'"
         f" hx-post='/author/profile' hx-target='#search-results-container' hx-swap='innerHTML'"
         f' hx-vals=\'{{"author_id": "{html.escape(author.author_id)}", "author_name": "{name_esc}"}}\''
@@ -62,7 +62,7 @@ def _render_author_list(authors: list[AuthorResult], query: str) -> str:
     """Render the full author search results panel."""
     if not authors:
         return (
-            "<div style='padding:24px;text-align:center;border:1px dashed var(--lux-border,#444);"
+            "<div style='padding:24px;text-align:center;border:1px dashed var(--oh-border,#444);"
             "border-radius:8px;margin-top:12px;'>"
             f"<p style='opacity:0.7;'>No authors found for \"{html.escape(query)}\". "
             "Try a different name or spelling.</p></div>"
@@ -169,8 +169,8 @@ async def author_profile_view(
     # Build header with author stats + generate profile button
     a = profile.author
     header_html = (
-        f"<div style='margin-bottom:16px;padding:16px;border:1px solid var(--lux-border,#444);"
-        f"border-radius:10px;background:var(--lux-card-bg,rgba(255,255,255,0.03));'>"
+        f"<div style='margin-bottom:16px;padding:16px;border:1px solid var(--oh-border,#444);"
+        f"border-radius:10px;background:var(--oh-card-bg,rgba(255,255,255,0.03));'>"
         f"<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;'>"
         f"<div>"
         f"<h2 style='margin:0;font-size:1.3rem;'>{html.escape(a.name)}</h2>"
@@ -318,7 +318,7 @@ async def generate_research_profile(
         profile_html = f"<pre style='white-space:pre-wrap;'>{html.escape(result)}</pre>"
 
     return HTMLResponse(
-        f"<div class='research-profile' style='padding:16px;border:1px solid var(--lux-border,#444);"
+        f"<div class='research-profile' style='padding:16px;border:1px solid var(--oh-border,#444);"
         f"border-radius:8px;line-height:1.6;'>"
         f"<h3 style='margin-top:0;'>Research Profile: {html.escape(profile.author.name)}</h3>"
         f"{profile_html}"

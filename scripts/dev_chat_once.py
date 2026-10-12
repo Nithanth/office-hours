@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal CLI helper to send one chat message to the local Lux Scholar API
+"""Minimal CLI helper to send one chat message to the local Office Hours API
 and print the assistant response to stdout.
 
 Example usage:
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--server",
         default="http://localhost:8000",
-        help="Base Lux Scholar server URL (default: %(default)s)",
+        help="Base Office Hours server URL (default: %(default)s)",
     )
     args = p.parse_args(argv)
 

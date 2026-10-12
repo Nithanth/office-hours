@@ -39,7 +39,7 @@ def _notion_oauth_configured() -> bool:
         database_available()
         and _cfg.config.NOTION_OAUTH_CLIENT_ID
         and _cfg.config.NOTION_OAUTH_CLIENT_SECRET
-        and _cfg.config.LUX_SECRET_ENCRYPTION_KEY
+        and _cfg.config.SECRET_ENCRYPTION_KEY
     )
 
 

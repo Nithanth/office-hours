@@ -5,14 +5,14 @@
 input, select, textarea, button { font-family: Arial, sans-serif !important; }
 
 /* Number input spinner recolour */
-body.lux-dark input[type="number"] {
-  background:#2a2a2a !important; color:var(--lux-red); border:1px solid #555;
+body.oh-dark input[type="number"] {
+  background:#2a2a2a !important; color:var(--oh-red); border:1px solid #555;
 }
-body.lux-dark input[type="number"]::-webkit-inner-spin-button,
-body.lux-dark input[type="number"]::-webkit-outer-spin-button {
+body.oh-dark input[type="number"]::-webkit-inner-spin-button,
+body.oh-dark input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: inner-spin-button !important;
 }
-body.lux-dark input[type="number"]:hover { background:#333 !important; }
+body.oh-dark input[type="number"]:hover { background:#333 !important; }
 
 /* Ask-LLM strip backgrounds */
 #ask-assistant-form, .ask-llm-subtitle, #ask-result-container { background:transparent !important; }
@@ -22,32 +22,32 @@ form[hx-post='/chat'] { display:block; }
 
 .send-btn { padding:6px 10px; background:#2563eb; color:#fff; border:1px solid #000; border-radius:4px; cursor:pointer; }
 .send-btn:hover { background:#1e40af; }
-body.lux-dark .send-btn { background:#333; color:var(--lux-red); border:1px solid #555; }
-body.lux-dark .send-btn:hover { background:#444; color:var(--lux-red); }
+body.oh-dark .send-btn { background:#333; color:var(--oh-red); border:1px solid #555; }
+body.oh-dark .send-btn:hover { background:#444; color:var(--oh-red); }
 
-.stop-gen-btn-global { padding:6px 10px; background:transparent; color:var(--lux-red); border:1px solid var(--lux-red); border-radius:4px; cursor:pointer; display:none; }
+.stop-gen-btn-global { padding:6px 10px; background:transparent; color:var(--oh-red); border:1px solid var(--oh-red); border-radius:4px; cursor:pointer; display:none; }
 
-/* Lux spinner */
-body.lux-dark .lux-spinner { border-color:#444; border-top-color:var(--lux-red); }
+/* Office Hours spinner */
+body.oh-dark .oh-spinner { border-color:#444; border-top-color:var(--oh-red); }
 
 /* Transparent backgrounds for various containers (dark & light) */
-body.lux-dark form,
-body.lux-dark #paper-search-form,
-body.lux-dark #results-and-report-form,
-body.lux-dark #ask-assistant-form,
-body.lux-dark .ask-llm-subtitle,
-body.lux-dark #ask-result-container,
-body.lux-dark #search-results-container,
-body.lux-dark #report-config-area,
-body.lux-dark #report-display-area { background:transparent !important; }
+body.oh-dark form,
+body.oh-dark #paper-search-form,
+body.oh-dark #results-and-report-form,
+body.oh-dark #ask-assistant-form,
+body.oh-dark .ask-llm-subtitle,
+body.oh-dark #ask-result-container,
+body.oh-dark #search-results-container,
+body.oh-dark #report-config-area,
+body.oh-dark #report-display-area { background:transparent !important; }
 
 #paper-search-form, #results-and-report-form, #ask-assistant-form { background:transparent !important; box-shadow:none !important; }
 
 /* Checkbox accent in dark mode */
 input.paper-select-checkbox { vertical-align: middle; margin-top:0.1em; width:13px; height:13px; }
-body.lux-dark input.paper-select-checkbox { accent-color:var(--lux-red); }
+body.oh-dark input.paper-select-checkbox { accent-color:var(--oh-red); }
 @supports not (accent-color: red) {
-  body.lux-dark input.paper-select-checkbox { filter:hue-rotate(330deg) saturate(4); }
+  body.oh-dark input.paper-select-checkbox { filter:hue-rotate(330deg) saturate(4); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -78,27 +78,27 @@ body.lux-dark input.paper-select-checkbox { accent-color:var(--lux-red); }
 }
 
 /* Dark-mode tweaks */
-body.lux-dark .choices__inner {
+body.oh-dark .choices__inner {
   background: #2a2a2a;
   border-color: #555;
-  color: var(--lux-red);
+  color: var(--oh-red);
 }
-body.lux-dark .choices__list--dropdown {
+body.oh-dark .choices__list--dropdown {
   background: #2a2a2a;
   border-color: #555;
 }
 
 /* Sources dropdown dark-mode */
-body.lux-dark #sources-dropdown-btn {
+body.oh-dark #sources-dropdown-btn {
   background: #2a2a2a;
   color: #eee;
   border-color: #555;
 }
-body.lux-dark #sources-dropdown-menu {
+body.oh-dark #sources-dropdown-menu {
   background: #2a2a2a;
   border-color: #555;
   color: #eee;
 }
-body.lux-dark #sources-dropdown-menu label:hover {
+body.oh-dark #sources-dropdown-menu label:hover {
   background: #333;
 }

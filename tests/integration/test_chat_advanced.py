@@ -16,16 +16,16 @@ def test_chat_abort_endpoint(client):
     assert resp.status_code == 200
 
     # Extract session cookie
-    luxsid = resp.cookies.get("luxsid")
-    assert luxsid
+    oh_sid = resp.cookies.get("oh_sid")
+    assert oh_sid
 
     # Manually mark stream_active to simulate long-running SSE
-    cs = get_chat_state(luxsid)
+    cs = get_chat_state(oh_sid)
     cs.stream_active = True
 
     # Call abort
     resp_abort = client.post(
-        "/chat/abort", data={"paper_id": "p1"}, cookies={"luxsid": luxsid}
+        "/chat/abort", data={"paper_id": "p1"}, cookies={"oh_sid": oh_sid}
     )
     assert resp_abort.status_code == 204
     assert cs.stream_active is False
@@ -35,11 +35,11 @@ def test_chat_abort_endpoint(client):
 def test_chat_stream_resume(client):
     # 1. Post message to create state
     resp1 = client.post("/chat", data={"message": "Hello", "paper_id": "p1"})
-    luxsid = resp1.cookies.get("luxsid")
+    oh_sid = resp1.cookies.get("oh_sid")
 
     # 2. First stream to fill buffer
     resp_stream = client.get(
-        "/chat/stream", params={"paper_id": "p1"}, cookies={"luxsid": luxsid}
+        "/chat/stream", params={"paper_id": "p1"}, cookies={"oh_sid": oh_sid}
     )
     assert resp_stream.status_code == 200
     body1 = resp_stream.text
@@ -50,7 +50,7 @@ def test_chat_stream_resume(client):
     resp_resume = client.get(
         "/chat/stream",
         params={"paper_id": "p1", "resume_at": 2},
-        cookies={"luxsid": luxsid},
+        cookies={"oh_sid": oh_sid},
     )
     assert resp_resume.status_code == 200
     body2 = resp_resume.text

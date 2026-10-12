@@ -1,5 +1,5 @@
 # ruff: noqa: E402,F404
-"""Lux Scholar - FastAPI bootstrap.
+"""Office Hours - FastAPI bootstrap.
 
 Main responsibilities:
 1. Configure structured logging (delegated to middleware.logging_setup).

@@ -1,4 +1,4 @@
-"""Export a Lux Scholar report to Notion as a page or database row."""
+"""Export an Office Hours report to Notion as a page or database row."""
 
 from __future__ import annotations
 

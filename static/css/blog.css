@@ -20,7 +20,7 @@
 
 /* Dark theme — applied via [data-theme="dark"] on <html> set by an inline
    script BEFORE the first paint, so there's no light-flash. The class is
-   driven by Lux's localStorage 'theme' key (set by settings.js) so the blog
+   driven by the app's localStorage 'theme' key (set by settings.js) so the blog
    page matches whatever theme the user chose in the main app. */
 :root[data-theme="dark"] {
   --blog-bg: #0f172a;
@@ -174,7 +174,7 @@ body {
   letter-spacing: 0.02em;
   margin-right: 4px;
 }
-.blog-writing-pill .lux-spinner.small {
+.blog-writing-pill .oh-spinner.small {
   width: 12px;
   height: 12px;
 }

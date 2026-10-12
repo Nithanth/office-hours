@@ -26,7 +26,7 @@ _BATCH_LIMIT = 500  # S2 batch endpoint max
 
 def _get_headers() -> dict[str, str]:
     """Build request headers, including API key if configured."""
-    headers = {"User-Agent": "LuxScholar/1.0", "Content-Type": "application/json"}
+    headers = {"User-Agent": "OfficeHours/1.0", "Content-Type": "application/json"}
     api_key = getattr(_cfg.config, "SEMANTIC_SCHOLAR_API_KEY", None)
     if api_key:
         headers["x-api-key"] = api_key

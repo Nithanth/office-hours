@@ -1,4 +1,4 @@
-/* util.js – thin shared helpers for Lux Scholar frontend (ESM).
+/* util.js – thin shared helpers for Office Hours frontend (ESM).
  * Only exports widely-used utilities; keep lean.
  *
  * Guidelines:
@@ -12,7 +12,7 @@
 // DEBUG flag.
 export function dbg(...args) {
   // eslint-disable-next-line no-console
-  if (window.DEBUG !== false) console.debug("[lux]", ...args);
+  if (window.DEBUG !== false) console.debug("[oh]", ...args);
 }
 
 // HTML entity decoder – handy when turning HTML string back into plain text
@@ -47,4 +47,4 @@ export function rafThrottle(fn) {
 }
 
 // Make util functions accessible from console for quick inspection.
-window.luxUtil = { dbg, decodeEntities, rafThrottle };
+window.ohUtil = { dbg, decodeEntities, rafThrottle };

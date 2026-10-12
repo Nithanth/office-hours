@@ -20,9 +20,9 @@ button:disabled {
   margin: 1em 0;
   font-weight: 600;
 }
-body.lux-dark .error-banner {
+body.oh-dark .error-banner {
   background: #4b1c1c;
-  color: var(--lux-red);
+  color: var(--oh-red);
   border-color: #7f1d1d;
 }
 
@@ -40,14 +40,14 @@ body.lux-dark .error-banner {
 .ask-assistant-btn:hover {
   background: #1e40af;
 }
-body.lux-dark .ask-assistant-btn {
+body.oh-dark .ask-assistant-btn {
   background: #333;
-  color: var(--lux-red);
+  color: var(--oh-red);
   border: 1px solid #555;
 }
-body.lux-dark .ask-assistant-btn:hover {
+body.oh-dark .ask-assistant-btn:hover {
   background: #444;
-  color: var(--lux-red);
+  color: var(--oh-red);
 }
 
 /* --- Legacy layout utility classes (migrated from styles.css) --- */
@@ -81,25 +81,25 @@ body.lux-dark .ask-assistant-btn:hover {
 
 /* --- Link colour normalisation ----------------------------------------- */
 a, a:visited { color:#2563eb; }
-body.lux-dark a, body.lux-dark a:visited { color:var(--lux-red); }
+body.oh-dark a, body.oh-dark a:visited { color:var(--oh-red); }
 
 /* Preserve white nav links */
 nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
-body.lux-dark button { background:#333; color:var(--lux-red); border:1px solid #555; }
-body.lux-dark button:hover:not(:disabled) { background:#444; }
+body.oh-dark button { background:#333; color:var(--oh-red); border:1px solid #555; }
+body.oh-dark button:hover:not(:disabled) { background:#444; }
 
 /* Inputs / text areas to match dark grey */
-body.lux-dark input, body.lux-dark textarea, body.lux-dark select {
-  background:#2a2a2a; color:var(--lux-red); border:1px solid #555;
+body.oh-dark input, body.oh-dark textarea, body.oh-dark select {
+  background:#2a2a2a; color:var(--oh-red); border:1px solid #555;
 }
-body.lux-dark input:hover, body.lux-dark textarea:hover, body.lux-dark select:hover {
+body.oh-dark input:hover, body.oh-dark textarea:hover, body.oh-dark select:hover {
   background:#333;
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
-body.lux-dark .text-blue-500 { color: var(--lux-red); }
+body.oh-dark .text-blue-500 { color: var(--oh-red); }
 
 /* Ensure mobile no-horizontal-scroll */
 html, body { overflow-x: hidden; }
@@ -112,13 +112,13 @@ html, body { overflow-x: hidden; }
 }
 
 /* Skeleton loading pulse */
-@keyframes lux-pulse {
+@keyframes oh-pulse {
   0% { background-color:#eee; }
   50% { background-color:#ddd; }
   100% { background-color:#eee; }
 }
 .skeleton {
-  animation: lux-pulse 1.2s ease-in-out infinite;
+  animation: oh-pulse 1.2s ease-in-out infinite;
   pointer-events:none;
   color: transparent !important;
 }
@@ -134,7 +134,7 @@ html, body { overflow-x: hidden; }
 .pager button {
   background: none;
   border: none;
-  color: var(--lux-blue, #0074d9);
+  color: var(--oh-blue, #0074d9);
   cursor: pointer;
   padding: 4px 6px;
   font-size: 0.95rem;

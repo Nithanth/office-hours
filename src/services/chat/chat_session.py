@@ -10,11 +10,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 import config as _cfg
 
-COOKIE_NAME = "luxsid"
+COOKIE_NAME = "oh_sid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
-_SIGN_SECRET = _cfg.config.LUX_SESSION_SECRET
-serializer = URLSafeSerializer(_SIGN_SECRET, salt="lux-chat")
+_SIGN_SECRET = _cfg.config.SESSION_SECRET
+serializer = URLSafeSerializer(_SIGN_SECRET, salt="oh-chat")
 
 
 class ChatSessionMiddleware(BaseHTTPMiddleware):

@@ -27,7 +27,8 @@ WORKDIR /app
 ENV PYTHONPATH="/app/src" PYTHONUNBUFFERED=1
 
 # Create non-root user
-RUN addgroup --system lux && adduser --system --ingroup lux lux
+RUN addgroup --system officehours \
+    && adduser --system --ingroup officehours officehours
 
 # Copy dependencies from builder image
 COPY --from=builder /install /usr/local
@@ -40,7 +41,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
-USER lux
+USER officehours
 
 EXPOSE 8000
 

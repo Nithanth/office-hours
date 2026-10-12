@@ -61,11 +61,11 @@ def test_clear_auth_cookie_sets_delete_header():
     assert any(AUTH_COOKIE_NAME in h for h in cookie_headers)
 
 
-def test_auth_cookie_name_is_luxauth():
-    """AUTH_COOKIE_NAME should be 'luxauth'."""
+def test_auth_cookie_name_is_oh_auth():
+    """AUTH_COOKIE_NAME should be 'oh_auth'."""
     from services.auth.session import AUTH_COOKIE_NAME
 
-    assert AUTH_COOKIE_NAME == "luxauth"
+    assert AUTH_COOKIE_NAME == "oh_auth"
 
 
 def test_auth_cookie_max_age_is_30_days():

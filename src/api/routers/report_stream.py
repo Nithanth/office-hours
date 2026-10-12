@@ -213,7 +213,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     sse_url = f"/report/stream?token={token}"
 
     html_skeleton = f"""
-    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
+    <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <div id=\"report-progress\"><div class='oh-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
         </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post (opens customization)\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
         </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
@@ -491,7 +491,7 @@ async def report_stream(
             progress_text = f"Summarizing {block_idx} of {total_blocks}…"
             yield _format_sse_event(
                 "report-progress",
-                f"<div class='lux-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>{progress_text}</span>",
+                f"<div class='oh-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>{progress_text}</span>",
             )
             try:
                 _role_label, block_html = await t

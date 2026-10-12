@@ -110,7 +110,7 @@ class DirectQueryService:
 
         cleaned = self._clean_markdown(result["content"].strip())
         html_body = text_to_html_paragraphs(cleaned)
-        return f"<div id='lux-answer' class='direct-query-answer'>{html_body}</div>"
+        return f"<div id='oh-answer' class='direct-query-answer'>{html_body}</div>"
 
     # ---------------------------------------------------------------------
     # Internal helpers

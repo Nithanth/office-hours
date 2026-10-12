@@ -68,7 +68,7 @@ class AuthorProfile(BaseModel):
 def _get_headers() -> dict[str, str]:
     """Build request headers, including API key if configured."""
     headers: dict[str, str] = {
-        "User-Agent": "LuxScholar/1.0",
+        "User-Agent": "OfficeHours/1.0",
         "Content-Type": "application/json",
     }
     api_key = getattr(_cfg.config, "SEMANTIC_SCHOLAR_API_KEY", None)

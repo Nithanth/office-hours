@@ -1,4 +1,4 @@
-"""Reusable HTML base layout used across Lux Scholar pages."""
+"""Reusable HTML base layout used across Office Hours pages."""
 
 from typing import Any
 
@@ -73,7 +73,7 @@ def base_layout(title_text: str, *content: Any) -> str:
                             "Select Audience", value="", disabled=True, selected=True
                         ),
                         Option("Highly Technical (PhD/Researcher)", value="technical"),
-                        Option("Semi-Technical (Lux)", value="semi_technical"),
+                        Option("Semi-Technical", value="semi_technical"),
                         Option("Non-technical (Other VCs)", value="non_technical"),
                         id="aud-select",
                         cl="mr-3",

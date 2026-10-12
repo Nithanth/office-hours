@@ -1,6 +1,6 @@
-# Lux Scholar
+# Office Hours
 
-![CI](https://github.com/your-org/lux_scholar/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Nithanth/lux_scholar/actions/workflows/ci.yml/badge.svg)
 
 A web-based research paper assistant for searching academic papers, extracting full text, generating AI reports, chatting with paper-grounded context, creating notes/blog drafts, and exporting reports to Notion.
 
@@ -56,7 +56,7 @@ If you want to run the app directly without Docker:
 The app can still run in local demo mode with no database. For multi-user beta mode:
 
 1. Provision Postgres and set `DATABASE_URL`.
-2. Generate `LUX_SECRET_ENCRYPTION_KEY`:
+2. Generate `OH_SECRET_ENCRYPTION_KEY`:
 
    ```bash
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -76,7 +76,7 @@ In development, tables are also created automatically when `DATABASE_URL` is set
 
 ## Demo
 
-![Lux Scholar Demo](static/images/LuxScholarMVPDemo.gif)
+![Office Hours Demo](static/images/OfficeHoursDemo.gif)
 
 ## Project Structure
 

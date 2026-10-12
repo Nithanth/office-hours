@@ -24,7 +24,7 @@ def test_css_prefix(monkeypatch, env: str, css_prefix_env: str | None, expected:
     monkeypatch.setenv("ENV", env)
     # Non-dev/test envs require a non-default session secret to avoid sys.exit(1)
     if env not in ("dev", "test"):
-        monkeypatch.setenv("LUX_SESSION_SECRET", "test-secret-for-css-prefix")
+        monkeypatch.setenv("OH_SESSION_SECRET", "test-secret-for-css-prefix")
     if css_prefix_env is not None:
         monkeypatch.setenv("CSS_PREFIX", css_prefix_env)
 

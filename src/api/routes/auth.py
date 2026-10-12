@@ -40,7 +40,7 @@ def _auth_configured() -> bool:
         database_available()
         and _cfg.config.GOOGLE_CLIENT_ID
         and _cfg.config.GOOGLE_CLIENT_SECRET
-        and _cfg.config.LUX_SECRET_ENCRYPTION_KEY
+        and _cfg.config.SECRET_ENCRYPTION_KEY
     )
 
 
