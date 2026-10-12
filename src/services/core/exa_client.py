@@ -198,7 +198,7 @@ class ExaClient:
             resp = self.client.search(
                 f'url:"{url}"',
                 num_results=1,
-                category="research paper",
+                category="publication",
                 contents=False,
             )
             if resp.results:
@@ -349,7 +349,7 @@ class ExaClient:
                             q,
                             num_results=1,
                             contents={"text": True},
-                            category="research paper",
+                            category="publication",
                         )
                         if search_res.results:
                             res = search_res
@@ -573,14 +573,14 @@ class ExaClient:
         self,
         paper_url: str,
         num_results: int = 5,
-        category: str = "research paper",
+        category: str = "publication",
         *,
         start_published_date: datetime | None = None,
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
     ) -> list[Paper]:
         """
-        Find papers similar to the one at the given URL using Exa's find_similar endpoint.
+        Find papers similar to the one at the given URL via Exa similarity search.
 
         Args:
             paper_url: URL of the paper to find similar papers for.
@@ -635,7 +635,7 @@ class ExaClient:
 
             # v2: contents=False for metadata-only similar results
             exa_kwargs.setdefault("contents", False)
-            similar_response = self.client.find_similar(
+            similar_response = self.adapter.find_similar(
                 paper_url_norm,
                 **exa_kwargs,
             )
@@ -766,7 +766,7 @@ class ExaClient:
         paper_url: str,
         num_similar_results: int = 5,
         *,
-        category: str = "research paper",
+        category: str = "publication",
         start_published_date: datetime | None = None,
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
@@ -1135,7 +1135,7 @@ class ExaClient:
         url_results = self.get_paper_details_and_similar_from_url(
             paper_url,
             num_similar_results=request_count,
-            category=kwargs.get("category", "research paper"),
+            category=kwargs.get("category", "publication"),
             start_published_date=kwargs.get("start_published_date"),
             include_domains=kwargs.get("include_domains"),
             exclude_domains=kwargs.get("exclude_domains"),
@@ -1347,7 +1347,7 @@ class ExaClient:
             # contents=False for metadata-only to avoid fetching full text.
             kwargs.setdefault("type", _cfg.config.EXA_SEARCH_TYPE)
             kwargs.setdefault("contents", False)
-            kwargs.setdefault("category", "research paper")
+            kwargs.setdefault("category", "publication")
             sdk_res = self.adapter.search(query, num_results=num_results, **kwargs)
         except Exception as exc:
             logger.error("Exa search failed for {} - {}", query, exc)
