@@ -23,7 +23,7 @@ import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js?v=2";
 (() => {
   const navEntry = performance.getEntriesByType("navigation")[0];
   const navType = navEntry && navEntry.type ? navEntry.type : "navigate";
-  const hardFlag = sessionStorage.getItem("luxHardReload") === "1";
+  const hardFlag = sessionStorage.getItem("ohHardReload") === "1";
 
   // Conditions that SHOULD wipe the ChatState:
   //   • Fresh navigate (new tab, link, back/forward) → navType !== "reload"
@@ -41,7 +41,7 @@ import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js?v=2";
   }
 
   // Clear flag so next soft reload can restore state again.
-  if (hardFlag) sessionStorage.removeItem("luxHardReload");
+  if (hardFlag) sessionStorage.removeItem("ohHardReload");
 })();
 
 // Submit on Enter, Shift+Enter for newline
@@ -144,8 +144,8 @@ document.body.addEventListener("htmx:beforeSwap", (evt) => {
   const swapEl = evt.detail?.target;
   if (!swapEl || swapEl.id !== "modal-container") return;
   const existingModal = swapEl.querySelector(".modal");
-  if (existingModal && typeof existingModal._luxCleanUp === "function") {
-    existingModal._luxCleanUp();
+  if (existingModal && typeof existingModal._ohCleanUp === "function") {
+    existingModal._ohCleanUp();
   }
 });
 
@@ -186,7 +186,7 @@ export function initChat(sessionId, paperId, chatLogId) {
   // Pick a stable cache key: explicit data-chat-key > data-chat-pid > paperId
   const stableKey = chatLog.dataset.chatPid || chatLog.dataset.chatKey || paperId;
   const html = loadTranscript(sessionId, stableKey);
-  console.debug('[lux] initChat', { stableKey, cachedChars: (html || '').length });
+  console.debug('[oh] initChat', { stableKey, cachedChars: (html || '').length });
   if (typeof html === "string" && html.trim()) {
     chatLog.innerHTML = html;
 
@@ -269,4 +269,4 @@ document.body.addEventListener("htmx:responseError", (e) => {
   }
 });
 
-console.debug("[lux] chat/events.js wired listeners");
+console.debug("[oh] chat/events.js wired listeners");

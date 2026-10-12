@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Format, lint, and type-check Lux Scholar.
+# Format, lint, and type-check Office Hours.
 #
 # Usage:
 #   ./lint.sh            # apply safe Ruff fixes, format, then run mypy

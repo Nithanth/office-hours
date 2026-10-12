@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the Lux Scholar test-suite.
+"""Shared pytest fixtures for the Office Hours test-suite.
 
 This file is imported automatically by *pytest* so the fixtures are
 visible to **all** tests (unit + integration).
@@ -855,11 +855,11 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
         except Exception:
             pass
 
-    # Patch ChatState helper to accept the *signed* luxsid value used in tests so
+    # Patch ChatState helper to accept the *signed* oh_sid value used in tests so
     # `/chat/abort` correctly flips the same object that the test mutates.
     with contextlib.suppress(ModuleNotFoundError):
         import services.chat.chat_state as _cs_mod
-        from services.chat.chat_session import serializer as _lux_serializer
+        from services.chat.chat_session import serializer as _chat_serializer
 
         _orig_get = _cs_mod.get_chat_state
 
@@ -867,7 +867,7 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
             """Resolve either signed cookie value or raw session id to ONE object."""
 
             try:
-                raw = _lux_serializer.loads(token)
+                raw = _chat_serializer.loads(token)
             except Exception:
                 raw = token
 

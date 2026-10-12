@@ -117,7 +117,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         return HTMLResponse(
             "<div class='error-banner' style='padding:12px;border-radius:6px;"
             "background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
-            "color:var(--lux-text,#e0e0e0);margin-top:8px;'>"
+            "color:var(--oh-text,#e0e0e0);margin-top:8px;'>"
             "Please enter a search query.</div>",
             headers={
                 "HX-Retarget": "#search-results-container",

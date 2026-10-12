@@ -1,4 +1,4 @@
-"""FastHTML page components for Lux Scholar's main UI."""
+"""FastHTML page components for Office Hours' main UI."""
 
 import html
 import re
@@ -522,7 +522,7 @@ def render_search_results(
                     "No papers found for this query. Try different keywords or broaden your search.",
                     style="opacity:0.7;",
                 ),
-                style="padding:24px;text-align:center;border:1px dashed var(--lux-border,#444);"
+                style="padding:24px;text-align:center;border:1px dashed var(--oh-border,#444);"
                 "border-radius:8px;margin-top:12px;",
             )
         )
@@ -584,10 +584,10 @@ def render_search_results(
 def loading_indicator_component() -> Div:
     """Spinner visible while search requests are in-flight — centered in card."""
     return Div(
-        Div(cls="lux-spinner"),
+        Div(cls="oh-spinner"),
         Span(
             "Searching the PaperVerse…",
-            id="lux-loading-text",
+            id="oh-loading-text",
             style="display:inline-block; margin-left:6px;",
         ),
         id="loading-indicator",
@@ -599,7 +599,7 @@ def loading_indicator_component() -> Div:
 def report_loading_indicator_component() -> Div:
     """Spinner shown while the server composes a report."""
     return Div(
-        Div(cls="lux-spinner"),
+        Div(cls="oh-spinner"),
         P("Writing report...", style="display:inline-block;"),
         id="report-loading-indicator",
         cls="htmx-indicator report-specific-indicator",
@@ -609,7 +609,7 @@ def report_loading_indicator_component() -> Div:
 def ask_loading_indicator_component() -> Div:
     """Spinner shown while waiting for direct LLM answer."""
     return Div(
-        Div(cls="lux-spinner"),
+        Div(cls="oh-spinner"),
         Span("Consulting Assistant...", style="display:inline-block; margin-left:4px;"),
         id="ask-loading-indicator",
         cls="htmx-indicator ask-llm-indicator",
@@ -759,9 +759,7 @@ def home_page(page_data: SharedPageData) -> Body:
         ),
         # Comma added above to separate Head component from next Body child
         Div(
-            Link(
-                "█▓▒░ Nithu's PhD Student ░▒▓█", href="/", cls="text-lg font-bold mr-4"
-            ),
+            Link("█▓▒░ Office Hours ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
             Div("", style="flex:1"),
             Select(
                 Option("Audience", value="", disabled=True, selected=True),
@@ -796,15 +794,15 @@ def home_page(page_data: SharedPageData) -> Body:
             ),
             BUTTON(
                 I(cls="fa-solid fa-gear"),
-                id="lux-settings-btn",
+                id="oh-settings-btn",
                 type="button",
                 title="Settings",
                 style="border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 8px;",
             ),
-            Span(id="lux-auth-status", cls="top-auth-status"),
+            Span(id="oh-auth-status", cls="top-auth-status"),
             BUTTON(
                 "🌙 Dark",
-                id="lux-dark-toggle",
+                id="oh-dark-toggle",
                 aria_label="Toggle dark mode",
                 type="button",
             ),
@@ -892,7 +890,7 @@ def home_page(page_data: SharedPageData) -> Body:
                             name="mode",
                             value="auto",
                             id="search-papers-btn",
-                            onclick="document.getElementById('lux-loading-text').textContent='Searching the PaperVerse...'",
+                            onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
                         ),
                         BUTTON(
                             I(cls="fa-solid fa-user-graduate"),
@@ -906,7 +904,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                 "var f=document.getElementById('paper-search-form');"
                                 "var q=document.getElementById('search_query').value;"
                                 "if(!q.trim()){return;}"
-                                "document.getElementById('lux-loading-text').textContent='Searching authors...';"
+                                "document.getElementById('oh-loading-text').textContent='Searching authors...';"
                                 "f.setAttribute('hx-post','/author/search');"
                                 "htmx.trigger(f,'submit');"
                                 "setTimeout(function(){f.setAttribute('hx-post','/search');},200);"
@@ -997,13 +995,11 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
             Script(src="/static/js/settings.js"),
         ),
         Div(
-            Link(
-                "█▓▒░ Nithu's PhD Student ░▒▓█", href="/", cls="text-lg font-bold mr-4"
-            ),
+            Link("█▓▒░ Office Hours ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
             Div("", style="flex:1"),
             BUTTON(
                 "🌙 Dark",
-                id="lux-dark-toggle",
+                id="oh-dark-toggle",
                 aria_label="Toggle dark mode",
                 type="button",
             ),
@@ -1012,7 +1008,7 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
         Div(
             Div(
                 Div(
-                    "Nithu's PhD intern",
+                    "Office Hours",
                     cls="welcome-brand",
                 ),
                 P(

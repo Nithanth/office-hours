@@ -1,4 +1,4 @@
-// main.js – ES module entrypoint for Lux Scholar frontend
+// main.js – ES module entrypoint for Office Hours frontend
 // This file bootstraps split modules to keep the bundle manageable and ensure
 // shared helpers are loaded site-wide.
 
@@ -27,7 +27,7 @@ import { ensureMarkdownLibs } from "./chat/markdown.js?v=2";
 ensureMarkdownLibs();
 
 // Shared blog customization modal (used by report.js + blog-view.js).
-// Imported before report.js so window.luxBlog.openCustomizeModal is registered
+// Imported before report.js so window.ohBlog.openCustomizeModal is registered
 // by the time the Blog button click handler attaches.
 import "./blog-modal.js?v=1";
 
@@ -44,8 +44,8 @@ import "./report.js?v=2";
 // ---------------------------------------------------------------------------
 
 (function () {
-  const STATE_KEY = "luxViewState";
-  const HARD_FLAG = "luxHardReload";
+  const STATE_KEY = "ohViewState";
+  const HARD_FLAG = "ohHardReload";
 
   /** Restore view state on *simple* reload. */
   function restoreViewState() {
@@ -117,8 +117,8 @@ import "./report.js?v=2";
   }
 })();
 
-window.__LUX_MODULES_ACTIVE = true;
-console.debug("[lux] main.js loaded (ESM)");
+window.__OH_MODULES_ACTIVE = true;
+console.debug("[oh] main.js loaded (ESM)");
 
 // ---------------------------------------------------------------------------
 // Clear ?search_query param from URL after results render (was inline <script>)
@@ -136,7 +136,7 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
   }
 });
 
-console.debug("[lux] main.js history clean listener wired");
+console.debug("[oh] main.js history clean listener wired");
 
 // ---------------------------------------------------------------------------
 // Sort by date & filter by author (client-side, on search results)
@@ -234,7 +234,7 @@ console.debug("[lux] main.js history clean listener wired");
     if (dlg) return dlg;
     document.body.insertAdjacentHTML(
       "beforeend",
-      `<dialog id="abstract-popover" class="lux-modal" style="max-width:540px;max-height:70vh;overflow-y:auto;">
+      `<dialog id="abstract-popover" class="oh-modal" style="max-width:540px;max-height:70vh;overflow-y:auto;">
          <div id="abstract-popover-body" style="white-space:pre-wrap;font-size:0.9rem;line-height:1.5;"></div>
          <menu style="margin-top:12px;display:flex;justify-content:flex-end;">
            <button value="cancel" style="font-size:0.85rem;">Close</button>

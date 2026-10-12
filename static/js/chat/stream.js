@@ -149,7 +149,7 @@ function _flushTokens(targetEl) {
   // Keep viewport pinned to bottom as tokens flush
   const container = targetEl.closest(".chat-log-container");
   if (container) scrollToBottom(container);
-  console.debug('[lux]  flushTokens',
+  console.debug('[oh]  flushTokens',
     { id: targetEl.id, mdLen: entry.md.length, first: entry.first });
 }
 
@@ -182,7 +182,7 @@ function _addMessageCopyButton(bubbleEl) {
 
 /** Render final markdown & clean up timers, attributes, UI state. */
 function _finalizeBubble(targetEl) {
-  console.debug('[lux] _finalizeBubble enter', { id: targetEl?.id, interrupted: targetEl?.dataset?.interrupted });
+  console.debug('[oh] _finalizeBubble enter', { id: targetEl?.id, interrupted: targetEl?.dataset?.interrupted });
   if (!targetEl || targetEl.dataset.finalised === "1") return;
 
   // Mark as finalised *early* to prevent a late htmx:sseError event from
@@ -308,7 +308,7 @@ function _finalizeBubble(targetEl) {
     // re-establish the stream after we’ve closed it.
     targetEl.setAttribute("hx-sse-reconnect-delay", "2147483647");
 
-    console.debug('[lux]  doneCleanup',
+    console.debug('[oh]  doneCleanup',
       { id: targetEl.id,
         htmlLen: targetEl.innerHTML.length,
         textSample: targetEl.textContent.slice(0, 120) });
@@ -319,17 +319,17 @@ function _finalizeBubble(targetEl) {
 // ---------------------------------------------------------------------------
 // Transcript caching (in-memory Map per session)
 // ---------------------------------------------------------------------------
-window.__luxChatCache = window.__luxChatCache || new Map();
+window.__ohChatCache = window.__ohChatCache || new Map();
 function saveTranscript(_sessionId, key, html) {
-  console.debug('[lux] saveTranscript', { key, chars: html.length });
-  window.__luxChatCache.set(key, html);
+  console.debug('[oh] saveTranscript', { key, chars: html.length });
+  window.__ohChatCache.set(key, html);
 }
 
 export { saveTranscript };
 
 export function loadTranscript(_sessionId, key) {
-  const val = window.__luxChatCache?.get(key) || null;
-  console.debug('[lux] loadTranscript', { key, chars: val ? val.length : 0, sample: (val || '').slice(0, 120) });
+  const val = window.__ohChatCache?.get(key) || null;
+  console.debug('[oh] loadTranscript', { key, chars: val ? val.length : 0, sample: (val || '').slice(0, 120) });
   return val;
 }
 
@@ -347,7 +347,7 @@ export const buildCleanTranscript = (container) => {
         !el.classList.contains("interrupted") &&
         !el.querySelector(".response-stopped");
 
-      console.debug('[lux] buildCleanTranscript assistant', {
+      console.debug('[oh] buildCleanTranscript assistant', {
         id: el.id,
         finalised: el.dataset.finalised,
         interrupted: el.dataset.interrupted,
@@ -395,7 +395,7 @@ function _debouncedSave(bubbleEl, immediate = false) {
     // is absent (edge cases).
     const chatKey =
       container.dataset.chatPid || container.dataset.chatKey || container.id?.replace("chat-log-", "");
-    console.debug('[lux] saveTranscript', chatKey, {
+    console.debug('[oh] saveTranscript', chatKey, {
       cleanedLen: cleaned.length,
       htmlChars: html.length,
       sample: html.slice(0, 80)
@@ -472,7 +472,7 @@ function _setupBubbleObserver() {
 
 _setupBubbleObserver();
 
-console.debug("[lux] chat/stream.js loaded");
+console.debug("[oh] chat/stream.js loaded");
 
 // Re-export helpers for other modules
 export const pendingBuffers = _pendingTokenBuffers;

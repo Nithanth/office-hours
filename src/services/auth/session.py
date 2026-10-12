@@ -9,12 +9,12 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 
 import config as _cfg
 
-AUTH_COOKIE_NAME = "luxauth"
-OAUTH_STATE_COOKIE_NAME = "luxoauthstate"
+AUTH_COOKIE_NAME = "oh_auth"
+OAUTH_STATE_COOKIE_NAME = "oh_oauth_state"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 OAUTH_STATE_MAX_AGE = 60 * 10
 
-_serializer = URLSafeTimedSerializer(_cfg.config.LUX_SESSION_SECRET, salt="lux-auth")
+_serializer = URLSafeTimedSerializer(_cfg.config.SESSION_SECRET, salt="oh-auth")
 
 
 def _is_secure_cookie(request: Request) -> bool:

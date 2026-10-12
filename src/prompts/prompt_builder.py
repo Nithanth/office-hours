@@ -1,4 +1,4 @@
-"""Prompt template helpers for Lux Scholar LLM workflows."""
+"""Prompt template helpers for Office Hours LLM workflows."""
 
 # ---------------------------------------------------------------------------
 # Generic template loader (importlib.resources keeps paths portable)

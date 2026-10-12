@@ -13,7 +13,7 @@ Optional flags:
   --grep PATTERN   Optional case-insensitive regex; only rows whose text matches are shown.
 
 This is purely a debugging helper and has no runtime dependencies outside the
-normal Lux Scholar virtualenv.
+normal Office Hours virtualenv.
 """
 
 # ruff: noqa: E402

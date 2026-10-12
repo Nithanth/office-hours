@@ -1,4 +1,4 @@
-"""Alembic environment for Lux Scholar."""
+"""Alembic environment for Office Hours."""
 
 from __future__ import annotations
 

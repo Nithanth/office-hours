@@ -1,4 +1,4 @@
-"""Lux Scholar Python package root."""
+"""Office Hours Python package root."""
 
 import importlib as _imp
 

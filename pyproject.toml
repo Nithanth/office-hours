@@ -1,5 +1,5 @@
 [project]
-name = "lux-scholar"
+name = "office-hours"
 version = "0.1.0"
 description = "AI-powered research paper assistant"
 requires-python = ">=3.11"

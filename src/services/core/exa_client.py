@@ -1,6 +1,6 @@
 """High-level Exa search/orchestration service.
 
-This module bridges Lux Scholar functionality with the official `exa_py` SDK.
+This module bridges Office Hours functionality with the official `exa_py` SDK.
 It converts high-level application workflows (search, similarity, answer, and
 enrichment) into concrete SDK calls, adds local caching & retry logic, and
 maps Exa SDK results into first-class `Paper` domain objects.  Pure stateless

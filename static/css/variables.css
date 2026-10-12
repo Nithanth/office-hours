@@ -1,7 +1,7 @@
-/* variables.css – theme tokens for Lux Scholar */
+/* variables.css – theme tokens for Office Hours */
 :root {
   /* brand & layout */
-  --lux-red: #ef4444;
+  --oh-red: #ef4444;
   --page-padding: 0.5rem;
 
   /* light theme colours */
@@ -15,19 +15,19 @@
 
   /* dark theme overrides */
   --bg-dark: #1a1a1a;
-  --fg-dark: var(--lux-red);
+  --fg-dark: var(--oh-red);
   --container-bg-dark: var(--bg-dark);
   --container-border-dark: #444;
   --container-shadow-dark: rgba(0, 0, 0, 0.6);
 }
 
-/* Apply dark tokens when .lux-dark is on <body> */
-body.lux-dark {
+/* Apply dark tokens when .oh-dark is on <body> */
+body.oh-dark {
   --bg: var(--bg-dark);
   --fg: var(--fg-dark);
   --container-bg: var(--container-bg-dark);
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
   /* override pinned border */
-  --main-paper-border: var(--lux-red);
+  --main-paper-border: var(--oh-red);
 }

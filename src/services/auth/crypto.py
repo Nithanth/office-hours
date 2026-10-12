@@ -16,16 +16,16 @@ class SecretEncryptionError(RuntimeError):
 
 @lru_cache(maxsize=1)
 def _fernet() -> Fernet:
-    key = _cfg.config.LUX_SECRET_ENCRYPTION_KEY
+    key = _cfg.config.SECRET_ENCRYPTION_KEY
     if not key:
         raise SecretEncryptionError(
-            "Set LUX_SECRET_ENCRYPTION_KEY before storing user secrets."
+            "Set OH_SECRET_ENCRYPTION_KEY before storing user secrets."
         )
     try:
         return Fernet(key.encode())
     except (ValueError, TypeError) as exc:
         raise SecretEncryptionError(
-            "LUX_SECRET_ENCRYPTION_KEY must be a valid Fernet key."
+            "OH_SECRET_ENCRYPTION_KEY must be a valid Fernet key."
         ) from exc
 
 

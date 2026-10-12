@@ -24,7 +24,7 @@ body {
 }
 
 /* Force darker border in dark mode if variables are not cascading */
-body.lux-dark .container {
+body.oh-dark .container {
   border-color: var(--container-border-dark, #444);
 }
 
@@ -61,8 +61,8 @@ footer {
   color:#007bff; /* light mode: blue */
 }
 
-body.lux-dark .pinned-label{
-  color:var(--lux-red); /* dark mode: red */
+body.oh-dark .pinned-label{
+  color:var(--oh-red); /* dark mode: red */
 }
 
 /* dark-mode tweaks handled via CSS vars above */

@@ -13,7 +13,7 @@ class TestSessionSecretValidation:
     def test_prod_with_default_secret_exits(self, monkeypatch):
         """Production startup with insecure default should sys.exit(1)."""
         monkeypatch.setenv("ENV", "prod")
-        monkeypatch.setenv("LUX_SESSION_SECRET", "dev-insecure-secret")
+        monkeypatch.setenv("OH_SESSION_SECRET", "dev-insecure-secret")
         import config
 
         with pytest.raises(SystemExit) as exc_info:
@@ -23,16 +23,16 @@ class TestSessionSecretValidation:
     def test_prod_with_strong_secret_ok(self, monkeypatch):
         """Production startup with custom secret should not exit."""
         monkeypatch.setenv("ENV", "prod")
-        monkeypatch.setenv("LUX_SESSION_SECRET", "my-strong-secret-value-here")
+        monkeypatch.setenv("OH_SESSION_SECRET", "my-strong-secret-value-here")
         import config
 
         importlib.reload(config)
-        assert config.config.LUX_SESSION_SECRET == "my-strong-secret-value-here"
+        assert config.config.SESSION_SECRET == "my-strong-secret-value-here"
 
     def test_dev_with_default_secret_warns(self, monkeypatch):
         """Dev mode with insecure default should emit a warning."""
         monkeypatch.setenv("ENV", "dev")
-        monkeypatch.setenv("LUX_SESSION_SECRET", "dev-insecure-secret")
+        monkeypatch.setenv("OH_SESSION_SECRET", "dev-insecure-secret")
         import config
 
         with pytest.warns(UserWarning, match="insecure default"):

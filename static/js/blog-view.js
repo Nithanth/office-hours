@@ -5,13 +5,13 @@
  * has finished, then renders the markdown with marked.js + DOMPurify,
  * initializes Mermaid diagrams & KaTeX math, applies scroll-driven
  * fade-ins, the reading progress bar, and a theme toggle that mirrors
- * Lux's localStorage 'theme' key so the blog page matches the main app.
+ * the app's localStorage 'theme' key so the blog page matches the main app.
  */
 
 /* globals: marked, DOMPurify, mermaid, katex, renderMathInElement, hljs, vegaEmbed */
 
 // ---------------------------------------------------------------------------
-// Theme — driven by Lux's localStorage 'theme' key for cross-page consistency
+// Theme — driven by the app's localStorage 'theme' key for cross-page consistency
 // ---------------------------------------------------------------------------
 function currentTheme() {
   try {
@@ -619,7 +619,7 @@ async function buildSelfContainedHtml() {
 
   const docComment =
     "<!--\n" +
-    "  Saved by Nithu's PhD intern.\n" +
+    "  Saved by Office Hours.\n" +
     "  Self-contained for blog page styles (CSS inlined). Math (KaTeX),\n" +
     "  diagrams (Mermaid), and interactive charts (Vega-Lite) are loaded\n" +
     "  from public CDNs; open this file with internet access for full\n" +
@@ -699,7 +699,7 @@ function renderError(article, message) {
     '<div class="blog-error" style="padding:2rem;border:1px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,0.08);">' +
     '<h2 style="margin-top:0;">We couldn’t load this blog</h2>' +
     '<p style="opacity:0.85;"></p>' +
-    '<p style="margin-top:1rem;"><a href="/">← Back to Nithu&#39;s PhD intern</a></p>' +
+    '<p style="margin-top:1rem;"><a href="/">← Back to Office Hours</a></p>' +
     "</div>";
   const p = article.querySelector(".blog-error p:first-of-type");
   if (p) p.textContent = safe;
@@ -729,7 +729,7 @@ async function initBlog() {
       console.error("[blog] failed to fetch markdown", err);
       stopRotator();
       if (heroTitle) heroTitle.textContent = "Couldn’t load blog";
-      document.title = "Blog — Nithu's PhD intern";
+      document.title = "Blog — Office Hours";
       renderError(articleEl, err && err.message ? err.message : String(err));
       document.body.classList.remove("blog-is-loading");
       return;
@@ -745,7 +745,7 @@ async function initBlog() {
 
   if (heroTitle) heroTitle.textContent = title || "Research Blog";
   if (metaTime) metaTime.textContent = readingTime(rawMd) + " min read";
-  document.title = (title || "Blog") + " — Nithu's PhD intern";
+  document.title = (title || "Blog") + " — Office Hours";
 
   // Load libs
   await loadAllDeps();
@@ -787,9 +787,9 @@ function initReviseButton(prevToken) {
       showToast("Blog is still being written");
       return;
     }
-    const openModal = window.luxBlog && window.luxBlog.openCustomizeModal;
+    const openModal = window.ohBlog && window.ohBlog.openCustomizeModal;
     if (!openModal) {
-      console.error("[blog] customize modal not available (luxBlog missing)");
+      console.error("[blog] customize modal not available (ohBlog missing)");
       return;
     }
     // Pre-populate with the current blog's accent theme so it stays selected.

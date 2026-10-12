@@ -1789,7 +1789,7 @@ wheels = [
 ]
 
 [[package]]
-name = "lux-scholar"
+name = "office-hours"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

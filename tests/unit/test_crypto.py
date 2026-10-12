@@ -18,7 +18,7 @@ def _set_encryption_key(monkeypatch):
     """Provide a valid Fernet key and clear the LRU cache between tests."""
     import config as _cfg
 
-    monkeypatch.setattr(_cfg.config, "LUX_SECRET_ENCRYPTION_KEY", _TEST_FERNET_KEY)
+    monkeypatch.setattr(_cfg.config, "SECRET_ENCRYPTION_KEY", _TEST_FERNET_KEY)
 
     # Clear the cached Fernet instance so each test picks up the monkeypatched key
     from services.auth.crypto import _fernet
@@ -66,14 +66,14 @@ def test_decrypt_invalid_token_raises():
 
 
 def test_missing_key_raises(monkeypatch):
-    """encrypt_secret must raise when LUX_SECRET_ENCRYPTION_KEY is empty."""
+    """encrypt_secret must raise when OH_SECRET_ENCRYPTION_KEY is empty."""
     import config as _cfg
     from services.auth.crypto import SecretEncryptionError, _fernet, encrypt_secret
 
     _fernet.cache_clear()
-    monkeypatch.setattr(_cfg.config, "LUX_SECRET_ENCRYPTION_KEY", "")
+    monkeypatch.setattr(_cfg.config, "SECRET_ENCRYPTION_KEY", "")
 
-    with pytest.raises(SecretEncryptionError, match="Set LUX_SECRET_ENCRYPTION_KEY"):
+    with pytest.raises(SecretEncryptionError, match="Set OH_SECRET_ENCRYPTION_KEY"):
         encrypt_secret("anything")
 
 
@@ -83,7 +83,7 @@ def test_invalid_key_raises(monkeypatch):
     from services.auth.crypto import SecretEncryptionError, _fernet, encrypt_secret
 
     _fernet.cache_clear()
-    monkeypatch.setattr(_cfg.config, "LUX_SECRET_ENCRYPTION_KEY", "not-a-valid-key")
+    monkeypatch.setattr(_cfg.config, "SECRET_ENCRYPTION_KEY", "not-a-valid-key")
 
     with pytest.raises(SecretEncryptionError, match="valid Fernet key"):
         encrypt_secret("anything")

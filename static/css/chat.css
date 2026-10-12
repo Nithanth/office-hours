@@ -41,14 +41,14 @@
   color: inherit;
 }
 
-body.lux-dark .assistant-message li::marker {
-  color: var(--lux-red);
+body.oh-dark .assistant-message li::marker {
+  color: var(--oh-red);
 }
 
 /* Soften blink – caret stays semi-visible instead of disappearing */
 .caret { opacity: .7; }
 
-@keyframes luxCaretBlink {
+@keyframes ohCaretBlink {
   0%, 100% { opacity: .3; }
   50% { opacity: 1; }
 }
@@ -82,16 +82,16 @@ body.lux-dark .assistant-message li::marker {
 
 .assistant-message.interrupted::after { content:""; }
 
-body.lux-dark .assistant-message { color: var(--lux-red); }
-body.lux-dark .user-message { background:#333; }
-body.lux-dark .user-message,
-body.lux-dark .user-message * { color: var(--lux-red) !important; }
+body.oh-dark .assistant-message { color: var(--oh-red); }
+body.oh-dark .user-message { background:#333; }
+body.oh-dark .user-message,
+body.oh-dark .user-message * { color: var(--oh-red) !important; }
 
 /* Citation results list hover card border */
 .citation-card {
   border: 1px solid #e5e7eb;
 }
-body.lux-dark .citation-card {
+body.oh-dark .citation-card {
   border-color: #333;
 }
 
@@ -104,41 +104,41 @@ body.lux-dark .citation-card {
   border-radius: 4px;
   margin-bottom: 0.75rem;
 }
-body.lux-dark .restore-toast {
+body.oh-dark .restore-toast {
   background-color: #333;
   border-color: #555;
-  color: var(--lux-red);
+  color: var(--oh-red);
 }
 
 /* Dark form controls within chat modals */
-body.lux-dark input,
-body.lux-dark input[type="date"],
-body.lux-dark input[type="search"],
-body.lux-dark textarea,
-body.lux-dark select {
+body.oh-dark input,
+body.oh-dark input[type="date"],
+body.oh-dark input[type="search"],
+body.oh-dark textarea,
+body.oh-dark select {
   background:#2a2a2a !important;
-  color:var(--lux-red) !important;
+  color:var(--oh-red) !important;
   border:1px solid #555 !important;
 }
-body.lux-dark select option { background:#2a2a2a; color:var(--lux-red); }
-body.lux-dark textarea::placeholder { color:#7f7f7f; }
-body.lux-dark textarea:focus,
-body.lux-dark textarea:active { background:#2a2a2a !important; color:var(--lux-red); border:1px solid #555; outline:none; }
+body.oh-dark select option { background:#2a2a2a; color:var(--oh-red); }
+body.oh-dark textarea::placeholder { color:#7f7f7f; }
+body.oh-dark textarea:focus,
+body.oh-dark textarea:active { background:#2a2a2a !important; color:var(--oh-red); border:1px solid #555; outline:none; }
 
-body.lux-dark input:-webkit-autofill,
-body.lux-dark textarea:-webkit-autofill,
-body.lux-dark select:-webkit-autofill {
+body.oh-dark input:-webkit-autofill,
+body.oh-dark textarea:-webkit-autofill,
+body.oh-dark select:-webkit-autofill {
   background:#2a2a2a !important;
   -webkit-box-shadow:0 0 0px 1000px #2a2a2a inset !important;
-  -webkit-text-fill-color:var(--lux-red) !important;
-  color:var(--lux-red) !important;
+  -webkit-text-fill-color:var(--oh-red) !important;
+  color:var(--oh-red) !important;
   border:1px solid #555 !important;
 }
-body.lux-dark input:-moz-autofill,
-body.lux-dark textarea:-moz-autofill,
-body.lux-dark select:-moz-autofill {
+body.oh-dark input:-moz-autofill,
+body.oh-dark textarea:-moz-autofill,
+body.oh-dark select:-moz-autofill {
   background:#2a2a2a !important;
-  color:var(--lux-red) !important;
+  color:var(--oh-red) !important;
   border:1px solid #555 !important;
 }
 
@@ -174,7 +174,7 @@ h2.chat-modal-title {
   border-bottom: 1px solid #eee;
   padding: 0.5rem 0;
 }
-body.lux-dark .modal-content:has(.chat-log-container) .chat-log-container {
+body.oh-dark .modal-content:has(.chat-log-container) .chat-log-container {
   border-color: #333;
 }
 
@@ -196,7 +196,7 @@ body.lux-dark .modal-content:has(.chat-log-container) .chat-log-container {
   letter-spacing: 0.5px;
 }
 .chat-empty-hint p { margin: 0; }
-body.lux-dark .chat-empty-hint { color: #444; }
+body.oh-dark .chat-empty-hint { color: #444; }
 
 /* Chat input area */
 .chat-input-row {
@@ -239,7 +239,7 @@ body.lux-dark .chat-empty-hint { color: #444; }
   color: #888;
 }
 .sources-toggle input { margin: 0; width: 13px; height: 13px; }
-body.lux-dark .sources-toggle { color: #666; }
+body.oh-dark .sources-toggle { color: #666; }
 
 /* Hide legacy stop button */
 .stop-btn { display: none !important; }
@@ -258,7 +258,7 @@ body.lux-dark .sources-toggle { color: #666; }
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid var(--lux-border, #555);
+  border: 1px solid var(--oh-border, #555);
   background: var(--container-bg, #2a2a2a);
   color: var(--fg, #ccc);
   cursor: pointer;
@@ -269,7 +269,7 @@ body.lux-dark .sources-toggle { color: #666; }
   opacity: 1;
 }
 .msg-copy-btn:hover {
-  background: var(--lux-accent, #2563eb);
+  background: var(--oh-accent, #2563eb);
   color: #fff;
   border-color: transparent;
 }

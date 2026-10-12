@@ -4,13 +4,13 @@
 /* Let page grow vertically – only guarantee *minimum* viewport height */
 html, body { min-height: 100%; height: auto; }
 
-body.lux-dark footer { border-top:1px solid rgba(255,255,255,0.227) !important; color:#aaa; }
+body.oh-dark footer { border-top:1px solid rgba(255,255,255,0.227) !important; color:#aaa; }
 
 .copy-icon-btn { background-color:transparent!important; border:none!important; outline:none!important; appearance:none!important; cursor:pointer; font-size:1.15rem; color:#1d4ed8; /* blue-700 */ }
 .copy-icon-btn:hover { opacity:0.8; }
 .copy-icon-btn.copied { color:#16a34a !important; }
-body.lux-dark .copy-icon-btn { color:var(--lux-red); }
-body.lux-dark .copy-icon-btn.copied { color:#16a34a !important; }
+body.oh-dark .copy-icon-btn { color:var(--oh-red); }
+body.oh-dark .copy-icon-btn.copied { color:#16a34a !important; }
 
 #report-content { display:flex; flex-direction:column; }
 #report-content .copy-icon-btn { align-self:flex-end; margin-top:auto; padding-top:0.75rem; }
@@ -18,8 +18,8 @@ body.lux-dark .copy-icon-btn.copied { color:#16a34a !important; }
 .hidden { display:none!important; }
 
 /* lightweight dialog styling for notes download */
-.lux-modal::backdrop { background:rgba(0,0,0,0.4); }
-.lux-modal {
+.oh-modal::backdrop { background:rgba(0,0,0,0.4); }
+.oh-modal {
   border: 1px solid var(--container-border);
   border-radius: 6px;
   padding: 20px 24px;
@@ -30,18 +30,18 @@ body.lux-dark .copy-icon-btn.copied { color:#16a34a !important; }
 }
 
 /* Ensure labels & legends inherit dark-mode colour */
-body.lux-dark .lux-modal label,
-body.lux-dark .lux-modal legend {
-  color: var(--lux-red);
+body.oh-dark .oh-modal label,
+body.oh-dark .oh-modal legend {
+  color: var(--oh-red);
 }
 
 /* Pager buttons dark-mode blend */
-body.lux-dark .pager-btn {
+body.oh-dark .pager-btn {
   background: var(--container-bg) !important;
   border: 1px solid var(--container-bg) !important;
-  color: var(--lux-red);
+  color: var(--oh-red);
 }
-body.lux-dark .pager-btn:hover:not(:disabled) {
+body.oh-dark .pager-btn:hover:not(:disabled) {
   opacity: 0.85;
 }
 
@@ -71,11 +71,11 @@ body.lux-dark .pager-btn:hover:not(:disabled) {
 
 /* Remove fixed pseudo bottom border so card border follows content height */
 .search-card::after,
-body.lux-dark .search-card::after {
+body.oh-dark .search-card::after {
   display: none;
 }
 
-body.lux-dark .search-card {
+body.oh-dark .search-card {
   box-shadow: 0 4px 16px rgba(0,0,0,0.6);
 }
 
@@ -117,12 +117,12 @@ body.lux-dark .search-card {
 }
 
 /* Paper list dark-mode border override */
-body.lux-dark .search-card li[data-paper-id] {
+body.oh-dark .search-card li[data-paper-id] {
   border-color: var(--container-border);
 }
 
 /* Dark-mode border fix for domain filter box */
-body.lux-dark .search-card #domain-filter-container {
+body.oh-dark .search-card #domain-filter-container {
   border-color: var(--container-border);
 }
 
@@ -168,18 +168,18 @@ body.lux-dark .search-card #domain-filter-container {
   border-color: #2563eb;
 }
 
-body.lux-dark .domain-pill {
+body.oh-dark .domain-pill {
   background: #2a2a2a;
   border-color: #555;
   color: #ccc;
 }
-body.lux-dark .domain-pill:hover {
+body.oh-dark .domain-pill:hover {
   border-color: #888;
 }
-body.lux-dark .domain-pill:has(input:checked) {
-  background: var(--lux-red);
+body.oh-dark .domain-pill:has(input:checked) {
+  background: var(--oh-red);
   color: #fff;
-  border-color: var(--lux-red);
+  border-color: var(--oh-red);
 }
 
 /* ================================================================
@@ -208,7 +208,7 @@ body.lux-dark .domain-pill:has(input:checked) {
   font-size: 0.8rem;
   letter-spacing: 1px;
 }
-body.lux-dark .empty-state { color: #444; }
+body.oh-dark .empty-state { color: #444; }
 
 /* ================================================================
    Search form layout tightening
@@ -236,24 +236,24 @@ body.lux-dark .empty-state { color: #444; }
 }
 
 /* ---------- KaTeX tweaks ---------- */
-body.lux-dark .katex {
+body.oh-dark .katex {
   color: #eee; /* lighten math text in dark theme */
 }
 
 /* Make all form control borders consistent grey in dark mode */
-body.lux-dark .search-card input,
-body.lux-dark .search-card select,
-body.lux-dark .search-card textarea {
+body.oh-dark .search-card input,
+body.oh-dark .search-card select,
+body.oh-dark .search-card textarea {
   border: 1px solid #555;
   background: #2a2a2a;
   color: #eee;
 }
 
-body.lux-dark .search-card input:focus,
-body.lux-dark .search-card select:focus,
-body.lux-dark .search-card textarea:focus {
+body.oh-dark .search-card input:focus,
+body.oh-dark .search-card select:focus,
+body.oh-dark .search-card textarea:focus {
   outline: none;
-  border-color: var(--lux-red);
+  border-color: var(--oh-red);
 }
 
 /* ================================================================
