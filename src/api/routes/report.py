@@ -85,11 +85,7 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         )
 
     # Case-insensitive lookup for the model key
-    actual_model_key_in_config: str | None = None
-    for key_in_config in settings.AVAILABLE_MODELS:
-        if key_in_config.lower() == selected_model_key.lower():
-            actual_model_key_in_config = key_in_config
-            break
+    actual_model_key_in_config = settings.resolve_model_key(selected_model_key)
 
     if not actual_model_key_in_config:
         logger.error(

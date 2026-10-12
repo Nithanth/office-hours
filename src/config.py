@@ -54,7 +54,7 @@ class Config(BaseSettings):
     XAI_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[
         str
-    ] = None  # OpenRouter for OS models (GLM, Qwen, etc.)
+    ] = None  # Primary LLM gateway - all model tiers route through OpenRouter
     SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
 
     # ------------------------------------------------------------------
@@ -253,107 +253,59 @@ class Config(BaseSettings):
     EXA_RETRY_MAX_WAIT: int = Field(default=10, ge=1)
 
     # ------------------------------------------------------------------
-    # Default/fallback LLM models
+    # LLM model tiers (all served through OpenRouter)
     # ------------------------------------------------------------------
-    DEFAULT_MODEL_KEY: str = "gemini_3_1_pro"
+    DEFAULT_MODEL_KEY: str = "standard"
     TOGETHER_FALLBACK_MODEL: Optional[str] = "deepseek-ai/DeepSeek-V3"
 
+    # Optional overrides for the pinned OpenRouter model IDs below
+    # (dev/admin escape hatch - model IDs move fast).
+    OPENROUTER_MODEL_FAST: Optional[str] = None
+    OPENROUTER_MODEL_STANDARD: Optional[str] = None
+    OPENROUTER_MODEL_DEEP: Optional[str] = None
+
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
-        # --- Google Gemini (direct) ---
-        "gemini_3_1_pro": {
-            "id": "gemini-3.1-pro-preview",
-            "provider": "gemini",
-            "input_token_limit": 1_000_000,
-            "display_name": "Gemini 3.1 Pro",
-        },
-        "gemini_3_5_flash": {
-            "id": "gemini-3.5-flash",
-            "provider": "gemini",
-            "input_token_limit": 1_000_000,
-            "display_name": "Gemini 3.5 Flash",
-        },
-        "gemini_3_1_flash_lite": {
-            "id": "gemini-3.1-flash-lite-preview",
-            "provider": "gemini",
-            "input_token_limit": 1_000_000,
-            "display_name": "Gemini 3.1 Flash Lite",
-        },
-        # --- Anthropic Claude (direct) ---
-        "anthropic_claude_opus_4_8": {
-            "id": "claude-opus-4-8",
-            "provider": "anthropic",
-            "input_token_limit": 1_000_000,
-            "display_name": "Claude Opus 4.8",
-        },
-        "anthropic_claude_sonnet_4_6": {
-            "id": "claude-sonnet-4-6",
-            "provider": "anthropic",
-            "input_token_limit": 1_000_000,
-            "display_name": "Claude Sonnet 4.6",
-        },
-        "anthropic_claude_haiku_4_5": {
-            "id": "claude-haiku-4-5-20251001",
-            "provider": "anthropic",
-            "input_token_limit": 200_000,
-            "display_name": "Claude Haiku 4.5",
-        },
-        # --- OpenAI GPT (direct) ---
-        "openai_gpt_5_5": {
-            "id": "gpt-5.5",
-            "provider": "openai",
-            "input_token_limit": 1_050_000,
-            "display_name": "GPT-5.5",
-        },
-        "openai_gpt_5_5_pro": {
-            "id": "gpt-5.5-pro",
-            "provider": "openai",
-            "input_token_limit": 1_050_000,
-            "display_name": "GPT-5.5 Pro",
-        },
-        "openai_gpt_5_4_mini": {
-            "id": "gpt-5.4-mini",
-            "provider": "openai",
-            "input_token_limit": 400_000,
-            "display_name": "GPT-5.4 Mini",
-        },
-        # --- xAI Grok (direct) ---
-        "xai_grok_4_3": {
-            "id": "grok-4.3",
-            "provider": "xai",
-            "input_token_limit": 1_000_000,
-            "display_name": "Grok 4.3 (xAI)",
-        },
-        "xai_grok_4_20": {
-            "id": "grok-4.20-0309-non-reasoning",
-            "provider": "xai",
-            "input_token_limit": 2_000_000,
-            "display_name": "Grok 4.20 (xAI)",
-        },
-        # --- OpenRouter: OS models ---
-        "openrouter_glm_5_2": {
-            "id": "z-ai/glm-5.2",
+        # Three task tiers, all routed through OpenRouter. Tier names are
+        # what the UI shows; the model IDs are pinned here and can be
+        # overridden per-tier via OPENROUTER_MODEL_{FAST,STANDARD,DEEP}.
+        "fast": {
+            "id": "google/gemini-3.5-flash",
             "provider": "openrouter",
             "input_token_limit": 1_000_000,
-            "display_name": "GLM 5.2 (Z.ai via OpenRouter)",
+            "display_name": "Fast · Gemini 3.5 Flash",
         },
-        "openrouter_glm_5_1": {
-            "id": "z-ai/glm-5.1",
+        "standard": {
+            "id": "anthropic/claude-sonnet-4.6",
             "provider": "openrouter",
             "input_token_limit": 200_000,
-            "display_name": "GLM 5.1 (Z.ai via OpenRouter)",
+            "display_name": "Standard · Claude Sonnet 4.6",
         },
-        "openrouter_qwen3_7_max": {
-            "id": "qwen/qwen3.7-max",
+        "deep": {
+            "id": "google/gemini-3.1-pro-preview",
             "provider": "openrouter",
             "input_token_limit": 1_000_000,
-            "display_name": "Qwen3.7 Max (OpenRouter)",
+            "display_name": "Deep · Gemini 3.1 Pro",
         },
-        "openrouter_qwen3_7_plus": {
-            "id": "qwen/qwen3.7-plus",
-            "provider": "openrouter",
-            "input_token_limit": 1_000_000,
-            "display_name": "Qwen3.7 Plus (OpenRouter)",
-        },
+    }
+
+    # Pre-tier model keys (pre-OpenRouter registry) mapped onto the tiers,
+    # so saved sessions / stale forms / old report records keep working.
+    LEGACY_MODEL_KEY_TIERS: dict[str, str] = {
+        "gemini_3_1_pro": "standard",
+        "gemini_3_5_flash": "fast",
+        "gemini_3_1_flash_lite": "fast",
+        "anthropic_claude_opus_4_8": "deep",
+        "anthropic_claude_sonnet_4_6": "standard",
+        "anthropic_claude_haiku_4_5": "fast",
+        "openai_gpt_5_5": "standard",
+        "openai_gpt_5_5_pro": "deep",
+        "openai_gpt_5_4_mini": "fast",
+        "xai_grok_4_3": "standard",
+        "xai_grok_4_20": "standard",
+        "openrouter_glm_5_2": "standard",
+        "openrouter_glm_5_1": "fast",
+        "openrouter_qwen3_7_max": "standard",
+        "openrouter_qwen3_7_plus": "fast",
     }
 
     # ------------------------------------------------------------------
@@ -432,10 +384,33 @@ class Config(BaseSettings):
         if not self.AUTH_REDIRECT_BASE_URL:
             self.AUTH_REDIRECT_BASE_URL = f"http://localhost:{self.PORT}"
 
+        # Per-tier OpenRouter model-ID overrides
+        for tier, override in (
+            ("fast", self.OPENROUTER_MODEL_FAST),
+            ("standard", self.OPENROUTER_MODEL_STANDARD),
+            ("deep", self.OPENROUTER_MODEL_DEEP),
+        ):
+            if override and override.strip():
+                self.AVAILABLE_MODELS[tier]["id"] = override.strip()
+
         # CHAT_TEMPERATURE falls back to LLM_TEMPERATURE if not explicitly set
         # (handled by env var fallback in the old code; here both default to 0.7)
 
         return self
+
+    def resolve_model_key(self, key: str | None) -> str | None:
+        """Map a user-supplied model key to a registry key.
+
+        Accepts current tier keys (case-insensitive) and pre-tier legacy
+        registry keys via :pydata:`LEGACY_MODEL_KEY_TIERS`. Returns ``None``
+        for anything unrecognised.
+        """
+        if not key:
+            return None
+        for valid_key in self.AVAILABLE_MODELS:
+            if valid_key.lower() == key.lower():
+                return valid_key
+        return self.LEGACY_MODEL_KEY_TIERS.get(key.lower())
 
     def validate_model_registry(self) -> None:
         """Validate model registry shape before serving traffic."""

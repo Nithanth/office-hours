@@ -466,9 +466,11 @@ class FigureExtractor:
 
         Priority: OpenAI (GPT-4o) > Anthropic (Claude) > Gemini.
         """
-        # If a specific model_key is given, look it up in available models.
+        # If a specific model_key is given, look it up in available models
+        # (mapping legacy registry keys to their tier first).
         if model_key:
-            model_info = config.AVAILABLE_MODELS.get(model_key)
+            resolved_key = config.resolve_model_key(model_key)
+            model_info = config.AVAILABLE_MODELS.get(resolved_key or model_key)
             if model_info:
                 provider = model_info.get("provider")
                 model_id = model_info.get("id")

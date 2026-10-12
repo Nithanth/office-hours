@@ -43,9 +43,10 @@ async def ask_llm(
             "<p>Server error: Exa client unavailable.</p>", status_code=503
         )
 
-    selected_key = model_key or settings.DEFAULT_MODEL_KEY
-    if selected_key not in settings.AVAILABLE_MODELS:
-        logger.warning("ask_llm_unknown_model_key", model_key=selected_key)
+    selected_key = settings.resolve_model_key(model_key)
+    if selected_key is None:
+        if model_key:
+            logger.warning("ask_llm_unknown_model_key", model_key=model_key)
         selected_key = settings.DEFAULT_MODEL_KEY
 
     model_info = settings.AVAILABLE_MODELS[selected_key]
