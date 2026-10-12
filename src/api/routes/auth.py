@@ -45,7 +45,9 @@ def _auth_configured() -> bool:
 
 
 @router.get("/auth/google/login")
-async def google_login(request: Request, next: str = "/") -> RedirectResponse:  # noqa: A002
+async def google_login(
+    request: Request, next: str = "/"
+) -> RedirectResponse:  # noqa: A002
     if not _auth_configured():
         raise HTTPException(status_code=503, detail="Google login is not configured.")
 
@@ -72,8 +74,28 @@ async def google_callback(
         raise HTTPException(status_code=503, detail="Google login is not configured.")
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing OAuth code or state.")
-    if request.cookies.get(OAUTH_STATE_COOKIE_NAME) != state:
-        raise HTTPException(status_code=400, detail="OAuth state mismatch.")
+
+    # The state token is already cryptographically signed via
+    # URLSafeTimedSerializer + LUX_SESSION_SECRET, so an attacker cannot
+    # forge it. The cookie comparison adds defense-in-depth against CSRF by
+    # binding the in-flight OAuth flow to the user's browser. On localhost
+    # over plain HTTP, browsers / privacy modes sometimes drop the SameSite=Lax
+    # cookie across the Google redirect, producing 400 "OAuth state mismatch"
+    # on every dev sign-in. To make development frictionless without
+    # weakening prod we keep strict comparison on HTTPS and downgrade to a
+    # warning on HTTP (where deployments shouldn't accept real traffic
+    # anyway). The signed-state verification below is always enforced.
+    state_cookie = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
+    is_https = request.url.scheme == "https"
+    if state_cookie != state:
+        if state_cookie is None and not is_https:
+            logger.warning(
+                "oauth_state_cookie_missing_dev_fallback",
+                scheme=request.url.scheme,
+                host=request.url.hostname,
+            )
+        else:
+            raise HTTPException(status_code=400, detail="OAuth state mismatch.")
 
     payload = verify_oauth_state(state)
     try:
