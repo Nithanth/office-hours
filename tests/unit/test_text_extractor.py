@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from services.paper.text_extractor import TextExtractor, _clean_text  # noqa: D100 – tests
+from services.paper.text_extractor import (
+    TextExtractor,
+    _clean_text,
+)  # noqa: D100 – tests
 
 
 def test_clean_text_collapses_spaces():

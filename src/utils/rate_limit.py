@@ -9,15 +9,16 @@ import re
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from starlette.responses import Response
-
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.responses import Response
 
 # Global limiter instance with sensible defaults.
 # Override/extend per-route limits via the decorator.
-limiter: Limiter = Limiter(key_func=get_remote_address, default_limits=["100/5minute"])  # ~0.33 r/s
+limiter: Limiter = Limiter(
+    key_func=get_remote_address, default_limits=["100/5minute"]
+)  # ~0.33 r/s
 
 
 def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
@@ -57,7 +58,10 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Re
 
     # JSON/API request
     return JSONResponse(
-        {"error": "Rate limit exceeded. Please wait before retrying.", "retry_after": retry_seconds},
+        {
+            "error": "Rate limit exceeded. Please wait before retrying.",
+            "retry_after": retry_seconds,
+        },
         status_code=429,
         headers=headers,
     )
@@ -66,7 +70,9 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Re
 def _parse_retry_seconds(detail: str) -> int:
     """Best-effort parse of retry window from slowapi detail string."""
     # Example: "100 per 5 minute" → 300 seconds
-    m = re.search(r"(\d+)\s*per\s*(\d+)?\s*(second|minute|hour|day)", detail, re.IGNORECASE)
+    m = re.search(
+        r"(\d+)\s*per\s*(\d+)?\s*(second|minute|hour|day)", detail, re.IGNORECASE
+    )
     if not m:
         return 60  # Default: suggest 60s
 

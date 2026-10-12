@@ -8,9 +8,10 @@ scatter plot.
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -63,11 +64,13 @@ async def cluster_papers_endpoint(request: Request) -> JSONResponse:
 
     result = await asyncio.to_thread(cluster_papers, paper_dicts)
 
-    return JSONResponse({
-        "ok": True,
-        "papers": result.papers,
-        "clusters": result.clusters,
-    })
+    return JSONResponse(
+        {
+            "ok": True,
+            "papers": result.papers,
+            "clusters": result.clusters,
+        }
+    )
 
 
 async def _prepare_paper_dicts(
@@ -92,19 +95,19 @@ async def _prepare_paper_dicts(
         url_str = str(p.url) if p.url else ""
         year = ""
         if p.published_date:
-            try:
+            with suppress(TypeError, AttributeError):
                 year = str(p.published_date)[:4]
-            except (TypeError, AttributeError):
-                pass
 
-        paper_dicts.append({
-            "id": p.id or "",
-            "title": p.title or "",
-            "authors": p.authors or [],
-            "year": year,
-            "highlights": highlights_map.get(url_str, ""),
-            "citation_count": p.citation_count,
-        })
+        paper_dicts.append(
+            {
+                "id": p.id or "",
+                "title": p.title or "",
+                "authors": p.authors or [],
+                "year": year,
+                "highlights": highlights_map.get(url_str, ""),
+                "citation_count": p.citation_count,
+            }
+        )
 
     return paper_dicts
 

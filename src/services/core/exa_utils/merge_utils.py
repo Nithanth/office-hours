@@ -6,13 +6,17 @@ from typing import Any
 from loguru import logger
 
 
-def merge_dicts_keep_first(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
+def merge_dicts_keep_first(
+    primary: dict[str, Any], secondary: dict[str, Any]
+) -> dict[str, Any]:
     """Copy *secondary* and back-fill missing keys with non-empty values from *primary*."""
     out: dict[str, Any] = dict(secondary)
     for k, v in primary.items():
         if v:
             out.setdefault(k, v)
-    logger.debug("dicts_merged", primary=len(primary), secondary=len(secondary), result=len(out))
+    logger.debug(
+        "dicts_merged", primary=len(primary), secondary=len(secondary), result=len(out)
+    )
     return out
 
 

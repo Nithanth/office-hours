@@ -25,7 +25,7 @@ def _is_secure_cookie(request: Request) -> bool:
     """
     if _cfg.config.ENV == "prod":
         return True
-    return request.url.scheme == "https"
+    return bool(request.url.scheme == "https")
 
 
 def get_auth_user_id(request: Request) -> str | None:
@@ -49,7 +49,9 @@ def require_auth_user_id(request: Request) -> str:
     user_id = get_auth_user_id(request)
     if user_id:
         return user_id
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required"
+    )
 
 
 def set_auth_cookie(response: Response, user_id: str, request: Request) -> None:
@@ -77,7 +79,9 @@ def verify_oauth_state(state: str) -> dict[str, Any]:
     try:
         payload = _serializer.loads(state, max_age=OAUTH_STATE_MAX_AGE)
     except BadData as exc:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state") from exc
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired OAuth state"
+        ) from exc
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     return cast(dict[str, Any], payload)

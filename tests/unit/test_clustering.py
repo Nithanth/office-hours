@@ -1,6 +1,5 @@
 """Unit tests for paper clustering service."""
 
-import pytest
 
 from services.paper.clustering import ClusterResult, cluster_papers
 
@@ -48,13 +47,23 @@ class TestClusterPapers:
     def test_multiple_papers_with_clusters(self):
         # Create two distinct topic groups
         group_a = [
-            {"id": f"a{i}", "title": f"deep learning neural network architecture {i}",
-             "authors": ["Smith"], "year": "2023", "highlights": f"transformer attention mechanism {i}"}
+            {
+                "id": f"a{i}",
+                "title": f"deep learning neural network architecture {i}",
+                "authors": ["Smith"],
+                "year": "2023",
+                "highlights": f"transformer attention mechanism {i}",
+            }
             for i in range(5)
         ]
         group_b = [
-            {"id": f"b{i}", "title": f"quantum computing algorithm optimization {i}",
-             "authors": ["Jones"], "year": "2024", "highlights": f"qubit entanglement measurement {i}"}
+            {
+                "id": f"b{i}",
+                "title": f"quantum computing algorithm optimization {i}",
+                "authors": ["Jones"],
+                "year": "2024",
+                "highlights": f"qubit entanglement measurement {i}",
+            }
             for i in range(5)
         ]
         papers = group_a + group_b
@@ -86,7 +95,12 @@ class TestClusterPapers:
     def test_papers_without_highlights(self):
         """Clustering works with title-only (no highlights)."""
         papers = [
-            {"id": f"p{i}", "title": f"paper about topic {i}", "authors": [], "year": ""}
+            {
+                "id": f"p{i}",
+                "title": f"paper about topic {i}",
+                "authors": [],
+                "year": "",
+            }
             for i in range(6)
         ]
         result = cluster_papers(papers)

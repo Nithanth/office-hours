@@ -77,12 +77,16 @@ def _inspect_table(table, key: str, max_rows: int):
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Inspect LanceDB vector index")
-    parser.add_argument("--paper-id", required=True, help="Primary key used by chat (abs URL)")
+    parser.add_argument(
+        "--paper-id", required=True, help="Primary key used by chat (abs URL)"
+    )
     parser.add_argument(
         "--pdf-url",
         help="Optional second key (PDF URL) to inspect as well",
     )
-    parser.add_argument("--max-rows", type=int, default=10, help="Rows to display per table")
+    parser.add_argument(
+        "--max-rows", type=int, default=10, help="Rows to display per table"
+    )
     parser.add_argument(
         "--grep",
         help="Optional case-insensitive regex; only rows whose text matches are shown",

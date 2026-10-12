@@ -38,18 +38,25 @@ def base_layout(title_text: str, *content: Any) -> str:
             # Dynamic CSS prefix – uses 'css' in dev, 'css/dist' in prod.
             Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/base.css"),
             Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/top-bar.css"),
-            Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/utilities.css"),
+            Link(
+                rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/utilities.css"
+            ),
             Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/modal.css"),
             Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/chat.css"),
             Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/forms.css"),
-            Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/flatpickr-dark.css"),
+            Link(
+                rel="stylesheet",
+                href=f"/static/{app_config.CSS_PREFIX}/flatpickr-dark.css",
+            ),
             Link(rel="stylesheet", href=f"/static/{app_config.CSS_PREFIX}/misc.css"),
             # HTMX core + SSE extension and JS pool helper
             Script(src="https://unpkg.com/htmx.org@1.9.10"),
             Script(src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"),
             Script(src="/static/js/htmx-sse-pool.js"),
             # Optional utilities
-            Script(src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"),
+            Script(
+                src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"
+            ),
             # Icon set (self-hosted Font Awesome – see static/vendor/fontawesome/README.md)
             Link(
                 rel="stylesheet",
@@ -62,7 +69,9 @@ def base_layout(title_text: str, *content: Any) -> str:
                     Link(title_text, href="/", cl="text-lg font-bold mr-6"),
                     Div("", cl="flex-1"),
                     Select(
-                        Option("Select Audience", value="", disabled=True, selected=True),
+                        Option(
+                            "Select Audience", value="", disabled=True, selected=True
+                        ),
                         Option("Highly Technical (PhD/Researcher)", value="technical"),
                         Option("Semi-Technical (Lux)", value="semi_technical"),
                         Option("Non-technical (Other VCs)", value="non_technical"),

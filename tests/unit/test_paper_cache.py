@@ -22,7 +22,9 @@ def test_upsert_and_get(tmp_path):
 
 def test_freshness(tmp_path):
     db = tmp_path / "cache.sqlite"
-    cache = PaperCache(db_path=str(db), freshness_hours=0)  # zero = always stale after insert
+    cache = PaperCache(
+        db_path=str(db), freshness_hours=0
+    )  # zero = always stale after insert
     cache.upsert("x", {"a": 1}, complete=True)
     assert not cache.is_fresh("x")
     cache.close()

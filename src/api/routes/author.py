@@ -10,20 +10,18 @@ from __future__ import annotations
 
 import asyncio
 import html
+import importlib
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
-from api.deps import get_exa_client, get_llm_service, get_session_id, get_settings
+from api.deps import get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
 from pages.main_page import render_search_results
-from services.core.exa_client import ExaClient
 from services.paper.metadata.author_search import (
-    AuthorPaper,
-    AuthorProfile,
     AuthorResult,
     get_author_profile,
     get_paper_url,
@@ -53,7 +51,7 @@ def _render_author_card(author: AuthorResult) -> str:
         f"<div class='author-card' style='padding:12px;border:1px solid var(--lux-border,#444);"
         f"border-radius:8px;margin-bottom:8px;cursor:pointer;transition:border-color 0.15s;'"
         f" hx-post='/author/profile' hx-target='#search-results-container' hx-swap='innerHTML'"
-        f" hx-vals='{{\"author_id\": \"{html.escape(author.author_id)}\", \"author_name\": \"{name_esc}\"}}'"
+        f' hx-vals=\'{{"author_id": "{html.escape(author.author_id)}", "author_name": "{name_esc}"}}\''
         f" hx-indicator='#author-loading'>"
         f"<div style='font-size:1.1rem;font-weight:600;'>{name_esc}</div>"
         f"{aliases_str}"
@@ -76,7 +74,7 @@ def _render_author_list(authors: list[AuthorResult], query: str) -> str:
     return (
         f"<div id='author-results'>"
         f"<p style='margin-bottom:8px;font-size:0.9rem;opacity:0.7;'>"
-        f"Found {len(authors)} author(s) for \"{html.escape(query)}\" — click to explore</p>"
+        f'Found {len(authors)} author(s) for "{html.escape(query)}" — click to explore</p>'
         f"<div id='author-loading' class='htmx-indicator' style='text-align:center;padding:12px;'>"
         f"<span class='spinner'></span> Loading author profile…</div>"
         f"{cards}"
@@ -98,7 +96,10 @@ async def author_search(
     if not query:
         return HTMLResponse(
             "<div class='error-banner'>Please enter an author name.</div>",
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
         )
 
     if len(query) > 200:
@@ -112,7 +113,10 @@ async def author_search(
         logger.exception("author_search_failed", error=str(exc))
         return HTMLResponse(
             "<div class='error-banner'>Author search failed. Please try again.</div>",
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
         )
 
     results_html = _render_author_list(authors, query)
@@ -149,13 +153,19 @@ async def author_profile_view(
         logger.exception("author_profile_failed", error=str(exc))
         return HTMLResponse(
             "<div class='error-banner'>Could not load author profile.</div>",
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
         )
 
     if profile is None:
         return HTMLResponse(
             f"<div class='error-banner'>Author \"{html.escape(author_name)}\" not found.</div>",
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
         )
 
     # Build header with author stats + generate profile button
@@ -174,7 +184,7 @@ async def author_profile_view(
         f" hx-post='/author/research-profile'"
         f" hx-target='#author-profile-container'"
         f" hx-swap='innerHTML'"
-        f" hx-vals='{{\"author_id\": \"{html.escape(a.author_id)}\", \"author_name\": \"{html.escape(a.name)}\"}}'"
+        f' hx-vals=\'{{"author_id": "{html.escape(a.author_id)}", "author_name": "{html.escape(a.name)}"}}\''
         f" hx-indicator='#profile-loading'>"
         f"Generate Research Profile</button>"
         f"</div>"
@@ -205,10 +215,12 @@ async def author_profile_view(
 
     if not papers:
         return HTMLResponse(
-            header_html
-            + "<div style='padding:16px;text-align:center;opacity:0.7;'>"
+            header_html + "<div style='padding:16px;text-align:center;opacity:0.7;'>"
             "No papers with accessible URLs found for this author.</div>",
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
         )
 
     # Render using standard search results component
@@ -256,7 +268,9 @@ async def generate_research_profile(
         )
     except Exception as exc:
         logger.exception("research_profile_fetch_failed", error=str(exc))
-        return HTMLResponse("<div class='error-banner'>Could not fetch author data.</div>")
+        return HTMLResponse(
+            "<div class='error-banner'>Could not fetch author data.</div>"
+        )
 
     if profile is None:
         return HTMLResponse("<div class='error-banner'>Author not found.</div>")
@@ -267,7 +281,7 @@ async def generate_research_profile(
         venue_str = f" ({p.venue})" if p.venue else ""
         year_str = f" [{p.year}]" if p.year else ""
         papers_lines.append(
-            f"{i}. \"{p.title}\"{year_str}{venue_str} — {p.citation_count:,} citations"
+            f'{i}. "{p.title}"{year_str}{venue_str} — {p.citation_count:,} citations'
         )
     papers_summary = "\n".join(papers_lines) if papers_lines else "No papers available."
 
@@ -299,8 +313,7 @@ async def generate_research_profile(
 
     # Render markdown to HTML
     try:
-        import markdown
-
+        markdown = cast(Any, importlib.import_module("markdown"))
         profile_html = markdown.markdown(result, extensions=["extra", "sane_lists"])
     except ImportError:
         profile_html = f"<pre style='white-space:pre-wrap;'>{html.escape(result)}</pre>"

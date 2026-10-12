@@ -35,7 +35,9 @@ from pathlib import Path
 _BASE_DIR = Path(__file__).parent
 
 
-def load_template(template_type: str, audience: str) -> str:  # noqa: D401 – simple loader
+def load_template(
+    template_type: str, audience: str
+) -> str:  # noqa: D401 – simple loader
     """Return the prompt template for (*template_type*, *audience*).
 
     Template location: `prompts/<template_type>/<audience>.md`.

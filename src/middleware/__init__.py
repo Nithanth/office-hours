@@ -7,14 +7,13 @@ it executes last in the request lifecycle).
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.middleware import SlowAPIMiddleware
 
 import config as _cfg
 from middleware.auth_gate import AuthGateMiddleware
 from middleware.security import HTTPSRedirectMiddleware, SecurityHeadersMiddleware
 from services.chat.chat_session import ChatSessionMiddleware
 from utils.rate_limit import RateLimitExceeded, _rate_limit_exceeded_handler, limiter
-
-from slowapi.middleware import SlowAPIMiddleware
 
 
 def register_all(app: FastAPI) -> None:
@@ -41,10 +40,12 @@ def register_all(app: FastAPI) -> None:
     if base_url:
         allowed_origins.append(base_url.rstrip("/"))
     if _cfg.config.ENV == "dev":
-        allowed_origins.extend([
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
-        ])
+        allowed_origins.extend(
+            [
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
+            ]
+        )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins or ["*"],

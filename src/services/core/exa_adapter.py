@@ -1,12 +1,11 @@
 """Thin wrapper around *exa_py* 2.x with stable snake_case API and structured logging."""
 
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from loguru import logger
 from tenacity import (
     retry,
     retry_base,
-    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -28,7 +27,8 @@ def _is_retryable_http_error(exc: BaseException) -> bool:
         import httpx
 
         if isinstance(exc, httpx.HTTPStatusError):
-            return exc.response.status_code == 429 or exc.response.status_code >= 500
+            status_code = cast(int, exc.response.status_code)
+            return status_code == 429 or status_code >= 500
     except ImportError:
         pass
     return False

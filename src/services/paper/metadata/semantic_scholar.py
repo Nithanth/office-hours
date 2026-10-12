@@ -76,7 +76,9 @@ def _fetch_batch(ids: list[str], timeout: int = 10) -> dict[str, int]:
     url = f"{_S2_BASE}/paper/batch?fields=citationCount,externalIds"
     payload = json.dumps({"ids": ids}).encode()
 
-    req = urllib.request.Request(url, data=payload, headers=_get_headers(), method="POST")
+    req = urllib.request.Request(
+        url, data=payload, headers=_get_headers(), method="POST"
+    )
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -121,7 +123,11 @@ def enrich_papers_with_citations(
             continue
 
         # Try DOI
-        doi = _url_utils.extract_doi(url_str) if hasattr(_url_utils, "extract_doi") else None
+        doi = (
+            _url_utils.extract_doi(url_str)
+            if hasattr(_url_utils, "extract_doi")
+            else None
+        )
         if doi:
             s2_id = f"DOI:{doi}"
             id_map.setdefault(s2_id, []).append(paper)

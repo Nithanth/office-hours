@@ -40,7 +40,9 @@ class LLMService:
         self.providers: dict[ProviderName, LLMProvider] = {}
 
         # Per-provider concurrency guard (semaphore)
-        concurrency_limit_raw = getattr(app_config, "MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4)
+        concurrency_limit_raw = getattr(
+            app_config, "MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4
+        )
         concurrency_limit: int = (
             concurrency_limit_raw
             if isinstance(concurrency_limit_raw, int) and concurrency_limit_raw > 0
@@ -49,7 +51,14 @@ class LLMService:
 
         self._semaphores: dict[ProviderName, asyncio.Semaphore] = {
             name: asyncio.Semaphore(concurrency_limit)
-            for name in ("together_ai", "openai", "anthropic", "gemini", "xai", "openrouter")
+            for name in (
+                "together_ai",
+                "openai",
+                "anthropic",
+                "gemini",
+                "xai",
+                "openrouter",
+            )
         }
 
         # ---------------- Provider configuration ----------------
@@ -233,13 +242,16 @@ class LLMService:
         # OpenAI native streaming
         if provider_name == "openai":
             try:
-                from openai import AsyncOpenAI  # Local import to avoid hard dep when key missing
+                from openai import (
+                    AsyncOpenAI,
+                )  # Local import to avoid hard dep when key missing
+                from openai.types.chat import ChatCompletionMessageParam
 
                 openai_client = cast(AsyncOpenAI, provider._async_client)
                 if openai_client is None:
                     return _fallback_stream()
                 # Build messages
-                msgs: list[dict[str, str]] = []
+                msgs: list[ChatCompletionMessageParam] = []
                 if system_prompt:
                     msgs.append({"role": "system", "content": system_prompt})
                 msgs.append({"role": "user", "content": prompt})
@@ -250,7 +262,7 @@ class LLMService:
                     try:
                         resp = await openai_client.chat.completions.create(
                             model=model_name,
-                            messages=msgs,  # type: ignore[arg-type]
+                            messages=msgs,
                             max_tokens=max_tokens,
                             temperature=effective_temp,
                             stop=stop_sequences,
@@ -284,7 +296,9 @@ class LLMService:
 
                 async def _anthropic_stream() -> AsyncIterator[str]:
                     try:
-                        effective_temp: float = temperature if temperature is not None else 0.7
+                        effective_temp: float = (
+                            temperature if temperature is not None else 0.7
+                        )
                         stream_iter = cast(
                             AsyncIterator[Any],
                             await anth_client.messages.create(
@@ -299,7 +313,9 @@ class LLMService:
 
                         async for event_any in stream_iter:
                             event = cast(Any, event_any)
-                            if hasattr(event, "delta") and getattr(event.delta, "text", None):
+                            if hasattr(event, "delta") and getattr(
+                                event.delta, "text", None
+                            ):
                                 yield str(event.delta.text)
                     except Exception as exc:  # noqa: BLE001
                         self.logger.exception(
@@ -330,7 +346,9 @@ class LLMService:
                             msgs.append({"role": "system", "content": system_prompt})
                         msgs.append({"role": "user", "content": prompt})
 
-                        eff_temp: float = temperature if temperature is not None else 0.7
+                        eff_temp: float = (
+                            temperature if temperature is not None else 0.7
+                        )
 
                         stream = await tg_client.chat.completions.create(
                             model=model_name,
@@ -426,7 +444,9 @@ class LLMService:
                             if hasattr(chunk, "content") and chunk.content:
                                 yield str(chunk.content)
                     except Exception as exc:  # noqa: BLE001
-                        self.logger.exception("xAI streaming failed - falling back", exc_info=exc)
+                        self.logger.exception(
+                            "xAI streaming failed - falling back", exc_info=exc
+                        )
                         async for tok in _fallback_stream():
                             yield tok
 
@@ -439,25 +459,28 @@ class LLMService:
         if provider_name == "openrouter":
             try:
                 from openai import AsyncOpenAI
+                from openai.types.chat import ChatCompletionMessageParam
 
                 or_client = cast(AsyncOpenAI, provider._async_client)
                 if or_client is None:
                     return _fallback_stream()
 
-                msgs: list[dict[str, str]] = []
+                openrouter_msgs: list[ChatCompletionMessageParam] = []
                 if system_prompt:
-                    msgs.append({"role": "system", "content": system_prompt})
-                msgs.append({"role": "user", "content": prompt})
+                    openrouter_msgs.append({"role": "system", "content": system_prompt})
+                openrouter_msgs.append({"role": "user", "content": prompt})
 
-                effective_temp: float = temperature if temperature is not None else 0.7
+                openrouter_effective_temp: float = (
+                    temperature if temperature is not None else 0.7
+                )
 
                 async def _openrouter_stream() -> AsyncIterator[str]:
                     try:
                         resp = await or_client.chat.completions.create(
                             model=model_name,
-                            messages=msgs,  # type: ignore[arg-type]
+                            messages=openrouter_msgs,
                             max_tokens=max_tokens,
-                            temperature=effective_temp,
+                            temperature=openrouter_effective_temp,
                             stop=stop_sequences,
                             stream=True,
                         )

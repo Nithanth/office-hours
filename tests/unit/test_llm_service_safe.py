@@ -19,7 +19,9 @@ class _DummyProvider(LLMProvider):
         """No-op; nothing to initialise for dummy provider."""
         return None
 
-    async def generate_text(self, *args: Any, **kwargs: Any) -> str:  # noqa: D401 – test stub
+    async def generate_text(
+        self, *args: Any, **kwargs: Any
+    ) -> str:  # noqa: D401 – test stub
         if self.should_fail:
             raise RuntimeError("boom")
         return "ok-response"

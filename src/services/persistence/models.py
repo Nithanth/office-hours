@@ -42,7 +42,9 @@ class OAuthAccount(Base):
     __table_args__ = (UniqueConstraint("provider", "provider_user_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     provider: Mapped[str] = mapped_column(String(32), index=True)
     provider_user_id: Mapped[str] = mapped_column(String(255), index=True)
     access_token_encrypted: Mapped[str | None] = mapped_column(Text)
@@ -55,7 +57,9 @@ class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     title: Mapped[str] = mapped_column(String(300))
     original_query: Mapped[str] = mapped_column(Text)
     audience_type: Mapped[str] = mapped_column(String(64))
@@ -74,7 +78,9 @@ class ReportPaper(Base):
     __tablename__ = "report_papers"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    report_id: Mapped[str] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), index=True)
+    report_id: Mapped[str] = mapped_column(
+        ForeignKey("reports.id", ondelete="CASCADE"), index=True
+    )
     paper_id: Mapped[str] = mapped_column(String(255), index=True)
     title: Mapped[str] = mapped_column(Text)
     url: Mapped[str | None] = mapped_column(Text)
@@ -90,7 +96,9 @@ class ChatThread(Base):
     __table_args__ = (UniqueConstraint("user_id", "report_id", "paper_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     report_id: Mapped[str | None] = mapped_column(
         ForeignKey("reports.id", ondelete="CASCADE"), index=True
     )
@@ -104,7 +112,9 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    thread_id: Mapped[str] = mapped_column(ForeignKey("chat_threads.id", ondelete="CASCADE"))
+    thread_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_threads.id", ondelete="CASCADE")
+    )
     role: Mapped[str] = mapped_column(String(32))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
@@ -114,8 +124,12 @@ class Export(Base):
     __tablename__ = "exports"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id", ondelete="SET NULL"))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    report_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reports.id", ondelete="SET NULL")
+    )
     export_type: Mapped[str] = mapped_column(String(32))
     destination: Mapped[str | None] = mapped_column(String(255))
     url: Mapped[str | None] = mapped_column(Text)
@@ -129,7 +143,9 @@ class UserIntegration(Base):
     __table_args__ = (UniqueConstraint("user_id", "provider"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     provider: Mapped[str] = mapped_column(String(32), index=True)
     access_token_encrypted: Mapped[str] = mapped_column(Text)
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)

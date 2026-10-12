@@ -66,7 +66,9 @@ class PaperSummariser(_BaseSummariser):
 
         if snippet_override is not None:
             snippet = (
-                snippet_override[:snippet_char_limit] if snippet_char_limit else snippet_override
+                snippet_override[:snippet_char_limit]
+                if snippet_char_limit
+                else snippet_override
             )
         else:
             snippet = (paper.text_content or "")[:snippet_char_limit]
@@ -88,7 +90,9 @@ class PaperSummariser(_BaseSummariser):
 
         prompt = fallback_note + prompt_template.format(
             paper_title=html.escape(paper.title or "N/A"),
-            paper_authors=html.escape(", ".join(paper.authors) if paper.authors else "N/A"),
+            paper_authors=html.escape(
+                ", ".join(paper.authors) if paper.authors else "N/A"
+            ),
             paper_publication_date=html.escape(self._format_date(paper.published_date)),
             paper_content_snippet=snippet,
             overall_instructions=length_guidance,
@@ -101,7 +105,10 @@ class PaperSummariser(_BaseSummariser):
             is_topic_summary=False,
         )
         logger.debug(
-            "paper_prompt_built", paper_id=paper.id, tgt_tok=tok_target, prompt_len=len(prompt)
+            "paper_prompt_built",
+            paper_id=paper.id,
+            tgt_tok=tok_target,
+            prompt_len=len(prompt),
         )
         return prompt, tok_target
 
@@ -132,7 +139,9 @@ class TopicSummariser(_BaseSummariser):
         consolidated_parts: list[str] = []
         for p in papers:
             title = html.escape(p.title or "N/A")
-            authors = html.escape(", ".join(a for a in p.authors if a) if p.authors else "N/A")
+            authors = html.escape(
+                ", ".join(a for a in p.authors if a) if p.authors else "N/A"
+            )
             pub_date = html.escape(self._format_date(p.published_date))
             snippet = html.escape((p.text_content or "")[:snippet_char_limit])
             consolidated_parts.append(

@@ -28,9 +28,7 @@ class ChatStore(ABC):
         """Persist chat turns for a given session+paper pair."""
 
     @abstractmethod
-    def load_history(
-        self, session_id: str, paper_id: str
-    ) -> list[dict[str, str]]:
+    def load_history(self, session_id: str, paper_id: str) -> list[dict[str, str]]:
         """Load chat turns. Returns empty list if none exist."""
 
     @abstractmethod

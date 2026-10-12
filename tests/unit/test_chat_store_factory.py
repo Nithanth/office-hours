@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
-import pytest
-
 from services.chat.stores.factory import get_store, reset_store
 
 
@@ -52,6 +48,7 @@ class TestFactory:
                 store = get_store()
                 # If redis IS installed, verify it returns RedisChatStore
                 from services.chat.stores.redis_store import RedisChatStore
+
                 assert isinstance(store, RedisChatStore)
             except ImportError:
                 # Expected when redis package not installed

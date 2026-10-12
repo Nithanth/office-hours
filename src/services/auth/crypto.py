@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import cast
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -17,7 +18,9 @@ class SecretEncryptionError(RuntimeError):
 def _fernet() -> Fernet:
     key = _cfg.config.LUX_SECRET_ENCRYPTION_KEY
     if not key:
-        raise SecretEncryptionError("Set LUX_SECRET_ENCRYPTION_KEY before storing user secrets.")
+        raise SecretEncryptionError(
+            "Set LUX_SECRET_ENCRYPTION_KEY before storing user secrets."
+        )
     try:
         return Fernet(key.encode())
     except (ValueError, TypeError) as exc:
@@ -27,11 +30,13 @@ def _fernet() -> Fernet:
 
 
 def encrypt_secret(value: str) -> str:
-    return _fernet().encrypt(value.encode()).decode()
+    encrypted = cast(bytes, _fernet().encrypt(value.encode()))
+    return encrypted.decode()
 
 
 def decrypt_secret(value: str) -> str:
     try:
-        return _fernet().decrypt(value.encode()).decode()
+        decrypted = cast(bytes, _fernet().decrypt(value.encode()))
+        return decrypted.decode()
     except InvalidToken as exc:
         raise SecretEncryptionError("Stored secret could not be decrypted.") from exc

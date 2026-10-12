@@ -22,7 +22,7 @@ from typing import Optional
 # Silence the lance Rust crate's tracing output before any imports.
 os.environ.setdefault("RUST_LOG", "lance=error")
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -133,7 +133,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if removed:
                     logger.info("chatstate_gc", evicted=removed)
                 # Also clean up old task queue records
-                purged = task_queue.clear_completed(older_than_sec=_IDLE_SESSION_TTL_SEC)
+                purged = task_queue.clear_completed(
+                    older_than_sec=_IDLE_SESSION_TTL_SEC
+                )
                 if purged:
                     logger.debug("taskqueue_gc", purged=purged)
 
@@ -180,6 +182,7 @@ from api.routers import report_stream as _report_stream_router
 from api.routes import admin as _admin_routes
 from api.routes import ask_llm as _ask_llm_routes
 from api.routes import auth as _auth_routes
+from api.routes import author as _author_routes
 from api.routes import chat as _chat_routes
 from api.routes import cluster as _cluster_routes
 from api.routes import history as _history_routes
@@ -188,7 +191,6 @@ from api.routes import metadata as _metadata_routes
 from api.routes import pages as _pages_routes
 from api.routes import report as _report_routes
 from api.routes import search as _search_routes
-from api.routes import author as _author_routes
 from api.routes import similar as _similar_routes
 
 for _r in (
@@ -234,9 +236,7 @@ def _html_error_banner(message: str) -> str:
 
 
 @app.exception_handler(HTTPException)
-async def _http_exception_handler(
-    request: Request, exc: HTTPException
-) -> HTMLResponse:
+async def _http_exception_handler(request: Request, exc: HTTPException) -> HTMLResponse:
     """Convert HTTPException to a styled banner so HTMX swaps show feedback."""
     banner = _html_error_banner(exc.detail if exc.detail else "Request failed")
     return HTMLResponse(content=banner, status_code=exc.status_code)

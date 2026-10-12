@@ -14,12 +14,14 @@ import hashlib
 import re
 import time
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, cast
 
 import lancedb
 import numpy as np
 import tiktoken
+from lancedb.table import Table
 from loguru import logger
 
 from config import config
@@ -147,24 +149,24 @@ def _table_names(db: lancedb.DBConnection) -> list[str]:
         return []
 
 
-def _open_shared_table(db: lancedb.DBConnection):
+def _open_shared_table(db: lancedb.DBConnection) -> Table | None:
     """Open the shared papers table, returning None if it doesn't exist."""
     if _TABLE_NAME not in _table_names(db):
         return None
     try:
-        return db.open_table(_TABLE_NAME, mode="r")
+        return cast(Table, db.open_table(_TABLE_NAME, mode="r"))
     except TypeError:
-        return db.open_table(_TABLE_NAME)
+        return cast(Table, db.open_table(_TABLE_NAME))
 
 
-def _open_shared_table_rw(db: lancedb.DBConnection):
+def _open_shared_table_rw(db: lancedb.DBConnection) -> Table | None:
     """Open the shared papers table in read-write mode, returning None if it doesn't exist."""
     if _TABLE_NAME not in _table_names(db):
         return None
     try:
-        return db.open_table(_TABLE_NAME)
+        return cast(Table, db.open_table(_TABLE_NAME))
     except TypeError:
-        return db.open_table(_TABLE_NAME)
+        return cast(Table, db.open_table(_TABLE_NAME))
 
 
 # ---------------------------------------------------------------------------
@@ -253,10 +255,8 @@ def _migrate_legacy_tables() -> None:
                 shared_table.add(rows)
 
             # Drop the legacy table
-            try:
+            with suppress(Exception):
                 db.drop_table(legacy_name)
-            except Exception:
-                pass
 
             logger.info(
                 "vector_store_migrated_table",
@@ -290,17 +290,14 @@ def index_exists(paper_id: str) -> bool:
         import pyarrow.compute as pc
 
         arrow_tbl = table.to_arrow()
-        mask = pc.equal(arrow_tbl.column("paper_id"), paper_id)
+        mask = pc.call_function("equal", [arrow_tbl.column("paper_id"), paper_id])
         filtered = arrow_tbl.filter(mask)
         return len(filtered) > 0
     except Exception:
         # Last resort: scan with SQL-like filter
         try:
             results = (
-                table.search()
-                .where(f"paper_id = '{paper_id}'")
-                .limit(1)
-                .to_list()
+                table.search().where(f"paper_id = '{paper_id}'").limit(1).to_list()
             )
             return len(results) > 0
         except Exception:
@@ -479,9 +476,7 @@ def _do_search(
             query_builder = table.search(query_embedding.tolist())
             if where_filter:
                 query_builder = query_builder.where(where_filter)
-            candidates = (
-                query_builder.limit(limit).to_pandas().to_dict("records")
-            )
+            candidates = query_builder.limit(limit).to_pandas().to_dict("records")
         except AttributeError:
             query_builder = table.search(query_embedding.tolist())
             if where_filter:

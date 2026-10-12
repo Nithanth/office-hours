@@ -113,7 +113,9 @@ class TestRateLimitHandler:
 
         request = MagicMock()
         headers_mock = MagicMock()
-        headers_mock.get = MagicMock(side_effect=lambda k, d=None: "true" if k == "HX-Request" else d)
+        headers_mock.get = MagicMock(
+            side_effect=lambda k, d=None: "true" if k == "HX-Request" else d
+        )
         request.headers = headers_mock
 
         exc = self._make_rate_limit_exc("100 per 5 minute")

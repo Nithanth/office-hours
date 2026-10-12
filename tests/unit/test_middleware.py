@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
-
 # ---------------------------------------------------------------------------
 # Security headers (extends existing test_security_and_request_id.py)
 # ---------------------------------------------------------------------------
@@ -58,7 +55,6 @@ def test_https_redirect_skipped_in_dev(client):
 
 def test_https_redirect_in_prod():
     """HTTPS redirect should trigger for non-HTTPS requests in prod."""
-    import config as _cfg
     from middleware.security import HTTPSRedirectMiddleware
 
     # Verify the middleware class exists and checks ENV

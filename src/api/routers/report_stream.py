@@ -495,7 +495,7 @@ async def report_stream(
             )
             try:
                 _role_label, block_html = await t
-            except (asyncio.TimeoutError, ValueError, RuntimeError) as e:
+            except (TimeoutError, ValueError, RuntimeError) as e:
                 logger.warning("stream_block_error", exc=str(e))
                 failed_titles.append(
                     (
@@ -549,7 +549,9 @@ async def report_stream(
 
                 if database_available():
                     # Generate a concise title from the report content.
-                    report_title = str(payload["original_query"])[:300] or "Research Report"
+                    report_title = (
+                        str(payload["original_query"])[:300] or "Research Report"
+                    )
                     try:
                         report_body = "\n".join(persisted_blocks)
                         title_result = await rg._generate_report_title(
@@ -579,7 +581,9 @@ async def report_stream(
                             "report-saved",
                             json.dumps({"report_id": saved.id}, separators=(",", ":")),
                         )
-                        logger.info("report_persisted", report_id=saved.id, user_id=user_id)
+                        logger.info(
+                            "report_persisted", report_id=saved.id, user_id=user_id
+                        )
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - persistence must not break streaming

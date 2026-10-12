@@ -77,9 +77,7 @@ class TestPaperDeepDivePrompts:
         """get_paper_deep_dive_prompts returns a 2-tuple."""
         # Use try/except since templates may have mismatched format keys in test env
         try:
-            result = get_paper_deep_dive_prompts(
-                title="T", authors=["A"], abstract="B"
-            )
+            result = get_paper_deep_dive_prompts(title="T", authors=["A"], abstract="B")
             assert isinstance(result, tuple) and len(result) == 2
         except KeyError:
             # Template format key mismatch — acceptable in test env

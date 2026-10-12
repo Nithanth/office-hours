@@ -72,7 +72,9 @@ class _FakeLLMService:  # noqa: D101
     _instance: _FakeLLMService | None = None
     _initialized: bool = False
 
-    def __new__(cls, *a: Any, **kw: Any):  # noqa: D401 – mimic singleton but allow reset
+    def __new__(
+        cls, *a: Any, **kw: Any
+    ):  # noqa: D401 – mimic singleton but allow reset
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -133,10 +135,25 @@ class _FakeLLMService:  # noqa: D101
 
         mapping: list[tuple[str, type[LLMProvider], str, str]] = [
             ("openai", OpenAIProvider, "OPENAI_API_KEY", "OPENAI_DEFAULT_MODEL"),
-            ("together_ai", TogetherAIProvider, "TOGETHER_API_KEY", "TOGETHER_DEFAULT_MODEL"),
-            ("anthropic", AnthropicProvider, "ANTHROPIC_API_KEY", "ANTHROPIC_DEFAULT_MODEL"),
+            (
+                "together_ai",
+                TogetherAIProvider,
+                "TOGETHER_API_KEY",
+                "TOGETHER_DEFAULT_MODEL",
+            ),
+            (
+                "anthropic",
+                AnthropicProvider,
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_DEFAULT_MODEL",
+            ),
             ("gemini", GeminiProvider, "GEMINI_API_KEY", "GEMINI_DEFAULT_MODEL"),
-            ("openrouter", OpenRouterProvider, "OPENROUTER_API_KEY", "OPENROUTER_DEFAULT_MODEL"),
+            (
+                "openrouter",
+                OpenRouterProvider,
+                "OPENROUTER_API_KEY",
+                "OPENROUTER_DEFAULT_MODEL",
+            ),
         ]
 
         # Determine which keys are missing before instantiation
@@ -144,7 +161,9 @@ class _FakeLLMService:  # noqa: D101
             _require(key_attr)
 
         if missing:
-            raise _LLMConfigurationError("API key is not configured for one or more providers")
+            raise _LLMConfigurationError(
+                "API key is not configured for one or more providers"
+            )
 
         # All keys available, safe to create provider instances
         for name, klass, key_attr, model_attr in mapping:
@@ -166,7 +185,9 @@ class _FakeLLMService:  # noqa: D101
         **kwargs: Any,
     ) -> str:  # noqa: D401 – minimal contract
         # Ensure at least one successful (re)initialisation attempt this call.
-        already_initialised = getattr(self, "_initialized", False) or type(self)._initialized
+        already_initialised = (
+            getattr(self, "_initialized", False) or type(self)._initialized
+        )
 
         if not already_initialised:
             # Try initialisation but ignore config errors so that subsequent
@@ -260,7 +281,9 @@ class _LLMRateLimitError(_LLMProviderError):
 class _LLMResponseError(_LLMError):
     """Raised when the provider returns an unexpected or unsafe response."""
 
-    def __init__(self, provider: str, message: str, is_safety_issue: bool = False) -> None:
+    def __init__(
+        self, provider: str, message: str, is_safety_issue: bool = False
+    ) -> None:
         super().__init__(f"[{provider}] {message}")
         self.provider = provider
         self.is_safety_issue = is_safety_issue
@@ -294,7 +317,9 @@ _providers_mod = _types.ModuleType("services.core.llm_utils.providers")
 
 
 class LLMProvider:  # noqa: D101 minimal stub
-    def __init__(self, *a: Any, **k: Any):  # accept arbitrary args to avoid TypeError in tests
+    def __init__(
+        self, *a: Any, **k: Any
+    ):  # accept arbitrary args to avoid TypeError in tests
         self.api_key = k.get("api_key") if k else None
         self.default_model = k.get("default_model") if k else None
 
@@ -355,10 +380,10 @@ _stub_llm_utils.__path__ = []  # type: ignore[attr-defined]
 # types submodule providing ProviderName enum
 _types_mod = _types.ModuleType("services.core.llm_utils.types")
 
-from enum import Enum as _Enum  # noqa: E402 – late import OK in tests
+from enum import StrEnum as _StrEnum  # noqa: E402 – late import OK in tests
 
 
-class ProviderName(str, _Enum):  # noqa: D101
+class ProviderName(_StrEnum):  # noqa: D101
     openai = "openai"
     together_ai = "together_ai"
     anthropic = "anthropic"
@@ -512,7 +537,9 @@ import main as app_module  # noqa: E402, F401
 class _DummyService:  # noqa: D101 – testing stub
     _initialized = True
 
-    async def __aenter__(self, *a: Any, **kw: Any):  # noqa: D401 – context manager helper
+    async def __aenter__(
+        self, *a: Any, **kw: Any
+    ):  # noqa: D401 – context manager helper
         return self
 
     async def __aexit__(self, *a: Any, **kw: Any):
@@ -528,10 +555,14 @@ class _DummyService:  # noqa: D101 – testing stub
     async def generate_completion(self, *args: Any, **kwargs: Any):  # noqa: D401
         return "stub"
 
-    async def generate_direct_query_answer(self, *args: Any, **kwargs: Any):  # noqa: D401
+    async def generate_direct_query_answer(
+        self, *args: Any, **kwargs: Any
+    ):  # noqa: D401
         return "stub"
 
-    async def get_paper_content_from_id(self, paper_id: str, *a: Any, **kw: Any):  # noqa: D401
+    async def get_paper_content_from_id(
+        self, paper_id: str, *a: Any, **kw: Any
+    ):  # noqa: D401
         """Return cached text path for given *paper_id* or empty string."""
         return await self.load_full_text(paper_id)
 
@@ -718,13 +749,16 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
     # Ensure config.EXA_API_KEY is non-empty to satisfy guard in search route
     import config as _cfg  # noqa: E402 – late import
 
+    monkeypatch.setattr(_cfg.config, "ENV", "test", raising=False)
     monkeypatch.setattr(_cfg.config, "EXA_API_KEY", "test-key", raising=False)
     monkeypatch.setattr(_cfg.config, "REQUIRE_LOGIN", False, raising=False)
 
     # Stub TextExtractor singleton (avoid PDF downloads)
     try:
         te_mod = importlib.import_module("services.paper.text_extractor")
-        monkeypatch.setattr(te_mod.TextExtractor, "instance", lambda *a, **k: dummy, raising=False)
+        monkeypatch.setattr(
+            te_mod.TextExtractor, "instance", lambda *a, **k: dummy, raising=False
+        )
     except ModuleNotFoundError:
         pass
 
@@ -738,7 +772,9 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
             raising=False,
         )
 
-        async def _fake_direct(*args: Any, **kwargs: Any) -> str:  # noqa: D401 – async stub
+        async def _fake_direct(
+            *args: Any, **kwargs: Any
+        ) -> str:  # noqa: D401 – async stub
             return "<p>ans</p>"
 
         monkeypatch.setattr(
@@ -762,7 +798,9 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
                 )
             return ("stub notes", "text/plain", "notes.txt")
 
-        monkeypatch.setattr(ng_mod.NotesGenerator, "generate", _fake_generate, raising=False)
+        monkeypatch.setattr(
+            ng_mod.NotesGenerator, "generate", _fake_generate, raising=False
+        )
 
     # Stub out UI error rendering (fasthtml dependency)
     with contextlib.suppress(ModuleNotFoundError):
@@ -792,7 +830,9 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
         try:
             from fastapi import Response
 
-            if not any(getattr(r, "path", None) == "/metrics" for r in app_module.app.routes):
+            if not any(
+                getattr(r, "path", None) == "/metrics" for r in app_module.app.routes
+            ):
 
                 @app_module.app.get("/metrics")  # type: ignore[attr-defined]
                 def _metrics_stub():  # noqa: D401 – dynamic metrics stub
@@ -800,10 +840,18 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
 
                     from utils import observability as _obs_mod
 
-                    enabled_env = _os.getenv("ENABLE_METRICS", "0").lower() in {"1", "true", "yes"}
-                    if not getattr(_obs_mod, "_METRICS_ENABLED", False) and not enabled_env:
+                    enabled_env = _os.getenv("ENABLE_METRICS", "0").lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                    }
+                    if (
+                        not getattr(_obs_mod, "_METRICS_ENABLED", False)
+                        and not enabled_env
+                    ):
                         return Response(status_code=404)
                     return Response("", media_type="text/plain")
+
         except Exception:
             pass
 

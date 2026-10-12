@@ -76,9 +76,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     if not settings.EXA_API_KEY:
         logger.error("search_missing_exa_key")
-        error_html = (  # minimal banner; original used render_error_message but keep dependencies slim
-            "<div class='error-banner'>Search service not configured. Contact support.</div>"
-        )
+        error_html = "<div class='error-banner'>Search service not configured. Contact support.</div>"  # minimal banner; original used render_error_message but keep dependencies slim
         return HTMLResponse(
             content=error_html,
             headers={
@@ -92,12 +90,17 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         from services.persistence.repositories import daily_usage_count
 
         async for db_session in session_scope():
-            used = await daily_usage_count(db_session, user_id=user_id, event_type="search")
+            used = await daily_usage_count(
+                db_session, user_id=user_id, event_type="search"
+            )
         if used >= settings.BETA_DAILY_SEARCH_LIMIT:
             return HTMLResponse(
                 "<div class='error-banner'>Daily search limit reached. Please try again tomorrow.</div>",
                 status_code=429,
-                headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+                headers={
+                    "HX-Retarget": "#search-results-container",
+                    "HX-Reswap": "innerHTML",
+                },
             )
 
     # Normalise display count ----------------------------------------------------
@@ -116,7 +119,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             "background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
             "color:var(--lux-text,#e0e0e0);margin-top:8px;'>"
             "Please enter a search query.</div>",
-            headers={"HX-Retarget": "#search-results-container", "HX-Reswap": "innerHTML"},
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
         )
 
     _MAX_QUERY_LEN = 500
@@ -158,7 +164,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             )
 
             async def _run() -> str:
-                return cast(str, await rg.generate_direct_query_answer(query=input_query_stripped))
+                return cast(
+                    str,
+                    await rg.generate_direct_query_answer(query=input_query_stripped),
+                )
 
             this_task = asyncio.create_task(_run())
             _direct_query_tasks[session_id] = this_task
@@ -181,7 +190,11 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 status_code=500,
             )
         finally:
-            if this_task and _direct_query_tasks.get(session_id) is this_task and this_task.done():
+            if (
+                this_task
+                and _direct_query_tasks.get(session_id) is this_task
+                and this_task.done()
+            ):
                 _direct_query_tasks.pop(session_id, None)
 
     # ------------------------------------------------------------------
@@ -214,7 +227,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             shared_kwargs["start_published_date"] = parsed_start_date
         if include_domains:
             # Remove neutral options like "any" / "all" and blank items
-            filtered_domains = [d for d in include_domains if d and d.lower() not in {"any", "all"}]
+            filtered_domains = [
+                d for d in include_domains if d and d.lower() not in {"any", "all"}
+            ]
             if filtered_domains:
                 shared_kwargs["include_domains"] = filtered_domains
         # Deep Research mode override — uses Exa "deep" search type for
@@ -300,7 +315,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 # ---------------------------------------------------------------------------
 
 
-def _paper_li_html(pap: Paper, *, is_main: bool = False, wildcard: bool = False) -> str:  # noqa: D401
+def _paper_li_html(
+    pap: Paper, *, is_main: bool = False, wildcard: bool = False
+) -> str:  # noqa: D401
     """Return minimal HTML <li> element for a paper suitable for HTMX swaps."""
 
     authors_display = "Author(s): N/A"

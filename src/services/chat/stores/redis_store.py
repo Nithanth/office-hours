@@ -13,8 +13,9 @@ TTLs are applied to auto-expire stale data.
 
 from __future__ import annotations
 
+import importlib
 import json
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -31,7 +32,7 @@ class RedisChatStore(ChatStore):
 
     def __init__(self, redis_url: str = "", ttl: int = _DEFAULT_TTL) -> None:
         try:
-            import redis
+            redis = cast(Any, importlib.import_module("redis"))
         except ImportError as exc:
             raise ImportError(
                 "Redis backend requires the 'redis' package. "
@@ -40,7 +41,11 @@ class RedisChatStore(ChatStore):
 
         from config import config
 
-        url = redis_url or getattr(config, "REDIS_URL", None) or "redis://localhost:6379/0"
+        url = (
+            redis_url
+            or getattr(config, "REDIS_URL", None)
+            or "redis://localhost:6379/0"
+        )
         self._client = redis.Redis.from_url(url, decode_responses=True)
         self._ttl = ttl
         # Verify connection
@@ -77,16 +82,20 @@ class RedisChatStore(ChatStore):
             self._client.setex(key, self._ttl, json.dumps(capped))
             self._client.sadd(self._sessions_set_key(), session_id)
             logger.debug(
-                "history_saved", session_id=session_id, paper_id=paper_id, turns=len(capped)
+                "history_saved",
+                session_id=session_id,
+                paper_id=paper_id,
+                turns=len(capped),
             )
         except Exception as exc:
             logger.warning(
-                "history_save_failed", session_id=session_id, paper_id=paper_id, err=str(exc)
+                "history_save_failed",
+                session_id=session_id,
+                paper_id=paper_id,
+                err=str(exc),
             )
 
-    def load_history(
-        self, session_id: str, paper_id: str
-    ) -> list[dict[str, str]]:
+    def load_history(self, session_id: str, paper_id: str) -> list[dict[str, str]]:
         key = self._history_key(session_id, paper_id)
         try:
             data = self._client.get(key)
@@ -96,7 +105,10 @@ class RedisChatStore(ChatStore):
             return turns[-_HISTORY_CAP:] if isinstance(turns, list) else []
         except Exception as exc:
             logger.warning(
-                "history_load_failed", session_id=session_id, paper_id=paper_id, err=str(exc)
+                "history_load_failed",
+                session_id=session_id,
+                paper_id=paper_id,
+                err=str(exc),
             )
             return []
 
@@ -125,7 +137,10 @@ class RedisChatStore(ChatStore):
             data = self._client.get(key)
             if data is None:
                 return None
-            return json.loads(data)
+            session = json.loads(data)
+            if isinstance(session, dict):
+                return cast(dict[str, Any], session)
+            return None
         except Exception as exc:
             logger.warning("session_load_failed", session_id=session_id, err=str(exc))
             return None

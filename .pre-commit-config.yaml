@@ -16,6 +16,7 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
+        exclude: ^(tests/|scripts/|migrations/)
         # Match what CI sees so warn_unused_ignores doesn't disagree with the
         # full-project mypy run.
         additional_dependencies:

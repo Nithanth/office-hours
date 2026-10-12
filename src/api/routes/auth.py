@@ -45,7 +45,9 @@ def _auth_configured() -> bool:
 
 
 @router.get("/auth/google/login")
-async def google_login(request: Request, next: str = "/") -> RedirectResponse:  # noqa: A002
+async def google_login(
+    request: Request, next: str = "/"
+) -> RedirectResponse:  # noqa: A002
     if not _auth_configured():
         raise HTTPException(status_code=503, detail="Google login is not configured.")
 

@@ -23,13 +23,19 @@ async def test_arxiv_abs_url_yields_full_pdf(tmp_path: Path, monkeypatch):
     safe_pid = "arxiv_2003_08934"
 
     # Force fresh extraction
-    path = await extractor.ensure_cached(url, paper_id=safe_pid, force=True, prefer_exa=False)
+    path = await extractor.ensure_cached(
+        url, paper_id=safe_pid, force=True, prefer_exa=False
+    )
     assert path is not None, "Extraction layer returned None"
 
     # Should *not* be marked partial
-    assert not path.endswith(".partial.txt"), "Fell back to partial abstract instead of full PDF"
+    assert not path.endswith(
+        ".partial.txt"
+    ), "Fell back to partial abstract instead of full PDF"
 
     text = Path(path).read_text(encoding="utf-8")
 
     # Full length threshold reached
-    assert len(text) >= _MIN_FULL_TEXT, f"Extracted text too short: {len(text)} < {_MIN_FULL_TEXT}"
+    assert (
+        len(text) >= _MIN_FULL_TEXT
+    ), f"Extracted text too short: {len(text)} < {_MIN_FULL_TEXT}"

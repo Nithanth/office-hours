@@ -58,7 +58,9 @@ def estimate_prompt_overhead(
 ) -> int:
     """Approximate **input** token cost of the static prompt template."""
 
-    active_prompts = AUDIENCE_PROMPT_MAP.get(audience_type, AUDIENCE_PROMPT_MAP["technical"])
+    active_prompts = AUDIENCE_PROMPT_MAP.get(
+        audience_type, AUDIENCE_PROMPT_MAP["technical"]
+    )
     template = active_prompts["topic"] if is_topic_summary else active_prompts["paper"]
 
     template_specific_tokens = len(template) // AVG_CHARS_PER_TOKEN
@@ -92,7 +94,10 @@ def max_content_snippet_chars(
     )
 
     available_tokens = (
-        selected_model_input_token_limit - overhead_tokens - output_tokens - SAFETY_MARGIN_TOKENS
+        selected_model_input_token_limit
+        - overhead_tokens
+        - output_tokens
+        - SAFETY_MARGIN_TOKENS
     )
 
     if available_tokens <= 0:

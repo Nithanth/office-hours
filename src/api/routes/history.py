@@ -149,7 +149,9 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
 async def reports_api(request: Request) -> JSONResponse:
     user_id = require_auth_user_id(request)
     if not database_available():
-        return JSONResponse({"ok": False, "reports": [], "detail": "Report history not configured"})
+        return JSONResponse(
+            {"ok": False, "reports": [], "detail": "Report history not configured"}
+        )
 
     from services.persistence.repositories import list_reports
 

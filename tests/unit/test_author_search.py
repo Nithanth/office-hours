@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from services.paper.metadata.author_search import (
     AuthorPaper,
@@ -16,7 +13,6 @@ from services.paper.metadata.author_search import (
     get_paper_url,
     search_authors,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -289,8 +285,18 @@ class TestGetAuthorPapers:
         mock_get.return_value = {
             "data": [
                 {"paperId": "a", "title": "Low", "citationCount": 5, "externalIds": {}},
-                {"paperId": "b", "title": "High", "citationCount": 500, "externalIds": {}},
-                {"paperId": "c", "title": "Mid", "citationCount": 50, "externalIds": {}},
+                {
+                    "paperId": "b",
+                    "title": "High",
+                    "citationCount": 500,
+                    "externalIds": {},
+                },
+                {
+                    "paperId": "c",
+                    "title": "Mid",
+                    "citationCount": 50,
+                    "externalIds": {},
+                },
             ]
         }
         papers = get_author_papers("123")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from services.notes.notes_generator import _json_to_md, _render_txt
 
 
@@ -68,8 +66,10 @@ class TestJsonToMd:
         result = _json_to_md(doc)
         lines = result.split("\n")
         # Check indentation increases
-        method_lines = [l for l in lines if "Level" in l or "Top level" in l]
-        assert any("  " in l for l in method_lines)  # some indentation exists
+        method_lines = [
+            line for line in lines if "Level" in line or "Top level" in line
+        ]
+        assert any("  " in line for line in method_lines)  # some indentation exists
 
     def test_empty_sections(self):
         doc = {"sections": []}

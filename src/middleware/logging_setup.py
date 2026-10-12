@@ -12,7 +12,6 @@ from loguru import logger
 
 from config import config
 
-
 # ---------------------------------------------------------------------------
 # Intercept handler: forwards stdlib logging → Loguru
 # ---------------------------------------------------------------------------

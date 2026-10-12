@@ -78,10 +78,17 @@ def _process(txt_path: Path, force: bool, dry_run: bool) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Refresh missing or stale Lance indexes.")
-    ap.add_argument("--force", action="store_true", help="Rebuild even up-to-date indexes")
-    ap.add_argument("--dry-run", action="store_true", help="List actions without executing")
     ap.add_argument(
-        "--workers", type=int, default=min(4, (os.cpu_count() or 2)), help="Parallel workers"
+        "--force", action="store_true", help="Rebuild even up-to-date indexes"
+    )
+    ap.add_argument(
+        "--dry-run", action="store_true", help="List actions without executing"
+    )
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=min(4, (os.cpu_count() or 2)),
+        help="Parallel workers",
     )
     args = ap.parse_args()
 

@@ -16,4 +16,7 @@ def test_merge_dicts_keep_first() -> None:
 
 
 def test_sha256() -> None:
-    assert mu.sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    assert (
+        mu.sha256("abc")
+        == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    )

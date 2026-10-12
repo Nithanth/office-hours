@@ -34,7 +34,9 @@ async def test_ensure_cached_writes_file(
     monkeypatch.setattr(
         extractor, "_layer_arxiv", lambda _url: (_ for _ in ()).throw(RuntimeError())
     )
-    monkeypatch.setattr(extractor, "_layer_pdf", lambda _url: (_ for _ in ()).throw(RuntimeError()))
+    monkeypatch.setattr(
+        extractor, "_layer_pdf", lambda _url: (_ for _ in ()).throw(RuntimeError())
+    )
     monkeypatch.setattr(
         extractor, "_layer_html", lambda _url: (_ for _ in ()).throw(RuntimeError())
     )

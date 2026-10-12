@@ -10,7 +10,10 @@ import pytest
     "output_format,expected_ct",
     [
         ("txt", "text/plain"),
-        ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        (
+            "docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
     ],
 )
 def test_generate_report_notes(client, output_format: str, expected_ct: str):

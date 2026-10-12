@@ -52,7 +52,9 @@ class Config(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     XAI_API_KEY: Optional[str] = None
-    OPENROUTER_API_KEY: Optional[str] = None  # OpenRouter for OS models (GLM, Qwen, etc.)
+    OPENROUTER_API_KEY: Optional[
+        str
+    ] = None  # OpenRouter for OS models (GLM, Qwen, etc.)
     SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
 
     # ------------------------------------------------------------------
@@ -403,7 +405,7 @@ class Config(BaseSettings):
         return Path(str(v)).expanduser() if v else Path("")
 
     @model_validator(mode="after")
-    def _compute_derived(self) -> "Config":
+    def _compute_derived(self) -> Config:
         """Compute derived fields after all values are loaded."""
         # CSS_PREFIX defaults based on ENV
         if not self.CSS_PREFIX:
@@ -432,7 +434,9 @@ class Config(BaseSettings):
             )
 
         for key, info in self.AVAILABLE_MODELS.items():
-            missing = {"id", "provider", "input_token_limit", "display_name"} - set(info)
+            missing = {"id", "provider", "input_token_limit", "display_name"} - set(
+                info
+            )
             if missing:
                 raise ValueError(
                     f"Model '{key}' is missing required fields: {sorted(missing)}"

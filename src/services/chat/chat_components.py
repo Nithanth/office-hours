@@ -3,7 +3,18 @@
 from collections.abc import Iterable
 from typing import Any
 
-from fasthtml.components import BUTTON, H2, INPUT, A, Div, Form, Label, P, Span, Textarea
+from fasthtml.components import (
+    BUTTON,
+    H2,
+    INPUT,
+    A,
+    Div,
+    Form,
+    Label,
+    P,
+    Span,
+    Textarea,
+)
 
 
 # Leaf components
@@ -37,7 +48,10 @@ def CitationCard(
     if oob_slot:
         attrs = {**attrs, "hx_oob": oob_slot}
     return Div(
-        H2(title[:80] + ("…" if len(title) > 80 else ""), style="font-size:1em;margin:0 0 4px 0;"),
+        H2(
+            title[:80] + ("…" if len(title) > 80 else ""),
+            style="font-size:1em;margin:0 0 4px 0;",
+        ),
         P(authors_str, style="font-size:0.85em;margin:0;"),
         P(A("Open", href=url or "#", target="_blank"), style="margin:2px 0 0 0;"),
         cls="citation-card",
@@ -104,7 +118,9 @@ def ChatModal(
                 Div(
                     Textarea(
                         name="message",
-                        placeholder="Ask anything…" if is_global else "Ask about this paper…",
+                        placeholder="Ask anything…"
+                        if is_global
+                        else "Ask about this paper…",
                         rows="2",
                         cls="chat-textarea",
                     ),

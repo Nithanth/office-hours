@@ -50,7 +50,13 @@ from pdfminer.high_level import extract_text as _pdfminer_extract
 
 from services.paper.embedding import embed_query
 from services.paper.text_extractor import _clean_text
-from services.paper.vector_store import build_index_from_text, index_exists, index_path, search
+from services.paper.vector_store import (
+    _get_db,
+    _open_shared_table_rw,
+    build_index_from_text,
+    index_exists,
+    search,
+)
 
 try:
     import fitz  # PyMuPDF
@@ -143,17 +149,14 @@ def delete_index_cli(paper_id: str) -> None:
         return
 
     try:
-        import shutil
+        table = _open_shared_table_rw(_get_db())
+        if table is None:
+            logger.error("No shared vector table found for %s", paper_id)
+            return
 
-        path = index_path(paper_id)
-        if path.exists():
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-            logger.info("Deleted index at %s", path)
-        else:
-            logger.warning("Index path %s not found", path)
+        escaped_paper_id = paper_id.replace("'", "''")
+        table.delete(f"paper_id = '{escaped_paper_id}'")
+        logger.info("Deleted index rows for %s", paper_id)
     except Exception as e:
         logger.error("Failed to delete index: %s", e)
 
@@ -230,13 +233,17 @@ def main() -> None:
     # Index command
     index_parser = subparsers.add_parser("index", help="Index a PDF file")
     index_parser.add_argument("pdf_path", type=Path, help="Path to PDF file")
-    index_parser.add_argument("--paper-id", required=True, help="Unique ID for this paper")
+    index_parser.add_argument(
+        "--paper-id", required=True, help="Unique ID for this paper"
+    )
 
     # Search command
     search_parser = subparsers.add_parser("search", help="Search an indexed paper")
     search_parser.add_argument("paper_id", help="Paper ID to search")
     search_parser.add_argument("query", help="Search query")
-    search_parser.add_argument("--top-k", type=int, default=3, help="Number of results to return")
+    search_parser.add_argument(
+        "--top-k", type=int, default=3, help="Number of results to return"
+    )
 
     # List command
     subparsers.add_parser("list", help="List all vector indices")
@@ -246,9 +253,13 @@ def main() -> None:
     delete_parser.add_argument("paper_id", help="Paper ID to delete")
 
     # Index a PDF from URL
-    idx_url_parser = subparsers.add_parser("index-url", help="Download and index a PDF from URL")
+    idx_url_parser = subparsers.add_parser(
+        "index-url", help="Download and index a PDF from URL"
+    )
     idx_url_parser.add_argument("pdf_url", help="URL to a PDF file")
-    idx_url_parser.add_argument("--paper-id", help="Optional paper id (defaults to filename)")
+    idx_url_parser.add_argument(
+        "--paper-id", help="Optional paper id (defaults to filename)"
+    )
 
     # Interactive chat command
     chat_parser = subparsers.add_parser("chat", help="Interactive retrieval chat")
@@ -261,7 +272,9 @@ def main() -> None:
     )
     chat_url_parser.add_argument("pdf_url", help="URL to a PDF")
     chat_url_parser.add_argument("--paper-id", help="Optional paper id")
-    chat_url_parser.add_argument("--top-k", type=int, default=4, help="Chunks per response")
+    chat_url_parser.add_argument(
+        "--top-k", type=int, default=4, help="Chunks per response"
+    )
 
     args = parser.parse_args()
 

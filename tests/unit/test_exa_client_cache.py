@@ -19,7 +19,9 @@ def _paper(pid: str, score: float = 0.9) -> Paper:
     )
 
 
-def _dummy_adapter(api_key: str = "dummy") -> SimpleNamespace:  # noqa: D401 – simple namespace
+def _dummy_adapter(
+    api_key: str = "dummy",
+) -> SimpleNamespace:  # noqa: D401 – simple namespace
     """Return a stub object in place of ExaAdapter."""
 
     return SimpleNamespace(sync_client=None)
@@ -73,7 +75,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> exa_mod.ExaClient:
     monkeypatch.setattr(
         c,
         "search_papers",
-        lambda query, num_results=10, **kw: [_paper(str(i)) for i in range(num_results)],
+        lambda query, num_results=10, **kw: [
+            _paper(str(i)) for i in range(num_results)
+        ],
     )
     return c
 

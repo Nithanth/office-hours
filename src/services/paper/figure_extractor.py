@@ -11,7 +11,7 @@ import base64
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import fitz
 from loguru import logger
@@ -54,7 +54,9 @@ class FigureInfo:
     image_path: str  # absolute path to saved PNG
     width: int
     height: int
-    description: str = ""  # vision LLM description (empty until describe_figures called)
+    description: str = (
+        ""  # vision LLM description (empty until describe_figures called)
+    )
     caption: str = ""  # extracted caption text if found near the figure
 
 
@@ -65,7 +67,7 @@ class FigureInfo:
 
 def _figures_dir(paper_id: str) -> Path:
     """Return the cache directory for a given paper's figures."""
-    return config.CACHE_DIR / "figures" / paper_id
+    return Path(config.CACHE_DIR) / "figures" / paper_id
 
 
 def _metadata_path(paper_id: str) -> Path:
@@ -279,18 +281,22 @@ class FigureExtractor:
             return figures
 
         if llm_service is None:
-            logger.debug("No LLM service provided; skipping figure descriptions", paper_id=paper_id)
+            logger.debug(
+                "No LLM service provided; skipping figure descriptions",
+                paper_id=paper_id,
+            )
             return figures
 
         # Determine which provider/model to use for vision.
         # Default to OpenAI (GPT-4o has strong vision), fall back to anthropic or gemini.
-        provider_name, model_name = self._resolve_vision_model(llm_service, model_key)
-        if provider_name is None:
+        resolved_model = self._resolve_vision_model(llm_service, model_key)
+        if resolved_model is None:
             logger.warning(
                 "No vision-capable provider available; skipping descriptions",
                 paper_id=paper_id,
             )
             return figures
+        provider_name, model_name = resolved_model
 
         for figure in figures:
             # Skip if already described (e.g. loaded from cache).
@@ -305,7 +311,9 @@ class FigureExtractor:
                 # Build the prompt with context about any existing caption.
                 prompt = _VISION_PROMPT
                 if figure.caption:
-                    prompt += f"\n\nThe figure has the following caption: \"{figure.caption}\""
+                    prompt += (
+                        f'\n\nThe figure has the following caption: "{figure.caption}"'
+                    )
 
                 # TODO: The current LLMProvider.generate_text interface does not
                 # natively support multimodal (image) inputs. When the provider
@@ -414,9 +422,7 @@ class FigureExtractor:
             )
 
             blocks = page.get_text("blocks", clip=search_rect)
-            caption_pattern = re.compile(
-                r"(?:Figure|Fig\.)\s*\d+", re.IGNORECASE
-            )
+            caption_pattern = re.compile(r"(?:Figure|Fig\.)\s*\d+", re.IGNORECASE)
 
             for block in blocks:
                 text = block[4].strip() if len(block) > 4 else ""
@@ -455,7 +461,7 @@ class FigureExtractor:
     @staticmethod
     def _resolve_vision_model(
         llm_service: LLMService, model_key: str | None
-    ) -> tuple[str | None, str | None]:
+    ) -> tuple[str, str] | None:
         """Determine the best available vision-capable provider and model.
 
         Priority: OpenAI (GPT-4o) > Anthropic (Claude) > Gemini.
@@ -478,7 +484,7 @@ class FigureExtractor:
                 if provider_obj:
                     return provider_name, provider_obj.default_model
 
-        return None, None
+        return None
 
     @staticmethod
     async def _call_vision_llm(
@@ -514,12 +520,18 @@ class FigureExtractor:
             )
         else:
             # Fallback: attempt text-only generation with image context in prompt.
-            logger.debug("Vision not supported for provider; using text-only fallback", provider=provider_name)
-            return await provider.generate_text(
-                prompt=f"{prompt}\n\n[Image content not available for text-only model]",
-                model=model_name,
-                max_tokens=300,
-                temperature=0.3,
+            logger.debug(
+                "Vision not supported for provider; using text-only fallback",
+                provider=provider_name,
+            )
+            return cast(
+                str,
+                await provider.generate_text(
+                    prompt=f"{prompt}\n\n[Image content not available for text-only model]",
+                    model=model_name,
+                    max_tokens=300,
+                    temperature=0.3,
+                ),
             )
 
     @staticmethod
@@ -528,12 +540,13 @@ class FigureExtractor:
     ) -> str:
         """Call OpenAI's vision API with a base64-encoded image."""
         from openai import AsyncOpenAI
+        from openai.types.chat import ChatCompletionMessageParam
 
         client: AsyncOpenAI = provider._async_client
         if client is None:
             return ""
 
-        messages: list[dict[str, Any]] = [
+        messages: list[ChatCompletionMessageParam] = [
             {
                 "role": "user",
                 "content": [
@@ -551,13 +564,13 @@ class FigureExtractor:
 
         response = await client.chat.completions.create(
             model=model_name,
-            messages=messages,  # type: ignore[arg-type]
+            messages=messages,
             max_tokens=300,
             temperature=0.3,
         )
 
         if response.choices and response.choices[0].message.content:
-            return response.choices[0].message.content.strip()
+            return cast(str, response.choices[0].message.content).strip()
         return ""
 
     @staticmethod
@@ -566,12 +579,13 @@ class FigureExtractor:
     ) -> str:
         """Call Anthropic's vision API with a base64-encoded image."""
         from anthropic import AsyncAnthropic
+        from anthropic.types import MessageParam, TextBlock
 
         client: AsyncAnthropic = provider._async_client
         if client is None:
             return ""
 
-        messages: list[dict[str, Any]] = [
+        messages: list[MessageParam] = [
             {
                 "role": "user",
                 "content": [
@@ -590,13 +604,13 @@ class FigureExtractor:
 
         response = await client.messages.create(
             model=model_name,
-            messages=messages,  # type: ignore[arg-type]
+            messages=messages,
             max_tokens=300,
             temperature=0.3,
         )
 
         if response.content and len(response.content) > 0:
-            return response.content[0].text.strip()
+            return cast(str, cast(TextBlock, response.content[0]).text).strip()
         return ""
 
     @staticmethod

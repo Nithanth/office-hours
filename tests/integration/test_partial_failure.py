@@ -36,7 +36,9 @@ def test_partial_failure_event(monkeypatch: Any) -> None:
     """The /report/stream endpoint should emit a `failures` event with titles."""
 
     # Monkey-patch the LLM call so we control failures.
-    monkeypatch.setattr(ReportGenerator, "_generate_single_summary", _stub_generate, raising=True)
+    monkeypatch.setattr(
+        ReportGenerator, "_generate_single_summary", _stub_generate, raising=True
+    )
 
     # Ensure the streaming endpoint does not error out on missing services.
     async def _dummy_get_services() -> tuple[Any, Any]:  # noqa: D401

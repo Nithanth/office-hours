@@ -10,19 +10,28 @@ from datetime import datetime, timedelta
 
 import pytest
 
-aiosqlite = pytest.importorskip("aiosqlite", reason="aiosqlite is required for SQLite async tests")
+aiosqlite = pytest.importorskip(
+    "aiosqlite", reason="aiosqlite is required for SQLite async tests"
+)
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (  # noqa: E402 -- after optional aiosqlite guard
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from services.persistence.database import Base
-from services.persistence.models import (
+from models.paper import Paper  # noqa: E402 -- after optional aiosqlite guard
+from services.persistence.database import (  # noqa: E402 -- after optional aiosqlite guard
+    Base,
+)
+from services.persistence.models import (  # noqa: E402 -- after optional aiosqlite guard
     ChatMessage,
     ChatThread,
     Export,
     OAuthAccount,
     UsageEvent,
 )
-from services.persistence.repositories import (
+from services.persistence.repositories import (  # noqa: E402 -- after optional aiosqlite guard
     append_chat_message,
     create_report,
     daily_usage_count,
@@ -32,11 +41,9 @@ from services.persistence.repositories import (
     list_reports,
     record_export,
     record_usage,
-    usage_count_since,
     upsert_google_user,
+    usage_count_since,
 )
-from models.paper import Paper
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -177,15 +184,9 @@ class TestGetUser:
 class TestUsageTracking:
     async def test_record_and_count(self, db_session: AsyncSession):
         uid = await _make_user(db_session)
-        await record_usage(
-            db_session, user_id=uid, event_type="search", provider="exa"
-        )
-        await record_usage(
-            db_session, user_id=uid, event_type="search", provider="exa"
-        )
-        await record_usage(
-            db_session, user_id=uid, event_type="export", provider=None
-        )
+        await record_usage(db_session, user_id=uid, event_type="search", provider="exa")
+        await record_usage(db_session, user_id=uid, event_type="search", provider="exa")
+        await record_usage(db_session, user_id=uid, event_type="export", provider=None)
 
         count = await usage_count_since(
             db_session,
@@ -252,13 +253,18 @@ class TestReports:
 
         # Papers persisted
         from sqlalchemy import select
+
         from services.persistence.models import ReportPaper
 
         papers = (
-            await db_session.execute(
-                select(ReportPaper).where(ReportPaper.report_id == report.id)
+            (
+                await db_session.execute(
+                    select(ReportPaper).where(ReportPaper.report_id == report.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(papers) == 2
         titles = {p.title for p in papers}
         assert titles == {"Test Paper One", "Test Paper Two"}
@@ -326,7 +332,9 @@ class TestReports:
         )
 
         # Owner can see it
-        assert await get_report(db_session, user_id=uid_a, report_id=report.id) is not None
+        assert (
+            await get_report(db_session, user_id=uid_a, report_id=report.id) is not None
+        )
         # Other user cannot
         assert await get_report(db_session, user_id=uid_b, report_id=report.id) is None
 
@@ -387,10 +395,14 @@ class TestChatMessages:
         from sqlalchemy import select
 
         msgs = (
-            await db_session.execute(
-                select(ChatMessage).where(ChatMessage.thread_id == msg1.thread_id)
+            (
+                await db_session.execute(
+                    select(ChatMessage).where(ChatMessage.thread_id == msg1.thread_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(msgs) == 2
 
 
@@ -414,9 +426,7 @@ class TestRecordExport:
 
         from sqlalchemy import select
 
-        export = await db_session.scalar(
-            select(Export).where(Export.user_id == uid)
-        )
+        export = await db_session.scalar(select(Export).where(Export.user_id == uid))
         assert export is not None
         assert export.export_type == "pdf"
         assert export.destination == "local"
@@ -439,9 +449,7 @@ class TestRecordExport:
 
         from sqlalchemy import select
 
-        export = await db_session.scalar(
-            select(Export).where(Export.user_id == uid)
-        )
+        export = await db_session.scalar(select(Export).where(Export.user_id == uid))
         assert export is not None
         assert export.status == "error"
         assert export.error == "Notion API rate limit"

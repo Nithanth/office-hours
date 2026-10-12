@@ -28,12 +28,16 @@ async def get_metadata(
     if record is None:
         # Populate cache on first access
         try:
-            logger.debug("metadata_endpoint cache miss - running enrich_url", url=clean_url)
+            logger.debug(
+                "metadata_endpoint cache miss - running enrich_url", url=clean_url
+            )
             exa_client.enrich_url(clean_url)
             record = cache.get(clean_url)
         except Exception as exc:  # noqa: BLE001
             # Surface enrichment failure to caller so they know why 502
-            raise HTTPException(status_code=502, detail=f"Enrichment failed: {exc}") from exc
+            raise HTTPException(
+                status_code=502, detail=f"Enrichment failed: {exc}"
+            ) from exc
 
     if record is None:
         raise HTTPException(status_code=404, detail="No metadata found for url")

@@ -50,7 +50,9 @@ def test_chat_rag_retrieval(monkeypatch, client):
     # ------------------------------------------------------------------
     # Issue chat request and stream.
     # ------------------------------------------------------------------
-    resp = client.post("/chat", data={"message": "What is the intro?", "paper_id": "rag1"})
+    resp = client.post(
+        "/chat", data={"message": "What is the intro?", "paper_id": "rag1"}
+    )
     assert resp.status_code == 200
 
     stream = client.get("/chat/stream", params={"paper_id": "rag1"})

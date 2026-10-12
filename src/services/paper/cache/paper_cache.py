@@ -3,7 +3,7 @@
 # stdlib
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Literal, Optional, cast
@@ -41,9 +41,7 @@ class PaperCache:
         );
         """
 
-    _CREATE_INDEX_SQL = (
-        "CREATE INDEX IF NOT EXISTS idx_comp_last ON paper_cache (complete, last_checked);"
-    )
+    _CREATE_INDEX_SQL = "CREATE INDEX IF NOT EXISTS idx_comp_last ON paper_cache (complete, last_checked);"
 
     def __init__(self, db_path: str | None = None, freshness_hours: int = 24):
         # Resolve DB path early so subsequent ops use a concrete str
@@ -75,7 +73,7 @@ class PaperCache:
             meta = json.loads(meta_json)
         except Exception:
             meta = {}
-        last_checked = datetime.fromisoformat(last_checked_str).replace(tzinfo=timezone.utc)
+        last_checked = datetime.fromisoformat(last_checked_str).replace(tzinfo=UTC)
         rec = {
             "meta": meta,
             "last_checked": last_checked,
@@ -90,14 +88,16 @@ class PaperCache:
         if not rec:
             return False
         last_checked = cast(datetime, rec["last_checked"])
-        fresh = bool(datetime.now(timezone.utc) - last_checked < self.freshness_td)
+        fresh = bool(datetime.now(UTC) - last_checked < self.freshness_td)
         logger.debug("paper_cache_is_fresh", id=doc_id, fresh=fresh)
         return fresh
 
     def upsert(self, doc_id: str, meta: dict[str, Any], complete: bool) -> None:
         """Insert or update *doc_id* row with *meta* and *complete* flag."""
-        now_str = datetime.now(timezone.utc).isoformat()
-        meta_json = json.dumps(meta, default=str)  # fallback str serialisation for datetimes
+        now_str = datetime.now(UTC).isoformat()
+        meta_json = json.dumps(
+            meta, default=str
+        )  # fallback str serialisation for datetimes
         self.conn.execute(
             """
             INSERT INTO paper_cache(id, metadata, last_checked, complete)

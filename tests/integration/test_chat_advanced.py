@@ -24,7 +24,9 @@ def test_chat_abort_endpoint(client):
     cs.stream_active = True
 
     # Call abort
-    resp_abort = client.post("/chat/abort", data={"paper_id": "p1"}, cookies={"luxsid": luxsid})
+    resp_abort = client.post(
+        "/chat/abort", data={"paper_id": "p1"}, cookies={"luxsid": luxsid}
+    )
     assert resp_abort.status_code == 204
     assert cs.stream_active is False
 
@@ -36,7 +38,9 @@ def test_chat_stream_resume(client):
     luxsid = resp1.cookies.get("luxsid")
 
     # 2. First stream to fill buffer
-    resp_stream = client.get("/chat/stream", params={"paper_id": "p1"}, cookies={"luxsid": luxsid})
+    resp_stream = client.get(
+        "/chat/stream", params={"paper_id": "p1"}, cookies={"luxsid": luxsid}
+    )
     assert resp_stream.status_code == 200
     body1 = resp_stream.text
     # Expect three stub tokens (may be batched into one or more SSE events)

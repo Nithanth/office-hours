@@ -16,7 +16,9 @@ except ImportError:  # pragma: no cover – fallback when src/ not on PYTHONPATH
     import os
     import sys
 
-    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    PROJECT_ROOT = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     if PROJECT_ROOT not in sys.path:
         sys.path.append(PROJECT_ROOT)
     from models.paper import Paper
@@ -31,7 +33,9 @@ _PDF_TITLE_PATTERNS = [
 ]
 
 # Leading patterns (e.g., "[2502.09992] " or "[123456] ") to remove
-_ARXIV_PREFIX_PATTERN = re.compile(r"^\s*\[?(\d{4}\.\d{4,5})(?:v\d+)?\]?\s*", re.IGNORECASE)
+_ARXIV_PREFIX_PATTERN = re.compile(
+    r"^\s*\[?(\d{4}\.\d{4,5})(?:v\d+)?\]?\s*", re.IGNORECASE
+)
 
 
 def _clean_title(raw_title: str | None) -> str:
@@ -56,7 +60,9 @@ def is_valid_paper(paper: Paper | None) -> bool:
         return False
 
     url_str = str(paper.url)
-    has_trusted_id = bool(_url_utils.extract_arxiv_id(url_str) or _url_utils.extract_doi(url_str))
+    has_trusted_id = bool(
+        _url_utils.extract_arxiv_id(url_str) or _url_utils.extract_doi(url_str)
+    )
 
     title_clean = (paper.title or "").strip()
 
@@ -95,7 +101,9 @@ def _coerce_http_url(raw: str) -> HttpUrl | str:
         return raw
 
 
-def create_paper_from_exa_result(result: Any, source_description: str) -> Optional[Paper]:
+def create_paper_from_exa_result(
+    result: Any, source_description: str
+) -> Optional[Paper]:
     """Convert a raw Exa SDK `result` into a `Paper` object."""
     try:
         raw_title: str | None = getattr(result, "title", None)
@@ -110,7 +118,9 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
 
         url_val_typed = _coerce_http_url(url_val)
 
-        raw_authors_any = getattr(result, "authors", None) or getattr(result, "author", None)
+        raw_authors_any = getattr(result, "authors", None) or getattr(
+            result, "author", None
+        )
         authors_list: list[str] = []
         if authors_attr := getattr(result, "authors", None):
             # Exa sometimes returns garbage strings like "Senior Author"; clean.
@@ -118,9 +128,15 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
             authors_list = _author_utils.filter_plausible_authors(_authors_cleaned)
         elif author_str := getattr(result, "author", None):
             tokens = re.split(r",|;|\band\b", str(author_str))
-            authors_list = [t.strip() for t in tokens if _author_utils.is_plausible_author(t)]
+            authors_list = [
+                t.strip() for t in tokens if _author_utils.is_plausible_author(t)
+            ]
 
-        logger.debug("create_paper_from_exa_result", raw_authors=raw_authors_any, kept=authors_list)
+        logger.debug(
+            "create_paper_from_exa_result",
+            raw_authors=raw_authors_any,
+            kept=authors_list,
+        )
 
         published_date: datetime | None = None
         if pd_str := getattr(result, "published_date", None):
@@ -135,20 +151,24 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
                         try:
                             if "+" in cleaned:
                                 dt_part, tz_part = cleaned.split("+", 1)
-                                paper_dt = datetime.strptime(dt_part.strip(), "%Y-%m-%d %H:%M:%S")
+                                paper_dt = datetime.strptime(
+                                    dt_part.strip(), "%Y-%m-%d %H:%M:%S"
+                                )
                                 published_date = paper_dt.replace(tzinfo=None)
                             else:
                                 # Bare date string
-                                published_date = datetime.strptime(cleaned, "%Y-%m-%d").replace(
-                                    tzinfo=None
-                                )
+                                published_date = datetime.strptime(
+                                    cleaned, "%Y-%m-%d"
+                                ).replace(tzinfo=None)
                         except Exception:
                             published_date = None
                 else:
                     published_date = pd_str  # assume datetime already
 
         # Prefer full text when available; fallback to abstract when text is missing
-        text_or_abstract = getattr(result, "text", None) or getattr(result, "abstract", None)
+        text_or_abstract = getattr(result, "text", None) or getattr(
+            result, "abstract", None
+        )
 
         paper = Paper(
             id=getattr(result, "id", None),
@@ -162,7 +182,9 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
         )
         return paper
     except Exception as exc:  # noqa: BLE001
-        logger.warning("create_paper_from_exa_result_failed", result=result, error=str(exc))
+        logger.warning(
+            "create_paper_from_exa_result_failed", result=result, error=str(exc)
+        )
         return None
 
 
@@ -174,12 +196,16 @@ def create_paper_from_exa_result(result: Any, source_description: str) -> Option
 def update_paper_from_meta(paper: Paper, meta: dict[str, Any]) -> Paper:
     """Overlay non-empty *meta* fields onto *paper* in-place and return it."""
     if meta.get("title") and (
-        not paper.title or paper.title == "No Title Provided" or paper.title.startswith("arXiv:")
+        not paper.title
+        or paper.title == "No Title Provided"
+        or paper.title.startswith("arXiv:")
     ):
         paper.title = str(meta["title"])
 
     if meta.get("authors"):
-        clean_authors = _author_utils.filter_plausible_authors(cast(list[str], meta["authors"]))
+        clean_authors = _author_utils.filter_plausible_authors(
+            cast(list[str], meta["authors"])
+        )
         logger.debug(
             "update_paper_from_meta",
             incoming=meta.get("authors"),
@@ -215,13 +241,15 @@ def update_paper_from_meta(paper: Paper, meta: dict[str, Any]) -> Paper:
                     try:
                         if "+" in cleaned:
                             dt_part, tz_part = cleaned.split("+", 1)
-                            paper_dt = datetime.strptime(dt_part.strip(), "%Y-%m-%d %H:%M:%S")
+                            paper_dt = datetime.strptime(
+                                dt_part.strip(), "%Y-%m-%d %H:%M:%S"
+                            )
                             paper.published_date = paper_dt.replace(tzinfo=None)
                         else:
                             # Bare date string
-                            paper.published_date = datetime.strptime(cleaned, "%Y-%m-%d").replace(
-                                tzinfo=None
-                            )
+                            paper.published_date = datetime.strptime(
+                                cleaned, "%Y-%m-%d"
+                            ).replace(tzinfo=None)
                     except Exception:
                         paper.published_date = None
             else:

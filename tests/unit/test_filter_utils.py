@@ -41,5 +41,7 @@ def test_domain_exclusion() -> None:
     # revert the filter. With 12 good + 1 bad, filtering out 1 leaves 12 >= 10.
     good_papers = [_paper(str(i), 0.9, domain="good.com") for i in range(1, 13)]
     bad = _paper("bad", 0.9, domain="blocked.com")
-    out = filter_utils.filter_papers(good_papers + [bad], k=5, exclude_domains=["blocked.com"])
+    out = filter_utils.filter_papers(
+        good_papers + [bad], k=5, exclude_domains=["blocked.com"]
+    )
     assert all("blocked.com" not in str(p.url) for p in out)
