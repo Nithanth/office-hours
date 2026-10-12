@@ -13,7 +13,6 @@ TTLs are applied to auto-expire stale data.
 
 from __future__ import annotations
 
-import importlib
 import json
 from typing import Any, cast
 
@@ -32,7 +31,7 @@ class RedisChatStore(ChatStore):
 
     def __init__(self, redis_url: str = "", ttl: int = _DEFAULT_TTL) -> None:
         try:
-            redis = cast(Any, importlib.import_module("redis"))
+            import redis
         except ImportError as exc:
             raise ImportError(
                 "Redis backend requires the 'redis' package. "

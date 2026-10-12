@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import html
-import importlib
-from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -313,7 +311,8 @@ async def generate_research_profile(
 
     # Render markdown to HTML
     try:
-        markdown = cast(Any, importlib.import_module("markdown"))
+        import markdown
+
         profile_html = markdown.markdown(result, extensions=["extra", "sane_lists"])
     except ImportError:
         profile_html = f"<pre style='white-space:pre-wrap;'>{html.escape(result)}</pre>"

@@ -22,3 +22,5 @@ repos:
         additional_dependencies:
           - prometheus-client
           - sqlalchemy
+          - types-Markdown
+          - types-redis
