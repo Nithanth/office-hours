@@ -120,6 +120,24 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
 
 
+class UserPreference(Base):
+    """Per-owner settings row.
+
+    ``owner_id`` is the auth ``user_id`` when signed in, otherwise
+    ``"sess:{session_id}"`` for anonymous visitors (the signed oh_sid
+    cookie), so preferences work without an account.
+    """
+
+    __tablename__ = "user_preferences"
+
+    owner_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    # {"fast": "author/slug", "standard": ..., "deep": ...} — sparse;
+    # missing tiers fall back to the pinned config defaults.
+    model_pins: Mapped[dict] = mapped_column(JSONType, default=dict)
+    openrouter_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 class Export(Base):
     __tablename__ = "exports"
 

@@ -30,6 +30,7 @@ except ImportError:  # pragma: no cover - metrics disabled in dev
 from loguru import logger as log
 
 import config as _cfg
+from services.core import model_prefs
 
 # Interval between SSE keep-alive pings (seconds)
 KEEP_ALIVE_SEC = _cfg.config.CHAT_KEEPALIVE_SEC
@@ -283,6 +284,7 @@ async def chat_stream(
                                 or settings.DEFAULT_MODEL_KEY
                             )
                             model_cfg = settings.AVAILABLE_MODELS[selected_key]
+                            model_id = model_prefs.resolve_model_id(selected_key)
 
                             # TODO: When _figure_paths is non-empty, use a vision-capable
                             # streaming endpoint to include images in the LLM context.
@@ -291,7 +293,7 @@ async def chat_stream(
                             # coverage without requiring streaming vision support.
                             stream_iter = await llm_service.generate_completion_stream(
                                 provider_name=model_cfg["provider"],
-                                model_name=model_cfg["id"],
+                                model_name=model_id,
                                 prompt=prompt,
                                 max_tokens=_cfg.config.CHAT_MAX_TOKENS,
                                 temperature=_cfg.config.CHAT_TEMPERATURE,

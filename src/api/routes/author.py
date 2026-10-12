@@ -19,6 +19,7 @@ from api.deps import get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
 from pages.main_page import render_search_results
+from services.core import model_prefs
 from services.paper.metadata.author_search import (
     AuthorResult,
     get_author_profile,
@@ -298,7 +299,7 @@ async def generate_research_profile(
     try:
         result = await llm_service.generate_completion(
             provider_name=mi["provider"],
-            model_name=mi["id"],
+            model_name=model_prefs.resolve_model_id(settings.DEFAULT_MODEL_KEY),
             prompt=prompt,
             max_tokens=1024,
             temperature=0.3,

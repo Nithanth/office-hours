@@ -8,6 +8,7 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
+from services.core import model_prefs
 from services.report.report_generator import ReportGenerator
 from utils.rate_limit import limiter
 
@@ -54,7 +55,7 @@ async def ask_llm(
     rg = ReportGenerator(
         llm_service=llm_service,
         exa_client=exa_client,
-        selected_model_api_id=model_info["id"],
+        selected_model_api_id=model_prefs.resolve_model_id(selected_key),
         selected_model_provider=model_info["provider"],
         selected_model_input_token_limit=model_info["input_token_limit"],
     )

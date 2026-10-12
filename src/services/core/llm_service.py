@@ -39,6 +39,10 @@ class LLMService:
         self.logger = logger.bind(component="LLMService")
         self.providers: dict[ProviderName, LLMProvider] = {}
 
+        # Ad-hoc OpenRouter providers for request-scoped BYOK keys,
+        # keyed by a hash of the user's API key.
+        self._byok_providers: dict[str, LLMProvider] = {}
+
         # Per-provider concurrency guard (semaphore)
         concurrency_limit_raw = getattr(
             app_config, "MAX_CONCURRENT_REQUESTS_PER_PROVIDER", 4
@@ -201,6 +205,32 @@ class LLMService:
         self._initialized = False
         self.providers.clear()
 
+    def _resolve_provider(self, provider_name: ProviderName) -> LLMProvider | None:
+        """Return the provider instance for a request.
+
+        For ``openrouter``, a request-scoped BYOK key (set via the
+        model-prefs context) takes precedence over the shared instance.
+        """
+        if provider_name == "openrouter":
+            from services.core import model_prefs
+            from services.core.llm_utils.providers import OpenRouterProvider
+
+            byok_key = model_prefs.current_openrouter_api_key()
+            if byok_key and byok_key.strip():
+                import hashlib
+
+                key_hash = hashlib.sha256(byok_key.encode()).hexdigest()[:24]
+                provider = self._byok_providers.get(key_hash)
+                if provider is None:
+                    provider = OpenRouterProvider(
+                        api_key=byok_key,
+                        default_model=self._resolve_default_model("openrouter")
+                        or "google/gemini-3.5-flash",
+                    )
+                    self._byok_providers[key_hash] = provider
+                return provider
+        return self.providers.get(provider_name)
+
     async def generate_completion_stream(
         self,
         provider_name: ProviderName,
@@ -220,7 +250,7 @@ class LLMService:
         if not self._initialized:
             await self.initialize_providers()
 
-        provider = self.providers.get(provider_name)
+        provider = self._resolve_provider(provider_name)
         if provider is None:
             raise LLMConfigurationError(f"Provider {provider_name} not configured.")
 
@@ -526,10 +556,12 @@ class LLMService:
         if not self._initialized:
             await self.initialize_providers()  # Ensure initialized
 
-        provider = self.providers.get(provider_name)
+        provider = self._resolve_provider(provider_name)
         if not provider:
             self.logger.error("provider missing", provider=provider_name)
             raise KeyError(provider_name)
+        if provider_name == "openrouter":
+            await provider.initialize_client()
 
         # Retry with exponential back-off on rate-limit errors.
         retries_remaining = app_config.MAX_RETRIES

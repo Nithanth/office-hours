@@ -14,6 +14,7 @@ from api.deps import get_exa_client, get_llm_service, get_session_id, get_settin
 from config import Config as AppConfig
 from models.paper import Paper
 from pages.main_page import render_search_results
+from services.core import model_prefs
 from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
 from services.report.report_generator import ReportGenerator
@@ -158,7 +159,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             rg = ReportGenerator(
                 llm_service=llm_service,
                 exa_client=cast(ExaClient, exa_client) if exa_client else None,
-                selected_model_api_id=mi["id"],
+                selected_model_api_id=model_prefs.resolve_model_id(
+                    settings.DEFAULT_MODEL_KEY
+                ),
                 selected_model_provider=mi["provider"],
                 selected_model_input_token_limit=mi["input_token_limit"],
             )

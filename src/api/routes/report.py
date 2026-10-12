@@ -10,6 +10,7 @@ from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
 from pages.main_page import render_error_message, render_paper_card
+from services.core import model_prefs
 from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
 from services.core.llm_service import LLMConfigurationError, LLMService
@@ -101,7 +102,7 @@ async def generate_report(  # noqa: PLR0913 - very long signature mirrors origin
         )
 
     selected_model_details = settings.AVAILABLE_MODELS[actual_model_key_in_config]
-    selected_model_api_id = selected_model_details["id"]
+    selected_model_api_id = model_prefs.resolve_model_id(actual_model_key_in_config)
     selected_model_provider = selected_model_details["provider"]
     selected_model_input_token_limit = selected_model_details["input_token_limit"]
 

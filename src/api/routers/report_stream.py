@@ -24,6 +24,7 @@ from api.deps import get_exa_client, get_llm_service, get_session_id
 from config import config
 from models.paper import Paper
 from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, get_topic_analysis_prompts
+from services.core import model_prefs
 from services.core.exa_client import ExaClient
 from services.core.exa_utils import paper_utils as _paper_utils
 from services.core.llm_service import LLMService
@@ -321,7 +322,7 @@ async def report_stream(
     rg = ReportGenerator(
         llm_service=llm_service,
         exa_client=exa_client,
-        selected_model_api_id=model_cfg["id"],
+        selected_model_api_id=model_prefs.resolve_model_id(selected_model_key),
         selected_model_provider=model_cfg["provider"],
         selected_model_input_token_limit=model_cfg["input_token_limit"],
     )
