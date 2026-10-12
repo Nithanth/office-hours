@@ -20,6 +20,7 @@ import "./pagination.js";
 import "./chat/stream.js?v=2";
 import "./chat/ui.js?v=2";
 import "./chat/events.js?v=2";
+import "./chat/snippet.js?v=1";
 
 // Markdown helpers – only pull the symbol we need (module still executes once)
 import { ensureMarkdownLibs } from "./chat/markdown.js?v=2";
