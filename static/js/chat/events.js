@@ -65,7 +65,12 @@ document.body.addEventListener("htmx:beforeRequest", (evt) => {
 
   const textarea = form.querySelector("textarea[name='message']");
   const trimmed = (textarea?.value || "").trim();
-  if (trimmed.length === 0) {
+  // Attached snippet chips count as content — the quoted text is prepended
+  // into parameters.message by the configRequest handler in snippet.js.
+  const hasChips = !!form
+    .closest(".chat-panel")
+    ?.querySelector(".oh-snippet-tray .oh-snippet-chip");
+  if (trimmed.length === 0 && !hasChips) {
     evt.preventDefault();
     textarea?.focus();
     return;
