@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.paper import Paper
@@ -485,7 +486,19 @@ async def save_paper(
             saved.authors = authors
         if report_id:
             saved.report_id = report_id
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Raced double-save hit the (owner_id, paper_id) unique constraint —
+        # idempotent: the row exists either way, just refresh it.
+        await session.rollback()
+        saved = await session.scalar(
+            select(SavedPaper).where(
+                SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+            )
+        )
+        if saved is None:  # pragma: no cover — shouldn't happen
+            raise
     await session.refresh(saved)
     return saved
 

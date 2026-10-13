@@ -604,7 +604,9 @@ async def html_proxy(
     )
 
 
-@router.get("/viewer/{paper_id}", response_class=HTMLResponse)
+# paper_id is a URL-style identifier (e.g. https://arxiv.org/abs/…) — needs
+# :path so multi-segment ids resolve instead of 404ing.
+@router.get("/viewer/{paper_id:path}", response_class=HTMLResponse)
 async def viewer_modal(
     request: Request,
     paper_id: str,
