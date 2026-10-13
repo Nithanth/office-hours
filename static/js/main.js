@@ -35,6 +35,12 @@ import "./blog-modal.js?v=1";
 // Report page helpers (copy button, etc.)
 import "./report.js?v=2";
 
+// Blog view renderer + in-page blog pane (Report | Blog view toggle).
+// blog-view.js only auto-inits on the standalone /blog-view page; here it
+// just registers window.ohBlogRender for blog-pane.js.
+import "./blog-view.js?v=1";
+import "./blog-pane.js?v=1";
+
 // ---------------------------------------------------------------------------
 // Simple-reload snapshot & restore
 //   • On normal reload (Cmd-R / F5) we capture scrollY + open chat modal pid

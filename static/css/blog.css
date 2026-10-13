@@ -1,7 +1,16 @@
-/* blog.css — Standalone modern blog view (decoupled from retro app styles) */
+/* blog.css — Modern blog view (decoupled from retro app styles)
+
+   Scoped under .blog-scope so this stylesheet is safe to load app-wide: the
+   standalone /blog-view page uses <body class="blog-scope"> and the embedded
+   report-page pane wraps its article in a .blog-scope container. Only the
+   :root custom properties apply globally — every layout/typography rule is
+   confined to blog surfaces. */
 
 /* ---- Reset & base ---- */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.blog-scope,
+.blog-scope *,
+.blog-scope *::before,
+.blog-scope *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --blog-bg: #fafafa;
@@ -76,13 +85,17 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
+.blog-scope {
   font-family: var(--blog-font);
   background: var(--blog-bg);
   color: var(--blog-text);
   line-height: 1.8;
   font-size: 18px;
   transition: background 0.3s ease, color 0.3s ease;
+}
+
+body.blog-scope {
+  min-height: 100vh;
 }
 
 /* ---- Reading progress bar ---- */
@@ -630,7 +643,7 @@ body:not(.blog-is-loading) .blog-writing-pill {
 
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
-  body { font-size: 16px; }
+  .blog-scope { font-size: 16px; }
   .blog-hero { padding: 48px 16px 32px; }
   .blog-article { padding: 0 16px 80px; }
   .blog-hero h1 { font-size: 28px; }
@@ -647,7 +660,7 @@ body:not(.blog-is-loading) .blog-writing-pill {
    browser print/Cmd+P flow via @media print. */
 @media print {
   /* Force light theme for printed output (ink-on-paper). */
-  html[data-theme="dark"], html[data-theme="dark"] body {
+  html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] .blog-scope {
     background: #ffffff !important;
     color: #1a1a1a !important;
   }
@@ -691,3 +704,99 @@ body.blog-printing .blog-progress-bar,
 body.blog-printing .blog-toast,
 body.blog-printing .blog-loading,
 body.blog-printing .blog-footer { display: none !important; }
+
+/* ===========================================================================
+   Embedded blog pane (report page "Report | Blog" view toggle)
+   =========================================================================== */
+
+/* Segmented control — both report surfaces mount it. */
+.oh-view-toggle {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--blog-border, #334155);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.oh-view-toggle button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--blog-text-secondary, #94a3b8);
+  font-size: 0.8rem;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.oh-view-toggle button + button {
+  border-left: 1px solid var(--blog-border, #334155);
+}
+
+.oh-view-toggle button.active {
+  background: var(--blog-accent, #6366f1);
+  color: #fff;
+}
+
+.oh-view-toggle button:not(.active):hover {
+  background: var(--blog-accent-soft, #eef2ff);
+  color: var(--blog-accent, #6366f1);
+}
+
+/* Pane toolbar — back link, meta (title · read time), revise. */
+.blog-pane-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 14px;
+}
+
+.blog-pane-bar-spacer {
+  flex: 1;
+}
+
+.blog-pane-meta {
+  font-size: 0.8rem;
+  color: var(--blog-text-secondary, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+
+#blog-pane .blog-article {
+  padding: 0 0 48px;
+  max-width: var(--blog-max-w);
+}
+
+/* Generate CTA shown when no blog exists yet. */
+.blog-pane-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px dashed var(--blog-border, #334155);
+  border-radius: 12px;
+}
+
+.blog-pane-cta-icon {
+  font-size: 28px;
+  color: var(--blog-accent, #6366f1);
+}
+
+.blog-pane-cta h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.blog-pane-cta p {
+  font-size: 0.9rem;
+  color: var(--blog-text-secondary, #94a3b8);
+  max-width: 420px;
+  margin: 0;
+}

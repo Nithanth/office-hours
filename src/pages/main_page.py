@@ -763,6 +763,7 @@ def home_page(page_data: SharedPageData) -> Body:
             Link(rel="stylesheet", href="/static/css/forms.css"),
             Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
             Link(rel="stylesheet", href="/static/css/misc.css"),
+            Link(rel="stylesheet", href="/static/css/blog.css"),
             # Font Awesome (self-hosted) – required for icon glyphs
             Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
             Script(src="/static/js/settings.js"),

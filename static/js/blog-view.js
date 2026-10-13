@@ -239,8 +239,9 @@ function formatDate() {
 // ---------------------------------------------------------------------------
 // Render Mermaid diagrams
 // ---------------------------------------------------------------------------
-async function renderMermaidDiagrams(mermaidBlocks) {
+async function renderMermaidDiagrams(mermaidBlocks, root) {
   if (!window.mermaid || mermaidBlocks.length === 0) return;
+  const scope = root || document;
 
   const isDark = currentTheme() === "dark";
   mermaid.initialize({
@@ -253,7 +254,7 @@ async function renderMermaidDiagrams(mermaidBlocks) {
       : { primaryColor: "#6366f1", primaryTextColor: "#1e293b", lineColor: "#94a3b8" },
   });
 
-  const wrappers = document.querySelectorAll("[data-mermaid-idx]");
+  const wrappers = scope.querySelectorAll("[data-mermaid-idx]");
   for (const wrapper of wrappers) {
     const idx = parseInt(wrapper.dataset.mermaidIdx, 10);
     const code = mermaidBlocks[idx];
@@ -295,9 +296,10 @@ async function loadVegaDeps() {
   }
 }
 
-async function renderVegaCharts(vegaBlocks) {
+async function renderVegaCharts(vegaBlocks, root) {
   if (!vegaBlocks || vegaBlocks.length === 0) return;
-  const wrappers = document.querySelectorAll("[data-vega-idx]");
+  const scope = root || document;
+  const wrappers = scope.querySelectorAll("[data-vega-idx]");
   if (wrappers.length === 0) return;
 
   try {
@@ -381,9 +383,12 @@ function vegaErrorMarkup(message, rawSpec) {
 // ---------------------------------------------------------------------------
 // Render KaTeX
 // ---------------------------------------------------------------------------
-function renderKaTeX() {
+function renderKaTeX(root) {
   if (!window.renderMathInElement) return;
-  const article = document.querySelector(".blog-article");
+  const scope = root || document;
+  const article = scope.classList && scope.classList.contains("blog-article")
+    ? scope
+    : scope.querySelector(".blog-article");
   if (!article) return;
   renderMathInElement(article, {
     delimiters: [
@@ -399,8 +404,11 @@ function renderKaTeX() {
 // ---------------------------------------------------------------------------
 // Image fade-in on load
 // ---------------------------------------------------------------------------
-function initImageFadeIn() {
-  const article = document.querySelector(".blog-article");
+function initImageFadeIn(root) {
+  const scope = root || document;
+  const article = scope.classList && scope.classList.contains("blog-article")
+    ? scope
+    : scope.querySelector(".blog-article");
   if (!article) return;
   article.querySelectorAll("img").forEach((img) => {
     if (img.complete) {
@@ -415,9 +423,10 @@ function initImageFadeIn() {
 // ---------------------------------------------------------------------------
 // Scroll animations
 // ---------------------------------------------------------------------------
-function initScrollAnimations() {
+function initScrollAnimations(root) {
+  const scope = root || document;
   // Reading progress bar
-  const progressBar = document.querySelector(".blog-progress-bar");
+  const progressBar = scope.querySelector(".blog-progress-bar");
   if (progressBar) {
     window.addEventListener("scroll", () => {
       const scrollTop = window.scrollY;
@@ -428,7 +437,7 @@ function initScrollAnimations() {
   }
 
   // Fade-in on scroll (intersection observer)
-  const fadeEls = document.querySelectorAll(".blog-fade-in");
+  const fadeEls = scope.querySelectorAll(".blog-fade-in");
   if (fadeEls.length === 0) return;
 
   const observer = new IntersectionObserver(
@@ -449,8 +458,11 @@ function initScrollAnimations() {
 // ---------------------------------------------------------------------------
 // Add fade-in classes to rendered HTML elements
 // ---------------------------------------------------------------------------
-function addFadeInClasses() {
-  const article = document.querySelector(".blog-article");
+function addFadeInClasses(root) {
+  const scope = root || document;
+  const article = scope.classList && scope.classList.contains("blog-article")
+    ? scope
+    : scope.querySelector(".blog-article");
   if (!article) return;
 
   const targets = article.querySelectorAll("h2, h3, p, ul, ol, blockquote, pre, table, .blog-mermaid-wrapper, .blog-vega-wrapper, hr");
@@ -755,12 +767,12 @@ async function initBlog() {
   if (articleEl) articleEl.innerHTML = html;
 
   // Post-processing
-  addFadeInClasses();
-  initImageFadeIn();
-  await renderMermaidDiagrams(mermaidBlocks);
-  await renderVegaCharts(vegaBlocks);
-  renderKaTeX();
-  initScrollAnimations();
+  addFadeInClasses(articleEl);
+  initImageFadeIn(articleEl);
+  await renderMermaidDiagrams(mermaidBlocks, articleEl);
+  await renderVegaCharts(vegaBlocks, articleEl);
+  renderKaTeX(articleEl);
+  initScrollAnimations(document);
   initActions(rawMd);
   initReviseButton(token);
 
@@ -847,9 +859,50 @@ function launchRegenerate(prevToken, opts) {
     });
 }
 
-// Run on DOM ready
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initBlog);
-} else {
-  initBlog();
+// ---------------------------------------------------------------------------
+// Shared render API — used by the embedded blog pane (blog-pane.js) to render
+// persisted blogs inside the report page without a popup. Every renderer takes
+// a root element so it scopes to the pane instead of the whole document.
+// ---------------------------------------------------------------------------
+window.ohBlogRender = {
+  loadAllDeps,
+  renderMarkdown,
+  extractTitleAndBody,
+  renderMermaidDiagrams,
+  renderVegaCharts,
+  renderKaTeX,
+  addFadeInClasses,
+  initImageFadeIn,
+  readingTime,
+  currentTheme,
+
+  // Render markdown into `articleEl` (an element with class .blog-article).
+  // Returns the extracted title. Callers handle loading/error states.
+  async renderInto(articleEl, rawMd) {
+    const { title, body } = extractTitleAndBody(rawMd || "");
+    await loadAllDeps();
+    const { html, mermaidBlocks, vegaBlocks } = renderMarkdown(body);
+    articleEl.innerHTML = html;
+    addFadeInClasses(articleEl);
+    initImageFadeIn(articleEl);
+    await renderMermaidDiagrams(mermaidBlocks, articleEl);
+    await renderVegaCharts(vegaBlocks, articleEl);
+    renderKaTeX(articleEl);
+    return title;
+  },
+};
+
+// Run on DOM ready — only on the standalone /blog-view page (identified by the
+// token script or the legacy inline #blog-raw element). On report pages the
+// pane owns rendering via window.ohBlogRender.
+function isStandaloneBlogPage() {
+  return Boolean(window.__BLOG_TOKEN__ || document.getElementById("blog-raw"));
+}
+
+if (isStandaloneBlogPage()) {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initBlog);
+  } else {
+    initBlog();
+  }
 }

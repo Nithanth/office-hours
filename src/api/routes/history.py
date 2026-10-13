@@ -107,11 +107,15 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
   <link rel="stylesheet" href="/static/css/forms.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/chat.css">
+  <link rel="stylesheet" href="/static/css/blog.css">
   <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
   <script src="/static/js/report.js" defer></script>
   <script src="/static/js/library.js?v=1" defer></script>
+  <script src="/static/js/blog-modal.js" defer></script>
+  <script src="/static/js/blog-view.js" defer></script>
+  <script src="/static/js/blog-pane.js" defer></script>
   <style>
     .report-actions{{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;
       padding:0.75rem 0;border-bottom:1px solid #444;margin-bottom:1rem;}}
@@ -130,6 +134,10 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       {html.escape(report.created_at.strftime('%b %d, %Y'))} &middot;
       {escaped_audience} &middot; {escaped_model}
     </div>
+    <div id="report-view-toggle" class="oh-view-toggle">
+      <button type="button" data-view="report" class="active"><i class="fa-regular fa-file-lines"></i> Report</button>
+      <button type="button" data-view="blog"><i class="fa-solid fa-pen-nib"></i> Blog</button>
+    </div>
     <div class="report-actions">
       <select id="notes-fmt-select">
         <option value="md">Markdown</option>
@@ -138,7 +146,6 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       </select>
       <button onclick="window.__exportNotes('{escaped_id}')">Export Notes</button>
       <button onclick="window.__exportNotion('{escaped_id}')">Export to Notion</button>
-      <button onclick="window.__generateBlog('{escaped_id}')">Generate Blog</button>
       <button hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
               hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
     </div>

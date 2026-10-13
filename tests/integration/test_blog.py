@@ -250,3 +250,38 @@ def test_blog_view_includes_writing_pill_and_disabled_buttons(
     assert "blog-writing-pill" in page
     assert 'id="blog-save-html-btn"' in page
     assert "disabled" in page
+
+
+# ---------------------------------------------------------------------------
+# Persisted blog (report.blog_markdown) + in-page pane endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_generate_blog_accepts_report_id(client: TestClient) -> None:
+    """POST /generate-blog with report_id still completes (anonymous → no persist)."""
+
+    resp = client.post(
+        "/generate-blog",
+        data={"report_text": "A real research report.", "report_id": "r-1"},
+    )
+    assert resp.status_code == 200
+    body = _wait_for_ready(client, resp.json()["token"])
+    assert body["state"] == "ready"
+
+
+def test_report_blog_requires_auth(client: TestClient) -> None:
+    """GET /reports/{id}/blog is auth-gated (anonymous → 401)."""
+
+    resp = client.get("/reports/some-report-id/blog")
+    assert resp.status_code == 401
+
+
+def test_regenerate_blog_report_id_requires_auth(client: TestClient) -> None:
+    """The report_id revision path needs an authed owner; anonymous falls
+    through to the token lookup and 404s."""
+
+    resp = client.post(
+        "/regenerate-blog",
+        data={"report_id": "r-1", "extra": "make it shorter"},
+    )
+    assert resp.status_code == 404
