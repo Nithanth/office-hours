@@ -41,6 +41,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
+# App writes relative dirs at runtime (data/, .cache/, .chat_cache/) — the
+# non-root user must be able to create them under WORKDIR.
+RUN chown -R officehours:officehours /app
+
 USER officehours
 
 EXPOSE 8000
