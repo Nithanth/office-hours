@@ -28,7 +28,7 @@ msg() { printf '%b▶ %s%b\n' "$CYAN" "$*" "$RESET"; }
 ok() { printf '%b✔ %s%b\n' "$GREEN" "$*" "$RESET"; }
 err() { printf '%b✖ %s%b\n' "$RED" "$*" "$RESET" >&2; }
 
-if [[ -f .env && "${OH_SKIP_DOTENV:-${LUX_SKIP_DOTENV:-0}}" != "1" ]]; then
+if [[ -f .env && "${OH_SKIP_DOTENV:-0}" != "1" ]]; then
   msg "Loading environment variables from .env"
   preserved_env_file="$(mktemp "${TMPDIR:-/tmp}/oh-env.XXXXXX")"
   while IFS= read -r line; do
@@ -86,7 +86,7 @@ port_pids() {
 
 pids="$(port_pids)"
 if [[ -n "$pids" ]]; then
-  if [[ "${OH_DEV_KILL_PORT:-${LUX_DEV_KILL_PORT:-0}}" == "1" ]]; then
+  if [[ "${OH_DEV_KILL_PORT:-0}" == "1" ]]; then
     msg "Stopping existing listener(s) on port $PORT: $pids"
     kill $pids 2>/dev/null || true
     sleep 1

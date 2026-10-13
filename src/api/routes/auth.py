@@ -76,7 +76,7 @@ async def google_callback(
         raise HTTPException(status_code=400, detail="Missing OAuth code or state.")
 
     # The state token is already cryptographically signed via
-    # URLSafeTimedSerializer + LUX_SESSION_SECRET, so an attacker cannot
+    # URLSafeTimedSerializer + OH_SESSION_SECRET, so an attacker cannot
     # forge it. The cookie comparison adds defense-in-depth against CSRF by
     # binding the in-flight OAuth flow to the user's browser. On localhost
     # over plain HTTP, browsers / privacy modes sometimes drop the SameSite=Lax
