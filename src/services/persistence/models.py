@@ -69,6 +69,7 @@ class Report(Base):
     report_html: Mapped[str] = mapped_column(Text)
     report_text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    notion_page_id: Mapped[str | None] = mapped_column(String(64))
 
     user: Mapped[User] = relationship(back_populates="reports")
     papers: Mapped[list[ReportPaper]] = relationship(back_populates="report")
@@ -173,6 +174,7 @@ class UserIntegration(Base):
     workspace_icon: Mapped[str | None] = mapped_column(Text)
     parent_page_id: Mapped[str | None] = mapped_column(String(100))
     parent_database_id: Mapped[str | None] = mapped_column(String(100))
+    topics_database_id: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 

@@ -359,6 +359,31 @@ async def update_notion_destination(
     return integration
 
 
+async def set_notion_databases(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    parent_database_id: str | None,
+    topics_database_id: str | None,
+) -> None:
+    integration = await get_notion_integration(session, user_id=user_id)
+    if integration is not None:
+        if parent_database_id:
+            integration.parent_database_id = parent_database_id
+        integration.topics_database_id = topics_database_id
+        integration.updated_at = datetime.utcnow()
+        await session.commit()
+
+
+async def set_report_notion_page(
+    session: AsyncSession, *, user_id: str, report_id: str, notion_page_id: str
+) -> None:
+    report = await get_report(session, user_id=user_id, report_id=report_id)
+    if report is not None:
+        report.notion_page_id = notion_page_id
+        await session.commit()
+
+
 async def delete_notion_integration(session: AsyncSession, *, user_id: str) -> None:
     await session.execute(
         delete(UserIntegration).where(

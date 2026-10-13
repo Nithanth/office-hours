@@ -7,7 +7,6 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from loguru import logger
 
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
@@ -15,10 +14,13 @@ from services.persistence.database import database_available, session_scope
 from services.persistence.models import SavedPaper
 from services.persistence.repositories import (
     get_notion_integration,
+    get_report,
     list_saved_paper_ids,
     list_saved_papers,
     notion_access_token,
     save_paper,
+    set_notion_databases,
+    set_report_notion_page,
     set_saved_paper_notion_page,
     set_saved_paper_status,
     unsave_paper,
@@ -139,21 +141,26 @@ async def library_ids(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-def _paper_properties(paper: SavedPaper) -> dict:
-    authors = paper.authors.get("list") if isinstance(paper.authors, dict) else None
-    joined = ", ".join(authors) if authors else ""
-    props: dict = {
-        "Name": {"title": [{"type": "text", "text": {"content": paper.title[:200]}}]},
-        "Status": {"select": {"name": _STATUS_LABELS.get(paper.status, "To read")}},
-        "Saved": {"date": {"start": paper.created_at.date().isoformat()}},
-    }
-    if paper.url:
-        props["Source URL"] = {"url": paper.url}
-    if joined:
-        props["Authors"] = {
-            "rich_text": [{"type": "text", "text": {"content": joined[:2000]}}]
+async def _load_integration(
+    user_id: str,
+) -> tuple[dict[str, str | None] | None, str | None]:
+    """Snapshot of the Notion integration fields + decrypted token.
+
+    Reads every scalar inside the session — the ORM object detaches when
+    the session closes, so callers get plain data instead.
+    """
+    async for session in session_scope():
+        integration = await get_notion_integration(session, user_id=user_id)
+        if integration is None:
+            return None, None
+        snapshot = {
+            "parent_page_id": integration.parent_page_id,
+            "parent_database_id": integration.parent_database_id,
+            "topics_database_id": integration.topics_database_id,
+            "bot_id": integration.bot_id,
         }
-    return props
+        return snapshot, notion_access_token(integration)
+    return None, None
 
 
 @router.post("/api/library/notion-sync")
@@ -167,19 +174,8 @@ async def library_notion_sync(request: Request) -> JSONResponse:
     if not database_available():
         return JSONResponse({"ok": False, "detail": "Library not configured"})
 
-    async for session in session_scope():
-        integration = await get_notion_integration(session, user_id=user_id)
-        papers = await list_saved_papers(session, owner_id=str(user_id))
-        rows = [
-            {
-                "paper_id": p.paper_id,
-                "notion_page_id": p.notion_page_id,
-                "props": _paper_properties(p),
-            }
-            for p in papers
-        ]
-
-    if integration is None:
+    integration, token = await _load_integration(str(user_id))
+    if integration is None or not token:
         return JSONResponse(
             {
                 "ok": False,
@@ -187,62 +183,164 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             },
             status_code=400,
         )
-    token = notion_access_token(integration)
-    database_id = integration.parent_database_id
-    if not token or not database_id:
-        return JSONResponse(
-            {
-                "ok": False,
-                "detail": "Pick a Notion database as your destination (the sync writes one row per paper).",
-            },
-            status_code=400,
-        )
-    if not rows:
-        return JSONResponse({"ok": True, "synced": 0, "created": 0, "updated": 0})
 
+    from services.notion.library_sync import provision_databases, sync_library
     from services.notion.notion_exporter import NotionExporter
 
     exporter = NotionExporter(token)
-    created = updated = failed = 0
-    errors: list[str] = []
     try:
-        for row in rows:
-            try:
-                if row["notion_page_id"]:
-                    await exporter.update_page_properties(
-                        row["notion_page_id"], row["props"]
+        # Provision: ensure Papers + Topics databases (auto-created under the
+        # anchor page) and the relation between them.
+        papers_db_id, topics_db_id = await provision_databases(
+            exporter,
+            parent_page_id=integration["parent_page_id"],
+            parent_database_id=integration["parent_database_id"],
+            topics_database_id=integration["topics_database_id"],
+        )
+        async for session in session_scope():
+            await set_notion_databases(
+                session,
+                user_id=str(user_id),
+                parent_database_id=papers_db_id,
+                topics_database_id=topics_db_id,
+            )
+
+        # Snapshot papers + their reports as plain dicts inside sessions
+        # (ORM objects detach and can't be read after the session closes).
+        async for session in session_scope():
+            papers = await list_saved_papers(session, owner_id=str(user_id))
+            paper_rows = [
+                {
+                    "paper_id": p.paper_id,
+                    "title": p.title,
+                    "url": p.url,
+                    "authors": p.authors,
+                    "status": p.status,
+                    "report_id": p.report_id,
+                    "notion_page_id": p.notion_page_id,
+                    "saved_date": p.created_at.date().isoformat(),
+                }
+                for p in papers
+            ]
+        reports: dict = {}
+        for row in paper_rows:
+            report_id = row["report_id"]
+            if report_id and report_id not in reports:
+                async for session in session_scope():
+                    report = await get_report(
+                        session, user_id=str(user_id), report_id=report_id
                     )
-                    updated += 1
-                else:
-                    page_id = await exporter.create_database_row(
-                        database_id, row["props"]
-                    )
-                    if page_id:
-                        async for session in session_scope():
-                            await set_saved_paper_notion_page(
-                                session,
-                                owner_id=str(user_id),
-                                paper_id=row["paper_id"],
-                                notion_page_id=page_id,
-                            )
-                    created += 1
-            except Exception as exc:  # one bad row shouldn't kill the batch
-                failed += 1
-                errors.append(str(exc)[:200])
-                logger.warning(
-                    "notion_sync_row_failed", paper_id=row["paper_id"], error=str(exc)
+                    if report:
+                        reports[report_id] = {
+                            "title": report.title,
+                            "original_query": report.original_query,
+                            "created_date": report.created_at.date().isoformat(),
+                            "notion_page_id": report.notion_page_id,
+                        }
+
+        stats = await sync_library(
+            exporter,
+            papers_db_id=papers_db_id,
+            topics_db_id=topics_db_id,
+            papers=paper_rows,
+            reports=reports,
+        )
+    finally:
+        await exporter.close()
+
+    # Persist notion page ids + pulled-back status changes.
+    for report_id, page_id in stats["topic_page_ids"].items():
+        if not reports.get(report_id, {}).get("notion_page_id"):
+            async for session in session_scope():
+                await set_report_notion_page(
+                    session,
+                    user_id=str(user_id),
+                    report_id=report_id,
+                    notion_page_id=page_id,
                 )
+    for row in paper_rows:
+        page_id = stats["paper_page_ids"].get(row["paper_id"])
+        if page_id and page_id != row["notion_page_id"]:
+            async for session in session_scope():
+                await set_saved_paper_notion_page(
+                    session,
+                    owner_id=str(user_id),
+                    paper_id=row["paper_id"],
+                    notion_page_id=page_id,
+                )
+    for paper_id, status in stats["status_updates"].items():
+        async for session in session_scope():
+            await set_saved_paper_status(
+                session, owner_id=str(user_id), paper_id=paper_id, status=status
+            )
+
+    return JSONResponse(
+        {
+            "ok": stats["failed"] == 0,
+            "created": stats["created"],
+            "updated": stats["updated"],
+            "topics_created": stats["topics_created"],
+            "topics_updated": stats["topics_updated"],
+            "status_pulled": len(stats["status_updates"]),
+            "failed": stats["failed"],
+            "errors": stats["errors"][:5],
+        }
+    )
+
+
+@router.post("/api/library/notion-answer-comments")
+async def library_notion_answer_comments(request: Request) -> JSONResponse:
+    """Poll synced paper pages for unanswered comments and reply in-thread."""
+    user_id = get_auth_user_id(request)
+    if not user_id:
+        return JSONResponse(
+            {"ok": False, "detail": "Sign in to answer Notion comments."},
+            status_code=401,
+        )
+    if not database_available():
+        return JSONResponse({"ok": False, "detail": "Library not configured"})
+
+    integration, token = await _load_integration(str(user_id))
+    if integration is None or not token:
+        return JSONResponse(
+            {"ok": False, "detail": "Connect Notion first."}, status_code=400
+        )
+
+    from services.notion.library_sync import answer_comments_for_paper
+    from services.notion.notion_exporter import NotionExporter, NotionExportError
+
+    async for session in session_scope():
+        papers = await list_saved_papers(session, owner_id=str(user_id))
+        synced = [
+            (p.paper_id, str(p.notion_page_id)) for p in papers if p.notion_page_id
+        ]
+
+    exporter = NotionExporter(token)
+    answered = failed = 0
+    first_error: str | None = None
+    try:
+        for paper_id, notion_page_id in synced:
+            try:
+                answered += await answer_comments_for_paper(
+                    exporter,
+                    notion_page_id=str(notion_page_id),
+                    paper_id=paper_id,
+                    user_id=str(user_id),
+                    bot_id=integration["bot_id"],
+                )
+            except NotionExportError as exc:
+                failed += 1
+                first_error = first_error or str(exc)
     finally:
         await exporter.close()
 
     return JSONResponse(
         {
-            "ok": failed == 0,
-            "synced": created + updated,
-            "created": created,
-            "updated": updated,
-            "failed": failed,
-            "errors": errors[:5],
+            "ok": True,
+            "answered": answered,
+            "failed_pages": failed,
+            "detail": first_error
+            or ("No unanswered comments." if answered == 0 else None),
         }
     )
 
@@ -337,7 +435,7 @@ def _paper_item(paper: SavedPaper) -> str:
         else ""
     )
     return f"""<article class="lib-item" data-paper-id="{pid_attr}">
-  <h2><a href="{html.escape(paper.url or '#', quote=True)}" target="_blank">{title}</a>
+  <h2><a href="{html.escape(paper.url or "#", quote=True)}" target="_blank">{title}</a>
     <span class="lib-status-chip">{status_label}</span></h2>
   <div class="lib-meta">{authors_str}</div>
   <div class="lib-actions">
@@ -377,23 +475,22 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         active = ' class="active"' if status == value else ""
         tabs.append(f'<a href="/library?status={value}"{active}>{label}</a>')
 
-    sync_btn = (
-        '<button id="lib-notion-sync-btn" type="button">Sync to Notion</button>'
-        if notion_connected
-        else (
-            '<a href="/settings" title="Connect Notion in Settings to sync">Connect Notion</a>'
-            if signed_in
-            else ""
+    if notion_connected:
+        sync_btn = (
+            '<button id="lib-notion-sync-btn" type="button">Sync to Notion</button>'
+            '<button id="lib-notion-answer-btn" type="button" '
+            'title="Reply to unanswered comments on your synced paper pages">'
+            "Answer comments</button>"
         )
-    )
+    elif signed_in:
+        sync_btn = '<a href="/settings" title="Connect Notion in Settings to sync">Connect Notion</a>'
+    else:
+        sync_btn = ""
 
     if papers:
         items = "".join(_paper_item(p) for p in papers)
     else:
-        items = (
-            "<p>No saved papers yet. Hit the bookmark icon on any paper "
-            "to add it here.</p>"
-        )
+        items = "<p>No saved papers yet. Hit the bookmark icon on any paper to add it here.</p>"
 
     content = f"""<div class="lib-header">
       <h1>Library</h1>
@@ -436,8 +533,23 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
               .then(res => {{
                 sync.disabled = false;
                 statusEl.textContent = res.ok
-                  ? `Synced: ${{res.created}} added, ${{res.updated}} updated.`
+                  ? `Synced: ${{res.created}} papers + ${{res.topics_created}} topics added, ${{res.updated + res.topics_updated}} updated.` +
+                    (res.status_pulled ? ` ${{res.status_pulled}} status pulled from Notion.` : "")
                   : (res.detail || `Sync failed (${{res.failed || "?"}} errors)`);
+              }});
+          }}
+          const answer = ev.target.closest("#lib-notion-answer-btn");
+          if (answer) {{
+            answer.disabled = true;
+            const statusEl = document.getElementById("lib-sync-status");
+            statusEl.textContent = "Checking comments…";
+            fetch("/api/library/notion-answer-comments", {{method: "POST"}})
+              .then(r => r.json())
+              .then(res => {{
+                answer.disabled = false;
+                statusEl.textContent = res.answered
+                  ? `Replied to ${{res.answered}} comment thread(s) in Notion.`
+                  : (res.detail || "No unanswered comments.");
               }});
           }}
         }});
