@@ -350,6 +350,18 @@ class Config(BaseSettings):
     def _lower_env(cls, v: str) -> str:
         return v.lower() if isinstance(v, str) else v
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v: Any) -> Optional[str]:
+        if not isinstance(v, str) or not v:
+            return v
+        # Hosts (Railway, Heroku, etc.) hand out bare postgres(ql):// URLs;
+        # the async engine needs an explicit async driver.
+        for scheme in ("postgres://", "postgresql://"):
+            if v.startswith(scheme):
+                return "postgresql+asyncpg://" + v[len(scheme) :]
+        return v
+
     @field_validator("REQUIRE_LOGIN", mode="before")
     @classmethod
     def _parse_bool_loose(cls, v: Any) -> bool:
