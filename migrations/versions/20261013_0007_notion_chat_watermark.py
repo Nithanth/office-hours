@@ -1,7 +1,7 @@
 """notion chat sync watermark on saved_papers
 
 Revision ID: 20261013_0005
-Revises: 20261013_0004
+Revises: 20261013_0006
 Create Date: 2026-10-13
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20261013_0005"
-down_revision = "20261013_0004"
+revision = "20261013_0007"
+down_revision = "20261013_0006"
 branch_labels = None
 depends_on = None
 
