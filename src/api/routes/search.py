@@ -2,6 +2,8 @@
 
 import asyncio
 import html
+import json as _json
+import re
 from datetime import datetime
 from typing import Any, cast
 
@@ -29,6 +31,46 @@ router = APIRouter()
 task_queue.set_concurrency("prewarm", _cfg.config.TEXT_PREWARM_CONCURRENCY)
 
 
+# ---------------------------------------------------------------------------
+# Query intent detection — one box: URL -> paper+similar, "papers by X" ->
+# author search, everything else -> topic query. mode="topic" forces a plain
+# query (the results banner offers this as a one-click correction).
+# ---------------------------------------------------------------------------
+_AUTHOR_INTENT_RE = re.compile(
+    r"^(?:papers?|works?|publications?|research)\s+(?:by|from|of)\s+(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _detect_author_query(query: str) -> str | None:
+    """Return the author name when the query is an explicit author search."""
+    m = _AUTHOR_INTENT_RE.match(query.strip())
+    return m.group(1).strip().rstrip("?") if m else None
+
+
+def _intent_banner(detected: str, original_query: str) -> str:
+    """Small banner naming the detected intent + a 'search as topic' escape."""
+    # hx-vals must stay valid JSON after HTML-attribute decoding: build it with
+    # json.dumps, then escape for the single-quoted attribute.
+    esc_vals = html.escape(
+        _json.dumps({"search_query": original_query, "mode": "topic"}),
+        quote=True,
+    )
+    return (
+        "<div class='intent-banner' style='display:flex;flex-wrap:wrap;gap:8px;"
+        "align-items:center;padding:8px 12px;margin-bottom:10px;font-size:0.85rem;"
+        "border:1px solid var(--container-border,#ccc);border-radius:6px;"
+        "background:var(--container-bg,#fff);'>"
+        f"<span style='opacity:0.75;'>{detected}</span>"
+        "<a href='#' hx-post='/search' hx-target='#search-results-container' "
+        "hx-swap='innerHTML' hx-indicator='#loading-indicator' "
+        f"hx-vals='{esc_vals}' "
+        "style='color:var(--oh-accent,#0d6e63);' "
+        "onclick='event.preventDefault()'>Not what you meant? Search as a topic</a>"
+        "</div>"
+    )
+
+
 async def _prewarm_cached(url: str, paper_id: str) -> None:
     """Fetch & cache paper full-text to speed up later summaries."""
     from services.paper.text_extractor import TextExtractor
@@ -47,7 +89,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     search_query: str = Form(...),
     start_published_date: str | None = Form(None),
     num_results: int | None = Form(None),  # display count (1–10)
-    mode: str | None = Form("auto"),  # 'auto' (default), 'direct'
+    mode: str | None = Form("auto"),  # 'auto' (detect), 'topic', 'direct'
     include_domains: list[str] | None = Form(None),  # noqa: B008
     deep_search: str | None = Form(None),  # '1' if Deep Research toggle is on
     settings: AppConfig = Depends(get_settings),  # noqa: B008
@@ -145,6 +187,36 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         logger.info("cancel_previous_direct_query", session_id=session_id)
         prev_task.cancel()
         _direct_query_tasks.pop(session_id, None)
+
+    # ------------------------------------------------------------------
+    # Author-intent detection — "papers by X" / "works from X" routes into the
+    # Semantic Scholar author search; a banner offers a one-click topic retry.
+    # ------------------------------------------------------------------
+    if mode == "auto":
+        author_name = _detect_author_query(input_query_stripped)
+        if author_name:
+            from api.routes.author import _render_author_list
+            from services.paper.metadata.author_search import search_authors
+
+            try:
+                authors = await asyncio.to_thread(
+                    search_authors, author_name, limit=10, timeout=10
+                )
+            except Exception as exc:  # noqa: BLE001 - fall back to topic search
+                logger.warning("author_intent_failed", error=str(exc))
+                authors = []
+            banner = _intent_banner(
+                f"Author search for &ldquo;{html.escape(author_name)}&rdquo;",
+                input_query_stripped,
+            )
+            return HTMLResponse(
+                content=banner + _render_author_list(authors, author_name),
+                headers={
+                    "HX-Retarget": "#search-results-container",
+                    "HX-Reswap": "innerHTML",
+                    "HX-Push-Url": "/",
+                },
+            )
 
     # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)
@@ -279,6 +351,11 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             is_url_search=is_url_search,
             original_query=input_query_stripped,
         )
+        if is_url_search:
+            results_component = _intent_banner(
+                "Detected a paper link &mdash; pinned it and listed similar papers.",
+                input_query_stripped,
+            ) + str(results_component)
 
         # Fire-and-forget pre-warm of text cache for top 5 results -----------------
         for paper in exa_results[:5]:
