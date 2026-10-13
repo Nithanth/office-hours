@@ -209,7 +209,11 @@ async def chat_modal(
         )  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
-        history = get_chat_state(session_id).get_conversation(paper_id)
+        # Topic chats share state per report: "topic:{report_id}"
+        history_key = (
+            f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
+        )
+        history = get_chat_state(session_id).get_conversation(history_key)
     except Exception:  # noqa: BLE001 - fallback silently
         history = []
 

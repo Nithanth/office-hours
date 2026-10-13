@@ -43,12 +43,131 @@ def get_semaphore(session_id: str, paper_id: str) -> asyncio.Semaphore:
 # Prompt helper
 
 
+async def _build_topic_prompt(
+    chat_state: ChatState,
+    topic_key: str,
+    audience_type: str,
+    max_history: int,
+    user_id: str | None,
+) -> PromptBundle:
+    """Prompt for a topic-level chat: retrieval unioned over a report's papers.
+
+    *topic_key* is ``"topic:{report_id}"`` — the report's papers supply the
+    retrieval set and its text becomes a summary excerpt.
+    """
+    report_id = topic_key.split(":", 1)[1]
+    turns = chat_state.get_conversation(topic_key)[-max_history:]
+    history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
+
+    report = None
+    if user_id:
+        try:
+            from services.persistence.database import (
+                database_available,
+                session_scope,
+            )
+            from services.persistence.repositories import get_report
+
+            if database_available():
+                async for db_session in session_scope():
+                    report = await get_report(
+                        db_session, user_id=user_id, report_id=report_id
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("topic_report_load_failed", error=str(exc))
+
+    title = report.title if report else "this topic"
+    report_excerpt = (report.report_text or "")[:4000] if report else ""
+    pid_to_title = {
+        p.paper_id: (p.title or p.paper_id) for p in (report.papers if report else [])
+    }
+
+    sources: list[dict[str, Any]] = []
+    context_chunks = ""
+    if turns and turns[-1].role == "user":
+        try:
+            import importlib
+            import sys
+
+            _vs = sys.modules.get("services.paper.vector_store")
+            if _vs is None:
+                _vs = importlib.import_module("services.paper.vector_store")
+
+            from services.paper.embedding import embed_query as _embed_q
+
+            user_q = turns[-1].content
+            query_vec = _embed_q(user_q)
+            matches = _vs.search_all(
+                query_vec,
+                query_text=user_q,
+                top_k=config.RAG_TOP_K,
+                paper_ids=list(pid_to_title) or None,
+            )
+            if matches:
+                from typing import cast
+
+                def _format_row(idx: int, r: dict[str, Any]) -> str:
+                    paper = pid_to_title.get(r.get("paper_id"), "")
+                    sec = r.get("section", "")
+                    head = f"[{idx}] {paper}" + (f" \u2014 {sec}" if sec else "")
+                    return f"{head}\n{cast(str, r['text'])}"
+
+                context_chunks = "\n\n".join(
+                    _format_row(i + 1, m) for i, m in enumerate(matches)
+                )
+                sources = [
+                    {
+                        "n": i + 1,
+                        "section": pid_to_title.get(m.get("paper_id"), ""),
+                        "snippet": cast(str, m.get("text") or "")[:240],
+                    }
+                    for i, m in enumerate(matches)
+                ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("topic_rag_failed", error=str(exc))
+
+    from prompts.prompt_builder import AUDIENCE_PROMPT_MAP, CHAT_SYSTEM_PROMPT
+
+    sys_prompt = CHAT_SYSTEM_PROMPT
+    sys_prompt += (
+        f" The user is asking about the research topic '{title}'."
+        " Answer the user's latest question clearly and concisely."
+    )
+    if sources:
+        sys_prompt += (
+            " Use information from the numbered *Context* chunks below; when you"
+            " draw on a chunk, cite it inline as [n] (e.g. [1], [3]) matching its"
+            " number. Do not invent citations or cite numbers that do not appear."
+        )
+    else:
+        sys_prompt += (
+            " Use information from the *Context* below;"
+            " do NOT mention the context explicitly."
+        )
+    sys_prompt += (
+        " If the context contains lines starting with '=== TABLE',"
+        " render them as markdown tables in your answer."
+    )
+    if audience_type in AUDIENCE_PROMPT_MAP:
+        sys_prompt += " " + AUDIENCE_PROMPT_MAP[audience_type]["system_suffix"]
+
+    context = (
+        f"Topic report excerpt:\n{report_excerpt}\n\n" if report_excerpt else ""
+    ) + context_chunks
+    prompt = (
+        f"{sys_prompt}\n\nConversation:\n{history_txt}\n\n"
+        f"Context:\n{context}\n\nAssistant:"
+    )
+    return PromptBundle(prompt=prompt, sources=sources)
+
+
 async def build_prompt(
     chat_state: ChatState,
     paper_id: str,
     audience_type: str = "semi_technical",
     max_history: int = 10,
     excerpt_chars: int | None = None,
+    user_id: str | None = None,
 ) -> PromptBundle:
     """Construct prompt with recent chat + paper excerpt.
 
@@ -56,6 +175,17 @@ async def build_prompt(
     paths for multimodal context, and the numbered retrieval sources the
     prompt instructs the model to cite as ``[n]``.
     """
+
+    # Topic-scoped chat: paper_id "topic:{report_id}" unions retrieval over
+    # the report's paper set instead of a single paper.
+    if paper_id.startswith("topic:"):
+        return await _build_topic_prompt(
+            chat_state=chat_state,
+            topic_key=paper_id,
+            audience_type=audience_type,
+            max_history=max_history,
+            user_id=user_id,
+        )
 
     # ------------------------------------------------------------------
     # Determine excerpt length: prefer explicit argument, then app config,

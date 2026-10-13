@@ -133,12 +133,20 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       <button onclick="window.__exportNotes('{escaped_id}')">Export Notes</button>
       <button onclick="window.__exportNotion('{escaped_id}')">Export to Notion</button>
       <button onclick="window.__generateBlog('{escaped_id}')">Generate Blog</button>
+      <button hx-get="/chat-modal?paper_id=topic&report_id={escaped_id}&title=Ask%20about%20this%20topic"
+              hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
     </div>
     <div id="report-content" data-report-id="{escaped_id}"
          data-audience="{escaped_audience}" data-model="{escaped_model}">
       {report_html}
     </div>
     <div id="modal-container"></div>
+    <script type="module">
+      import "/static/js/chat/stream.js?v=2";
+      import "/static/js/chat/ui.js?v=2";
+      import "/static/js/chat/events.js?v=2";
+      import "/static/js/chat/snippet.js?v=1";
+    </script>
   </main>
 </body>
 </html>"""
