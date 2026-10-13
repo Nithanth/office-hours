@@ -177,6 +177,36 @@ class UserIntegration(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class SavedPaper(Base):
+    """A paper in a user's persistent library.
+
+    ``owner_id`` mirrors ``UserPreference``: the auth ``user_id`` when
+    signed in, otherwise ``"sess:{session_id}"`` for anonymous visitors.
+    ``paper_id`` is the same identifier used everywhere else in the app
+    (typically the source URL), so it joins to chat threads and vector
+    indexes without translation.
+    """
+
+    __tablename__ = "saved_papers"
+    __table_args__ = (UniqueConstraint("owner_id", "paper_id"),)
+
+    READING_STATUSES = ("to_read", "reading", "done")
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_id: Mapped[str] = mapped_column(String(80), index=True)
+    paper_id: Mapped[str] = mapped_column(String(512))
+    title: Mapped[str] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    authors: Mapped[dict] = mapped_column(JSONType, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default="to_read", index=True)
+    report_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reports.id", ondelete="SET NULL"), index=True
+    )
+    notion_page_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 class UsageEvent(Base):
     __tablename__ = "usage_events"
 

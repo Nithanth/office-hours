@@ -115,6 +115,32 @@ class NotionExporter:
 
         return page.get("url") or f"https://www.notion.so/{page_id.replace('-', '')}"
 
+    async def create_database_row(
+        self, database_id: str, properties: dict[str, Any]
+    ) -> str | None:
+        """Create a row in *database_id* and return its page id."""
+        try:
+            page = await self._client.pages.create(
+                parent={"database_id": database_id}, properties=properties
+            )
+        except Exception as err:
+            logger.error("notion_row_create_failed", error=str(err))
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+        page_id = page.get("id")
+        return str(page_id) if page_id else None
+
+    async def update_page_properties(
+        self, page_id: str, properties: dict[str, Any]
+    ) -> None:
+        """Update the properties of an existing page/database row."""
+        try:
+            await self._client.pages.update(page_id=page_id, properties=properties)
+        except Exception as err:
+            logger.error("notion_row_update_failed", error=str(err))
+            raise NotionExportError(self._create_error_message(err, "page")) from err
+
     async def close(self) -> None:
         await self._client.aclose()
 

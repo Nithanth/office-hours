@@ -18,6 +18,7 @@ from services.persistence.models import (
     OAuthAccount,
     Report,
     ReportPaper,
+    SavedPaper,
     UsageEvent,
     User,
     UserIntegration,
@@ -444,3 +445,112 @@ def openrouter_api_key(pref: UserPreference) -> str | None:
     if not pref.openrouter_key_encrypted:
         return None
     return str(decrypt_secret(pref.openrouter_key_encrypted))
+
+
+# ---------------------------------------------------------------------------
+# Saved papers (persistent library)
+# ---------------------------------------------------------------------------
+
+
+async def save_paper(
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    paper_id: str,
+    title: str,
+    url: str | None = None,
+    authors: dict[str, Any] | None = None,
+    report_id: str | None = None,
+) -> SavedPaper:
+    """Insert-or-update a saved paper. Re-saving refreshes metadata."""
+    saved = await session.scalar(
+        select(SavedPaper).where(
+            SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+        )
+    )
+    if saved is None:
+        saved = SavedPaper(
+            owner_id=owner_id,
+            paper_id=paper_id,
+            title=title,
+            url=url,
+            authors=authors or {},
+            report_id=report_id,
+        )
+        session.add(saved)
+    else:
+        saved.title = title or saved.title
+        saved.url = url or saved.url
+        if authors:
+            saved.authors = authors
+        if report_id:
+            saved.report_id = report_id
+    await session.commit()
+    await session.refresh(saved)
+    return saved
+
+
+async def unsave_paper(session: AsyncSession, *, owner_id: str, paper_id: str) -> bool:
+    result = await session.execute(
+        delete(SavedPaper).where(
+            SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+        )
+    )
+    await session.commit()
+    return bool(getattr(result, "rowcount", 0))
+
+
+async def get_saved_paper(
+    session: AsyncSession, *, owner_id: str, paper_id: str
+) -> SavedPaper | None:
+    return await session.scalar(
+        select(SavedPaper).where(
+            SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+        )
+    )
+
+
+async def list_saved_papers(
+    session: AsyncSession, *, owner_id: str, status: str | None = None
+) -> list[SavedPaper]:
+    stmt = (
+        select(SavedPaper)
+        .where(SavedPaper.owner_id == owner_id)
+        .order_by(SavedPaper.updated_at.desc())
+    )
+    if status:
+        stmt = stmt.where(SavedPaper.status == status)
+    return list((await session.scalars(stmt)).all())
+
+
+async def set_saved_paper_status(
+    session: AsyncSession, *, owner_id: str, paper_id: str, status: str
+) -> SavedPaper | None:
+    if status not in SavedPaper.READING_STATUSES:
+        return None
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is None:
+        return None
+    saved.status = status
+    await session.commit()
+    await session.refresh(saved)
+    return saved
+
+
+async def set_saved_paper_notion_page(
+    session: AsyncSession, *, owner_id: str, paper_id: str, notion_page_id: str
+) -> None:
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is not None:
+        saved.notion_page_id = notion_page_id
+        await session.commit()
+
+
+async def list_saved_paper_ids(session: AsyncSession, *, owner_id: str) -> set[str]:
+    return set(
+        (
+            await session.scalars(
+                select(SavedPaper.paper_id).where(SavedPaper.owner_id == owner_id)
+            )
+        ).all()
+    )

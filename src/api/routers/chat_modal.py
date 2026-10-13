@@ -710,6 +710,12 @@ async def viewer_modal(
   <div class=\"modal-content pdf-viewer\" data-viewer=\"{"pdf" if is_pdf else "html"}\" data-src-url=\"{safe_url}\">
     <div class=\"modal-header\">
       <h2><a href=\"{safe_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{display_title}</a></h2>
+      <button class=\"save-paper-btn\" type=\"button\" title=\"Save to library\"
+        data-paper-id=\"{html.escape(paper_id)}\"
+        data-paper-title=\"{display_title}\"
+        data-paper-url=\"{safe_url}\"
+        style=\"background:transparent;border:none;cursor:pointer;color:var(--fg);font-size:1rem;margin-right:0.4rem;\">
+        <i class=\"fa-regular fa-bookmark\"></i></button>
       <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
     </div>
     <div class=\"viewer-grid\">

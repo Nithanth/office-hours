@@ -107,9 +107,11 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
   <link rel="stylesheet" href="/static/css/forms.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/chat.css">
+  <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
   <script src="/static/js/report.js" defer></script>
+  <script src="/static/js/library.js?v=1" defer></script>
   <style>
     .report-actions{{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;
       padding:0.75rem 0;border-bottom:1px solid #444;margin-bottom:1rem;}}

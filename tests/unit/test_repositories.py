@@ -453,3 +453,103 @@ class TestRecordExport:
         assert export is not None
         assert export.status == "error"
         assert export.error == "Notion API rate limit"
+
+
+# ---------------------------------------------------------------------------
+# Saved papers (library)
+# ---------------------------------------------------------------------------
+
+
+class TestSavedPapers:
+    async def test_save_and_get(self, db_session: AsyncSession):
+        from services.persistence.repositories import get_saved_paper, save_paper
+
+        saved = await save_paper(
+            db_session,
+            owner_id="u1",
+            paper_id="https://arxiv.org/abs/1706.03762",
+            title="Attention Is All You Need",
+            url="https://arxiv.org/abs/1706.03762",
+            authors={"list": ["Vaswani", "Shazeer"]},
+        )
+        assert saved.status == "to_read"
+
+        fetched = await get_saved_paper(
+            db_session, owner_id="u1", paper_id="https://arxiv.org/abs/1706.03762"
+        )
+        assert fetched is not None
+        assert fetched.title == "Attention Is All You Need"
+
+    async def test_resave_updates_metadata_keeps_status(self, db_session: AsyncSession):
+        from services.persistence.repositories import (
+            get_saved_paper,
+            save_paper,
+            set_saved_paper_status,
+        )
+
+        pid = "https://x.org/p1"
+        await save_paper(db_session, owner_id="u1", paper_id=pid, title="t")
+        await set_saved_paper_status(
+            db_session, owner_id="u1", paper_id=pid, status="reading"
+        )
+        await save_paper(db_session, owner_id="u1", paper_id=pid, title="new title")
+        saved = await get_saved_paper(db_session, owner_id="u1", paper_id=pid)
+        assert saved is not None
+        assert saved.title == "new title"
+        assert saved.status == "reading"  # status not reset by re-save
+
+    async def test_owner_isolation(self, db_session: AsyncSession):
+        from services.persistence.repositories import list_saved_papers, save_paper
+
+        await save_paper(db_session, owner_id="u1", paper_id="p1", title="t1")
+        await save_paper(db_session, owner_id="u2", paper_id="p2", title="t2")
+        mine = await list_saved_papers(db_session, owner_id="u1")
+        assert [p.paper_id for p in mine] == ["p1"]
+
+    async def test_status_filter_and_validation(self, db_session: AsyncSession):
+        from services.persistence.repositories import (
+            list_saved_papers,
+            save_paper,
+            set_saved_paper_status,
+        )
+
+        await save_paper(db_session, owner_id="u1", paper_id="p1", title="t1")
+        await save_paper(db_session, owner_id="u1", paper_id="p2", title="t2")
+        await set_saved_paper_status(
+            db_session, owner_id="u1", paper_id="p1", status="done"
+        )
+        assert (
+            await set_saved_paper_status(
+                db_session, owner_id="u1", paper_id="p1", status="bogus"
+            )
+            is None
+        )
+        done = await list_saved_papers(db_session, owner_id="u1", status="done")
+        assert [p.paper_id for p in done] == ["p1"]
+
+    async def test_unsave(self, db_session: AsyncSession):
+        from services.persistence.repositories import (
+            get_saved_paper,
+            save_paper,
+            unsave_paper,
+        )
+
+        await save_paper(db_session, owner_id="u1", paper_id="p1", title="t")
+        assert await unsave_paper(db_session, owner_id="u1", paper_id="p1")
+        assert not await unsave_paper(db_session, owner_id="u1", paper_id="p1")
+        assert await get_saved_paper(db_session, owner_id="u1", paper_id="p1") is None
+
+    async def test_notion_page_id_roundtrip(self, db_session: AsyncSession):
+        from services.persistence.repositories import (
+            get_saved_paper,
+            save_paper,
+            set_saved_paper_notion_page,
+        )
+
+        await save_paper(db_session, owner_id="u1", paper_id="p1", title="t")
+        await set_saved_paper_notion_page(
+            db_session, owner_id="u1", paper_id="p1", notion_page_id="abc-123"
+        )
+        saved = await get_saved_paper(db_session, owner_id="u1", paper_id="p1")
+        assert saved is not None
+        assert saved.notion_page_id == "abc-123"
