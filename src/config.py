@@ -78,7 +78,7 @@ class Config(BaseSettings):
     LOG_LEVEL: str = "info"
     LOG_FORMAT_JSON: bool = Field(
         default=False,
-        validation_alias=AliasChoices("OH_LOG_FORMAT_JSON", "LUX_LOG_FORMAT_JSON"),
+        validation_alias=AliasChoices("OH_LOG_FORMAT_JSON"),
     )
 
     # ------------------------------------------------------------------
@@ -92,9 +92,7 @@ class Config(BaseSettings):
     NOTION_OAUTH_CLIENT_SECRET: Optional[str] = None
     SECRET_ENCRYPTION_KEY: Optional[str] = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "OH_SECRET_ENCRYPTION_KEY", "LUX_SECRET_ENCRYPTION_KEY"
-        ),
+        validation_alias=AliasChoices("OH_SECRET_ENCRYPTION_KEY"),
     )
     REQUIRE_LOGIN: bool = False
     BETA_DAILY_REPORT_LIMIT: int = 20
@@ -173,7 +171,7 @@ class Config(BaseSettings):
     ADMIN_API_KEY: Optional[str] = None
     SESSION_SECRET: str = Field(
         default="dev-insecure-secret",
-        validation_alias=AliasChoices("OH_SESSION_SECRET", "LUX_SESSION_SECRET"),
+        validation_alias=AliasChoices("OH_SESSION_SECRET"),
     )
 
     # ------------------------------------------------------------------

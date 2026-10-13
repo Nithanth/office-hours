@@ -1,6 +1,6 @@
 # Office Hours
 
-![CI](https://github.com/Nithanth/lux_scholar/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Nithanth/office-hours/actions/workflows/ci.yml/badge.svg)
 
 A web-based research paper assistant for searching academic papers, extracting full text, generating AI reports, chatting with paper-grounded context, creating notes/blog drafts, and exporting reports to Notion.
 
