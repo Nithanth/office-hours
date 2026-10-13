@@ -223,7 +223,7 @@ async def generate_report_incremental(  # noqa: PLR0913
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>
         </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
-      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n    </div>
+      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n      <!-- Registers the report-saved event so htmx dispatches htmx:sseMessage;\n           report.js uses it to append report_id= to the chat buttons. -->\n      <div sse-swap=\"report-saved\" hx-target=\"this\" hx-swap=\"none\"></div>\n    </div>
     """
     return HTMLResponse(content=html_skeleton)
 
