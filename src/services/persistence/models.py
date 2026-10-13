@@ -205,6 +205,9 @@ class SavedPaper(Base):
         ForeignKey("reports.id", ondelete="SET NULL"), index=True
     )
     notion_page_id: Mapped[str | None] = mapped_column(String(64))
+    # Status value we last saw written in Notion — lets a sync tell which
+    # side changed (app vs Notion) instead of blindly letting one win.
+    notion_synced_status: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 

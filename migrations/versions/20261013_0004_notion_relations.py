@@ -25,8 +25,13 @@ def upgrade() -> None:
         "reports",
         sa.Column("notion_page_id", sa.String(length=64), nullable=True),
     )
+    op.add_column(
+        "saved_papers",
+        sa.Column("notion_synced_status", sa.String(length=32), nullable=True),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column("saved_papers", "notion_synced_status")
     op.drop_column("reports", "notion_page_id")
     op.drop_column("user_integrations", "topics_database_id")

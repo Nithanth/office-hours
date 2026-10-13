@@ -148,8 +148,10 @@ async def sync_library(
 
     ``papers``/``reports`` are plain snapshot dicts (ORM objects detached
     from their session can't be read here). Returns a stats dict with a
-    ``topic_page_ids`` map, ``paper_page_ids`` (paper_id → new page id),
-    and ``status_updates`` (paper_id → new status) for the caller to persist.
+    ``topic_page_ids`` map, ``paper_page_ids`` (paper_id → page id),
+    ``status_updates`` (paper_id → status pulled from Notion), and
+    ``synced_status`` (paper_id → the status now written in Notion) for the
+    caller to persist.
     """
     stats: dict[str, Any] = {
         "topics_created": 0,
@@ -160,6 +162,7 @@ async def sync_library(
         "updated": 0,
         "failed": 0,
         "status_updates": {},
+        "synced_status": {},
         "errors": [],
     }
 
@@ -181,6 +184,21 @@ async def sync_library(
 
     for paper in papers:
         try:
+            # Three-way Status check BEFORE the upsert, against the last
+            # synced value — edits on EITHER side propagate: Notion value
+            # != last synced → pull into the app; app value != last synced
+            # → the upsert below pushes it to Notion.
+            last_synced = paper.get("notion_synced_status")
+            if paper["notion_page_id"]:
+                try:
+                    label = await exporter.get_page_status(paper["notion_page_id"])
+                except Exception:
+                    label = None  # best-effort read; continue the sync
+                notion_status = _LABEL_TO_STATUS.get(label or "")
+                if notion_status and notion_status != last_synced:
+                    stats["status_updates"][paper["paper_id"]] = notion_status
+                    paper["status"] = notion_status
+
             topic_page = (
                 stats["topic_page_ids"].get(paper["report_id"])
                 if paper["report_id"]
@@ -191,29 +209,16 @@ async def sync_library(
                 await exporter.update_page_properties(paper["notion_page_id"], props)
                 stats["updated"] += 1
                 stats["paper_page_ids"][paper["paper_id"]] = paper["notion_page_id"]
+                stats["synced_status"][paper["paper_id"]] = paper["status"]
             else:
                 page_id = await exporter.create_database_row(papers_db_id, props)
                 if page_id:
                     stats["paper_page_ids"][paper["paper_id"]] = page_id
+                    stats["synced_status"][paper["paper_id"]] = paper["status"]
                 stats["created"] += 1
         except Exception as exc:
             stats["failed"] += 1
             stats["errors"].append(f"paper {paper['paper_id']}: {exc}"[:200])
-
-    # Pull-back: Status edits made in Notion win over the app's value.
-    for paper in papers:
-        page_id = (
-            stats["paper_page_ids"].get(paper["paper_id"]) or paper["notion_page_id"]
-        )
-        if not page_id:
-            continue
-        try:
-            label = await exporter.get_page_status(page_id)
-        except Exception:
-            continue
-        status = _LABEL_TO_STATUS.get(label or "")
-        if status and status != paper["status"]:
-            stats["status_updates"][paper["paper_id"]] = status
 
     return stats
 

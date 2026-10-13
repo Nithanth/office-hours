@@ -24,7 +24,9 @@ class NotionExporter:
             raise NotionExportError(
                 "notion-client is not installed. Add it to requirements.txt."
             ) from err
-        self._client = AsyncClient(auth=api_key)
+        self._client = AsyncClient(
+            options={"auth": api_key, "notion_version": "2022-06-28"}
+        )
 
     @staticmethod
     def _create_error_message(err: Exception, target_kind: str) -> str:
@@ -136,11 +138,18 @@ class NotionExporter:
         self, parent_page_id: str, title: str, properties: dict[str, Any]
     ) -> str:
         """Create a database under *parent_page_id*; return its id."""
+        # The SDK's databases.create only forwards new-API fields
+        # (initial_data_source), silently dropping `properties` — so we
+        # call the endpoint directly with the classic 2022-06-28 body.
         try:
-            db = await self._client.databases.create(
-                parent={"type": "page_id", "page_id": parent_page_id},
-                title=[{"type": "text", "text": {"content": title}}],
-                properties=properties,
+            db = await self._client.request(
+                path="databases",
+                method="POST",
+                body={
+                    "parent": {"type": "page_id", "page_id": parent_page_id},
+                    "title": [{"type": "text", "text": {"content": title}}],
+                    "properties": properties,
+                },
             )
         except Exception as err:
             logger.error("notion_db_create_failed", error=str(err))
@@ -153,14 +162,18 @@ class NotionExporter:
         self, database_id: str, name: str, target_database_id: str
     ) -> None:
         """Add a two-way relation property to a database schema."""
+        # Same SDK pick() limitation as create_database — direct request.
         try:
-            await self._client.databases.update(
-                database_id=database_id,
-                properties={
-                    name: {
-                        "relation": {
-                            "database_id": target_database_id,
-                            "dual_property": {"synced_property_name": "Papers"},
+            await self._client.request(
+                path=f"databases/{database_id}",
+                method="PATCH",
+                body={
+                    "properties": {
+                        name: {
+                            "relation": {
+                                "database_id": target_database_id,
+                                "dual_property": {"synced_property_name": "Papers"},
+                            }
                         }
                     }
                 },

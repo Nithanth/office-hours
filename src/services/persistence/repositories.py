@@ -576,11 +576,31 @@ async def set_saved_paper_status(
 
 
 async def set_saved_paper_notion_page(
-    session: AsyncSession, *, owner_id: str, paper_id: str, notion_page_id: str
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    paper_id: str,
+    notion_page_id: str,
+    synced_status: str | None = None,
 ) -> None:
     saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
     if saved is not None:
         saved.notion_page_id = notion_page_id
+        if synced_status:
+            saved.notion_synced_status = synced_status
+        await session.commit()
+
+
+async def set_saved_paper_notion_status(
+    session: AsyncSession, *, owner_id: str, paper_id: str, status: str
+) -> None:
+    """Record the status value currently written in Notion (pull-back path)."""
+    if status not in SavedPaper.READING_STATUSES:
+        return
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is not None:
+        saved.status = status
+        saved.notion_synced_status = status
         await session.commit()
 
 

@@ -22,6 +22,7 @@ from services.persistence.repositories import (
     set_notion_databases,
     set_report_notion_page,
     set_saved_paper_notion_page,
+    set_saved_paper_notion_status,
     set_saved_paper_status,
     unsave_paper,
 )
@@ -218,6 +219,7 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                     "status": p.status,
                     "report_id": p.report_id,
                     "notion_page_id": p.notion_page_id,
+                    "notion_synced_status": p.notion_synced_status,
                     "saved_date": p.created_at.date().isoformat(),
                 }
                 for p in papers
@@ -260,17 +262,19 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                 )
     for row in paper_rows:
         page_id = stats["paper_page_ids"].get(row["paper_id"])
-        if page_id and page_id != row["notion_page_id"]:
+        synced = stats["synced_status"].get(row["paper_id"])
+        if (page_id and page_id != row["notion_page_id"]) or synced:
             async for session in session_scope():
                 await set_saved_paper_notion_page(
                     session,
                     owner_id=str(user_id),
                     paper_id=row["paper_id"],
-                    notion_page_id=page_id,
+                    notion_page_id=page_id or row["notion_page_id"],
+                    synced_status=synced,
                 )
     for paper_id, status in stats["status_updates"].items():
         async for session in session_scope():
-            await set_saved_paper_status(
+            await set_saved_paper_notion_status(
                 session, owner_id=str(user_id), paper_id=paper_id, status=status
             )
 
