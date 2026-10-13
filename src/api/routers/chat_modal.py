@@ -78,6 +78,7 @@ _ALLOWED_PROXY_DOMAINS: set[str] = {
     "openreview.net",
     "aclanthology.org",
     "proceedings.mlr.press",
+    "papers.neurips.cc",
     "dl.acm.org",
     "ieee.org",
     "ieeexplore.ieee.org",
