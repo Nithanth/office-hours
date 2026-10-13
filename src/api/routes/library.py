@@ -575,6 +575,19 @@ def _library_shell(content_html: str) -> str:
       color:var(--fg);}}
     .lib-status-chip{{font-size:0.72rem;padding:2px 8px;border-radius:999px;
       border:1px solid var(--container-border,#666);margin-left:0.5rem;color:var(--fg-muted,#aaa);}}
+    .lib-notion-card{{border:1px dashed var(--oh-accent,#0d6e63);border-radius:8px;
+      padding:0.8rem 1rem;margin:0.75rem 0 1.1rem;font-size:0.85rem;
+      background:var(--container-bg);}}
+    .lib-notion-pick{{display:flex;gap:0.5rem;align-items:center;margin-top:0.55rem;flex-wrap:wrap;}}
+    .lib-notion-pick select,.lib-notion-pick button{{
+      font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer;
+      border:1px solid var(--container-border,#555);background:var(--container-bg,#1a1a1a);
+      color:var(--fg);}}
+    .lib-notion-pick select{{min-width:240px;}}
+    .lib-notion-connect{{display:inline-block;font-size:0.82rem;padding:4px 12px;
+      border-radius:4px;background:var(--oh-accent,#0d6e63);color:#fff;
+      text-decoration:none;}}
+    .lib-notion-hint{{font-size:0.75rem;color:var(--fg-muted,#888);margin-top:0.45rem;}}
   </style>
 </head>
 <body>
@@ -650,13 +663,18 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     signed_in = bool(get_auth_user_id(request))
     notion_connected = False
+    notion_needs_destination = False
     async for session in session_scope():
         papers = await list_saved_papers(session, owner_id=owner_id, status=status)
         if signed_in:
             integration = await get_notion_integration(
                 session, user_id=str(get_auth_user_id(request))
             )
-            notion_connected = bool(integration and integration.parent_database_id)
+            if integration:
+                notion_connected = bool(
+                    integration.parent_page_id or integration.parent_database_id
+                )
+                notion_needs_destination = not notion_connected
 
     tabs = [
         '<a href="/library"' + (' class="active"' if not status else "") + ">All</a>"
@@ -672,10 +690,28 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             'title="Reply to unanswered comments on your synced paper pages">'
             "Answer comments</button>"
         )
+        notion_card = ""
+    elif notion_needs_destination:
+        sync_btn = ""
+        notion_card = """<div class="lib-notion-card">
+  <strong>Notion connected</strong> — one last step: pick where your library lives.
+  <div class="lib-notion-pick">
+    <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
+    <button id="lib-notion-set-dest" type="button">Set up sync</button>
+  </div>
+  <div class="lib-notion-hint">Office Hours creates two linked databases — Papers ↔ Topics — under the page you pick.</div>
+</div>"""
     elif signed_in:
-        sync_btn = '<a href="/settings" title="Connect Notion in Settings to sync">Connect Notion</a>'
+        sync_btn = ""
+        notion_card = """<div class="lib-notion-card">
+  <strong>Mirror your library in Notion</strong> — papers, topics and reading status sync automatically; questions in page comments get answered by the agent.
+  <div class="lib-notion-pick"><a class="lib-notion-connect" href="/integrations/notion/connect?next=/library">Connect Notion</a></div>
+</div>"""
     else:
         sync_btn = ""
+        notion_card = """<div class="lib-notion-card">
+  <strong>Mirror your library in Notion</strong> — sign in to connect your workspace.
+</div>"""
 
     if papers:
         items = "".join(_paper_item(p) for p in papers)
@@ -687,6 +723,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
       {sync_btn}
       <a href="/">+ New Search</a>
     </div>
+    {notion_card}
     <div class="lib-tabs">{"".join(tabs)}</div>
     <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
     {items}
@@ -699,6 +736,36 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             body: new URLSearchParams(data).toString(),
           }});
           return r.json();
+        }}
+        // Notion destination picker — only present when connected with no anchor.
+        const destSel = document.getElementById("lib-notion-destination");
+        if (destSel) {{
+          fetch("/api/notion/destinations").then(r => r.json()).then(res => {{
+            const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
+            destSel.innerHTML = dests.length
+              ? dests.map(d => `<option value="${{d.id}}" data-type="${{d.type}}">${{d.type === "page" ? "📄" : "🗃"}} ${{d.title}}</option>`).join("")
+              : '<option value="">No shared pages — re-connect and share a page</option>';
+          }});
+        }}
+        const setDest = document.getElementById("lib-notion-set-dest");
+        if (setDest) {{
+          setDest.addEventListener("click", function() {{
+            const opt = destSel.options[destSel.selectedIndex];
+            if (!opt || !opt.value) return;
+            setDest.disabled = true;
+            post("/api/notion/destination", {{
+              destination_id: opt.value,
+              destination_type: opt.dataset.type,
+            }}).then(res => {{
+              if (res.ok) {{
+                const statusEl = document.getElementById("lib-sync-status");
+                statusEl.textContent = "All set — papers now sync to Notion automatically.";
+                document.querySelector(".lib-notion-card").remove();
+              }} else {{
+                setDest.disabled = false;
+              }}
+            }});
+          }});
         }}
         document.addEventListener("change", function(ev) {{
           const sel = ev.target.closest(".lib-status-select");
