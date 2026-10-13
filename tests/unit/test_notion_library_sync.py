@@ -111,3 +111,31 @@ class TestUnansweredThreads:
 
     def test_empty(self):
         assert unanswered_threads([], bot_id="bot-9") == []
+
+
+class TestMarkdownToRichText:
+    def test_bold_and_equation(self):
+        from services.notion.markdown_to_blocks import markdown_to_rich_text
+
+        segs = markdown_to_rich_text(
+            "The limit is **quadratic** complexity $O(n^2 \\cdot d)$ per layer."
+        )
+        assert any(s["type"] == "equation" for s in segs)
+        eq = next(s for s in segs if s["type"] == "equation")
+        assert eq["equation"]["expression"] == "O(n^2 \\cdot d)"
+        bold = next(s for s in segs if s["type"] == "text" and s["annotations"]["bold"])
+        assert bold["text"]["content"] == "quadratic"
+
+    def test_paren_math(self):
+        from services.notion.markdown_to_blocks import markdown_to_rich_text
+
+        segs = markdown_to_rich_text("growth is \\(O(n^2)\\) fast")
+        eq = next(s for s in segs if s["type"] == "equation")
+        assert eq["equation"]["expression"] == "O(n^2)"
+
+    def test_plain_text(self):
+        from services.notion.markdown_to_blocks import markdown_to_rich_text
+
+        segs = markdown_to_rich_text("no formatting here")
+        assert len(segs) == 1
+        assert segs[0]["type"] == "text"

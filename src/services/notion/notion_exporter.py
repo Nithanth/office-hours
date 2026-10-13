@@ -207,16 +207,33 @@ class NotionExporter:
         return list(resp.get("results") or [])
 
     async def reply_to_discussion(self, discussion_id: str, text: str) -> None:
-        """Post a reply in an existing comment thread."""
+        """Post a reply in an existing comment thread.
+
+        *text* is Markdown — converted to rich_text (bold/italic/code/links
+        and inline equations). Falls back to plain text if Notion rejects
+        the structured payload.
+        """
+        from services.notion.markdown_to_blocks import markdown_to_rich_text
+
+        rich_text = markdown_to_rich_text(text[:1900])
+        if not rich_text:
+            rich_text = [{"type": "text", "text": {"content": text[:1900]}}]
         try:
             await self._client.comments.create(
                 discussion_id=discussion_id,
-                rich_text=[{"type": "text", "text": {"content": text[:2000]}}],
+                rich_text=rich_text,
             )
         except Exception as err:
-            raise NotionExportError(
-                self._create_error_message(err, "comment thread")
-            ) from err
+            # Retry once as plain text — e.g. equation segments rejected.
+            try:
+                await self._client.comments.create(
+                    discussion_id=discussion_id,
+                    rich_text=[{"type": "text", "text": {"content": text[:1900]}}],
+                )
+            except Exception as err2:
+                raise NotionExportError(
+                    self._create_error_message(err2 or err, "comment thread")
+                ) from err2
 
     async def create_database_row(
         self, database_id: str, properties: dict[str, Any]
