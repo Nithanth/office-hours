@@ -97,7 +97,10 @@ async def chat_post(
     if not clean_msg:
         return Response(status_code=204)
 
-    chat_state.append(paper_id, ChatMessage(role="user", content=clean_msg))
+    # Topic chats scope in-memory state per report ("topic:{report_id}");
+    # persistence keeps the bare "topic" paper_id + report_id thread key.
+    state_key = f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
+    chat_state.append(state_key, ChatMessage(role="user", content=clean_msg))
     from services.auth.session import get_auth_user_id
     from services.persistence.database import database_available, session_scope
 
@@ -111,7 +114,9 @@ async def chat_post(
                     db_session,
                     user_id=user_id,
                     report_id=report_id,
-                    paper_id=paper_id,
+                    paper_id=paper_id.split(":", 1)[0]
+                    if paper_id.startswith("topic:")
+                    else paper_id,
                     role="user",
                     content=clean_msg,
                 )
@@ -123,7 +128,7 @@ async def chat_post(
 
     # Reset ring buffer for new assistant response
     chat_state.reset_stream_buffer()
-    chat_state.paper_cache.setdefault(paper_id, {})
+    chat_state.paper_cache.setdefault(state_key, {})
 
     # 1. Render the user's message immediately
     user_message_html = str(render_chat_message(clean_msg, "user"))
@@ -132,7 +137,7 @@ async def chat_post(
     assistant_response_id = f"assistant-response-{uuid4()}"
     # Full stream URL (used by JS) includes additional audience/model params.
     safe_paper_id = _urlparse.quote_plus(paper_id)
-    stream_url = f"/chat/stream?paper_id={safe_paper_id}&audience_type={_urlparse.quote_plus(audience_type)}"
+    stream_url = f"/chat/stream?paper_id={_urlparse.quote_plus(state_key)}&audience_type={_urlparse.quote_plus(audience_type)}"
     if model_key:
         stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
     if report_id:
@@ -234,8 +239,8 @@ async def chat_stream(
 
             # Ensure paper full text is cached and fresh once per stream
             def _needs_refresh() -> bool:
-                # Global (un-grounded) chat has no associated paper file.
-                if paper_id == "global":
+                # Global (un-grounded) and topic chats have no single paper.
+                if paper_id == "global" or paper_id.startswith("topic:"):
                     return False
                 if paper_id not in chat_state.paper_cache:
                     return True
@@ -260,6 +265,8 @@ async def chat_stream(
                 yield "event: message_done\ndata: \n\n"
                 return
 
+            from services.auth.session import get_auth_user_id
+
             last_tok_t = time.perf_counter()
             while True:
                 try:
@@ -269,7 +276,12 @@ async def chat_stream(
 
                     if chat_state.last_role(paper_id) == "user":
                         # Build prompt with requested audience style.
-                        bundle = await build_prompt(chat_state, paper_id, audience_type)
+                        bundle = await build_prompt(
+                            chat_state,
+                            paper_id,
+                            audience_type,
+                            user_id=get_auth_user_id(request),
+                        )
                         prompt = bundle.prompt
 
                         # Tell the UI which numbered context chunks the prompt
@@ -409,7 +421,9 @@ async def chat_stream(
                                 db_session,
                                 user_id=user_id,
                                 report_id=report_id,
-                                paper_id=paper_id,
+                                paper_id=paper_id.split(":", 1)[0]
+                                if paper_id.startswith("topic:")
+                                else paper_id,
                                 role="assistant",
                                 content=assistant_msg,
                             )

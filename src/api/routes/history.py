@@ -20,6 +20,8 @@ def _history_shell(items_html: str) -> str:
   <title>My Reports · Office Hours</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/forms.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
   <style>
     .history-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .history-item{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -103,6 +105,8 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
   <title>{escaped_title} · Office Hours</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/forms.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
   <script src="/static/js/report.js" defer></script>
@@ -133,12 +137,20 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       <button onclick="window.__exportNotes('{escaped_id}')">Export Notes</button>
       <button onclick="window.__exportNotion('{escaped_id}')">Export to Notion</button>
       <button onclick="window.__generateBlog('{escaped_id}')">Generate Blog</button>
+      <button hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
+              hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
     </div>
     <div id="report-content" data-report-id="{escaped_id}"
          data-audience="{escaped_audience}" data-model="{escaped_model}">
       {report_html}
     </div>
     <div id="modal-container"></div>
+    <script type="module">
+      import "/static/js/chat/stream.js?v=2";
+      import "/static/js/chat/ui.js?v=2";
+      import "/static/js/chat/events.js?v=2";
+      import "/static/js/chat/snippet.js?v=1";
+    </script>
   </main>
 </body>
 </html>"""
