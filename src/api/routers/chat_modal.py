@@ -345,6 +345,7 @@ async def chat_panel(
     no_history: bool = Query(
         False, description="When true, omit prior chat and disable transcript cache"
     ),
+    report_id: str | None = Query(None, description="(Optional) saved report id"),
 ) -> HTMLResponse:  # noqa: D401
     """Return *inline* chat fragment (no modal shell) for embedding.
 
@@ -364,21 +365,63 @@ async def chat_panel(
     session_id = getattr(request.state, "session_id", "anon")
     chat_state = get_chat_state(session_id)
 
-    hist = [] if no_history else chat_state.get_conversation(paper_id)
+    # Topic chats share state per report: "topic:{report_id}"
+    history_key = (
+        f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
+    )
+
+    hist = [] if no_history else chat_state.get_conversation(history_key)
 
     # If no in-memory history, attempt to load from on-disk cache once.
     if not hist and not no_history:
         try:
             from services.chat.chat_history_cache import ChatHistoryCache as _CHC
 
-            loaded = _CHC.load(session_id, paper_id)
+            loaded = _CHC.load(session_id, history_key)
             if loaded:
                 from services.chat.chat_state import ChatMessage  # local import
 
                 conv = [ChatMessage(**d) for d in loaded]
                 for m in conv:
-                    chat_state.append(paper_id, m)
+                    chat_state.append(history_key, m)
                 hist = conv
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Last resort for signed-in users: hydrate from the persisted DB thread.
+    if not hist and not no_history:
+        try:
+            from services.auth.session import get_auth_user_id
+
+            user_id = get_auth_user_id(request)
+            if user_id:
+                from services.persistence.database import (
+                    database_available,
+                    session_scope,
+                )
+                from services.persistence.repositories import (
+                    get_chat_thread_messages,
+                )
+
+                if database_available():
+                    thread_paper_id = (
+                        history_key.split(":", 1)[0]
+                        if history_key.startswith("topic:")
+                        else history_key
+                    )
+                    async for db_session in session_scope():
+                        rows = await get_chat_thread_messages(
+                            db_session,
+                            user_id=user_id,
+                            report_id=report_id,
+                            paper_id=thread_paper_id,
+                        )
+                        from services.chat.chat_state import ChatMessage
+
+                        for r in rows:
+                            m = ChatMessage(role=r.role, content=r.content)
+                            chat_state.append(history_key, m)
+                            hist.append(m)
         except Exception:  # noqa: BLE001
             pass
 
@@ -394,6 +437,11 @@ async def chat_panel(
         + (
             f"<input type='hidden' name='model_key' value='{html.escape(model_key)}'/>"
             if model_key
+            else ""
+        )
+        + (
+            f"<input type='hidden' name='report_id' value='{html.escape(report_id)}'/>"
+            if report_id
             else ""
         )
     )
@@ -563,6 +611,7 @@ async def viewer_modal(
     audience_type: str | None = None,
     model_key: str | None = None,
     title: str | None = None,
+    report_id: str | None = Query(None),
 ) -> HTMLResponse:  # noqa: D401
     """Return a two-pane viewer (PDF or HTML) with side-chat.
 
@@ -571,6 +620,29 @@ async def viewer_modal(
       `<iframe>` so proxied remote HTML cannot execute in our origin.
     • When *url* is omitted we fall back to the existing chat-only modal.
     """
+
+    if paper_id == "topic":
+        # Topic chat: left pane is a picker + doc viewer across the report's
+        # papers; right pane is the topic-scoped chat. Falls back to the
+        # chat-only modal when the report's papers can't be resolved.
+        topic_html = await _topic_viewer_html(
+            request,
+            report_id=report_id,
+            title=title,
+            audience_type=audience_type,
+            model_key=model_key,
+        )
+        if topic_html is not None:
+            return HTMLResponse(content=topic_html)
+        return await chat_modal(
+            request=request,
+            paper_id=paper_id,
+            title=title,
+            paper_url=None,
+            audience_type=audience_type,
+            model_key=model_key,
+            report_id=report_id,
+        )
 
     if not url:
         # Fallback to chat-only modal delivered via its own endpoint.
@@ -615,6 +687,8 @@ async def viewer_modal(
         panel_q += f"&audience_type={urllib.parse.quote_plus(audience_type)}"
     if model_key:
         panel_q += f"&model_key={urllib.parse.quote_plus(model_key)}"
+    if report_id:
+        panel_q += f"&report_id={urllib.parse.quote_plus(report_id)}"
 
     # Build viewer pane markup. PDFs go through our proxy so they render via pdf.js.
     if is_pdf:
@@ -649,7 +723,123 @@ async def viewer_modal(
     return HTMLResponse(content=modal_html)
 
 
-@router.get("/viewer-page/{paper_id}", response_class=HTMLResponse)
+async def _topic_papers(request: Request, report_id: str) -> list[tuple[str, str]]:
+    """Return [(url, title)] for the signed-in user's report, title fallback to url."""
+    try:
+        from services.auth.session import get_auth_user_id
+
+        user_id = get_auth_user_id(request)
+        if not user_id:
+            return []
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from services.persistence.database import database_available, session_scope
+        from services.persistence.models import Report
+
+        if not database_available():
+            return []
+        async for db_session in session_scope():
+            report = await db_session.scalar(
+                select(Report)
+                .where(Report.id == report_id, Report.user_id == user_id)
+                .options(selectinload(Report.papers))
+            )
+            if not report:
+                return []
+            return [
+                (p.url, p.title or p.url)
+                for p in report.papers
+                if p.url and p.url.lower().startswith(("http://", "https://"))
+            ]
+        return []  # pragma: no cover - session_scope yields at least once
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("topic_papers_lookup_failed", error=str(exc))
+        return []
+
+
+def _doc_embed(url: str) -> str:
+    """Viewer-pane markup for a doc URL (pdf.js container or proxied iframe)."""
+    if url.lower().endswith(".pdf"):
+        proxied = f"/pdf-proxy?url={urllib.parse.quote_plus(url)}"
+        return (
+            f'<div class="pdf-container" data-pdf-src="{html.escape(proxied)}"></div>'
+            '<script type="module" src="/static/js/pdf-viewer.js"></script>'
+        )
+    proxied = f"/html-proxy?url={urllib.parse.quote_plus(url)}"
+    return (
+        f'<iframe id="doc-frame" src="{html.escape(proxied)}" '
+        'sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>'
+    )
+
+
+@router.get("/doc-pane", response_class=HTMLResponse)
+async def doc_pane(
+    request: Request, url: str = Query(..., description="Document URL to render")
+) -> HTMLResponse:  # noqa: D401
+    """Viewer-pane fragment for the topic picker: pdf container or proxied iframe."""
+    if not _is_url_allowed(url):
+        raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
+    return HTMLResponse(content=_doc_embed(url))
+
+
+async def _topic_viewer_html(
+    request: Request,
+    *,
+    report_id: str | None,
+    title: str | None,
+    audience_type: str | None,
+    model_key: str | None,
+) -> str | None:
+    """Two-pane markup for a topic chat, or None to fall back to chat-only."""
+    if not report_id:
+        return None
+    papers = await _topic_papers(request, report_id)
+    if not papers:
+        return None
+
+    first_url = html.escape(papers[0][0])
+    display_title = html.escape(title) if title else "Topic chat"
+    options = "".join(
+        f'<option value="{i}" data-url="{html.escape(u)}">{html.escape(t)}</option>'
+        for i, (u, t) in enumerate(papers)
+    )
+
+    panel_q = (
+        f"/chat-panel?paper_id=topic&report_id={urllib.parse.quote_plus(report_id)}"
+    )
+    if audience_type:
+        panel_q += f"&audience_type={urllib.parse.quote_plus(audience_type)}"
+    if model_key:
+        panel_q += f"&model_key={urllib.parse.quote_plus(model_key)}"
+
+    return f"""
+<div class=\"modal\" id=\"viewer-topic\">
+  <div class=\"modal-content pdf-viewer\" data-viewer=\"topic\">
+    <div class=\"modal-header\">
+      <h2>{display_title}</h2>
+      <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
+    </div>
+    <div class=\"viewer-grid\">
+      <div class=\"doc-pane-wrap\" style=\"display:flex;flex-direction:column;min-width:0;\">
+        <select id=\"topic-paper-select\" class=\"topic-paper-select\" style=\"margin:0 0 6px;max-width:100%;\"
+          onchange=\"var u=this.options[this.selectedIndex].dataset.url;var l=document.getElementById('topic-doc-link');if(l){{l.href=u;l.textContent=this.options[this.selectedIndex].text;}}htmx.ajax('GET','/doc-pane?url='+encodeURIComponent(u),{{target:'#doc-pane',swap:'innerHTML'}})\">
+          {options}
+        </select>
+        <div style=\"font-size:0.8rem;margin:0 0 6px;\"><a id=\"topic-doc-link\" href=\"{first_url}\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color:#888;\">{html.escape(papers[0][1])}</a></div>
+        <div id=\"doc-pane\" class=\"doc-pane\" style=\"flex:1;min-height:0;\" hx-get=\"/doc-pane?url={urllib.parse.quote_plus(papers[0][0])}\" hx-trigger=\"load\" hx-swap=\"innerHTML\">
+          <div class=\"htmx-indicator\" style=\"padding:1rem;color:#888;\">Loading document…</div>
+        </div>
+      </div>
+      <div class=\"chat-column\" hx-get=\"{panel_q}\" hx-trigger=\"load delay:100ms\" hx-target=\"this\" hx-swap=\"innerHTML\" style=\"min-width:320px; max-width:100%; overflow:hidden;\">
+        <div class=\"htmx-indicator\" style=\"padding:1rem; color:#888;\">Loading chat…</div>
+      </div>
+    </div>
+  </div>
+</div>
+"""
+
+
 async def viewer_page(
     request: Request,
     paper_id: str,
