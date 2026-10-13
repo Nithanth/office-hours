@@ -302,6 +302,10 @@ class _BlogEntry:
     tone: str = ""
     theme: str = ""
     extra: str = ""
+    # When set, the finished markdown is persisted on the report row
+    # (reports.blog_markdown) so the blog survives cache eviction + restarts.
+    report_id: str = ""
+    user_id: str = ""
 
     @property
     def expires_at(self) -> float:
@@ -310,6 +314,10 @@ class _BlogEntry:
 
 # In-memory cache keyed by short-lived token.
 _BLOG_CACHE: dict[str, _BlogEntry] = {}
+
+# Latest in-flight token per report so /reports/{id}/blog can report
+# "writing" state (and the pane can poll the same token).
+_BLOG_BY_REPORT: dict[str, str] = {}
 
 # Patterns that frequently leak from chat-tuned LLMs as preamble before the
 # actual article. Stripped server-side as a defence-in-depth measure even
@@ -583,6 +591,30 @@ async def _run_blog_generation(
             return
         entry.state = "ready"
         entry.markdown = blog_md
+        if entry.report_id and entry.user_id:
+            try:
+                from services.persistence.database import (
+                    database_available,
+                    session_scope,
+                )
+                from services.persistence.repositories import set_report_blog
+
+                if database_available():
+                    async for session in session_scope():
+                        await set_report_blog(
+                            session,
+                            user_id=entry.user_id,
+                            report_id=entry.report_id,
+                            markdown=blog_md,
+                        )
+            except (
+                Exception
+            ) as persist_err:  # noqa: BLE001 – persistence is best-effort
+                logger.warning(
+                    "blog_persist_failed",
+                    report_id=entry.report_id,
+                    error=str(persist_err),
+                )
         logger.info(
             "blog_generation_ready",
             token=token,
@@ -610,6 +642,7 @@ async def generate_blog(
     tone: str = Form(""),
     theme: str = Form(""),
     extra: str = Form(""),
+    report_id: str = Form(""),
 ) -> JSONResponse:
     """Queue a blog generation and return the view URL immediately.
 
@@ -648,6 +681,11 @@ async def generate_blog(
         extra=extra,
     )
 
+    from services.auth.session import get_auth_user_id
+
+    user_id = get_auth_user_id(request) or ""
+    report_id_clean = (report_id or "").strip()
+
     _purge_expired_blogs()
     token = str(_uuid.uuid4())
     snippet_chars = config.PAPER_MAX_CONTENT_SNIPPET_CHARS
@@ -659,7 +697,11 @@ async def generate_blog(
         tone=(tone or "").strip().lower(),
         theme=(theme or "").strip().lower() or "indigo",
         extra=(extra or "").strip()[:_BLOG_EXTRA_MAX_CHARS],
+        report_id=report_id_clean if user_id else "",
+        user_id=user_id,
     )
+    if report_id_clean and user_id:
+        _BLOG_BY_REPORT[report_id_clean] = token
 
     asyncio.create_task(
         _run_blog_generation(
@@ -688,41 +730,75 @@ async def generate_blog(
 @router.post("/regenerate-blog")
 async def regenerate_blog(
     request: Request,
-    token: str = Form(...),
+    token: str = Form(""),
     audience: str = Form(""),
     length: str = Form(""),
     tone: str = Form(""),
     theme: str = Form(""),
     extra: str = Form(""),
+    report_id: str = Form(""),
 ) -> JSONResponse:
-    """Revise an existing cached blog using natural-language feedback.
+    """Revise an existing blog using natural-language feedback.
 
-    Looks up the original report text + previous markdown via `token`, builds
-    a revision-flavoured user prompt, and queues a new background generation.
-    Returns the URL to the *new* blog page (a fresh token). The original
+    Two sources for the previous draft, checked in order:
+
+    1. `report_id` — the persisted blog on the report row (`blog_markdown`
+       against `report_text`). This is the path used by the in-page blog
+       pane, and works even after the ephemeral cache entry expired.
+    2. `token` — the original cache entry (standalone /blog-view flow).
+
+    Queues a new background generation and returns its token. The original
     cache entry is preserved (read-only) so the user can flip back if needed.
     """
 
     logger.info("blog_regenerate: request received")
 
     _purge_expired_blogs()
-    prev = _BLOG_CACHE.get(token)
-    if prev is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Previous blog not found or expired. Generate a fresh one.",
+
+    from services.auth.session import get_auth_user_id
+
+    user_id = get_auth_user_id(request) or ""
+    report_id_clean = (report_id or "").strip()
+
+    prev: _BlogEntry | None = None
+    if report_id_clean and user_id:
+        from services.persistence.database import database_available, session_scope
+        from services.persistence.repositories import get_report
+
+        report = None
+        if database_available():
+            async for session in session_scope():
+                report = await get_report(
+                    session, user_id=user_id, report_id=report_id_clean
+                )
+        if report is None or not (report.blog_markdown or "").strip():
+            raise HTTPException(
+                status_code=404,
+                detail="No saved blog for this report. Generate a fresh one.",
+            )
+        prev = _BlogEntry(
+            state="ready",
+            markdown=report.blog_markdown or "",
+            report_text=report.report_text or "",
         )
-    if prev.state != "ready":
-        raise HTTPException(
-            status_code=409,
-            detail="Previous blog is still being written. Wait until it finishes.",
-        )
-    if not prev.report_text.strip():
-        # Pre-PR cache entries may not have report_text populated.
-        raise HTTPException(
-            status_code=410,
-            detail="Original report no longer cached. Regenerate from the report page.",
-        )
+    else:
+        prev = _BLOG_CACHE.get(token)
+        if prev is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Previous blog not found or expired. Generate a fresh one.",
+            )
+        if prev.state != "ready":
+            raise HTTPException(
+                status_code=409,
+                detail="Previous blog is still being written. Wait until it finishes.",
+            )
+        if not prev.report_text.strip():
+            # Pre-PR cache entries may not have report_text populated.
+            raise HTTPException(
+                status_code=410,
+                detail="Original report no longer cached. Regenerate from the report page.",
+            )
 
     feedback_clean = (extra or "").strip()
     if not feedback_clean:
@@ -781,7 +857,11 @@ async def regenerate_blog(
         tone=eff_tone,
         theme=eff_theme,
         extra=feedback_clean,
+        report_id=report_id_clean if user_id else "",
+        user_id=user_id,
     )
+    if report_id_clean and user_id:
+        _BLOG_BY_REPORT[report_id_clean] = new_token
 
     asyncio.create_task(
         _run_blog_generation(
@@ -832,6 +912,44 @@ async def blog_status(token: str = Query(...)) -> JSONResponse:
     return JSONResponse(payload)
 
 
+@router.get("/reports/{report_id}/blog")
+async def report_blog(request: Request, report_id: str) -> JSONResponse:
+    """Return the persisted blog for a report, or its in-flight state.
+
+    The blog pane on the report page polls this on load: `ready` returns the
+    stored markdown, `pending`/`error` proxy the latest generation attempt,
+    and `empty` means no blog has been generated yet.
+    """
+
+    from services.auth.session import require_auth_user_id
+    from services.persistence.database import database_available, session_scope
+    from services.persistence.repositories import get_report
+
+    user_id = require_auth_user_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Report history is not configured.")
+
+    async for session in session_scope():
+        report = await get_report(session, user_id=user_id, report_id=report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    markdown = (report.blog_markdown or "").strip()
+    if markdown:
+        return JSONResponse({"state": "ready", "markdown": markdown})
+
+    _purge_expired_blogs()
+    token = _BLOG_BY_REPORT.get(report_id)
+    entry = _BLOG_CACHE.get(token) if token else None
+    if entry is None:
+        return JSONResponse({"state": "empty"})
+    if entry.state == "error":
+        return JSONResponse(
+            {"state": "error", "error": entry.error or "Blog generation failed"}
+        )
+    return JSONResponse({"state": "pending", "token": token})
+
+
 @router.get("/blog-view")
 async def blog_view(
     token: str = Query(...),
@@ -870,7 +988,7 @@ async def blog_view(
   <!-- modal.css supplies styles for the customize modal triggered by Revise. -->
   <link rel="stylesheet" href="/static/css/modal.css">
 </head>
-<body class="blog-is-loading">
+<body class="blog-is-loading blog-scope">
 
   <!-- Reading progress bar -->
   <div class="blog-progress-bar"></div>

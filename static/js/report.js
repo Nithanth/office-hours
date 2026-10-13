@@ -185,6 +185,9 @@ document.body.addEventListener("htmx:sseMessage", (evt) => {
     if (!payload.report_id) return;
     const reportEl = document.getElementById("report-content");
     if (reportEl) reportEl.dataset.reportId = payload.report_id;
+    // Report persisted → the blog view toggle can now save blogs to the row.
+    const toggle = document.getElementById("report-view-toggle");
+    if (toggle) toggle.classList.remove("hidden");
     document.querySelectorAll(".ask-assistant-btn[hx-get]").forEach((btn) => {
       const current = btn.getAttribute("hx-get") || "";
       if (current && !current.includes("report_id=")) {
@@ -523,6 +526,9 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
 window.ohBlog = window.ohBlog || {};
 window.ohBlog.launch = launchBlogGeneration;
 window.ohBlog.buildPopupShell = buildBlogPopupShell;
+// Exposed for blog-pane.js (module scope — classic-script globals don't
+// reach ES modules).
+window.ohBlog.getCleanReportText = getCleanReportText;
 
 // ---------------------------------------------------------------------------
 // Notion export – POST report text, open Notion page in new tab
