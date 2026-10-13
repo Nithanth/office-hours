@@ -68,17 +68,23 @@ async def _build_topic_prompt(
                 database_available,
                 session_scope,
             )
-            from services.persistence.repositories import get_report
 
             if database_available():
+                # Eager-load papers: the SSE generator has no greenlet context,
+                # so lazy-loading report.papers raises MissingGreenlet (and
+                # post-session access raises DetachedInstanceError).
+                from sqlalchemy import select
+                from sqlalchemy.orm import selectinload
+
+                from services.persistence.models import Report
+
                 async for db_session in session_scope():
-                    report = await get_report(
-                        db_session, user_id=user_id, report_id=report_id
+                    report = await db_session.scalar(
+                        select(Report)
+                        .where(Report.id == report_id, Report.user_id == user_id)
+                        .options(selectinload(Report.papers))
                     )
                     if report:
-                        # Read all attrs inside the session: after it closes,
-                        # accessing report.papers lazy-loads and raises
-                        # DetachedInstanceError.
                         title = report.title or "this topic"
                         report_excerpt = (report.report_text or "")[:4000]
                         pid_to_title = {
