@@ -76,8 +76,11 @@ function _ensureFab() {
 
 function _showFab(rect) {
   const fab = _ensureFab();
-  fab.style.left = `${Math.min(rect.right, window.innerWidth - 140)}px`;
-  fab.style.top = `${Math.max(rect.bottom + 6, 8)}px`;
+  // A selection may span several rendered pages; keep the button on-screen.
+  const left = Math.max(Math.min(rect.right, window.innerWidth - 140), 8);
+  const top = Math.max(Math.min(rect.bottom + 6, window.innerHeight - 44), 8);
+  fab.style.left = `${left}px`;
+  fab.style.top = `${top}px`;
   fab.style.display = "block";
 }
 
@@ -155,18 +158,19 @@ _hookFrame();
 document.body.addEventListener("htmx:afterSwap", _hookFrame);
 
 // Quote-only submits ("just explain this passage") get a default instruction.
-document.body.addEventListener("htmx:beforeRequest", (evt) => {
+// htmx serializes form values before htmx:beforeRequest fires, so mutating the
+// textarea there is too late — patch the outgoing parameter in configRequest.
+document.body.addEventListener("htmx:configRequest", (evt) => {
   const form = evt.target;
   if (!(form instanceof HTMLFormElement)) return;
   if (form.getAttribute("hx-post") !== "/chat") return;
-  const ta = form.querySelector("textarea[name='message']");
-  if (!ta) return;
-  const v = ta.value.trim();
-  if (!v.startsWith(">")) return;
-  const hasQuestion = v
+  const params = evt.detail?.parameters;
+  const msg = typeof params?.message === "string" ? params.message.trim() : "";
+  if (!msg.startsWith(">")) return;
+  const hasQuestion = msg
     .split("\n")
     .some((l) => l.trim() && !l.trim().startsWith(">"));
-  if (!hasQuestion) ta.value = `${v}\nExplain this passage.`;
+  if (!hasQuestion) params.message = `${msg}\nExplain this passage.`;
 });
 
 // Clean up when the viewer modal closes.

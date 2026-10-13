@@ -587,7 +587,10 @@ async def viewer_modal(
         )
     else:
         proxied = f"/html-proxy?url={urllib.parse.quote_plus(url)}"
-        embed_html = f'<iframe id="doc-frame" src="{proxied}" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe>'
+        embed_html = (
+            f'<iframe id="doc-frame" src="{proxied}" '
+            'sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>'
+        )
 
     modal_html = f"""
 <div class=\"modal\" id=\"viewer-{paper_id}\">
