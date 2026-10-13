@@ -267,10 +267,27 @@ def unanswered_threads(
 async def answer_question(*, paper_id: str, question: str, user_id: str) -> str:
     """Answer a Notion comment with the paper-scoped chat agent."""
     import config as _cfg
+    from api.deps import get_llm_service
     from services.chat.chat_runtime import build_prompt
     from services.chat.chat_state import ChatMessage, get_chat_state
     from services.core import model_prefs
-    from services.core.llm_service import llm_service
+
+    service = get_llm_service()
+    if service is None:
+        raise NotionExportError(
+            "The assistant isn't running in this process — answer comments from the running app."
+        )
+
+    # Ingest the paper on demand — a saved paper may never have been opened,
+    # and without an index the answer degenerates to "no context".
+    try:
+        from services.paper.text_extractor import TextExtractor
+
+        await TextExtractor.instance().ensure_cached(
+            paper_id, paper_id=paper_id, prefer_exa=True
+        )
+    except Exception:
+        pass  # best-effort; build_prompt still works off whatever exists
 
     state = get_chat_state(user_id)
     state.append(paper_id, ChatMessage(role="user", content=question))
@@ -280,7 +297,7 @@ async def answer_question(*, paper_id: str, question: str, user_id: str) -> str:
     selected_key = _cfg.config.DEFAULT_MODEL_KEY
     model_cfg = _cfg.config.AVAILABLE_MODELS[selected_key]
     model_id = model_prefs.resolve_model_id(selected_key)
-    answer = await llm_service.generate_completion(
+    answer = await service.generate_completion(
         provider_name=model_cfg["provider"],
         model_name=model_id,
         prompt=bundle.prompt,
