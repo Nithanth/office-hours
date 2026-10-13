@@ -321,6 +321,8 @@ def _paper_item(paper: SavedPaper) -> str:
     pid_attr = html.escape(paper.paper_id, quote=True)
     pid_q = quote(paper.paper_id, safe="")
     viewer_url = f"/viewer/{pid_q}?title={quote(paper.title or 'Paper', safe='')}"
+    if paper.url:
+        viewer_url += f"&url={quote(paper.url, safe='')}"
     authors = paper.authors.get("list") if isinstance(paper.authors, dict) else None
     authors_str = html.escape(", ".join(authors[:6])) if authors else ""
     status_label = _STATUS_LABELS.get(paper.status, "To read")
