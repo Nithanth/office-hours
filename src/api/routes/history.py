@@ -20,6 +20,8 @@ def _history_shell(items_html: str) -> str:
   <title>My Reports · Office Hours</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/forms.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
   <style>
     .history-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .history-item{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -103,6 +105,8 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
   <title>{escaped_title} · Office Hours</title>
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/forms.css">
+  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
   <script src="/static/js/report.js" defer></script>

@@ -155,6 +155,11 @@ const actionsObserver = new MutationObserver(() => {
       notionBtn.removeAttribute("disabled");
       notionBtn.title = "Export to Notion";
     }
+    const topicBtn = el.querySelector("#report-topic-chat-btn");
+    if (topicBtn) {
+      topicBtn.removeAttribute("disabled");
+      topicBtn.title = "Chat across all papers in this topic";
+    }
   });
 });
 

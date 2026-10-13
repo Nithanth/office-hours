@@ -249,6 +249,33 @@ async def append_chat_message(
     return message
 
 
+async def get_chat_thread_messages(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    report_id: str | None,
+    paper_id: str,
+    limit: int = 200,
+) -> list[ChatMessage]:
+    """Persisted chat messages for a thread, oldest first."""
+    thread = await session.scalar(
+        select(ChatThread).where(
+            ChatThread.user_id == user_id,
+            ChatThread.report_id == report_id,
+            ChatThread.paper_id == paper_id,
+        )
+    )
+    if thread is None:
+        return []
+    result = await session.execute(
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread.id)
+        .order_by(ChatMessage.created_at.asc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 async def upsert_notion_integration(
     session: AsyncSession,
     *,

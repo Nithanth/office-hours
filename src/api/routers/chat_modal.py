@@ -205,6 +205,7 @@ async def chat_modal(
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
         from services.chat.chat_state import (
+            ChatMessage,
             get_chat_state,
         )  # local import avoids heavy dep
 
@@ -214,6 +215,38 @@ async def chat_modal(
             f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
         )
         history = get_chat_state(session_id).get_conversation(history_key)
+        if not history:
+            # In-memory state is empty (new session/restart) — hydrate from
+            # the persisted thread so reopening a chat restores it.
+            from services.auth.session import get_auth_user_id
+
+            user_id = get_auth_user_id(request)
+            if user_id:
+                from services.persistence.database import (
+                    database_available,
+                    session_scope,
+                )
+                from services.persistence.repositories import (
+                    get_chat_thread_messages,
+                )
+
+                if database_available():
+                    persisted = []
+                    async for db_session in session_scope():
+                        rows = await get_chat_thread_messages(
+                            db_session,
+                            user_id=user_id,
+                            report_id=report_id,
+                            paper_id=history_key.split(":", 1)[0]
+                            if history_key.startswith("topic:")
+                            else paper_id,
+                        )
+                        persisted = [
+                            ChatMessage(role=r.role, content=r.content) for r in rows
+                        ]
+                    for m in persisted:
+                        get_chat_state(session_id).append(history_key, m)
+                    history = persisted
     except Exception:  # noqa: BLE001 - fallback silently
         history = []
 

@@ -59,7 +59,9 @@ async def _build_topic_prompt(
     turns = chat_state.get_conversation(topic_key)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
 
-    report = None
+    title = "this topic"
+    report_excerpt = ""
+    pid_to_title: dict[str, str] = {}
     if user_id:
         try:
             from services.persistence.database import (
@@ -73,14 +75,17 @@ async def _build_topic_prompt(
                     report = await get_report(
                         db_session, user_id=user_id, report_id=report_id
                     )
+                    if report:
+                        # Read all attrs inside the session: after it closes,
+                        # accessing report.papers lazy-loads and raises
+                        # DetachedInstanceError.
+                        title = report.title or "this topic"
+                        report_excerpt = (report.report_text or "")[:4000]
+                        pid_to_title = {
+                            p.paper_id: (p.title or p.paper_id) for p in report.papers
+                        }
         except Exception as exc:  # noqa: BLE001
             logger.warning("topic_report_load_failed", error=str(exc))
-
-    title = report.title if report else "this topic"
-    report_excerpt = (report.report_text or "")[:4000] if report else ""
-    pid_to_title = {
-        p.paper_id: (p.title or p.paper_id) for p in (report.papers if report else [])
-    }
 
     sources: list[dict[str, Any]] = []
     context_chunks = ""
@@ -107,7 +112,7 @@ async def _build_topic_prompt(
                 from typing import cast
 
                 def _format_row(idx: int, r: dict[str, Any]) -> str:
-                    paper = pid_to_title.get(r.get("paper_id"), "")
+                    paper = pid_to_title.get(str(r.get("paper_id", "")), "")
                     sec = r.get("section", "")
                     head = f"[{idx}] {paper}" + (f" \u2014 {sec}" if sec else "")
                     return f"{head}\n{cast(str, r['text'])}"
