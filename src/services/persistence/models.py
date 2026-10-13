@@ -78,6 +78,7 @@ class Report(Base):
     report_text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
     notion_page_id: Mapped[str | None] = mapped_column(String(64))
+    blog_markdown: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped[User] = relationship(back_populates="reports")
     papers: Mapped[list[ReportPaper]] = relationship(back_populates="report")

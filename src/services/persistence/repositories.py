@@ -219,6 +219,19 @@ async def get_report(
     )
 
 
+async def set_report_blog(
+    session: AsyncSession, *, user_id: str, report_id: str, markdown: str
+) -> Report | None:
+    """Persist generated blog markdown on the report row (no-op if missing)."""
+    report = await get_report(session, user_id=user_id, report_id=report_id)
+    if report is None:
+        return None
+    report.blog_markdown = markdown
+    await session.commit()
+    await session.refresh(report)
+    return report
+
+
 async def append_chat_message(
     session: AsyncSession,
     *,
