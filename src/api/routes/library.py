@@ -238,6 +238,7 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                             "original_query": report.original_query,
                             "created_date": report.created_at.date().isoformat(),
                             "notion_page_id": report.notion_page_id,
+                            "content": report.report_text,
                         }
 
         stats = await sync_library(

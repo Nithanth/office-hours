@@ -15,6 +15,7 @@ The sync treats Notion as a live surface, not a dump target:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from loguru import logger
@@ -178,6 +179,13 @@ async def sync_library(
                 page_id = await exporter.create_database_row(topics_db_id, props)
                 stats["topics_created"] += 1
                 stats["topic_page_ids"][report_id] = page_id
+            # Fill the topic page body with the report — it becomes the
+            # actual research explainer in Notion, not just a row. Only
+            # writes when the page is empty so re-syncs never duplicate.
+            if report.get("content"):
+                await exporter.ensure_page_content(
+                    stats["topic_page_ids"][report_id], report["content"]
+                )
         except Exception as exc:
             stats["failed"] += 1
             stats["errors"].append(f"topic {report_id}: {exc}"[:200])
@@ -327,6 +335,9 @@ async def answer_comments_for_paper(
             answer = await answer_question(
                 paper_id=paper_id, question=question, user_id=user_id
             )
+            # [n] chunk citations dangle in Notion — there's no Sources
+            # footer to resolve them, so drop the markers entirely.
+            answer = re.sub(r"\s*\[\d+\]", "", answer)
             await exporter.reply_to_discussion(discussion_id, answer)
             answered += 1
         except Exception as exc:

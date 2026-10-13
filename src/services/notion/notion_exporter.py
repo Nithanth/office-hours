@@ -117,6 +117,25 @@ class NotionExporter:
 
         return page.get("url") or f"https://www.notion.so/{page_id.replace('-', '')}"
 
+    async def ensure_page_content(self, page_id: str, markdown: str) -> bool:
+        """Append *markdown* as blocks to a page that has no children yet.
+
+        Returns True when content was written. Existing content is left
+        untouched so re-syncs never duplicate the page body.
+        """
+        children = await self._client.blocks.children.list(block_id=page_id)
+        if children.get("results"):
+            return False
+        for batch in chunk_blocks(markdown_to_blocks(markdown)):
+            try:
+                await self._client.blocks.children.append(
+                    block_id=page_id, children=batch
+                )
+            except Exception as err:
+                logger.warning("notion_append_failed", error=str(err))
+                break
+        return True
+
     # ------------------------------------------------------------------
     # Library sync: relational Papers ↔ Topics databases
     # ------------------------------------------------------------------
