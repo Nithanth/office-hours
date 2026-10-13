@@ -88,22 +88,39 @@ function _hideFab() {
   if (_fab) _fab.style.display = "none";
 }
 
-// Insert the snippet as a markdown-style quote at the top of the chat textarea.
+// Attach the snippet as a removable chip in the input's tray; the full text
+// is prepended to the outgoing message at send time (see configRequest below).
 function _insertSnippet(modal, text) {
-  const ta = modal.querySelector("textarea[name='message']");
-  if (!ta) return;
-  const quoted = text
-    .split("\n")
-    .map((l) => (l.trim() ? `> ${l.trim()}` : ">"))
-    .join("\n");
-  if (!ta.value.includes(quoted)) {
-    const rest = ta.value.trim();
-    ta.value = `${quoted}\n\n${rest}`.replace(/\s+$/, "\n\n");
+  const tray = modal.querySelector(".oh-snippet-tray");
+  if (!tray) return;
+  const dup = [...tray.querySelectorAll(".oh-snippet-chip")].some(
+    (c) => c.dataset.snippet === text
+  );
+  if (!dup) {
+    const chip = document.createElement("span");
+    chip.className = "oh-snippet-chip";
+    chip.dataset.snippet = text;
+    chip.title = text;
+
+    const preview = text.replace(/\s+/g, " ").trim();
+    const label = document.createElement("span");
+    label.className = "oh-snippet-label";
+    label.textContent = `\u{1F4CE} \u201C${preview.slice(0, 42)}${
+      preview.length > 42 ? "\u2026" : ""
+    }\u201D \u00B7 ${text.length} chars`;
+
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "oh-snippet-x";
+    x.textContent = "\u00D7";
+    x.addEventListener("click", () => chip.remove());
+
+    chip.appendChild(label);
+    chip.appendChild(x);
+    tray.appendChild(chip);
   }
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
-  // nudge the autosize listener if present
-  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  const ta = modal.querySelector("textarea[name='message']");
+  if (ta) ta.focus();
 }
 
 // Cmd/Ctrl+L while a document viewer is open: quote selection into chat.
@@ -157,20 +174,46 @@ function _hookFrame() {
 _hookFrame();
 document.body.addEventListener("htmx:afterSwap", _hookFrame);
 
-// Quote-only submits ("just explain this passage") get a default instruction.
-// htmx serializes form values before htmx:beforeRequest fires, so mutating the
-// textarea there is too late — patch the outgoing parameter in configRequest.
+// Chips are sent as `> ` quoted lines prepended to the message; a quote-only
+// submit gets a default instruction. htmx serializes before beforeRequest, so
+// patch evt.detail.parameters in configRequest.
 document.body.addEventListener("htmx:configRequest", (evt) => {
   const form = evt.target;
   if (!(form instanceof HTMLFormElement)) return;
   if (form.getAttribute("hx-post") !== "/chat") return;
   const params = evt.detail?.parameters;
-  const msg = typeof params?.message === "string" ? params.message.trim() : "";
-  if (!msg.startsWith(">")) return;
-  const hasQuestion = msg
-    .split("\n")
-    .some((l) => l.trim() && !l.trim().startsWith(">"));
-  if (!hasQuestion) params.message = `${msg}\nExplain this passage.`;
+  if (!params) return;
+  const tray = form.closest(".chat-panel")?.querySelector(".oh-snippet-tray");
+  const chips = tray ? [...tray.querySelectorAll(".oh-snippet-chip")] : [];
+  const rest = (typeof params.message === "string" ? params.message : "").trim();
+  if (chips.length) {
+    const quotes = chips
+      .map(
+        (c) =>
+          "> " +
+          c.dataset.snippet
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .join("\n> ")
+      )
+      .join("\n\n");
+    params.message = quotes + (rest ? `\n\n${rest}` : "\nExplain this passage.");
+  } else if (rest.startsWith(">")) {
+    const hasQuestion = rest
+      .split("\n")
+      .some((l) => l.trim() && !l.trim().startsWith(">"));
+    if (!hasQuestion) params.message = `${rest}\nExplain this passage.`;
+  }
+});
+
+// Chips are one-shot: clear them once a send is accepted.
+document.body.addEventListener("htmx:afterRequest", (evt) => {
+  const form = evt.target;
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.getAttribute("hx-post") !== "/chat") return;
+  const tray = form.closest(".chat-panel")?.querySelector(".oh-snippet-tray");
+  if (tray) tray.innerHTML = "";
 });
 
 // Clean up when the viewer modal closes.

@@ -273,3 +273,11 @@ body.oh-dark .sources-toggle { color: #666; }
   color: #fff;
   border-color: transparent;
 }
+
+/* snippet chips – selected-text attachments in the chat input tray */
+.oh-snippet-tray{display:flex;flex-wrap:wrap;gap:6px;padding:4px 2px;}
+.oh-snippet-tray:empty{display:none;padding:0;}
+.oh-snippet-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:3px 8px;border:1px solid var(--container-border);border-radius:12px;background:var(--container-bg);color:var(--fg);font-size:12px;line-height:1.4;}
+.oh-snippet-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.oh-snippet-x{border:none;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;opacity:.65;}
+.oh-snippet-x:hover{opacity:1;}
