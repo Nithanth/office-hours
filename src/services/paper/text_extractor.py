@@ -592,15 +592,23 @@ class TextExtractor:
         if ExaClient is None or app_config is None or not app_config.EXA_API_KEY:
             return None
         client = ExaClient(api_key=app_config.EXA_API_KEY)
-        try:
-            response = await asyncio.to_thread(
-                client.client.get_contents, [url], text=True
-            )
-            if response and response.results:
-                raw = response.results[0].text or ""
-                return _clean_text(raw)
-        except Exception as exc:
-            logger.debug("Exa get_contents failed", url=url, error=str(exc))
+        # DOI-style links get upgraded to a ".../pdf" variant upstream that
+        # Exa can't resolve (verified: Exa returns text for the bare DOI,
+        # nothing for the /pdf form) — try the bare URL after the given one.
+        candidates = [url]
+        if url.lower().endswith("/pdf"):
+            candidates.append(url[:-4])
+        for candidate in candidates:
+            try:
+                response = await asyncio.to_thread(
+                    client.client.get_contents, [candidate], text=True
+                )
+                if response and response.results:
+                    raw = response.results[0].text or ""
+                    if raw:
+                        return _clean_text(raw)
+            except Exception as exc:
+                logger.debug("Exa get_contents failed", url=candidate, error=str(exc))
         return None
 
     async def _layer_arxiv(self, url: str) -> str | None:
