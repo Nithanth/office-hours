@@ -292,7 +292,11 @@ async def report_stream(
 
         async def _fetch_full(p: Paper) -> None:
             async with sem:
-                path = await extractor.ensure_cached(str(p.url), p.id, prefer_exa=False)
+                # prefer_exa=True keeps the Exa-contents fallback layer enabled:
+                # it only counts as partial, so real PDFs still win, but
+                # paywalled/blocked pages (e.g. ACM DOIs) still get indexed
+                # text — which is what topic-chat retrieval draws on.
+                path = await extractor.ensure_cached(str(p.url), p.id, prefer_exa=True)
                 if path:
                     try:
                         txt = Path(path).read_text(encoding="utf-8")
