@@ -5,7 +5,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -208,6 +216,9 @@ class SavedPaper(Base):
     # Status value we last saw written in Notion — lets a sync tell which
     # side changed (app vs Notion) instead of blindly letting one win.
     notion_synced_status: Mapped[str | None] = mapped_column(String(32))
+    # Count of chat messages already appended to the Notion page body —
+    # a watermark so re-syncs only push new Q&A turns.
+    notion_chat_synced: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
