@@ -24,7 +24,9 @@ class NotionExporter:
             raise NotionExportError(
                 "notion-client is not installed. Add it to requirements.txt."
             ) from err
-        self._client = AsyncClient(auth=api_key)
+        self._client = AsyncClient(
+            options={"auth": api_key, "notion_version": "2022-06-28"}
+        )
 
     @staticmethod
     def _create_error_message(err: Exception, target_kind: str) -> str:
@@ -114,6 +116,169 @@ class NotionExporter:
                 break
 
         return page.get("url") or f"https://www.notion.so/{page_id.replace('-', '')}"
+
+    async def ensure_page_content(self, page_id: str, markdown: str) -> bool:
+        """Append *markdown* as blocks to a page that has no children yet.
+
+        Returns True when content was written. Existing content is left
+        untouched so re-syncs never duplicate the page body.
+        """
+        children = await self._client.blocks.children.list(block_id=page_id)
+        if children.get("results"):
+            return False
+        for batch in chunk_blocks(markdown_to_blocks(markdown)):
+            try:
+                await self._client.blocks.children.append(
+                    block_id=page_id, children=batch
+                )
+            except Exception as err:
+                logger.warning("notion_append_failed", error=str(err))
+                break
+        return True
+
+    # ------------------------------------------------------------------
+    # Library sync: relational Papers ↔ Topics databases
+    # ------------------------------------------------------------------
+
+    async def get_database_parent_page(self, database_id: str) -> str | None:
+        """Return the page id that owns *database_id* (databases live in pages)."""
+        try:
+            db = await self._client.databases.retrieve(database_id=database_id)
+        except Exception as err:
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+        parent = db.get("parent") or {}
+        if parent.get("type") == "page_id":
+            return str(parent["page_id"])
+        return None
+
+    async def create_database(
+        self, parent_page_id: str, title: str, properties: dict[str, Any]
+    ) -> str:
+        """Create a database under *parent_page_id*; return its id."""
+        # The SDK's databases.create only forwards new-API fields
+        # (initial_data_source), silently dropping `properties` — so we
+        # call the endpoint directly with the classic 2022-06-28 body.
+        try:
+            db = await self._client.request(
+                path="databases",
+                method="POST",
+                body={
+                    "parent": {"type": "page_id", "page_id": parent_page_id},
+                    "title": [{"type": "text", "text": {"content": title}}],
+                    "properties": properties,
+                },
+            )
+        except Exception as err:
+            logger.error("notion_db_create_failed", error=str(err))
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+        return str(db["id"])
+
+    async def add_relation_property(
+        self, database_id: str, name: str, target_database_id: str
+    ) -> None:
+        """Add a two-way relation property to a database schema."""
+        # Same SDK pick() limitation as create_database — direct request.
+        try:
+            await self._client.request(
+                path=f"databases/{database_id}",
+                method="PATCH",
+                body={
+                    "properties": {
+                        name: {
+                            "relation": {
+                                "database_id": target_database_id,
+                                "dual_property": {"synced_property_name": "Papers"},
+                            }
+                        }
+                    }
+                },
+            )
+        except Exception as err:
+            logger.error("notion_relation_add_failed", error=str(err))
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+
+    async def get_page_status(self, page_id: str) -> str | None:
+        """Read the 'Status' select value of a page, or None."""
+        try:
+            page = await self._client.pages.retrieve(page_id=page_id)
+        except Exception:
+            return None
+        prop = (page.get("properties") or {}).get("Status") or {}
+        sel = prop.get("select") or {}
+        return sel.get("name")
+
+    # ------------------------------------------------------------------
+    # Comments (Q&A loop)
+    # ------------------------------------------------------------------
+
+    async def list_comments(self, block_id: str) -> list[dict[str, Any]]:
+        """All comments on a block (page), flattened across discussions."""
+        try:
+            resp = await self._client.comments.list(block_id=block_id)
+        except Exception as err:
+            raise NotionExportError(self._create_error_message(err, "page")) from err
+        return list(resp.get("results") or [])
+
+    async def reply_to_discussion(self, discussion_id: str, text: str) -> None:
+        """Post a reply in an existing comment thread.
+
+        *text* is Markdown — converted to rich_text (bold/italic/code/links
+        and inline equations). Falls back to plain text if Notion rejects
+        the structured payload.
+        """
+        from services.notion.markdown_to_blocks import markdown_to_rich_text
+
+        rich_text = markdown_to_rich_text(text[:1900])
+        if not rich_text:
+            rich_text = [{"type": "text", "text": {"content": text[:1900]}}]
+        try:
+            await self._client.comments.create(
+                discussion_id=discussion_id,
+                rich_text=rich_text,
+            )
+        except Exception as err:
+            # Retry once as plain text — e.g. equation segments rejected.
+            try:
+                await self._client.comments.create(
+                    discussion_id=discussion_id,
+                    rich_text=[{"type": "text", "text": {"content": text[:1900]}}],
+                )
+            except Exception as err2:
+                raise NotionExportError(
+                    self._create_error_message(err2 or err, "comment thread")
+                ) from err2
+
+    async def create_database_row(
+        self, database_id: str, properties: dict[str, Any]
+    ) -> str | None:
+        """Create a row in *database_id* and return its page id."""
+        try:
+            page = await self._client.pages.create(
+                parent={"database_id": database_id}, properties=properties
+            )
+        except Exception as err:
+            logger.error("notion_row_create_failed", error=str(err))
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+        page_id = page.get("id")
+        return str(page_id) if page_id else None
+
+    async def update_page_properties(
+        self, page_id: str, properties: dict[str, Any]
+    ) -> None:
+        """Update the properties of an existing page/database row."""
+        try:
+            await self._client.pages.update(page_id=page_id, properties=properties)
+        except Exception as err:
+            logger.error("notion_row_update_failed", error=str(err))
+            raise NotionExportError(self._create_error_message(err, "page")) from err
 
     async def close(self) -> None:
         await self._client.aclose()

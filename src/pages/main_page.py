@@ -337,6 +337,21 @@ def _render_paper_item(
         },
     )
 
+    # "Save to library" bookmark button
+    save_btn = BUTTON(
+        I(cls="fa-regular fa-bookmark"),
+        type="button",
+        cls="save-paper-btn",
+        title="Save to library",
+        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
+        **{
+            "data-paper-id": paper.id,
+            "data-paper-title": paper.title or "",
+            "data-paper-url": str(paper.url) if paper.url else "",
+            "data-paper-authors": "; ".join(paper.authors) if paper.authors else "",
+        },
+    )
+
     # "More like this" button — find similar papers
     similar_btn = BUTTON(
         I(cls="fa-solid fa-wand-magic-sparkles"),
@@ -380,6 +395,7 @@ def _render_paper_item(
             enrich_span,
             toggle_btn,
             bibtex_btn,
+            save_btn,
             similar_btn,
             Br(),
             EM(authors_display),
@@ -753,6 +769,7 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src="/static/js/htmx-url-reset.js", defer=True),
             # Modular JS entry-points
             Script(src="/static/js/main.js?v=2", type="module"),
+            Script(src="/static/js/library.js?v=1", defer=True),
             Script(src="/static/js/cluster-viz.js", defer=True),
             Script(src="/static/js/similar-papers.js", defer=True),
             # No inline init - handled in settings.js
@@ -783,6 +800,12 @@ def home_page(page_data: SharedPageData) -> Body:
                 href="/reports",
                 cls="top-bar-link",
                 style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
+            ),
+            Link(
+                "Library",
+                href="/library",
+                cls="top-bar-link",
+                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);margin-left:6px;",
             ),
             Link(
                 "Settings",

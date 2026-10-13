@@ -604,7 +604,9 @@ async def html_proxy(
     )
 
 
-@router.get("/viewer/{paper_id}", response_class=HTMLResponse)
+# paper_id is a URL-style identifier (e.g. https://arxiv.org/abs/…) — needs
+# :path so multi-segment ids resolve instead of 404ing.
+@router.get("/viewer/{paper_id:path}", response_class=HTMLResponse)
 async def viewer_modal(
     request: Request,
     paper_id: str,
@@ -655,6 +657,7 @@ async def viewer_modal(
             paper_url=None,
             audience_type=None,
             model_key=None,
+            report_id=report_id,
         )
 
     # --- Canonicalise arXiv/Ar5iv URLs so missing .pdf suffixes or ar5iv stubs still render ---
@@ -710,6 +713,12 @@ async def viewer_modal(
   <div class=\"modal-content pdf-viewer\" data-viewer=\"{"pdf" if is_pdf else "html"}\" data-src-url=\"{safe_url}\">
     <div class=\"modal-header\">
       <h2><a href=\"{safe_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{display_title}</a></h2>
+      <button class=\"save-paper-btn\" type=\"button\" title=\"Save to library\"
+        data-paper-id=\"{html.escape(paper_id)}\"
+        data-paper-title=\"{display_title}\"
+        data-paper-url=\"{safe_url}\"
+        style=\"background:transparent;border:none;cursor:pointer;color:var(--fg);font-size:1rem;margin-right:0.4rem;\">
+        <i class=\"fa-regular fa-bookmark\"></i></button>
       <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
     </div>
     <div class=\"viewer-grid\">

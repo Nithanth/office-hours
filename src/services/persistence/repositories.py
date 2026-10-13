@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.paper import Paper
@@ -18,6 +19,7 @@ from services.persistence.models import (
     OAuthAccount,
     Report,
     ReportPaper,
+    SavedPaper,
     UsageEvent,
     User,
     UserIntegration,
@@ -357,6 +359,31 @@ async def update_notion_destination(
     return integration
 
 
+async def set_notion_databases(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    parent_database_id: str | None,
+    topics_database_id: str | None,
+) -> None:
+    integration = await get_notion_integration(session, user_id=user_id)
+    if integration is not None:
+        if parent_database_id:
+            integration.parent_database_id = parent_database_id
+        integration.topics_database_id = topics_database_id
+        integration.updated_at = datetime.utcnow()
+        await session.commit()
+
+
+async def set_report_notion_page(
+    session: AsyncSession, *, user_id: str, report_id: str, notion_page_id: str
+) -> None:
+    report = await get_report(session, user_id=user_id, report_id=report_id)
+    if report is not None:
+        report.notion_page_id = notion_page_id
+        await session.commit()
+
+
 async def delete_notion_integration(session: AsyncSession, *, user_id: str) -> None:
     await session.execute(
         delete(UserIntegration).where(
@@ -444,3 +471,144 @@ def openrouter_api_key(pref: UserPreference) -> str | None:
     if not pref.openrouter_key_encrypted:
         return None
     return str(decrypt_secret(pref.openrouter_key_encrypted))
+
+
+# ---------------------------------------------------------------------------
+# Saved papers (persistent library)
+# ---------------------------------------------------------------------------
+
+
+async def save_paper(
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    paper_id: str,
+    title: str,
+    url: str | None = None,
+    authors: dict[str, Any] | None = None,
+    report_id: str | None = None,
+) -> SavedPaper:
+    """Insert-or-update a saved paper. Re-saving refreshes metadata."""
+    saved = await session.scalar(
+        select(SavedPaper).where(
+            SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+        )
+    )
+    if saved is None:
+        saved = SavedPaper(
+            owner_id=owner_id,
+            paper_id=paper_id,
+            title=title,
+            url=url,
+            authors=authors or {},
+            report_id=report_id,
+        )
+        session.add(saved)
+    else:
+        saved.title = title or saved.title
+        saved.url = url or saved.url
+        if authors:
+            saved.authors = authors
+        if report_id:
+            saved.report_id = report_id
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Raced double-save hit the (owner_id, paper_id) unique constraint —
+        # idempotent: the row exists either way, just refresh it.
+        await session.rollback()
+        saved = await session.scalar(
+            select(SavedPaper).where(
+                SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+            )
+        )
+        if saved is None:  # pragma: no cover — shouldn't happen
+            raise
+    await session.refresh(saved)
+    return saved
+
+
+async def unsave_paper(session: AsyncSession, *, owner_id: str, paper_id: str) -> bool:
+    result = await session.execute(
+        delete(SavedPaper).where(
+            SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+        )
+    )
+    await session.commit()
+    return bool(getattr(result, "rowcount", 0))
+
+
+async def get_saved_paper(
+    session: AsyncSession, *, owner_id: str, paper_id: str
+) -> SavedPaper | None:
+    return await session.scalar(
+        select(SavedPaper).where(
+            SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
+        )
+    )
+
+
+async def list_saved_papers(
+    session: AsyncSession, *, owner_id: str, status: str | None = None
+) -> list[SavedPaper]:
+    stmt = (
+        select(SavedPaper)
+        .where(SavedPaper.owner_id == owner_id)
+        .order_by(SavedPaper.updated_at.desc())
+    )
+    if status:
+        stmt = stmt.where(SavedPaper.status == status)
+    return list((await session.scalars(stmt)).all())
+
+
+async def set_saved_paper_status(
+    session: AsyncSession, *, owner_id: str, paper_id: str, status: str
+) -> SavedPaper | None:
+    if status not in SavedPaper.READING_STATUSES:
+        return None
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is None:
+        return None
+    saved.status = status
+    await session.commit()
+    await session.refresh(saved)
+    return saved
+
+
+async def set_saved_paper_notion_page(
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    paper_id: str,
+    notion_page_id: str,
+    synced_status: str | None = None,
+) -> None:
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is not None:
+        saved.notion_page_id = notion_page_id
+        if synced_status:
+            saved.notion_synced_status = synced_status
+        await session.commit()
+
+
+async def set_saved_paper_notion_status(
+    session: AsyncSession, *, owner_id: str, paper_id: str, status: str
+) -> None:
+    """Record the status value currently written in Notion (pull-back path)."""
+    if status not in SavedPaper.READING_STATUSES:
+        return
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is not None:
+        saved.status = status
+        saved.notion_synced_status = status
+        await session.commit()
+
+
+async def list_saved_paper_ids(session: AsyncSession, *, owner_id: str) -> set[str]:
+    return set(
+        (
+            await session.scalars(
+                select(SavedPaper.paper_id).where(SavedPaper.owner_id == owner_id)
+            )
+        ).all()
+    )

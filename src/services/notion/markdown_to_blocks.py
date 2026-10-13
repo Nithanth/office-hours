@@ -19,7 +19,10 @@ _INLINE_PATTERN = re.compile(
     r"(\*\*(?P<bold>[^*]+)\*\*"
     r"|\*(?P<italic>[^*]+)\*"
     r"|`(?P<code>[^`]+)`"
-    r"|\[(?P<link_text>[^\]]+)\]\((?P<link_url>[^)]+)\))"
+    r"|\[(?P<link_text>[^\]]+)\]\((?P<link_url>[^)]+)\)"
+    r"|\\\[(?P<display_math>.+?)\\\]"
+    r"|\\\((?P<inline_math>.+?)\\\)"
+    r"|\$(?P<math>[^$\n]+)\$)"
 )
 
 
@@ -80,10 +83,30 @@ def _parse_inline(text: str) -> list[dict[str, Any]]:
             out.extend(_rich_text_segment(groups["code"], code=True))
         elif groups["link_text"]:
             out.extend(_rich_text_segment(groups["link_text"], link=groups["link_url"]))
+        else:
+            expr = groups["display_math"] or groups["inline_math"] or groups["math"]
+            if expr:
+                # Inline equation — rendered KaTeX-style by Notion.
+                out.append(
+                    {
+                        "type": "equation",
+                        "equation": {"expression": expr.strip()[:_MAX_RICH_TEXT_CHARS]},
+                    }
+                )
         cursor = match.end()
     if cursor < len(text):
         out.extend(_rich_text_segment(text[cursor:]))
     return out
+
+
+_MAX_RICH_TEXT_SEGMENTS = 100  # Notion rejects bodies above ~100 rich_text items
+
+
+def markdown_to_rich_text(text: str) -> list[dict[str, Any]]:
+    """Convert inline Markdown (bold/italic/code/links + $math$/\\(…\\))
+    into Notion rich_text objects for comments and other inline contexts."""
+    segments = _parse_inline(text)
+    return segments[:_MAX_RICH_TEXT_SEGMENTS]
 
 
 def _block(

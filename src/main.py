@@ -192,6 +192,7 @@ from api.routes import chat as _chat_routes
 from api.routes import cluster as _cluster_routes
 from api.routes import history as _history_routes
 from api.routes import integrations as _integration_routes
+from api.routes import library as _library_routes
 from api.routes import metadata as _metadata_routes
 from api.routes import pages as _pages_routes
 from api.routes import report as _report_routes
@@ -207,6 +208,7 @@ for _r in (
     _auth_routes.router,
     _history_routes.router,
     _integration_routes.router,
+    _library_routes.router,
     _pages_routes.router,
     _ask_llm_routes.router,
     _admin_routes.router,
