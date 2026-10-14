@@ -1016,7 +1016,10 @@ def home_page(page_data: SharedPageData) -> Body:
                             onclick=(
                                 "var f=document.getElementById('paper-search-form');"
                                 "var q=document.getElementById('search_query').value;"
-                                "if(!q.trim()){return;}"
+                                "if(!q.trim()){"
+                                "document.getElementById('search-results-container').innerHTML="
+                                "\"<div class='error-banner'>Please enter an author name.</div>\";"
+                                "return;}"
                                 "document.getElementById('oh-loading-text').textContent='Searching authors...';"
                                 "f.setAttribute('hx-post','/author/search');"
                                 "htmx.trigger(f,'submit');"
