@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -135,9 +136,9 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         paper_rows.append(
             f"""<div class="paper-row">
   <div><div class="pt">{title_link}</div>{meta}</div>
-  <form method="post" action="/api/topics/{_esc(topic.id)}/papers/{_esc(p.paper_id)}/remove">
-    <button type="submit" class="copy-icon-btn" title="Remove from topic">&times;</button>
-  </form>
+  <button type="button" class="copy-icon-btn" title="Remove from topic"
+    hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe='')}/remove"
+    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button>
 </div>"""
         )
     papers_html = "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
@@ -219,7 +220,7 @@ async def api_create_topic(request: Request, query: str = Form(...)) -> JSONResp
     )
 
 
-@router.post("/api/topics/{topic_id}/papers/{paper_id}/remove")
+@router.post("/api/topics/{topic_id}/papers/{paper_id:path}/remove")
 async def api_remove_paper(topic_id: str, paper_id: str, request: Request) -> Response:
     owner = _owner_id(request)
     if not database_available():
