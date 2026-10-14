@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 import html
-from urllib.parse import quote
+import json
+from urllib.parse import quote, quote_plus
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from api.routers.report_stream import _clean_generated_title
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
+from services.persistence.models import Report
 from services.topics.keys import canonical_key_for, detect_topic_kind
+
+
+def _display_report_title(report: Report) -> str:
+    """Render-time cleanup of corrupt persisted titles (self-heals old rows)."""
+    return (
+        _clean_generated_title(report.title)
+        or report.original_query
+        or "Untitled report"
+    )
+
 
 router = APIRouter(tags=["topics"])
 
@@ -32,6 +45,9 @@ def _shell(title: str, body: str) -> str:
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/chat.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"></script>
+  <script src="/static/js/report.js?v=2" defer></script>
+  <script src="/static/js/main.js?v=2" type="module"></script>
   <style>
     .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .topic-card{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -133,12 +149,22 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         )
         meta_bits = [b for b in (_fmt_authors(p.authors), _esc(p.published_date)) if b]
         meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
+        pid_q = quote(p.paper_id, safe="")
+        viewer_btn = (
+            f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
+            f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
+            f' hx-target="#modal-container" hx-swap="innerHTML">'
+            f'<i class="fa-solid fa-comment-dots"></i></button>'
+            if p.url
+            else ""
+        )
         paper_rows.append(
             f"""<div class="paper-row">
   <div><div class="pt">{title_link}</div>{meta}</div>
+  <div>{viewer_btn}
   <button type="button" class="copy-icon-btn" title="Remove from topic"
     hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe='')}/remove"
-    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button>
+    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>
 </div>"""
         )
     papers_html = "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
@@ -147,7 +173,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     for r in reports:
         report_rows.append(
             f"<div class='topic-meta'>&#8226; <a href='/reports/{_esc(r.id)}'>"
-            f"{_esc(r.title)}</a> — {r.created_at.strftime('%b %d, %Y')}</div>"
+            f"{_esc(_display_report_title(r))}</a> — {r.created_at.strftime('%b %d, %Y')}</div>"
         )
     reports_html = (
         "".join(report_rows) or "<div class='topic-meta'>No reports yet.</div>"
@@ -156,7 +182,15 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
   <a class="btn-secondary" href="/" style="text-decoration:none;">+ New report</a>
+  <button type="button" class="btn-secondary" title="Re-render the report against this topic's current papers"
+    hx-post="/topics/{_esc(topic.id)}/report" hx-target="#topic-report-out"
+    hx-swap="innerHTML" hx-disabled-elt="this">Refresh report</button>
+  <button type="button" class="btn-secondary"
+    hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
+    hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
 </div>
+<div id="topic-report-out"></div>
+<div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>
@@ -218,6 +252,69 @@ async def api_create_topic(request: Request, query: str = Form(...)) -> JSONResp
         {"id": topic.id, "kind": topic.kind, "created": created},
         status_code=201 if created else 200,
     )
+
+
+@router.post("/topics/{topic_id}/report", response_class=HTMLResponse)
+async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
+    """Re-render a report snapshot against the topic's current paper set.
+
+    Builds the same payload the generate form would submit (papers = the
+    topic's set, query = the topic's seed), then returns the SSE skeleton —
+    the stream links the new snapshot to the topic.
+    """
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import get_topic, list_topic_papers
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        rows = await list_topic_papers(session, topic_id=topic.id)
+
+    if not rows:
+        raise HTTPException(
+            status_code=400, detail="This topic has no papers to synthesize."
+        )
+
+    # report_stream expects one Paper-JSON string per list element —
+    # Paper.model_validate_json per item.
+    papers_json_items = [
+        json.dumps(
+            {
+                "id": r.paper_id,
+                "title": r.title,
+                "url": r.url or "",
+                "authors": (
+                    (r.authors or {}).get("items", [])
+                    if isinstance(r.authors, dict)
+                    else (r.authors or [])
+                ),
+                "published_date": r.published_date or "",
+            }
+        )
+        for r in rows
+    ]
+
+    from api.routers.report_stream import (
+        _report_skeleton_html,
+        cache_report_request,
+    )
+
+    token = cache_report_request(
+        {
+            "original_query": topic.seed_query or topic.title,
+            "selected_papers_json": papers_json_items,
+            "audience_type": "technical",
+            "summary_size": "M",
+            "selected_model_key": "",
+            "is_url_input": topic.kind == "paper",
+            "user_id": owner,
+            "topic_id": topic.id,
+        }
+    )
+    return HTMLResponse(_report_skeleton_html(token))
 
 
 @router.post("/api/topics/{topic_id}/papers/{paper_id:path}/remove")

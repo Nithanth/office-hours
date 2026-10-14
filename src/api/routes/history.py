@@ -7,8 +7,21 @@ import html
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from api.routers.report_stream import _clean_generated_title
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
+from services.persistence.models import Report
+
+
+def _display_title(report: Report) -> str:
+    """Render-time title cleanup — scrubs corrupt persisted titles (e.g.
+    truncated fragments like '(their') so old rows self-heal."""
+    return (
+        _clean_generated_title(report.title)
+        or report.original_query
+        or "Untitled report"
+    )
+
 
 router = APIRouter(tags=["history"])
 
@@ -80,7 +93,7 @@ async def report_history(request: Request) -> HTMLResponse:
         preview = html.escape(report.report_text[:200]).rstrip() + "…"
         items.append(
             "<article class='history-item'>"
-            f"<h2><a href='/reports/{report.id}'>{html.escape(report.title)}</a></h2>"
+            f"<h2><a href='/reports/{report.id}'>{html.escape(_display_title(report))}</a></h2>"
             f"<div class='history-meta'>{date_str} · "
             f"{html.escape(report.audience_type)} · {html.escape(report.model_key)}</div>"
             f"<div class='history-preview'>{preview}</div>"
@@ -106,7 +119,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
         "hx-get='/chat-modal?",
         f"hx-get='/chat-modal?report_id={html.escape(report.id)}&",
     )
-    escaped_title = html.escape(report.title)
+    escaped_title = html.escape(_display_title(report))
     escaped_id = html.escape(report.id)
     escaped_audience = html.escape(report.audience_type or "technical")
     escaped_model = html.escape(report.model_key or "")
@@ -196,7 +209,7 @@ async def reports_api(request: Request) -> JSONResponse:
             "reports": [
                 {
                     "id": report.id,
-                    "title": report.title,
+                    "title": _display_title(report),
                     "created_at": report.created_at.isoformat(),
                     "audience_type": report.audience_type,
                     "model_key": report.model_key,

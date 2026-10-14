@@ -55,6 +55,7 @@ async def chat_post(
     audience_type: str = Form("technical"),
     model_key: Optional[str] = Form(None),
     report_id: str | None = Form(None),
+    topic_id: str | None = Form(None),
 ) -> Response:
     """Handle a user chat message and return HTML skeleton for streaming reply."""
 
@@ -97,9 +98,14 @@ async def chat_post(
     if not clean_msg:
         return Response(status_code=204)
 
-    # Topic chats scope in-memory state per report ("topic:{report_id}");
-    # persistence keeps the bare "topic" paper_id + report_id thread key.
-    state_key = f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
+    # Topic chats scope in-memory state per topic ("topic:{topic_id}"),
+    # falling back to the report key for legacy report-linked topic chats;
+    # persistence keeps the bare "topic" paper_id + topic_id thread key.
+    state_key = (
+        f"topic:{topic_id}"
+        if topic_id
+        else (f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id)
+    )
     chat_state.append(state_key, ChatMessage(role="user", content=clean_msg))
     from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope
@@ -114,11 +120,14 @@ async def chat_post(
                     db_session,
                     user_id=user_id,
                     report_id=report_id,
-                    paper_id=paper_id.split(":", 1)[0]
-                    if paper_id.startswith("topic:")
-                    else paper_id,
+                    paper_id=(
+                        paper_id.split(":", 1)[0]
+                        if paper_id.startswith("topic:")
+                        else paper_id
+                    ),
                     role="user",
                     content=clean_msg,
+                    topic_id=topic_id,
                 )
         except Exception as exc:  # noqa: BLE001
             log.warning("chat_persist_user_failed", user_id=user_id, error=str(exc))
@@ -136,15 +145,23 @@ async def chat_post(
     # 2. Create a unique container for the assistant's streaming response (raw HTML)
     assistant_response_id = f"assistant-response-{uuid4()}"
     # Full stream URL (used by JS) includes additional audience/model params.
-    safe_paper_id = _urlparse.quote_plus(paper_id)
     stream_url = f"/chat/stream?paper_id={_urlparse.quote_plus(state_key)}&audience_type={_urlparse.quote_plus(audience_type)}"
     if model_key:
         stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
     if report_id:
         stream_url += f"&report_id={_urlparse.quote_plus(report_id)}"
+    if topic_id:
+        stream_url += f"&topic_id={_urlparse.quote_plus(topic_id)}"
 
-    # Minimal URL expected by legacy tests for HTMX sse-connect attr – only paper_id.
-    legacy_sse_url = f"/chat/stream?paper_id={safe_paper_id}"
+    # Minimal URL expected by legacy tests for HTMX sse-connect attr — uses the
+    # state key so topic chats resolve 'topic:{topic_id}' and carries the ids
+    # the stream needs for persistence. For plain paper chats state_key ==
+    # paper_id, so the URL shape is unchanged.
+    legacy_sse_url = (
+        f"/chat/stream?paper_id={_urlparse.quote_plus(state_key)}"
+        + (f"&report_id={_urlparse.quote_plus(report_id)}" if report_id else "")
+        + (f"&topic_id={_urlparse.quote_plus(topic_id)}" if topic_id else "")
+    )
 
     assistant_response_container_html = (
         f'<div id="{assistant_response_id}" class="assistant-message typing" '
@@ -165,6 +182,7 @@ async def chat_stream(
     audience_type: str = Query("technical"),
     model_key: Optional[str] = Query(None),
     report_id: str | None = Query(None),
+    topic_id: str | None = Query(None),
     resume_at: int = Query(0, ge=0, description="Token index to resume from."),
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> Response:
@@ -421,11 +439,14 @@ async def chat_stream(
                                 db_session,
                                 user_id=user_id,
                                 report_id=report_id,
-                                paper_id=paper_id.split(":", 1)[0]
-                                if paper_id.startswith("topic:")
-                                else paper_id,
+                                paper_id=(
+                                    paper_id.split(":", 1)[0]
+                                    if paper_id.startswith("topic:")
+                                    else paper_id
+                                ),
                                 role="assistant",
                                 content=assistant_msg,
+                                topic_id=topic_id,
                             )
                     except Exception as exc:  # noqa: BLE001
                         log.warning(

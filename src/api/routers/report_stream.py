@@ -59,7 +59,7 @@ def _clean_generated_title(raw: str | None) -> str:
     if not raw:
         return ""
     t = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", raw.strip())
-    t = t.strip().strip('*"`').strip()
+    t = t.strip().lstrip("#").strip().strip('*"`').strip()
     # unwrap one level of enclosing parens/quotes/brackets
     for open_c, close_c in (("(", ")"), ("[", "]"), ("'", "'")):
         if t.startswith(open_c) and t.endswith(close_c):
@@ -265,9 +265,14 @@ async def generate_report_incremental(  # noqa: PLR0913
     # The task is stored so report_stream() can cancel it once the stream starts.
     _cleanup_tasks[token] = asyncio.create_task(_del_cache_later(token, delay=120))
 
-    sse_url = f"/report/stream?token={token}"
+    return HTMLResponse(content=_report_skeleton_html(token))
 
-    html_skeleton = f"""
+
+def _report_skeleton_html(token: str) -> str:
+    """Streaming skeleton for the SSE report generator — shared by the
+    generate endpoint and the topic re-render endpoint."""
+    sse_url = f"/report/stream?token={token}"
+    return f"""
     <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <!-- View toggle revealed once the report is persisted (report.js unhides it on report-saved) -->\n      <div id=\"report-view-toggle\" class=\"oh-view-toggle hidden\">\n        <button type=\"button\" data-view=\"report\" class=\"active\"><i class=\"fa-regular fa-file-lines\"></i>&nbsp;Report</button>\n        <button type=\"button\" data-view=\"blog\"><i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog</button>\n      </div>\n      <div id=\"report-progress\"><div class='oh-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
         </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post (opens customization)\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
         </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
@@ -277,7 +282,21 @@ async def generate_report_incremental(  # noqa: PLR0913
         </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
       <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n      <!-- Registers the report-saved event so htmx dispatches htmx:sseMessage;\n           report.js uses it to append report_id= to the chat buttons. -->\n      <div sse-swap=\"report-saved\" hx-target=\"this\" hx-swap=\"none\"></div>\n    </div>
     """
-    return HTMLResponse(content=html_skeleton)
+
+
+def cache_report_request(
+    payload: dict[str, Any],
+) -> str:
+    """Cache a report payload under a fresh token + schedule safety cleanup.
+
+    Shared with the topic re-render endpoint, which builds the same payload
+    server-side instead of via the generate form.
+    """
+    token = str(uuid.uuid4())
+    REPORT_REQUEST_CACHE[token] = payload
+    _save_report_request(token, payload)
+    _cleanup_tasks[token] = asyncio.create_task(_del_cache_later(token, delay=120))
+    return token
 
 
 @router.get("/report/stream")
@@ -292,9 +311,20 @@ async def report_stream(
 
     payload = _load_report_request(token)
     if payload is None:
-        # Unknown or expired token - send 204 so EventSource treats it as closed and
-        # does NOT exponentially retry (avoids endless 404 log spam).
-        return Response(status_code=204)
+        # Unknown, expired, or already-claimed token — emit a terminal SSE so
+        # the reconnect loop stops (the 'done' event swaps the connector out
+        # of the DOM) and the spinner resolves to a visible message instead
+        # of hanging forever on 204s.
+        async def _terminal_stream() -> AsyncIterator[str]:
+            yield _format_sse_event(
+                "report-block",
+                "<div class='alert-error' style='color:#d9534f;'>"
+                "Report already generated or this link expired — "
+                "refresh the page to see the saved report.</div>",
+            )
+            yield _format_sse_event("done")
+
+        return StreamingResponse(_terminal_stream(), media_type="text/event-stream")
 
     # Cancel the safety-cleanup timer now that the stream has connected.
     safety_task = _cleanup_tasks.pop(token, None)

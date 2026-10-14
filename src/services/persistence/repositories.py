@@ -243,17 +243,23 @@ async def append_chat_message(
     role: str,
     content: str,
     title: str | None = None,
+    topic_id: str | None = None,
 ) -> ChatMessage:
     thread = await session.scalar(
         select(ChatThread).where(
             ChatThread.user_id == user_id,
             ChatThread.report_id == report_id,
             ChatThread.paper_id == paper_id,
+            ChatThread.topic_id == topic_id,
         )
     )
     if thread is None:
         thread = ChatThread(
-            user_id=user_id, report_id=report_id, paper_id=paper_id, title=title
+            user_id=user_id,
+            report_id=report_id,
+            paper_id=paper_id,
+            title=title,
+            topic_id=topic_id,
         )
         session.add(thread)
         await session.flush()
@@ -273,6 +279,7 @@ async def get_chat_thread_messages(
     report_id: str | None,
     paper_id: str,
     limit: int = 200,
+    topic_id: str | None = None,
 ) -> list[ChatMessage]:
     """Persisted chat messages for a thread, oldest first."""
     thread = await session.scalar(
@@ -280,6 +287,7 @@ async def get_chat_thread_messages(
             ChatThread.user_id == user_id,
             ChatThread.report_id == report_id,
             ChatThread.paper_id == paper_id,
+            ChatThread.topic_id == topic_id,
         )
     )
     if thread is None:
