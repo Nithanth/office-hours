@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from loguru import logger
 
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
@@ -15,12 +17,15 @@ from services.persistence.models import SavedPaper
 from services.persistence.repositories import (
     get_notion_integration,
     get_report,
+    get_saved_paper,
+    list_paper_chat_messages,
     list_saved_paper_ids,
     list_saved_papers,
     notion_access_token,
     save_paper,
     set_notion_databases,
     set_report_notion_page,
+    set_saved_paper_notion_chat_count,
     set_saved_paper_notion_page,
     set_saved_paper_notion_status,
     set_saved_paper_status,
@@ -87,6 +92,7 @@ async def library_save(request: Request) -> JSONResponse:
             authors=authors,
             report_id=report_id,
         )
+    _schedule_notion_sync(owner_id, paper_id)
     return JSONResponse({"ok": True, "saved": True, "paper_id": paper_id})
 
 
@@ -100,8 +106,13 @@ async def library_unsave(request: Request) -> JSONResponse:
 
     form = await request.form()
     paper_id = str(form.get("paper_id") or "").strip()
+    notion_page_id: str | None = None
     async for session in session_scope():
+        saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+        notion_page_id = saved.notion_page_id if saved else None
         removed = await unsave_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if notion_page_id:
+        _schedule_notion_archive(owner_id, notion_page_id)
     return JSONResponse({"ok": True, "saved": False, "removed": removed})
 
 
@@ -124,6 +135,7 @@ async def library_status(request: Request) -> JSONResponse:
         return JSONResponse(
             {"ok": False, "detail": "Unknown paper or status"}, status_code=404
         )
+    _schedule_notion_sync(owner_id, paper_id)
     return JSONResponse({"ok": True, "status": saved.status})
 
 
@@ -162,6 +174,165 @@ async def _load_integration(
         }
         return snapshot, notion_access_token(integration)
     return None, None
+
+
+def _schedule_notion_sync(owner_id: str, paper_id: str) -> None:
+    """Fire-and-forget single-paper sync so saves and status changes land
+    in Notion without a manual button press. No-ops for users without a
+    connected integration."""
+    task = asyncio.create_task(_sync_paper_to_notion(owner_id, paper_id))
+    task.add_done_callback(
+        lambda t: (
+            logger.warning("notion_auto_sync_failed", error=str(t.exception()))
+            if t.exception()
+            else None
+        )
+    )
+
+
+def _schedule_notion_archive(owner_id: str, notion_page_id: str) -> None:
+    """Archive a paper's Notion row in the background when it leaves the
+    library."""
+    task = asyncio.create_task(_archive_notion_page(owner_id, notion_page_id))
+    task.add_done_callback(
+        lambda t: (
+            logger.warning("notion_archive_failed", error=str(t.exception()))
+            if t.exception()
+            else None
+        )
+    )
+
+
+async def _archive_notion_page(owner_id: str, notion_page_id: str) -> None:
+    from services.notion.notion_exporter import NotionExporter
+
+    integration, token = await _load_integration(owner_id)
+    if integration is None or not token:
+        return
+    exporter = NotionExporter(token)
+    try:
+        await exporter.archive_page(notion_page_id)
+    finally:
+        await exporter.close()
+
+
+async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
+    """Single-paper version of the notion-sync endpoint: upsert the row,
+    fill the page body, mirror new chat turns, answer open comments."""
+    from services.notion.library_sync import (
+        answer_comments_for_paper,
+        provision_databases,
+        sync_library,
+    )
+    from services.notion.notion_exporter import NotionExporter
+
+    integration, token = await _load_integration(owner_id)
+    if integration is None or not token:
+        return
+
+    async for session in session_scope():
+        saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+        if saved is None:
+            return
+        chat = await list_paper_chat_messages(
+            session, owner_id=owner_id, paper_id=paper_id
+        )
+        row = {
+            "paper_id": saved.paper_id,
+            "title": saved.title,
+            "url": saved.url,
+            "authors": saved.authors,
+            "status": saved.status,
+            "report_id": saved.report_id,
+            "notion_page_id": saved.notion_page_id,
+            "notion_synced_status": saved.notion_synced_status,
+            "notion_chat_synced": saved.notion_chat_synced,
+            "saved_date": saved.created_at.date().isoformat(),
+            "chat_messages": [{"role": m.role, "content": m.content} for m in chat],
+        }
+    reports: dict = {}
+    if row["report_id"]:
+        async for session in session_scope():
+            report = await get_report(
+                session, user_id=owner_id, report_id=row["report_id"]
+            )
+            if report:
+                reports[row["report_id"]] = {
+                    "title": report.title,
+                    "original_query": report.original_query,
+                    "created_date": report.created_at.date().isoformat(),
+                    "notion_page_id": report.notion_page_id,
+                    "content": report.report_text,
+                }
+
+    exporter = NotionExporter(token)
+    try:
+        papers_db_id, topics_db_id = await provision_databases(
+            exporter,
+            parent_page_id=integration["parent_page_id"],
+            parent_database_id=integration["parent_database_id"],
+            topics_database_id=integration["topics_database_id"],
+        )
+        async for session in session_scope():
+            await set_notion_databases(
+                session,
+                user_id=owner_id,
+                parent_database_id=papers_db_id,
+                topics_database_id=topics_db_id,
+            )
+        stats = await sync_library(
+            exporter,
+            papers_db_id=papers_db_id,
+            topics_db_id=topics_db_id,
+            papers=[row],
+            reports=reports,
+            owner_id=owner_id,
+        )
+        # Answer any open comment threads while we're here — questions
+        # get replies whenever library state changes, no button needed.
+        page_id = stats["paper_page_ids"].get(paper_id)
+        if page_id:
+            await answer_comments_for_paper(
+                exporter,
+                notion_page_id=page_id,
+                paper_id=paper_id,
+                user_id=owner_id,
+                bot_id=integration["bot_id"],
+            )
+    finally:
+        await exporter.close()
+
+    for report_id, new_page in stats["topic_page_ids"].items():
+        if not reports.get(report_id, {}).get("notion_page_id"):
+            async for session in session_scope():
+                await set_report_notion_page(
+                    session,
+                    user_id=owner_id,
+                    report_id=report_id,
+                    notion_page_id=new_page,
+                )
+    synced = stats["synced_status"].get(paper_id)
+    if (page_id and page_id != row["notion_page_id"]) or synced:
+        async for session in session_scope():
+            await set_saved_paper_notion_page(
+                session,
+                owner_id=owner_id,
+                paper_id=paper_id,
+                notion_page_id=page_id or row["notion_page_id"],
+                synced_status=synced,
+            )
+    pulled = stats["status_updates"].get(paper_id)
+    if pulled:
+        async for session in session_scope():
+            await set_saved_paper_notion_status(
+                session, owner_id=owner_id, paper_id=paper_id, status=pulled
+            )
+    chat_count = stats["chat_synced"].get(paper_id)
+    if chat_count:
+        async for session in session_scope():
+            await set_saved_paper_notion_chat_count(
+                session, owner_id=owner_id, paper_id=paper_id, count=chat_count
+            )
 
 
 @router.post("/api/library/notion-sync")
@@ -210,20 +381,28 @@ async def library_notion_sync(request: Request) -> JSONResponse:
         # (ORM objects detach and can't be read after the session closes).
         async for session in session_scope():
             papers = await list_saved_papers(session, owner_id=str(user_id))
-            paper_rows = [
-                {
-                    "paper_id": p.paper_id,
-                    "title": p.title,
-                    "url": p.url,
-                    "authors": p.authors,
-                    "status": p.status,
-                    "report_id": p.report_id,
-                    "notion_page_id": p.notion_page_id,
-                    "notion_synced_status": p.notion_synced_status,
-                    "saved_date": p.created_at.date().isoformat(),
-                }
-                for p in papers
-            ]
+            paper_rows = []
+            for p in papers:
+                chat = await list_paper_chat_messages(
+                    session, owner_id=str(user_id), paper_id=p.paper_id
+                )
+                paper_rows.append(
+                    {
+                        "paper_id": p.paper_id,
+                        "title": p.title,
+                        "url": p.url,
+                        "authors": p.authors,
+                        "status": p.status,
+                        "report_id": p.report_id,
+                        "notion_page_id": p.notion_page_id,
+                        "notion_synced_status": p.notion_synced_status,
+                        "notion_chat_synced": p.notion_chat_synced,
+                        "saved_date": p.created_at.date().isoformat(),
+                        "chat_messages": [
+                            {"role": m.role, "content": m.content} for m in chat
+                        ],
+                    }
+                )
         reports: dict = {}
         for row in paper_rows:
             report_id = row["report_id"]
@@ -247,6 +426,7 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             topics_db_id=topics_db_id,
             papers=paper_rows,
             reports=reports,
+            owner_id=str(user_id),
         )
     finally:
         await exporter.close()
@@ -277,6 +457,11 @@ async def library_notion_sync(request: Request) -> JSONResponse:
         async for session in session_scope():
             await set_saved_paper_notion_status(
                 session, owner_id=str(user_id), paper_id=paper_id, status=status
+            )
+    for paper_id, count in stats["chat_synced"].items():
+        async for session in session_scope():
+            await set_saved_paper_notion_chat_count(
+                session, owner_id=str(user_id), paper_id=paper_id, count=count
             )
 
     return JSONResponse(
@@ -390,6 +575,19 @@ def _library_shell(content_html: str) -> str:
       color:var(--fg);}}
     .lib-status-chip{{font-size:0.72rem;padding:2px 8px;border-radius:999px;
       border:1px solid var(--container-border,#666);margin-left:0.5rem;color:var(--fg-muted,#aaa);}}
+    .lib-notion-card{{border:1px dashed var(--oh-accent,#0d6e63);border-radius:8px;
+      padding:0.8rem 1rem;margin:0.75rem 0 1.1rem;font-size:0.85rem;
+      background:var(--container-bg);}}
+    .lib-notion-pick{{display:flex;gap:0.5rem;align-items:center;margin-top:0.55rem;flex-wrap:wrap;}}
+    .lib-notion-pick select,.lib-notion-pick button{{
+      font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer;
+      border:1px solid var(--container-border,#555);background:var(--container-bg,#1a1a1a);
+      color:var(--fg);}}
+    .lib-notion-pick select{{min-width:240px;}}
+    .lib-notion-connect{{display:inline-block;font-size:0.82rem;padding:4px 12px;
+      border-radius:4px;background:var(--oh-accent,#0d6e63);color:#fff;
+      text-decoration:none;}}
+    .lib-notion-hint{{font-size:0.75rem;color:var(--fg-muted,#888);margin-top:0.45rem;}}
   </style>
 </head>
 <body>
@@ -465,13 +663,18 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     signed_in = bool(get_auth_user_id(request))
     notion_connected = False
+    notion_needs_destination = False
     async for session in session_scope():
         papers = await list_saved_papers(session, owner_id=owner_id, status=status)
         if signed_in:
             integration = await get_notion_integration(
                 session, user_id=str(get_auth_user_id(request))
             )
-            notion_connected = bool(integration and integration.parent_database_id)
+            if integration:
+                notion_connected = bool(
+                    integration.parent_page_id or integration.parent_database_id
+                )
+                notion_needs_destination = not notion_connected
 
     tabs = [
         '<a href="/library"' + (' class="active"' if not status else "") + ">All</a>"
@@ -487,10 +690,28 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             'title="Reply to unanswered comments on your synced paper pages">'
             "Answer comments</button>"
         )
+        notion_card = ""
+    elif notion_needs_destination:
+        sync_btn = ""
+        notion_card = """<div class="lib-notion-card">
+  <strong>Notion connected</strong> — one last step: pick where your library lives.
+  <div class="lib-notion-pick">
+    <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
+    <button id="lib-notion-set-dest" type="button">Set up sync</button>
+  </div>
+  <div class="lib-notion-hint">Office Hours creates two linked databases — Papers ↔ Topics — under the page you pick.</div>
+</div>"""
     elif signed_in:
-        sync_btn = '<a href="/settings" title="Connect Notion in Settings to sync">Connect Notion</a>'
+        sync_btn = ""
+        notion_card = """<div class="lib-notion-card">
+  <strong>Mirror your library in Notion</strong> — papers, topics and reading status sync automatically; questions in page comments get answered by the agent.
+  <div class="lib-notion-pick"><a class="lib-notion-connect" href="/integrations/notion/connect?next=/library">Connect Notion</a></div>
+</div>"""
     else:
         sync_btn = ""
+        notion_card = """<div class="lib-notion-card">
+  <strong>Mirror your library in Notion</strong> — sign in to connect your workspace.
+</div>"""
 
     if papers:
         items = "".join(_paper_item(p) for p in papers)
@@ -502,6 +723,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
       {sync_btn}
       <a href="/">+ New Search</a>
     </div>
+    {notion_card}
     <div class="lib-tabs">{"".join(tabs)}</div>
     <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
     {items}
@@ -514,6 +736,36 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             body: new URLSearchParams(data).toString(),
           }});
           return r.json();
+        }}
+        // Notion destination picker — only present when connected with no anchor.
+        const destSel = document.getElementById("lib-notion-destination");
+        if (destSel) {{
+          fetch("/api/notion/destinations").then(r => r.json()).then(res => {{
+            const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
+            destSel.innerHTML = dests.length
+              ? dests.map(d => `<option value="${{d.id}}" data-type="${{d.type}}">${{d.type === "page" ? "📄" : "🗃"}} ${{d.title}}</option>`).join("")
+              : '<option value="">No shared pages — re-connect and share a page</option>';
+          }});
+        }}
+        const setDest = document.getElementById("lib-notion-set-dest");
+        if (setDest) {{
+          setDest.addEventListener("click", function() {{
+            const opt = destSel.options[destSel.selectedIndex];
+            if (!opt || !opt.value) return;
+            setDest.disabled = true;
+            post("/api/notion/destination", {{
+              destination_id: opt.value,
+              destination_type: opt.dataset.type,
+            }}).then(res => {{
+              if (res.ok) {{
+                const statusEl = document.getElementById("lib-sync-status");
+                statusEl.textContent = "All set — papers now sync to Notion automatically.";
+                document.querySelector(".lib-notion-card").remove();
+              }} else {{
+                setDest.disabled = false;
+              }}
+            }});
+          }});
         }}
         document.addEventListener("change", function(ev) {{
           const sel = ev.target.closest(".lib-status-select");

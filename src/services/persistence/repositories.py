@@ -625,3 +625,31 @@ async def list_saved_paper_ids(session: AsyncSession, *, owner_id: str) -> set[s
             )
         ).all()
     )
+
+
+async def list_paper_chat_messages(
+    session: AsyncSession, *, owner_id: str, paper_id: str, limit: int = 200
+) -> list[ChatMessage]:
+    """All chat messages for a paper across every thread/report, oldest
+    first — the learning trail that gets mirrored into the Notion page."""
+    result = await session.execute(
+        select(ChatMessage)
+        .join(ChatThread, ChatMessage.thread_id == ChatThread.id)
+        .where(
+            ChatThread.user_id == owner_id,
+            ChatThread.paper_id == paper_id,
+        )
+        .order_by(ChatMessage.created_at.asc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def set_saved_paper_notion_chat_count(
+    session: AsyncSession, *, owner_id: str, paper_id: str, count: int
+) -> None:
+    """Watermark: how many chat messages already live on the Notion page."""
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is not None:
+        saved.notion_chat_synced = count
+        await session.commit()

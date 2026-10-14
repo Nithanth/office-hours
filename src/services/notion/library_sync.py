@@ -20,6 +20,7 @@ from typing import Any
 
 from loguru import logger
 
+from services.notion.markdown_to_blocks import markdown_to_blocks
 from services.notion.notion_exporter import NotionExporter, NotionExportError
 
 _STATUS_LABELS = {"to_read": "To read", "reading": "Reading", "done": "Done"}
@@ -137,6 +138,51 @@ async def provision_databases(
     return papers_db, topics_db
 
 
+def _paper_intro_markdown(paper: dict, tldr: str | None) -> str:
+    """Body markdown for a paper's Notion page — a TLDR when one can be
+    generated, plus the pointer back to the source and a hint that the
+    comments are live."""
+    body = tldr or (
+        "Saved to Office Hours. Comment a question on this page and the "
+        "agent answers in-thread with paper-grounded citations."
+    )
+    lines = ["## About this paper", "", body, ""]
+    if paper["url"]:
+        lines.append(f"**Source:** {paper['url']}")
+    return "\n".join(lines)
+
+
+def _chat_blocks(
+    messages: list[dict[str, Any]], *, heading: bool
+) -> list[dict[str, Any]]:
+    """Turn chat messages into Notion blocks mirroring the Q&A trail.
+
+    ``heading`` adds a 'Q&A' section header — used the first time any
+    chat history lands on the page. ``[n]`` chunk citations are stripped
+    (they dangle without the app's Sources footer).
+    """
+    blocks: list[dict[str, Any]] = []
+    if heading:
+        blocks.append(
+            {
+                "object": "block",
+                "type": "heading_3",
+                "heading_3": {
+                    "rich_text": [{"type": "text", "text": {"content": "Q&A"}}]
+                },
+            }
+        )
+    for msg in messages:
+        content = re.sub(r"\s*\[\d+\]", "", msg.get("content") or "").strip()
+        if not content:
+            continue
+        if msg.get("role") == "user":
+            blocks.extend(markdown_to_blocks(f"**You:** {content}"))
+        else:
+            blocks.extend(markdown_to_blocks(f"**Office Hours:** {content}"))
+    return blocks
+
+
 async def sync_library(
     exporter: NotionExporter,
     *,
@@ -144,6 +190,7 @@ async def sync_library(
     topics_db_id: str,
     papers: list[dict],
     reports: dict[str, dict],
+    owner_id: str | None = None,
 ) -> dict[str, Any]:
     """Upsert topics + papers, then pull Status edits back.
 
@@ -164,6 +211,7 @@ async def sync_library(
         "failed": 0,
         "status_updates": {},
         "synced_status": {},
+        "chat_synced": {},
         "errors": [],
     }
 
@@ -224,6 +272,43 @@ async def sync_library(
                     stats["paper_page_ids"][paper["paper_id"]] = page_id
                     stats["synced_status"][paper["paper_id"]] = paper["status"]
                 stats["created"] += 1
+
+            page_id = stats["paper_page_ids"].get(paper["paper_id"])
+            if page_id:
+                # Page body: an intro + TLDR the first time we see the
+                # page — what makes 'chat about this page' and Custom
+                # Agents useful on papers, not just topics.
+                try:
+                    if await exporter.page_is_empty(page_id):
+                        tldr = (
+                            await _paper_tldr(paper["paper_id"], owner_id)
+                            if owner_id
+                            else None
+                        )
+                        await exporter.append_blocks(
+                            page_id,
+                            markdown_to_blocks(_paper_intro_markdown(paper, tldr)),
+                        )
+                except Exception as exc:
+                    stats["errors"].append(
+                        f"paper {paper['paper_id']} content: {exc}"[:200]
+                    )
+                # Q&A trail: append chat turns beyond the watermark so
+                # the Notion page mirrors the learning record.
+                msgs = paper.get("chat_messages") or []
+                watermark = int(paper.get("notion_chat_synced") or 0)
+                new_msgs = msgs[watermark:]
+                if new_msgs:
+                    try:
+                        await exporter.append_blocks(
+                            page_id,
+                            _chat_blocks(new_msgs, heading=watermark == 0),
+                        )
+                        stats["chat_synced"][paper["paper_id"]] = len(msgs)
+                    except Exception as exc:
+                        stats["errors"].append(
+                            f"paper {paper['paper_id']} chat: {exc}"[:200]
+                        )
         except Exception as exc:
             stats["failed"] += 1
             stats["errors"].append(f"paper {paper['paper_id']}: {exc}"[:200])
@@ -314,6 +399,26 @@ async def answer_question(*, paper_id: str, question: str, user_id: str) -> str:
     )
     state.append(paper_id, ChatMessage(role="assistant", content=answer))
     return str(answer)
+
+
+async def _paper_tldr(paper_id: str, owner_id: str | None) -> str | None:
+    """One-line TLDR for a paper page's body, from the same grounded
+    agent that answers comments. Best-effort — any failure just means
+    the page gets the fallback intro instead."""
+    if not owner_id:
+        return None
+    try:
+        tldr = await answer_question(
+            paper_id=paper_id,
+            question=(
+                "Give a concise 3-4 sentence TLDR of this paper for "
+                "someone deciding whether to read it."
+            ),
+            user_id=owner_id,
+        )
+        return re.sub(r"\s*\[\d+\]", "", tldr).strip() or None
+    except Exception:
+        return None
 
 
 async def answer_comments_for_paper(

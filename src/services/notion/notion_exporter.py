@@ -117,16 +117,9 @@ class NotionExporter:
 
         return page.get("url") or f"https://www.notion.so/{page_id.replace('-', '')}"
 
-    async def ensure_page_content(self, page_id: str, markdown: str) -> bool:
-        """Append *markdown* as blocks to a page that has no children yet.
-
-        Returns True when content was written. Existing content is left
-        untouched so re-syncs never duplicate the page body.
-        """
-        children = await self._client.blocks.children.list(block_id=page_id)
-        if children.get("results"):
-            return False
-        for batch in chunk_blocks(markdown_to_blocks(markdown)):
+    async def append_blocks(self, page_id: str, blocks: list[dict[str, Any]]) -> None:
+        """Append pre-built blocks to a page in <=100-block batches."""
+        for batch in chunk_blocks(blocks):
             try:
                 await self._client.blocks.children.append(
                     block_id=page_id, children=batch
@@ -134,7 +127,32 @@ class NotionExporter:
             except Exception as err:
                 logger.warning("notion_append_failed", error=str(err))
                 break
+
+    async def ensure_page_content(self, page_id: str, markdown: str) -> bool:
+        """Append *markdown* as blocks to a page that has no children yet.
+
+        Returns True when content was written. Existing content is left
+        untouched so re-syncs never duplicate the page body.
+        """
+        if not await self.page_is_empty(page_id):
+            return False
+        await self.append_blocks(page_id, markdown_to_blocks(markdown))
         return True
+
+    async def page_is_empty(self, page_id: str) -> bool:
+        """True when the page body has no children — lets callers decide
+        whether to fill it without paying for content generation first."""
+        children = await self._client.blocks.children.list(block_id=page_id)
+        return not children.get("results")
+
+    async def archive_page(self, page_id: str) -> None:
+        """Archive a page — used when a saved paper is removed from the
+        library so its Notion row disappears too."""
+        await self._client.request(
+            path=f"pages/{page_id}",
+            method="PATCH",
+            body={"archived": True},
+        )
 
     # ------------------------------------------------------------------
     # Library sync: relational Papers ↔ Topics databases

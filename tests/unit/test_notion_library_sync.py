@@ -139,3 +139,51 @@ class TestMarkdownToRichText:
         segs = markdown_to_rich_text("no formatting here")
         assert len(segs) == 1
         assert segs[0]["type"] == "text"
+
+
+class TestChatBlocks:
+    def test_user_and_assistant_blocks(self):
+        from services.notion.library_sync import _chat_blocks
+
+        blocks = _chat_blocks(
+            [
+                {"role": "user", "content": "what is attention?"},
+                {"role": "assistant", "content": "A weighting over values [3]."},
+            ],
+            heading=True,
+        )
+        assert blocks[0]["type"] == "heading_3"
+        rich = blocks[0]["heading_3"]["rich_text"][0]["text"]["content"]
+        assert rich == "Q&A"
+        text = " ".join(
+            rt.get("text", {}).get("content", "")
+            for b in blocks
+            for rt in b.get(b["type"], {}).get("rich_text", [])
+        )
+        assert "**You:**" not in text  # rendered as annotation, not literal
+        assert "You:" in text
+        assert "Office Hours:" in text
+        assert "[3]" not in text  # citations stripped
+
+    def test_no_heading_for_incremental(self):
+        from services.notion.library_sync import _chat_blocks
+
+        blocks = _chat_blocks([{"role": "user", "content": "q?"}], heading=False)
+        assert all(b["type"] != "heading_3" for b in blocks)
+
+
+class TestPaperIntro:
+    def test_tldr_included(self):
+        from services.notion.library_sync import _paper_intro_markdown
+
+        md = _paper_intro_markdown(_paper(), "Great paper about attention.")
+        assert "Great paper about attention." in md
+        assert "arxiv.org" in md
+        assert "## About this paper" in md
+
+    def test_fallback_intro(self):
+        from services.notion.library_sync import _paper_intro_markdown
+
+        md = _paper_intro_markdown(_paper(url=None), None)
+        assert "Comment a question" in md
+        assert "**Source:**" not in md
