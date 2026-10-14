@@ -667,15 +667,26 @@ class ReportGenerator:
             provider_name=self.selected_model_provider,
             model_name=self.selected_model_api_id,
             prompt=prompt,
-            max_tokens=30,
+            max_tokens=60,
             temperature=0.4,
         )
         if not result["ok"]:
             logger.warning("dynamic title generation failed", error=result["content"])
             raise RuntimeError(result["content"])
 
-        # Clean up the title
-        return cast(str, result["content"]).strip().replace('"', "")
+        # Clean up the title: strip TITLE: prefixes, markdown emphasis,
+        # quotes, and wrapping parens; reject truncated fragments like
+        # '(their' that used to land as report titles.
+        t = re.sub(
+            r"(?i)^\s*title\s*[:\-]?\s*", "", cast(str, result["content"]).strip()
+        )
+        t = t.strip().strip('*"`').strip()
+        for open_c, close_c in (("(", ")"), ("[", "]")):
+            if t.startswith(open_c) and t.endswith(close_c):
+                t = t[1:-1].strip()
+        if t.count("(") != t.count(")") or len(t) < 8 or not re.search(r"[A-Za-z]", t):
+            return ""
+        return t
 
     async def generate_direct_query_answer(
         self,

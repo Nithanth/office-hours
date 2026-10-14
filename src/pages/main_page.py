@@ -125,6 +125,34 @@ def render_report_config_form(
     )
 
 
+_AUTHOR_JUNK_RE = re.compile(
+    r"(?i)\b(view profile|profile|university|institute|dept\.|department|"
+    r"laborator(?:y|ies)|google|microsoft|meta ai|openai|deepmind)\b"
+)
+
+
+def _clean_author_list(authors: list[str]) -> list[str]:
+    """Filter Exa-scraped author fields to plausible person names.
+
+    Strips UI chrome ("View Profile"), institutions/labs, and junk tokens;
+    splits concatenated names on "View Profile" boundaries; drops empties.
+    """
+    out: list[str] = []
+    for raw in authors:
+        for piece in re.split(r"(?i)view profile", str(raw)):
+            piece = re.sub(r"\s+", " ", piece).strip(" ,;.|")
+            # Truncate at institution/page-chrome boundary rather than
+            # dropping the whole string — "Name University" -> "Name".
+            piece = _AUTHOR_JUNK_RE.split(piece, maxsplit=1)[0].strip(" ,;.|")
+            if not piece or len(piece) < 3 or len(piece) > 80:
+                continue
+            if not re.search(r"[A-Za-z]", piece):
+                continue
+            if piece not in out:
+                out.append(piece)
+    return out
+
+
 def _render_paper_item(
     paper: Paper, is_main_paper: bool = False, wildcard: bool = False
 ) -> LI:
@@ -169,14 +197,19 @@ def _render_paper_item(
 
     paper_json_str = paper.model_dump_json()
 
+    # Exa's scraped author fields leak page chrome ("View Profile",
+    # "SrinivasanPratul P." mashed names, institutions). Keep only plausible
+    # name tokens for display.
+    clean_authors = _clean_author_list(paper.authors or [])
+
     authors_display = "Author(s): N/A"
-    if paper.authors:
+    if clean_authors:
         if (
-            len(paper.authors) > config.config.MAX_AUTHORS_DISPLAY
+            len(clean_authors) > config.config.MAX_AUTHORS_DISPLAY
         ):  # Using config.config
-            authors_display = f"Author(s): {', '.join(paper.authors[: config.config.MAX_AUTHORS_DISPLAY])}, et al."
+            authors_display = f"Author(s): {', '.join(clean_authors[: config.config.MAX_AUTHORS_DISPLAY])}, et al."
         else:
-            authors_display = f"Author(s): {', '.join(paper.authors)}"
+            authors_display = f"Author(s): {', '.join(clean_authors)}"
 
     # Basic styling for the paper item
     item_style = "margin-bottom: 1em; padding: 0.5em; border: 1px solid var(--container-border); position: relative;"
@@ -257,7 +290,7 @@ def _render_paper_item(
         except Exception as exc:
             logger.debug("date_sort_format_failed", paper_id=paper.id, err=str(exc))
 
-    authors_lower = ",".join(a.lower() for a in paper.authors) if paper.authors else ""
+    authors_lower = ",".join(a.lower() for a in clean_authors)
 
     li_attrs: dict[str, Any] = {
         "style": item_style,
@@ -337,7 +370,7 @@ def _render_paper_item(
         style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
         **{
             "data-bib-title": paper.title or "",
-            "data-bib-authors": "; ".join(paper.authors) if paper.authors else "",
+            "data-bib-authors": "; ".join(clean_authors),
             "data-bib-year": bib_year,
             "data-bib-url": str(paper.url) if paper.url else "",
         },
@@ -354,7 +387,7 @@ def _render_paper_item(
             "data-paper-id": paper.id,
             "data-paper-title": paper.title or "",
             "data-paper-url": str(paper.url) if paper.url else "",
-            "data-paper-authors": "; ".join(paper.authors) if paper.authors else "",
+            "data-paper-authors": "; ".join(clean_authors),
         },
     )
 
@@ -804,10 +837,16 @@ def home_page(page_data: SharedPageData) -> Body:
                 name="model_key",
             ),
             Link(
+                "Topics",
+                href="/topics",
+                cls="top-bar-link",
+                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
+            ),
+            Link(
                 "My Reports",
                 href="/reports",
                 cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
+                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);margin-left:6px;",
             ),
             Link(
                 "Library",

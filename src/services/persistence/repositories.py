@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -154,9 +154,11 @@ async def create_report(
     is_url_input: bool,
     report_html: str,
     papers: list[Paper],
+    topic_id: str | None = None,
 ) -> Report:
     report = Report(
         user_id=user_id,
+        topic_id=topic_id,
         title=title[:300] or "Research Report",
         original_query=original_query,
         audience_type=audience_type,
@@ -176,9 +178,9 @@ async def create_report(
                 title=paper.title or "Untitled paper",
                 url=str(paper.url) if paper.url else None,
                 authors={"items": paper.authors or []},
-                published_date=str(paper.published_date)
-                if paper.published_date
-                else None,
+                published_date=(
+                    str(paper.published_date) if paper.published_date else None
+                ),
                 metadata_json={
                     "score": paper.relevance_score,
                     "source": paper.source,
@@ -652,4 +654,165 @@ async def set_saved_paper_notion_chat_count(
     saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
     if saved is not None:
         saved.notion_chat_synced = count
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Topics
+# ---------------------------------------------------------------------------
+
+from services.persistence.models import Topic, TopicPaper  # noqa: E402
+
+
+async def get_or_create_topic(
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    kind: str,
+    canonical_key: str,
+    title: str,
+    seed_query: str = "",
+) -> tuple[Topic, bool]:
+    """Return the topic for (owner, kind, canonical_key), creating it if absent."""
+    topic = await session.scalar(
+        select(Topic).where(
+            Topic.owner_id == owner_id,
+            Topic.kind == kind,
+            Topic.canonical_key == canonical_key,
+        )
+    )
+    if topic is not None:
+        return topic, False
+    topic = Topic(
+        owner_id=owner_id,
+        kind=kind,
+        canonical_key=canonical_key,
+        title=title[:300] or "Untitled topic",
+        seed_query=seed_query,
+    )
+    session.add(topic)
+    try:
+        await session.flush()
+    except IntegrityError:  # concurrent create — fetch the winner
+        await session.rollback()
+        topic = await session.scalar(
+            select(Topic).where(
+                Topic.owner_id == owner_id,
+                Topic.kind == kind,
+                Topic.canonical_key == canonical_key,
+            )
+        )
+        return topic, False
+    return topic, True
+
+
+async def add_topic_papers(
+    session: AsyncSession,
+    *,
+    topic_id: str,
+    papers: list[Paper],
+    source: str = "seed",
+) -> int:
+    """Insert papers into a topic's set, skipping dupes. Returns count added."""
+    existing = set(
+        (
+            await session.execute(
+                select(TopicPaper.paper_id).where(TopicPaper.topic_id == topic_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    added = 0
+    for paper in papers:
+        if not paper.id or paper.id in existing:
+            continue
+        session.add(
+            TopicPaper(
+                topic_id=topic_id,
+                paper_id=paper.id,
+                title=paper.title or "Untitled paper",
+                url=str(paper.url) if paper.url else None,
+                authors={"items": paper.authors or []},
+                published_date=(
+                    str(paper.published_date) if paper.published_date else None
+                ),
+                source=source,
+                metadata_json={
+                    "score": paper.relevance_score,
+                    "source": paper.source,
+                },
+            )
+        )
+        existing.add(paper.id)
+        added += 1
+    return added
+
+
+async def list_topics(
+    session: AsyncSession, *, owner_id: str, limit: int = 50
+) -> list[Topic]:
+    result = await session.execute(
+        select(Topic)
+        .where(Topic.owner_id == owner_id, Topic.archived.is_(False))
+        .order_by(Topic.updated_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def get_topic(
+    session: AsyncSession, *, owner_id: str, topic_id: str
+) -> Topic | None:
+    return await session.scalar(
+        select(Topic).where(Topic.id == topic_id, Topic.owner_id == owner_id)
+    )
+
+
+async def list_topic_papers(
+    session: AsyncSession, *, topic_id: str
+) -> list[TopicPaper]:
+    result = await session.execute(
+        select(TopicPaper)
+        .where(TopicPaper.topic_id == topic_id)
+        .order_by(TopicPaper.added_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_topic_reports(
+    session: AsyncSession, *, topic_id: str, limit: int = 10
+) -> list[Report]:
+    result = await session.execute(
+        select(Report)
+        .where(Report.topic_id == topic_id)
+        .order_by(Report.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def remove_topic_paper(
+    session: AsyncSession, *, topic_id: str, paper_id: str
+) -> bool:
+    from sqlalchemy.engine import CursorResult
+
+    result = cast(
+        "CursorResult[Any]",
+        await session.execute(
+            delete(TopicPaper).where(
+                TopicPaper.topic_id == topic_id, TopicPaper.paper_id == paper_id
+            )
+        ),
+    )
+    await session.commit()
+    return int(result.rowcount or 0) > 0
+
+
+async def set_report_topic(
+    session: AsyncSession, *, report_id: str, topic_id: str
+) -> None:
+    report = await session.get(Report, report_id)
+    if report is not None:
+        report.topic_id = topic_id
         await session.commit()

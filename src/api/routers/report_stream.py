@@ -9,6 +9,7 @@ latency for the user.
 import asyncio
 import html
 import json
+import re
 import time
 import urllib.parse
 import uuid
@@ -45,6 +46,30 @@ _SSE_CHUNK_SIZE = 4000  # chars
 
 # Name of the extra SSE event carrying JSON envelope of each block.
 _JSON_EVENT = "report-block-json"
+
+
+def _clean_generated_title(raw: str | None) -> str:
+    """Normalize an LLM title; '' if it looks like a truncated fragment.
+
+    Observed bad outputs: '(their', '(' — the 30-token cap cutting a
+    parenthesized draft mid-word. We strip TITLE: prefixes, markdown
+    emphasis, quotes, and wrapping parens, then reject anything that still
+    looks like a fragment.
+    """
+    if not raw:
+        return ""
+    t = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", raw.strip())
+    t = t.strip().strip('*"`').strip()
+    # unwrap one level of enclosing parens/quotes/brackets
+    for open_c, close_c in (("(", ")"), ("[", "]"), ("'", "'")):
+        if t.startswith(open_c) and t.endswith(close_c):
+            t = t[1:-1].strip()
+    # reject fragments: unclosed paren, too short, or no letters at all
+    if t.count("(") != t.count(")"):
+        return ""
+    if len(t) < 8 or not re.search(r"[A-Za-z]", t):
+        return ""
+    return t
 
 
 def _report_request_path(token: str) -> Path:
@@ -193,6 +218,30 @@ async def generate_report_incremental(  # noqa: PLR0913
         return HTMLResponse(content=error_html)
     selected_model_key = resolved_model_key
 
+    # Resolve-or-create the topic this report is a snapshot of — the topic is
+    # the unit; the query is only its seed.
+    topic_id: str | None = None
+    if user_id and database_available():
+        from services.persistence.repositories import get_or_create_topic
+        from services.topics.keys import canonical_key_for, detect_topic_kind
+
+        kind = detect_topic_kind(
+            original_query_for_report, is_url_input=bool(is_url_input)
+        )
+        ckey = canonical_key_for(original_query_for_report, kind=kind)
+        if ckey:
+            async for session in session_scope():
+                topic, _created = await get_or_create_topic(
+                    session,
+                    owner_id=user_id,
+                    kind=kind,
+                    canonical_key=ckey,
+                    title=original_query_for_report,
+                    seed_query=original_query_for_report,
+                )
+                topic_id = topic.id
+                await session.commit()
+
     # --- Cache payload and generate token (only after validation) ---
     token = str(uuid.uuid4())
     payload = {
@@ -203,6 +252,7 @@ async def generate_report_incremental(  # noqa: PLR0913
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
         "user_id": user_id,
+        "topic_id": topic_id,
     }
     REPORT_REQUEST_CACHE[token] = payload
     _save_report_request(token, payload)
@@ -577,12 +627,14 @@ async def report_stream(
                         title_result = await rg._generate_report_title(
                             report_body, selected_model_key
                         )
-                        if title_result and title_result.strip():
-                            report_title = title_result.strip()[:300]
+                        cleaned = _clean_generated_title(title_result)
+                        if cleaned:
+                            report_title = cleaned[:300]
                     except Exception:  # noqa: BLE001 - title gen is best-effort
                         pass
 
                     saved = None
+                    topic_id = payload.get("topic_id")
                     async for session in session_scope():
                         saved = await create_report(
                             session,
@@ -595,7 +647,20 @@ async def report_stream(
                             is_url_input=is_url_input_flag,
                             report_html="\n".join(persisted_blocks),
                             papers=papers_list,
+                            topic_id=topic_id,
                         )
+                        if topic_id:
+                            from services.persistence.repositories import (
+                                add_topic_papers,
+                            )
+
+                            await add_topic_papers(
+                                session,
+                                topic_id=topic_id,
+                                papers=papers_list,
+                                source="seed",
+                            )
+                            await session.commit()
                     if saved is not None:
                         yield _format_sse_event(
                             "report-saved",

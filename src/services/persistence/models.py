@@ -59,6 +59,62 @@ class OAuthAccount(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class Topic(Base):
+    """A research topic a user follows — the product's unit of work.
+
+    Papers are a topic's contents (`topic_papers`); reports are versioned
+    snapshots rendered from the paper set. ``owner_id`` follows the owner-key
+    convention (auth ``user_id`` or ``"sess:{session_id}"``), matching
+    ``SavedPaper``/``UserPreference``.
+
+    ``kind`` + ``canonical_key`` are the topic's identity: the query string is
+    only the seed. "INR" and "implicit neural representations" should converge
+    on one subject topic rather than forking.
+    """
+
+    __tablename__ = "topics"
+    __table_args__ = (UniqueConstraint("owner_id", "kind", "canonical_key"),)
+
+    KINDS = ("subject", "paper", "author")
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_id: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    kind: Mapped[str] = mapped_column(String(16), default="subject")
+    canonical_key: Mapped[str] = mapped_column(String(512), index=True)
+    seed_query: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    notion_page_id: Mapped[str | None] = mapped_column(String(64))
+
+    papers: Mapped[list[TopicPaper]] = relationship(back_populates="topic")
+
+
+class TopicPaper(Base):
+    """A paper belonging to a topic's curated set."""
+
+    __tablename__ = "topic_papers"
+    __table_args__ = (UniqueConstraint("topic_id", "paper_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    topic_id: Mapped[str] = mapped_column(
+        ForeignKey("topics.id", ondelete="CASCADE"), index=True
+    )
+    paper_id: Mapped[str] = mapped_column(String(255), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    authors: Mapped[dict] = mapped_column(JSONType, default=dict)
+    published_date: Mapped[str | None] = mapped_column(String(64))
+    # How it joined: 'seed' (initial search), 'saved' (library), 'feed' (v2),
+    # 'manual' (added by hand).
+    source: Mapped[str] = mapped_column(String(16), default="seed")
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    metadata_json: Mapped[dict] = mapped_column(JSONType, default=dict)
+
+    topic: Mapped[Topic] = relationship(back_populates="papers")
+
+
 class Report(Base):
     __tablename__ = "reports"
 
@@ -78,6 +134,11 @@ class Report(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
     notion_page_id: Mapped[str | None] = mapped_column(String(64))
     blog_markdown: Mapped[str | None] = mapped_column(Text)
+    # The topic this report is a snapshot of (SET NULL so deleting a topic
+    # keeps the report history).
+    topic_id: Mapped[str | None] = mapped_column(
+        ForeignKey("topics.id", ondelete="SET NULL"), index=True
+    )
 
     papers: Mapped[list[ReportPaper]] = relationship(back_populates="report")
 
@@ -108,6 +169,11 @@ class ChatThread(Base):
     user_id: Mapped[str] = mapped_column(String(80), index=True)
     report_id: Mapped[str | None] = mapped_column(
         ForeignKey("reports.id", ondelete="CASCADE"), index=True
+    )
+    # Topic chat that survives report re-renders (a report thread keeps
+    # report_id; a topic-level thread keys on this instead).
+    topic_id: Mapped[str | None] = mapped_column(
+        ForeignKey("topics.id", ondelete="CASCADE"), index=True
     )
     paper_id: Mapped[str] = mapped_column(String(255), default="global")
     title: Mapped[str | None] = mapped_column(String(300))
