@@ -138,10 +138,12 @@ async def generate_report_incremental(  # noqa: PLR0913
     is_url_input: bool = Form(False),  # noqa: B008
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
-    from services.auth.session import get_auth_user_id
+    from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope
 
-    user_id = get_auth_user_id(request)
+    # Owner key: auth user_id when signed in, else "sess:{id}" — anonymous
+    # visitors own (and are rate-limited on) their reports too.
+    user_id = prefs_owner_id(request)
     if user_id and database_available():
         from services.persistence.repositories import daily_usage_count
 

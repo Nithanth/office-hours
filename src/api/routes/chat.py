@@ -101,10 +101,10 @@ async def chat_post(
     # persistence keeps the bare "topic" paper_id + report_id thread key.
     state_key = f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
     chat_state.append(state_key, ChatMessage(role="user", content=clean_msg))
-    from services.auth.session import get_auth_user_id
+    from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope
 
-    user_id = get_auth_user_id(request)
+    user_id = prefs_owner_id(request)
     if user_id and database_available():
         try:
             from services.persistence.repositories import append_chat_message
@@ -265,7 +265,7 @@ async def chat_stream(
                 yield "event: message_done\ndata: \n\n"
                 return
 
-            from services.auth.session import get_auth_user_id
+            from services.core.model_prefs import prefs_owner_id
 
             last_tok_t = time.perf_counter()
             while True:
@@ -280,7 +280,7 @@ async def chat_stream(
                             chat_state,
                             paper_id,
                             audience_type,
-                            user_id=get_auth_user_id(request),
+                            user_id=prefs_owner_id(request),
                         )
                         prompt = bundle.prompt
 
@@ -403,13 +403,13 @@ async def chat_stream(
                 chat_state.append(
                     paper_id, ChatMessage(role="assistant", content=assistant_msg)
                 )
-                from services.auth.session import get_auth_user_id
+                from services.core.model_prefs import prefs_owner_id
                 from services.persistence.database import (
                     database_available,
                     session_scope,
                 )
 
-                user_id = get_auth_user_id(request)
+                user_id = prefs_owner_id(request)
                 if user_id and database_available():
                     try:
                         from services.persistence.repositories import (

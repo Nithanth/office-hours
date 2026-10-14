@@ -219,9 +219,9 @@ async def chat_modal(
         if not history:
             # In-memory state is empty (new session/restart) — hydrate from
             # the persisted thread so reopening a chat restores it.
-            from services.auth.session import get_auth_user_id
+            from services.core.model_prefs import prefs_owner_id
 
-            user_id = get_auth_user_id(request)
+            user_id = prefs_owner_id(request)
             if user_id:
                 from services.persistence.database import (
                     database_available,
@@ -392,9 +392,9 @@ async def chat_panel(
     # Last resort for signed-in users: hydrate from the persisted DB thread.
     if not hist and not no_history:
         try:
-            from services.auth.session import get_auth_user_id
+            from services.core.model_prefs import prefs_owner_id
 
-            user_id = get_auth_user_id(request)
+            user_id = prefs_owner_id(request)
             if user_id:
                 from services.persistence.database import (
                     database_available,
@@ -736,9 +736,9 @@ async def viewer_modal(
 async def _topic_papers(request: Request, report_id: str) -> list[tuple[str, str]]:
     """Return [(url, title)] for the signed-in user's report, title fallback to url."""
     try:
-        from services.auth.session import get_auth_user_id
+        from services.core.model_prefs import prefs_owner_id
 
-        user_id = get_auth_user_id(request)
+        user_id = prefs_owner_id(request)
         if not user_id:
             return []
         from sqlalchemy import select

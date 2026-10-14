@@ -42,8 +42,6 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     last_login_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
-    reports: Mapped[list[Report]] = relationship(back_populates="user")
-
 
 class OAuthAccount(Base):
     __tablename__ = "oauth_accounts"
@@ -65,9 +63,10 @@ class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
+    # Owner key, not a users.id FK: the auth user_id when signed in, otherwise
+    # "sess:{session_id}" so anonymous visitors own their reports (same
+    # convention as UserPreference.owner_id / SavedPaper.owner_id).
+    user_id: Mapped[str] = mapped_column(String(80), index=True)
     title: Mapped[str] = mapped_column(String(300))
     original_query: Mapped[str] = mapped_column(Text)
     audience_type: Mapped[str] = mapped_column(String(64))
@@ -80,7 +79,6 @@ class Report(Base):
     notion_page_id: Mapped[str | None] = mapped_column(String(64))
     blog_markdown: Mapped[str | None] = mapped_column(Text)
 
-    user: Mapped[User] = relationship(back_populates="reports")
     papers: Mapped[list[ReportPaper]] = relationship(back_populates="report")
 
 
@@ -106,9 +104,8 @@ class ChatThread(Base):
     __table_args__ = (UniqueConstraint("user_id", "report_id", "paper_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
+    # Owner key (see Report.user_id): auth user_id or "sess:{session_id}".
+    user_id: Mapped[str] = mapped_column(String(80), index=True)
     report_id: Mapped[str | None] = mapped_column(
         ForeignKey("reports.id", ondelete="CASCADE"), index=True
     )
@@ -228,9 +225,9 @@ class UsageEvent(Base):
     __tablename__ = "usage_events"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), index=True
-    )
+    # Owner key (see Report.user_id), nullable: auth user_id, "sess:{id}", or
+    # None for unattributed events.
+    user_id: Mapped[str | None] = mapped_column(String(80), index=True)
     event_type: Mapped[str] = mapped_column(String(64), index=True)
     provider: Mapped[str | None] = mapped_column(String(64))
     metadata_json: Mapped[dict] = mapped_column(JSONType, default=dict)
