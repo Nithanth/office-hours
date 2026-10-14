@@ -59,6 +59,7 @@ async def generate_report_notes(
     report_text: str = Form(...),
     output_format: Literal["txt", "md", "docx"] = Form("txt"),
     paper_id: str | None = Form(None),  # deprecated, kept for backward compat
+    report_id: str | None = Form(None),
 ) -> Response:
     """Generate study notes from *report_text* and recent chat history.
 
@@ -110,6 +111,40 @@ async def generate_report_notes(
     except RuntimeError as err:
         logger.error("notes_generation_error", error=str(err))
         raise HTTPException(status_code=500, detail=str(err)) from err
+
+    # Persist markdown notes on the parent topic (workspace scope) when the
+    # report resolves to one. Best-effort: download still succeeds if the
+    # write fails.
+    if report_id and output_format == "md":
+        try:
+            from services.core.model_prefs import prefs_owner_id
+            from services.persistence.database import (
+                database_available,
+                session_scope,
+            )
+            from services.persistence.repositories import (
+                get_report_topic_id,
+                set_topic_notes,
+            )
+
+            owner = prefs_owner_id(request)
+            if owner and database_available():
+                text_content = (
+                    content.decode("utf-8", errors="replace")
+                    if isinstance(content, (bytes, bytearray))
+                    else str(content)
+                )
+                async for _session in session_scope():
+                    _topic_id = await get_report_topic_id(_session, report_id=report_id)
+                    if _topic_id:
+                        await set_topic_notes(
+                            _session,
+                            owner_id=str(owner),
+                            topic_id=_topic_id,
+                            markdown=text_content,
+                        )
+        except Exception:  # noqa: BLE001 - notes persistence is best-effort
+            logger.warning("notes_persist_failed", report_id=report_id)
 
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content, media_type=media_type, headers=headers)
@@ -597,7 +632,11 @@ async def _run_blog_generation(
                     database_available,
                     session_scope,
                 )
-                from services.persistence.repositories import set_report_blog
+                from services.persistence.repositories import (
+                    get_report_topic_id,
+                    set_report_blog,
+                    set_topic_blog,
+                )
 
                 if database_available():
                     async for session in session_scope():
@@ -607,6 +646,18 @@ async def _run_blog_generation(
                             report_id=entry.report_id,
                             markdown=blog_md,
                         )
+                        # Topic is the workspace: the canonical blog also lives
+                        # there; the report row keeps the frozen snapshot copy.
+                        topic_id = await get_report_topic_id(
+                            session, report_id=entry.report_id
+                        )
+                        if topic_id:
+                            await set_topic_blog(
+                                session,
+                                owner_id=entry.user_id,
+                                topic_id=topic_id,
+                                markdown=blog_md,
+                            )
             except (
                 Exception
             ) as persist_err:  # noqa: BLE001 – persistence is best-effort

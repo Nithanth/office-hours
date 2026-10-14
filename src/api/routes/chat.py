@@ -113,9 +113,18 @@ async def chat_post(
     user_id = prefs_owner_id(request)
     if user_id and database_available():
         try:
-            from services.persistence.repositories import append_chat_message
+            from services.persistence.repositories import (
+                append_chat_message,
+                get_report_topic_id,
+            )
 
             async for db_session in session_scope():
+                # Paper chats on a report inherit its topic so history
+                # follows the workspace across snapshots.
+                if topic_id is None and report_id:
+                    topic_id = await get_report_topic_id(
+                        db_session, report_id=report_id
+                    )
                 await append_chat_message(
                     db_session,
                     user_id=user_id,
@@ -432,9 +441,15 @@ async def chat_stream(
                     try:
                         from services.persistence.repositories import (
                             append_chat_message,
+                            get_report_topic_id,
                         )
 
                         async for db_session in session_scope():
+                            persist_topic_id = topic_id
+                            if persist_topic_id is None and report_id:
+                                persist_topic_id = await get_report_topic_id(
+                                    db_session, report_id=report_id
+                                )
                             await append_chat_message(
                                 db_session,
                                 user_id=user_id,
@@ -446,7 +461,7 @@ async def chat_stream(
                                 ),
                                 role="assistant",
                                 content=assistant_msg,
-                                topic_id=topic_id,
+                                topic_id=persist_topic_id,
                             )
                     except Exception as exc:  # noqa: BLE001
                         log.warning(
