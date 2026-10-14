@@ -775,10 +775,47 @@ def home_page(page_data: SharedPageData) -> Body:
             is_url_search=False,  # Assume not a URL search on initial load
             papers_list=page_data.search_results,
         )
-    else:  # No search performed yet, or search_results is None
+    else:  # No search performed yet — first-run onboarding panel
+        example_queries = [
+            "implicit neural representations",
+            "papers by Yann LeCun",
+            "https://arxiv.org/abs/1706.03762",
+        ]
         results_display_content = Div(
-            P("▒░ results will appear here ░▒"),
+            P(
+                "A workbench for research questions.",
+                style="font-size:1.15rem;font-weight:600;margin:0 0 0.4rem;",
+            ),
+            P(
+                "Search a topic, a paper link, or an author — Office Hours builds "
+                "a living topic page around it: the paper set, streamed reports, "
+                "notes, a blog, and a chat that knows all of them.",
+                style="font-size:0.9rem;color:var(--fg-muted,#888);max-width:36rem;margin:0 auto 0.9rem;",
+            ),
+            Div(
+                Span("Try ", style="font-size:0.85rem;color:var(--fg-muted,#888);"),
+                *[
+                    BUTTON(
+                        q,
+                        type="button",
+                        cls="oh-hero-chip",
+                        data_q=q,
+                        style="font-size:0.8rem;padding:3px 10px;margin:0 3px;border:1px solid #666;border-radius:999px;background:var(--container-bg);color:var(--fg);cursor:pointer;",
+                    )
+                    for q in example_queries
+                ],
+            ),
+            Script(
+                "document.addEventListener('click',function(ev){"
+                "var b=ev.target.closest('.oh-hero-chip');if(!b)return;"
+                "var i=document.getElementById('search_query');if(!i)return;"
+                "i.value=b.getAttribute('data-q');"
+                "var f=document.getElementById('paper-search-form');"
+                "if(f){f.requestSubmit();}else{i.focus();}"
+                "});"
+            ),
             cls="empty-state",
+            style="padding:1.5rem 1rem;",
         )
 
     return Body(
