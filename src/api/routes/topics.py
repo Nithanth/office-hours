@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import json
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -32,6 +33,8 @@ def _shell(title: str, body: str) -> str:
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/chat.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"></script>
+  <script src="/static/js/report.js?v=2" defer></script>
   <style>
     .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .topic-card{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -156,10 +159,14 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
   <a class="btn-secondary" href="/" style="text-decoration:none;">+ New report</a>
+  <button type="button" class="btn-secondary" title="Re-render the report against this topic's current papers"
+    hx-post="/topics/{_esc(topic.id)}/report" hx-target="#topic-report-out"
+    hx-swap="innerHTML" hx-disabled-elt="this">Refresh report</button>
   <button type="button" class="btn-secondary"
     hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
     hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
 </div>
+<div id="topic-report-out"></div>
 <div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
@@ -222,6 +229,67 @@ async def api_create_topic(request: Request, query: str = Form(...)) -> JSONResp
         {"id": topic.id, "kind": topic.kind, "created": created},
         status_code=201 if created else 200,
     )
+
+
+@router.post("/topics/{topic_id}/report", response_class=HTMLResponse)
+async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
+    """Re-render a report snapshot against the topic's current paper set.
+
+    Builds the same payload the generate form would submit (papers = the
+    topic's set, query = the topic's seed), then returns the SSE skeleton —
+    the stream links the new snapshot to the topic.
+    """
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import get_topic, list_topic_papers
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        rows = await list_topic_papers(session, topic_id=topic.id)
+
+    if not rows:
+        raise HTTPException(
+            status_code=400, detail="This topic has no papers to synthesize."
+        )
+
+    papers_json = json.dumps(
+        [
+            {
+                "id": r.paper_id,
+                "title": r.title,
+                "url": r.url or "",
+                "authors": (
+                    (r.authors or {}).get("items", [])
+                    if isinstance(r.authors, dict)
+                    else (r.authors or [])
+                ),
+                "published_date": r.published_date or "",
+            }
+            for r in rows
+        ]
+    )
+
+    from api.routers.report_stream import (
+        _report_skeleton_html,
+        cache_report_request,
+    )
+
+    token = cache_report_request(
+        {
+            "original_query": topic.seed_query or topic.title,
+            "selected_papers_json": [papers_json],
+            "audience_type": "technical",
+            "summary_size": "M",
+            "selected_model_key": "",
+            "is_url_input": topic.kind == "paper",
+            "user_id": owner,
+            "topic_id": topic.id,
+        }
+    )
+    return HTMLResponse(_report_skeleton_html(token))
 
 
 @router.post("/api/topics/{topic_id}/papers/{paper_id:path}/remove")
