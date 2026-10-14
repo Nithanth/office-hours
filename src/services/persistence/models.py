@@ -87,6 +87,10 @@ class Topic(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     notion_page_id: Mapped[str | None] = mapped_column(String(64))
+    # Topic-scoped workspace outputs — one canonical blog + notes per topic;
+    # snapshots keep their own frozen copy on reports.blog_markdown.
+    blog_markdown: Mapped[str | None] = mapped_column(Text)
+    notes_markdown: Mapped[str | None] = mapped_column(Text)
 
     papers: Mapped[list[TopicPaper]] = relationship(back_populates="topic")
 

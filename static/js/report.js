@@ -335,6 +335,7 @@ function handleNotesClick(ev) {
     const fd = new FormData();
     fd.append("report_text", cleaned);
     fd.append("output_format", format);
+    if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
 
     fetch("/generate-report-notes", { method: "POST", body: fd })
       .then((r) => {

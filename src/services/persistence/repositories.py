@@ -824,3 +824,34 @@ async def set_report_topic(
     if report is not None:
         report.topic_id = topic_id
         await session.commit()
+
+
+async def set_topic_blog(
+    session: AsyncSession, *, owner_id: str, topic_id: str, markdown: str
+) -> Topic | None:
+    """Persist the canonical blog on the topic (workspace scope)."""
+    topic = await get_topic(session, owner_id=owner_id, topic_id=topic_id)
+    if topic is None:
+        return None
+    topic.blog_markdown = markdown
+    await session.commit()
+    await session.refresh(topic)
+    return topic
+
+
+async def set_topic_notes(
+    session: AsyncSession, *, owner_id: str, topic_id: str, markdown: str
+) -> Topic | None:
+    """Persist generated study notes on the topic (workspace scope)."""
+    topic = await get_topic(session, owner_id=owner_id, topic_id=topic_id)
+    if topic is None:
+        return None
+    topic.notes_markdown = markdown
+    await session.commit()
+    await session.refresh(topic)
+    return topic
+
+
+async def get_report_topic_id(session: AsyncSession, *, report_id: str) -> str | None:
+    """Resolve a report to its parent topic id (None if unlinked/missing)."""
+    return await session.scalar(select(Report.topic_id).where(Report.id == report_id))

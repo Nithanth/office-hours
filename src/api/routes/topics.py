@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from urllib.parse import quote, quote_plus
 
+import markdown as _markdown
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
@@ -44,10 +46,12 @@ def _shell(title: str, body: str) -> str:
   <link rel="stylesheet" href="/static/css/forms.css">
   <link rel="stylesheet" href="/static/css/modal.css">
   <link rel="stylesheet" href="/static/css/chat.css">
+  <link rel="stylesheet" href="/static/css/blog.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"></script>
   <script src="/static/js/report.js?v=2" defer></script>
   <script src="/static/js/main.js?v=2" type="module"></script>
+  <script src="/static/js/blog-view.js?v=1" defer></script>
   <style>
     .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .topic-card{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -66,6 +70,10 @@ def _shell(title: str, body: str) -> str:
     .paper-row .pm{{font-size:0.78rem;color:var(--fg-muted,#888);margin-top:0.2rem;}}
     .topic-actions a,.topic-actions button{{margin-right:0.5rem;}}
     .empty-note{{color:var(--fg-muted,#888);padding:2rem 0;text-align:center;}}
+    .topic-section{{margin-top:1.5rem;}}
+    .topic-section h3{{font-size:0.95rem;margin-bottom:0.5rem;}}
+    .topic-section .blog-article{{max-height:480px;overflow-y:auto;
+      border:1px solid #444;border-radius:8px;padding:1rem;}}
   </style>
 </head>
 <body>
@@ -169,6 +177,52 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         )
     papers_html = "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
 
+    # Render markdown server-side so a CDN hiccup can never surface raw
+    # markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
+    # HTML — strip active-content tags and on* handlers before parsing.
+    _DANGEROUS = re.compile(
+        r"(?is)</?\s*(script|iframe|object|embed|form|style|link|meta|base)[^>]*>"
+    )
+    _HANDLERS = re.compile(r"(?is)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
+    _JS_SCHEME = re.compile(r"(?i)javascript\s*:")
+
+    def _md_to_html(md: str) -> str:
+        safe = _JS_SCHEME.sub("", _HANDLERS.sub("", _DANGEROUS.sub("", md)))
+        rendered: str = _markdown.markdown(
+            safe, extensions=["extra", "sane_lists"], output_format="html"
+        )
+        return rendered
+
+    def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> str:
+        if not md:
+            return (
+                f'<div class="topic-section"><h3>{heading}</h3>'
+                f'<div class="topic-meta">{empty_msg}</div></div>'
+            )
+        return (
+            f'<div class="topic-section"><h3>{heading}</h3>'
+            f'<div class="blog-scope">'
+            f'<article id="{sec_id}" class="blog-article">{_md_to_html(md)}</article>'
+            f"</div>"
+            f'<script>document.addEventListener("DOMContentLoaded",function(){{'
+            f"var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){{"
+            f'r.renderKaTeX(document.getElementById("{sec_id}"));'
+            f"}});}});</script></div>"
+        )
+
+    blog_html = _md_section(
+        "topic-blog",
+        "Blog",
+        topic.blog_markdown,
+        "No blog yet — generate one from a report.",
+    )
+    notes_html = _md_section(
+        "topic-notes",
+        "Notes",
+        topic.notes_markdown,
+        "No notes yet — generate study notes from a report.",
+    )
+
     report_rows = []
     for r in reports:
         report_rows.append(
@@ -194,7 +248,9 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>
-{papers_html}"""
+{papers_html}
+{blog_html}
+{notes_html}"""
     return HTMLResponse(_shell(topic.title, body))
 
 
