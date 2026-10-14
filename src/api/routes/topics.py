@@ -156,7 +156,11 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
   <a class="btn-secondary" href="/" style="text-decoration:none;">+ New report</a>
+  <button type="button" class="btn-secondary"
+    hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
+    hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
 </div>
+<div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>

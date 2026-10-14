@@ -137,6 +137,7 @@ async def chat_modal(
     | None = Query(None, description="(Optional) Audience type key from toolbar"),
     model_key: str | None = Query(None, description="(Optional) Selected model key"),
     report_id: str | None = Query(None, description="(Optional) saved report id"),
+    topic_id: str | None = Query(None, description="(Optional) topic id"),
 ) -> HTMLResponse:  # noqa: D401 - pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
@@ -214,9 +215,13 @@ async def chat_modal(
         )  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
-        # Topic chats share state per report: "topic:{report_id}"
+        # Topic chats share state per topic, falling back to per-report.
         history_key = (
-            f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
+            f"topic:{topic_id}"
+            if topic_id
+            else (
+                f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
+            )
         )
         history = get_chat_state(session_id).get_conversation(history_key)
         if not history:
@@ -246,6 +251,7 @@ async def chat_modal(
                                 if history_key.startswith("topic:")
                                 else paper_id
                             ),
+                            topic_id=topic_id,
                         )
                         persisted = [
                             ChatMessage(role=r.role, content=r.content) for r in rows
@@ -308,9 +314,19 @@ async def chat_modal(
         if report_id
         else ""
     )
+    hidden_topic = (
+        f"<input type='hidden' id='hidden-topic-id' name='topic_id' value='{html.escape(topic_id)}'/>"
+        if topic_id
+        else ""
+    )
     modal_html = modal_html.replace(
         "<textarea",
-        hidden_input + hidden_aud + hidden_model + hidden_report + "<textarea",
+        hidden_input
+        + hidden_aud
+        + hidden_model
+        + hidden_report
+        + hidden_topic
+        + "<textarea",
     )
 
     # Replace underscored HX attributes with hyphenated versions expected by HTMX
@@ -324,7 +340,7 @@ async def chat_modal(
     # Add hx-include for hidden paper field on the chat form
     modal_html = modal_html.replace(
         'hx-post="/chat"',
-        'hx-post="/chat" hx-include="#hidden-paper-id,#hidden-audience-type,#hidden-model-key,#hidden-report-id"',
+        'hx-post="/chat" hx-include="#hidden-paper-id,#hidden-audience-type,#hidden-model-key,#hidden-report-id,#hidden-topic-id"',
     )
 
     # If we have a URL, make the H2 title a hyperlink in the rendered HTML
