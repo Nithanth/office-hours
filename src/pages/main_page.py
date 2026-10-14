@@ -804,10 +804,16 @@ def home_page(page_data: SharedPageData) -> Body:
                 name="model_key",
             ),
             Link(
+                "Topics",
+                href="/topics",
+                cls="top-bar-link",
+                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
+            ),
+            Link(
                 "My Reports",
                 href="/reports",
                 cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
+                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);margin-left:6px;",
             ),
             Link(
                 "Library",

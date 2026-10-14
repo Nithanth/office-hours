@@ -193,6 +193,30 @@ async def generate_report_incremental(  # noqa: PLR0913
         return HTMLResponse(content=error_html)
     selected_model_key = resolved_model_key
 
+    # Resolve-or-create the topic this report is a snapshot of — the topic is
+    # the unit; the query is only its seed.
+    topic_id: str | None = None
+    if user_id and database_available():
+        from services.persistence.repositories import get_or_create_topic
+        from services.topics.keys import canonical_key_for, detect_topic_kind
+
+        kind = detect_topic_kind(
+            original_query_for_report, is_url_input=bool(is_url_input)
+        )
+        ckey = canonical_key_for(original_query_for_report, kind=kind)
+        if ckey:
+            async for session in session_scope():
+                topic, _created = await get_or_create_topic(
+                    session,
+                    owner_id=user_id,
+                    kind=kind,
+                    canonical_key=ckey,
+                    title=original_query_for_report,
+                    seed_query=original_query_for_report,
+                )
+                topic_id = topic.id
+                await session.commit()
+
     # --- Cache payload and generate token (only after validation) ---
     token = str(uuid.uuid4())
     payload = {
@@ -203,6 +227,7 @@ async def generate_report_incremental(  # noqa: PLR0913
         "selected_model_key": selected_model_key,
         "is_url_input": is_url_input,
         "user_id": user_id,
+        "topic_id": topic_id,
     }
     REPORT_REQUEST_CACHE[token] = payload
     _save_report_request(token, payload)
@@ -583,6 +608,7 @@ async def report_stream(
                         pass
 
                     saved = None
+                    topic_id = payload.get("topic_id")
                     async for session in session_scope():
                         saved = await create_report(
                             session,
@@ -595,7 +621,20 @@ async def report_stream(
                             is_url_input=is_url_input_flag,
                             report_html="\n".join(persisted_blocks),
                             papers=papers_list,
+                            topic_id=topic_id,
                         )
+                        if topic_id:
+                            from services.persistence.repositories import (
+                                add_topic_papers,
+                            )
+
+                            await add_topic_papers(
+                                session,
+                                topic_id=topic_id,
+                                papers=papers_list,
+                                source="seed",
+                            )
+                            await session.commit()
                     if saved is not None:
                         yield _format_sse_event(
                             "report-saved",

@@ -199,6 +199,7 @@ from api.routes import report as _report_routes
 from api.routes import search as _search_routes
 from api.routes import settings_routes as _settings_routes
 from api.routes import similar as _similar_routes
+from api.routes import topics as _topics_routes
 
 for _r in (
     _chat_routes.router,
@@ -219,6 +220,7 @@ for _r in (
     _report_notes_router.router,
     _metadata_routes.router,
     _settings_routes.router,
+    _topics_routes.router,
 ):
     app.include_router(_r)
 
