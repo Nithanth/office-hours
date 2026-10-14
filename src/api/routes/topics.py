@@ -35,6 +35,7 @@ def _shell(title: str, body: str) -> str:
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"></script>
   <script src="/static/js/report.js?v=2" defer></script>
+  <script src="/static/js/main.js?v=2" type="module"></script>
   <style>
     .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .topic-card{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -255,8 +256,10 @@ async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
             status_code=400, detail="This topic has no papers to synthesize."
         )
 
-    papers_json = json.dumps(
-        [
+    # report_stream expects one Paper-JSON string per list element —
+    # Paper.model_validate_json per item.
+    papers_json_items = [
+        json.dumps(
             {
                 "id": r.paper_id,
                 "title": r.title,
@@ -268,9 +271,9 @@ async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
                 ),
                 "published_date": r.published_date or "",
             }
-            for r in rows
-        ]
-    )
+        )
+        for r in rows
+    ]
 
     from api.routers.report_stream import (
         _report_skeleton_html,
@@ -280,7 +283,7 @@ async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
     token = cache_report_request(
         {
             "original_query": topic.seed_query or topic.title,
-            "selected_papers_json": [papers_json],
+            "selected_papers_json": papers_json_items,
             "audience_type": "technical",
             "summary_size": "M",
             "selected_model_key": "",

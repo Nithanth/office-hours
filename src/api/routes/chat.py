@@ -145,7 +145,6 @@ async def chat_post(
     # 2. Create a unique container for the assistant's streaming response (raw HTML)
     assistant_response_id = f"assistant-response-{uuid4()}"
     # Full stream URL (used by JS) includes additional audience/model params.
-    safe_paper_id = _urlparse.quote_plus(paper_id)
     stream_url = f"/chat/stream?paper_id={_urlparse.quote_plus(state_key)}&audience_type={_urlparse.quote_plus(audience_type)}"
     if model_key:
         stream_url += f"&model_key={_urlparse.quote_plus(model_key)}"
@@ -154,8 +153,15 @@ async def chat_post(
     if topic_id:
         stream_url += f"&topic_id={_urlparse.quote_plus(topic_id)}"
 
-    # Minimal URL expected by legacy tests for HTMX sse-connect attr – only paper_id.
-    legacy_sse_url = f"/chat/stream?paper_id={safe_paper_id}"
+    # Minimal URL expected by legacy tests for HTMX sse-connect attr — uses the
+    # state key so topic chats resolve 'topic:{topic_id}' and carries the ids
+    # the stream needs for persistence. For plain paper chats state_key ==
+    # paper_id, so the URL shape is unchanged.
+    legacy_sse_url = (
+        f"/chat/stream?paper_id={_urlparse.quote_plus(state_key)}"
+        + (f"&report_id={_urlparse.quote_plus(report_id)}" if report_id else "")
+        + (f"&topic_id={_urlparse.quote_plus(topic_id)}" if topic_id else "")
+    )
 
     assistant_response_container_html = (
         f'<div id="{assistant_response_id}" class="assistant-message typing" '

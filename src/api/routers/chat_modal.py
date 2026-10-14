@@ -162,7 +162,9 @@ async def chat_modal(
     if paper_id == "global":
         modal_title = "Research Assistant"
     else:
-        if paper_service:  # Attempt to fetch metadata for nicer header
+        # Attempt metadata for nicer header — skip non-paper ids ('topic',
+        # 'topic:*') which have no single-paper metadata.
+        if paper_service and paper_id != "topic" and not paper_id.startswith("topic:"):
             try:
                 paper = await paper_service.get_paper_metadata(paper_id)
             except Exception as exc:  # noqa: BLE001 - best effort

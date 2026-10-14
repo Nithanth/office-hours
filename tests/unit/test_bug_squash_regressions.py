@@ -50,9 +50,12 @@ async def test_report_stream_claims_token_on_first_connect(
     await report_stream.report_stream(request=None, token="tok")  # type: ignore[arg-type]
     assert report_stream._load_report_request("tok") is None
 
-    # A reconnect (post-done or mid-run) must not re-run generation.
+    # A reconnect (post-done or mid-run) must not re-run generation — the
+    # claimed token returns a terminal SSE (error block + done) so the
+    # client's reconnect loop stops instead of 204-looping forever.
     resp = await report_stream.report_stream(request=None, token="tok")  # type: ignore[arg-type]
-    assert resp.status_code == 204
+    assert resp.status_code == 200
+    assert resp.media_type == "text/event-stream"
 
 
 def test_paper_pdf_links_skips_legal_boilerplate() -> None:

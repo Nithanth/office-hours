@@ -311,9 +311,20 @@ async def report_stream(
 
     payload = _load_report_request(token)
     if payload is None:
-        # Unknown or expired token - send 204 so EventSource treats it as closed and
-        # does NOT exponentially retry (avoids endless 404 log spam).
-        return Response(status_code=204)
+        # Unknown, expired, or already-claimed token — emit a terminal SSE so
+        # the reconnect loop stops (the 'done' event swaps the connector out
+        # of the DOM) and the spinner resolves to a visible message instead
+        # of hanging forever on 204s.
+        async def _terminal_stream() -> AsyncIterator[str]:
+            yield _format_sse_event(
+                "report-block",
+                "<div class='alert-error' style='color:#d9534f;'>"
+                "Report already generated or this link expired — "
+                "refresh the page to see the saved report.</div>",
+            )
+            yield _format_sse_event("done")
+
+        return StreamingResponse(_terminal_stream(), media_type="text/event-stream")
 
     # Cancel the safety-cleanup timer now that the stream has connected.
     safety_task = _cleanup_tasks.pop(token, None)
