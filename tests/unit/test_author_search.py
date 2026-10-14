@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from urllib.error import HTTPError
+
+import pytest
 
 from services.paper.metadata.author_search import (
     AuthorPaper,
     AuthorProfile,
     AuthorResult,
+    S2UnavailableError,
     get_author_papers,
     get_author_profile,
     get_paper_url,
     search_authors,
 )
+
+
+def _http_error(code: int) -> HTTPError:
+    return HTTPError("http://x", code, "err", {}, None)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -205,10 +214,17 @@ class TestSearchAuthors:
         mock_get.assert_not_called()
 
     @patch("services.paper.metadata.author_search._s2_get")
-    def test_api_error_returns_empty(self, mock_get):
+    def test_api_error_raises_unavailable(self, mock_get):
+        """Transport failures must surface, not masquerade as zero results."""
         mock_get.side_effect = Exception("Network error")
-        results = search_authors("Test Author")
-        assert results == []
+        with pytest.raises(S2UnavailableError):
+            search_authors("Test Author")
+
+    @patch("services.paper.metadata.author_search._s2_get")
+    def test_rate_limit_raises_unavailable(self, mock_get):
+        mock_get.side_effect = _http_error(429)
+        with pytest.raises(S2UnavailableError):
+            search_authors("Test Author")
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_empty_response(self, mock_get):
@@ -275,10 +291,10 @@ class TestGetAuthorPapers:
         assert papers[0].year == 2015
 
     @patch("services.paper.metadata.author_search._s2_get")
-    def test_api_error_returns_empty(self, mock_get):
+    def test_api_error_raises_unavailable(self, mock_get):
         mock_get.side_effect = Exception("Timeout")
-        papers = get_author_papers("1234567")
-        assert papers == []
+        with pytest.raises(S2UnavailableError):
+            get_author_papers("1234567")
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_papers_sorted_by_citations(self, mock_get):
@@ -348,9 +364,15 @@ class TestGetAuthorProfile:
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_author_not_found(self, mock_get):
-        mock_get.side_effect = Exception("404 Not Found")
+        mock_get.side_effect = _http_error(404)
         profile = get_author_profile("nonexistent")
         assert profile is None
+
+    @patch("services.paper.metadata.author_search._s2_get")
+    def test_profile_error_raises_unavailable(self, mock_get):
+        mock_get.side_effect = _http_error(429)
+        with pytest.raises(S2UnavailableError):
+            get_author_profile("1234567")
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_profile_type(self, mock_get):

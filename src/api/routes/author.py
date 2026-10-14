@@ -22,6 +22,7 @@ from pages.main_page import render_search_results
 from services.core import model_prefs
 from services.paper.metadata.author_search import (
     AuthorResult,
+    S2UnavailableError,
     get_author_profile,
     get_paper_url,
     search_authors,
@@ -59,8 +60,18 @@ def _render_author_card(author: AuthorResult) -> str:
     )
 
 
-def _render_author_list(authors: list[AuthorResult], query: str) -> str:
+def _render_author_list(
+    authors: list[AuthorResult], query: str, unavailable: bool = False
+) -> str:
     """Render the full author search results panel."""
+    if unavailable:
+        return (
+            "<div style='padding:24px;text-align:center;border:1px dashed var(--oh-border,#444);"
+            "border-radius:8px;margin-top:12px;'>"
+            "<p style='opacity:0.7;'>Author search is temporarily unavailable — "
+            "Semantic Scholar is rate limiting requests. "
+            f'Try "{html.escape(query)}" again in a minute.</p></div>'
+        )
     if not authors:
         return (
             "<div style='padding:24px;text-align:center;border:1px dashed var(--oh-border,#444);"
@@ -108,6 +119,15 @@ async def author_search(
 
     try:
         authors = await asyncio.to_thread(search_authors, query, limit=10, timeout=10)
+    except S2UnavailableError as exc:
+        logger.warning("author_search_unavailable", error=str(exc))
+        return HTMLResponse(
+            _render_author_list([], query, unavailable=True),
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
+        )
     except Exception as exc:
         logger.exception("author_search_failed", error=str(exc))
         return HTMLResponse(

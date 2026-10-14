@@ -65,6 +65,11 @@ class AuthorProfile(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class S2UnavailableError(RuntimeError):
+    """Semantic Scholar request failed (rate limit / network) — distinct from
+    a genuine zero-result response."""
+
+
 def _get_headers() -> dict[str, str]:
     """Build request headers, including API key if configured."""
     headers: dict[str, str] = {
@@ -135,8 +140,10 @@ def search_authors(
             },
             timeout=timeout,
         )
-    except Exception:
-        return []
+    except Exception as exc:
+        if isinstance(exc, HTTPError) and exc.code == 429:
+            logger.warning("s2_rate_limited", query=query)
+        raise S2UnavailableError(str(exc)) from exc
 
     results: list[AuthorResult] = []
     for item in data.get("data", []):
@@ -190,8 +197,10 @@ def get_author_papers(
             params={"fields": fields, "limit": str(min(limit, 1000))},
             timeout=timeout,
         )
-    except Exception:
-        return []
+    except Exception as exc:
+        if isinstance(exc, HTTPError) and exc.code == 429:
+            logger.warning("s2_rate_limited", author_id=author_id)
+        raise S2UnavailableError(str(exc)) from exc
 
     papers: list[AuthorPaper] = []
     for item in data.get("data", []):
@@ -232,8 +241,14 @@ def get_author_profile(
             params={"fields": fields},
             timeout=timeout,
         )
-    except Exception:
-        return None
+    except HTTPError as exc:
+        if exc.code == 404:
+            return None
+        if exc.code == 429:
+            logger.warning("s2_rate_limited", author_id=author_id)
+        raise S2UnavailableError(str(exc)) from exc
+    except Exception as exc:
+        raise S2UnavailableError(str(exc)) from exc
 
     author = AuthorResult(
         author_id=str(data.get("authorId", author_id)),
@@ -245,7 +260,11 @@ def get_author_profile(
         h_index=data.get("hIndex", 0) or 0,
     )
 
-    papers = get_author_papers(author_id, limit=paper_limit, timeout=timeout)
+    try:
+        papers = get_author_papers(author_id, limit=paper_limit, timeout=timeout)
+    except S2UnavailableError:
+        # Degrade to an empty paper list rather than failing the whole profile.
+        papers = []
 
     return AuthorProfile(author=author, papers=papers)
 

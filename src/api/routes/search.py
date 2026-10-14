@@ -196,12 +196,20 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         author_name = _detect_author_query(input_query_stripped)
         if author_name:
             from api.routes.author import _render_author_list
-            from services.paper.metadata.author_search import search_authors
+            from services.paper.metadata.author_search import (
+                S2UnavailableError,
+                search_authors,
+            )
 
+            unavailable = False
             try:
                 authors = await asyncio.to_thread(
                     search_authors, author_name, limit=10, timeout=10
                 )
+            except S2UnavailableError as exc:
+                logger.warning("author_intent_unavailable", error=str(exc))
+                authors = []
+                unavailable = True
             except Exception as exc:  # noqa: BLE001 - fall back to topic search
                 logger.warning("author_intent_failed", error=str(exc))
                 authors = []
@@ -210,7 +218,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 input_query_stripped,
             )
             return HTMLResponse(
-                content=banner + _render_author_list(authors, author_name),
+                content=banner
+                + _render_author_list(authors, author_name, unavailable=unavailable),
                 headers={
                     "HX-Retarget": "#search-results-container",
                     "HX-Reswap": "innerHTML",
