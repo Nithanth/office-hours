@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from urllib.parse import quote, quote_plus
 
+import markdown as _markdown
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
@@ -175,6 +177,22 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         )
     papers_html = "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
 
+    # Render markdown server-side so a CDN hiccup can never surface raw
+    # markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
+    # HTML — strip active-content tags and on* handlers before parsing.
+    _DANGEROUS = re.compile(
+        r"(?is)</?\s*(script|iframe|object|embed|form|style|link|meta|base)[^>]*>"
+    )
+    _HANDLERS = re.compile(r"(?is)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
+    _JS_SCHEME = re.compile(r"(?i)javascript\s*:")
+
+    def _md_to_html(md: str) -> str:
+        safe = _JS_SCHEME.sub("", _HANDLERS.sub("", _DANGEROUS.sub("", md)))
+        rendered: str = _markdown.markdown(
+            safe, extensions=["extra", "sane_lists"], output_format="html"
+        )
+        return rendered
+
     def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> str:
         if not md:
             return (
@@ -184,14 +202,12 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         return (
             f'<div class="topic-section"><h3>{heading}</h3>'
             f'<div class="blog-scope">'
-            f'<article id="{sec_id}" class="blog-article"></article></div>'
-            f'<script type="application/json" id="{sec_id}-md">'
-            f"{json.dumps(md)}</script>"
+            f'<article id="{sec_id}" class="blog-article">{_md_to_html(md)}</article>'
+            f"</div>"
             f'<script>document.addEventListener("DOMContentLoaded",function(){{'
-            f"window.ohBlogRender&&window.ohBlogRender.renderInto("
-            f'document.getElementById("{sec_id}"),JSON.parse('
-            f'document.getElementById("{sec_id}-md").textContent));'
-            f"}});</script></div>"
+            f"var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){{"
+            f'r.renderKaTeX(document.getElementById("{sec_id}"));'
+            f"}});}});</script></div>"
         )
 
     blog_html = _md_section(
