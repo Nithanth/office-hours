@@ -87,7 +87,11 @@ def upgrade() -> None:
         op.add_column("reports", sa.Column("topic_id", sa.String(36), nullable=True))
     if not _has_index(bind, "reports", "ix_reports_topic_id"):
         op.create_index("ix_reports_topic_id", "reports", ["topic_id"])
-    if not _has_fk(bind, "reports", "reports_topic_id_fkey"):
+    # sqlite can't ALTER ADD CONSTRAINT — dev sqlite DBs get FKs from
+    # create_all on fresh tables; skipping here keeps `upgrade head`
+    # runnable on the dev path (Postgres still enforces).
+    _is_sqlite = bind.dialect.name == "sqlite"
+    if not _is_sqlite and not _has_fk(bind, "reports", "reports_topic_id_fkey"):
         op.create_foreign_key(
             "reports_topic_id_fkey",
             "reports",
@@ -103,7 +107,9 @@ def upgrade() -> None:
         )
     if not _has_index(bind, "chat_threads", "ix_chat_threads_topic_id"):
         op.create_index("ix_chat_threads_topic_id", "chat_threads", ["topic_id"])
-    if not _has_fk(bind, "chat_threads", "chat_threads_topic_id_fkey"):
+    if not _is_sqlite and not _has_fk(
+        bind, "chat_threads", "chat_threads_topic_id_fkey"
+    ):
         op.create_foreign_key(
             "chat_threads_topic_id_fkey",
             "chat_threads",
@@ -174,10 +180,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("chat_threads_topic_id_fkey", "chat_threads", type_="foreignkey")
+    if op.get_bind().dialect.name != "sqlite":
+        op.drop_constraint(
+            "chat_threads_topic_id_fkey", "chat_threads", type_="foreignkey"
+        )
+        op.drop_constraint("reports_topic_id_fkey", "reports", type_="foreignkey")
     op.drop_index("ix_chat_threads_topic_id", "chat_threads")
     op.drop_column("chat_threads", "topic_id")
-    op.drop_constraint("reports_topic_id_fkey", "reports", type_="foreignkey")
     op.drop_index("ix_reports_topic_id", "reports")
     op.drop_column("reports", "topic_id")
     op.drop_table("topic_papers")

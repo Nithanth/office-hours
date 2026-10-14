@@ -436,7 +436,14 @@ function initScrollAnimations(root) {
     }, { passive: true });
   }
 
-  // Fade-in on scroll (intersection observer)
+  initFadeObserver(scope);
+}
+
+// Fade-in on scroll (intersection observer). Extracted so pane renders
+// (/reports/{id} embedded blog, /topics/{id} sections) can reveal elements
+// too — without it .blog-fade-in stays at opacity:0 forever.
+function initFadeObserver(root) {
+  const scope = root || document;
   const fadeEls = scope.querySelectorAll(".blog-fade-in");
   if (fadeEls.length === 0) return;
 
@@ -885,6 +892,7 @@ window.ohBlogRender = {
     articleEl.innerHTML = html;
     addFadeInClasses(articleEl);
     initImageFadeIn(articleEl);
+    initFadeObserver(articleEl);
     await renderMermaidDiagrams(mermaidBlocks, articleEl);
     await renderVegaCharts(vegaBlocks, articleEl);
     renderKaTeX(articleEl);
