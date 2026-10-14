@@ -59,7 +59,7 @@ def _clean_generated_title(raw: str | None) -> str:
     if not raw:
         return ""
     t = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", raw.strip())
-    t = t.strip().strip('*"`').strip()
+    t = t.strip().lstrip("#").strip().strip('*"`').strip()
     # unwrap one level of enclosing parens/quotes/brackets
     for open_c, close_c in (("(", ")"), ("[", "]"), ("'", "'")):
         if t.startswith(open_c) and t.endswith(close_c):
