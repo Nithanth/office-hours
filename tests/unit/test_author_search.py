@@ -213,16 +213,20 @@ class TestSearchAuthors:
         assert results == []
         mock_get.assert_not_called()
 
+    @patch("services.paper.metadata.author_search._oa_get")
     @patch("services.paper.metadata.author_search._s2_get")
-    def test_api_error_raises_unavailable(self, mock_get):
-        """Transport failures must surface, not masquerade as zero results."""
+    def test_api_error_raises_unavailable(self, mock_get, mock_oa):
+        """Transport failures surface only when the fallback also fails."""
         mock_get.side_effect = Exception("Network error")
+        mock_oa.side_effect = Exception("openalex down")
         with pytest.raises(S2UnavailableError):
             search_authors("Test Author")
 
+    @patch("services.paper.metadata.author_search._oa_get")
     @patch("services.paper.metadata.author_search._s2_get")
-    def test_rate_limit_raises_unavailable(self, mock_get):
+    def test_rate_limit_raises_unavailable(self, mock_get, mock_oa):
         mock_get.side_effect = _http_error(429)
+        mock_oa.side_effect = _http_error(429)
         with pytest.raises(S2UnavailableError):
             search_authors("Test Author")
 
