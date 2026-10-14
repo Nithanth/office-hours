@@ -7,10 +7,22 @@ import html
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from services.auth.session import require_auth_user_id
+from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
 
 router = APIRouter(tags=["history"])
+
+
+def _owner_id(request: Request) -> str:
+    """Report owner key: auth user_id, else the signed session id.
+
+    ChatSessionMiddleware guarantees every request has a session, so
+    anonymous visitors list their own reports here rather than 401ing.
+    """
+    owner = prefs_owner_id(request)
+    if not owner:
+        raise HTTPException(status_code=401, detail="Sign in to view reports.")
+    return str(owner)
 
 
 def _history_shell(items_html: str) -> str:
@@ -50,7 +62,7 @@ def _history_shell(items_html: str) -> str:
 
 @router.get("/reports", response_class=HTMLResponse)
 async def report_history(request: Request) -> HTMLResponse:
-    user_id = require_auth_user_id(request)
+    user_id = _owner_id(request)
     if not database_available():
         raise HTTPException(status_code=503, detail="Report history is not configured.")
 
@@ -79,7 +91,7 @@ async def report_history(request: Request) -> HTMLResponse:
 
 @router.get("/reports/{report_id}", response_class=HTMLResponse)
 async def report_detail(request: Request, report_id: str) -> HTMLResponse:
-    user_id = require_auth_user_id(request)
+    user_id = _owner_id(request)
     if not database_available():
         raise HTTPException(status_code=503, detail="Report history is not configured.")
 
@@ -168,7 +180,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
 
 @router.get("/api/reports")
 async def reports_api(request: Request) -> JSONResponse:
-    user_id = require_auth_user_id(request)
+    user_id = _owner_id(request)
     if not database_available():
         return JSONResponse(
             {"ok": False, "reports": [], "detail": "Report history not configured"}

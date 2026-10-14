@@ -269,11 +269,15 @@ def test_generate_blog_accepts_report_id(client: TestClient) -> None:
     assert body["state"] == "ready"
 
 
-def test_report_blog_requires_auth(client: TestClient) -> None:
-    """GET /reports/{id}/blog is auth-gated (anonymous → 401)."""
+def test_report_blog_anonymous_session(client: TestClient) -> None:
+    """GET /reports/{id}/blog works off the owner key, not auth.
+
+    Anonymous sessions own reports too, so the request passes the owner
+    check and fails on the unconfigured DB instead of 401ing.
+    """
 
     resp = client.get("/reports/some-report-id/blog")
-    assert resp.status_code == 401
+    assert resp.status_code == 503
 
 
 def test_regenerate_blog_report_id_requires_auth(client: TestClient) -> None:
@@ -285,3 +289,23 @@ def test_regenerate_blog_report_id_requires_auth(client: TestClient) -> None:
         data={"report_id": "r-1", "extra": "make it shorter"},
     )
     assert resp.status_code == 404
+
+
+def test_reports_page_anonymous_not_auth_gated(client: TestClient) -> None:
+    """GET /reports is owner-keyed, not auth-gated.
+
+    Anonymous sessions list their own reports, so the request reaches the
+    database check (503 with no DB configured) rather than 401ing.
+    """
+
+    resp = client.get("/reports")
+    assert resp.status_code == 503
+
+
+def test_reports_api_anonymous_not_auth_gated(client: TestClient) -> None:
+    """GET /api/reports is owner-keyed: anonymous gets an empty-but-ok
+    payload shape error from the missing DB, not a 401."""
+
+    resp = client.get("/api/reports")
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is False

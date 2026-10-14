@@ -681,9 +681,9 @@ async def generate_blog(
         extra=extra,
     )
 
-    from services.auth.session import get_auth_user_id
+    from services.core.model_prefs import prefs_owner_id
 
-    user_id = get_auth_user_id(request) or ""
+    user_id = prefs_owner_id(request) or ""
     report_id_clean = (report_id or "").strip()
 
     _purge_expired_blogs()
@@ -755,9 +755,9 @@ async def regenerate_blog(
 
     _purge_expired_blogs()
 
-    from services.auth.session import get_auth_user_id
+    from services.core.model_prefs import prefs_owner_id
 
-    user_id = get_auth_user_id(request) or ""
+    user_id = prefs_owner_id(request) or ""
     report_id_clean = (report_id or "").strip()
 
     prev: _BlogEntry | None = None
@@ -921,11 +921,13 @@ async def report_blog(request: Request, report_id: str) -> JSONResponse:
     and `empty` means no blog has been generated yet.
     """
 
-    from services.auth.session import require_auth_user_id
+    from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope
     from services.persistence.repositories import get_report
 
-    user_id = require_auth_user_id(request)
+    user_id = prefs_owner_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in to view this blog.")
     if not database_available():
         raise HTTPException(status_code=503, detail="Report history is not configured.")
 

@@ -97,10 +97,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
     session_id = await get_session_id(request)
-    from services.auth.session import get_auth_user_id
+    from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope
 
-    user_id = get_auth_user_id(request)
+    user_id = prefs_owner_id(request)
 
     exa_client = get_exa_client()
     llm_service = get_llm_service()
