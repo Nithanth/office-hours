@@ -1013,14 +1013,20 @@ def home_page(page_data: SharedPageData) -> Body:
                             cls="btn-secondary",
                             title="Search for a researcher by name (Semantic Scholar)",
                             style="font-size:0.85rem;padding:5px 10px;margin-left:6px;",
+                            hx_post="/author/search",
+                            hx_include="#paper-search-form",
+                            hx_target="#search-results-container",
+                            hx_swap="innerHTML",
+                            **{"hx-indicator": "#loading-indicator"},
                             onclick=(
-                                "var f=document.getElementById('paper-search-form');"
                                 "var q=document.getElementById('search_query').value;"
-                                "if(!q.trim()){return;}"
+                                "if(!q.trim()){"
+                                "document.getElementById('search-results-container').innerHTML="
+                                "\"<div class='error-banner'>Please enter an author name.</div>\";"
+                                "event.stopImmediatePropagation();"
+                                "}else{"
                                 "document.getElementById('oh-loading-text').textContent='Searching authors...';"
-                                "f.setAttribute('hx-post','/author/search');"
-                                "htmx.trigger(f,'submit');"
-                                "setTimeout(function(){f.setAttribute('hx-post','/search');},200);"
+                                "}"
                             ),
                         ),
                         Label(
