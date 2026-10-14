@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -855,3 +855,196 @@ async def set_topic_notes(
 async def get_report_topic_id(session: AsyncSession, *, report_id: str) -> str | None:
     """Resolve a report to its parent topic id (None if unlinked/missing)."""
     return await session.scalar(select(Report.topic_id).where(Report.id == report_id))
+
+
+# ---------------------------------------------------------------------------
+# Anonymous → authenticated ownership claim
+# ---------------------------------------------------------------------------
+
+_STATUS_RANK = {"to_read": 0, "reading": 1, "done": 2}
+
+
+async def claim_anonymous_session(
+    session: AsyncSession, *, user_id: str, session_id: str
+) -> dict[str, int]:
+    """Reassign everything owned by ``sess:{session_id}`` to ``user_id``.
+
+    Runs once per OAuth sign-in: the anonymous visitor's topics, reports,
+    chat history, library, and preferences become the account's — nothing
+    is silently orphaned at the owner-key swap. Idempotent; safe to re-run.
+
+    Collision policy (the account's existing rows always win):
+    - topics: same (kind, canonical_key) → merge papers/reports/threads into
+      the account's topic, carry over content fields the account's lacks.
+    - chat_threads: same (report_id, paper_id, topic_id) → move messages
+      into the account's thread.
+    - saved_papers: same paper_id → keep the account's row, take the more
+      advanced reading status and any Notion links it lacks.
+    - user_preferences: merge pins (account wins) + keep the account's BYOK
+      key unless it has none.
+    """
+    anon = f"sess:{session_id}"
+    stats: dict[str, int] = {}
+
+    # --- topics: reassign, or merge into the account's topic on key hit ---
+    sess_topics: list[Topic] = list(
+        (await session.execute(select(Topic).where(Topic.owner_id == anon)))
+        .scalars()
+        .all()
+    )
+    for topic in sess_topics:
+        existing = await session.scalar(
+            select(Topic).where(
+                Topic.owner_id == user_id,
+                Topic.kind == topic.kind,
+                Topic.canonical_key == topic.canonical_key,
+            )
+        )
+        if existing is None:
+            topic.owner_id = user_id
+            stats["topics"] = stats.get("topics", 0) + 1
+            continue
+
+        paper_rows: list[TopicPaper] = list(
+            (
+                await session.execute(
+                    select(TopicPaper).where(TopicPaper.topic_id == topic.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        existing_paper_ids = set(
+            (
+                await session.execute(
+                    select(TopicPaper.paper_id).where(
+                        TopicPaper.topic_id == existing.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for tp in paper_rows:
+            if tp.paper_id in existing_paper_ids:
+                await session.execute(delete(TopicPaper).where(TopicPaper.id == tp.id))
+            else:
+                tp.topic_id = existing.id
+                existing_paper_ids.add(tp.paper_id)
+
+        for field in ("blog_markdown", "notes_markdown", "seed_query"):
+            if not getattr(existing, field) and getattr(topic, field):
+                setattr(existing, field, getattr(topic, field))
+        if not existing.notion_page_id and topic.notion_page_id:
+            existing.notion_page_id = topic.notion_page_id
+        existing.updated_at = datetime.utcnow()
+
+        await session.execute(
+            update(Report)
+            .where(Report.topic_id == topic.id)
+            .values(topic_id=existing.id)
+        )
+        await session.execute(
+            update(ChatThread)
+            .where(ChatThread.topic_id == topic.id)
+            .values(topic_id=existing.id)
+        )
+        await session.execute(delete(Topic).where(Topic.id == topic.id))
+        stats["topics_merged"] = stats.get("topics_merged", 0) + 1
+
+    # --- reports: plain owner-key reassignment (topic ids already repointed) ---
+    await session.execute(
+        update(Report).where(Report.user_id == anon).values(user_id=user_id)
+    )
+
+    # --- chat threads: reassign, or merge messages on key hit ---
+    sess_threads: list[ChatThread] = list(
+        (await session.execute(select(ChatThread).where(ChatThread.user_id == anon)))
+        .scalars()
+        .all()
+    )
+    for thread in sess_threads:
+        existing = await session.scalar(
+            select(ChatThread).where(
+                ChatThread.user_id == user_id,
+                ChatThread.report_id == thread.report_id,
+                ChatThread.paper_id == thread.paper_id,
+                ChatThread.topic_id == thread.topic_id,
+            )
+        )
+        if existing is None:
+            thread.user_id = user_id
+            stats["chat_threads"] = stats.get("chat_threads", 0) + 1
+            continue
+        await session.execute(
+            update(ChatMessage)
+            .where(ChatMessage.thread_id == thread.id)
+            .values(thread_id=existing.id)
+        )
+        if not existing.title and thread.title:
+            existing.title = thread.title
+        existing.updated_at = datetime.utcnow()
+        await session.execute(delete(ChatThread).where(ChatThread.id == thread.id))
+        stats["chat_threads_merged"] = stats.get("chat_threads_merged", 0) + 1
+
+    # --- library: reassign, or dedupe on (owner_id, paper_id) ---
+    sess_saves: list[SavedPaper] = list(
+        (await session.execute(select(SavedPaper).where(SavedPaper.owner_id == anon)))
+        .scalars()
+        .all()
+    )
+    for saved in sess_saves:
+        existing = await session.scalar(
+            select(SavedPaper).where(
+                SavedPaper.owner_id == user_id,
+                SavedPaper.paper_id == saved.paper_id,
+            )
+        )
+        if existing is None:
+            saved.owner_id = user_id
+            stats["saved_papers"] = stats.get("saved_papers", 0) + 1
+            continue
+        if _STATUS_RANK.get(saved.status, 0) > _STATUS_RANK.get(existing.status, 0):
+            existing.status = saved.status
+            existing.notion_synced_status = saved.notion_synced_status
+        if not existing.notion_page_id and saved.notion_page_id:
+            existing.notion_page_id = saved.notion_page_id
+            existing.notion_chat_synced = saved.notion_chat_synced
+        if existing.report_id is None and saved.report_id:
+            existing.report_id = saved.report_id
+        existing.updated_at = datetime.utcnow()
+        await session.execute(delete(SavedPaper).where(SavedPaper.id == saved.id))
+        stats["saved_papers_deduped"] = stats.get("saved_papers_deduped", 0) + 1
+
+    # --- preferences: reassign, or merge (account's pins/key win) ---
+    sess_pref = await session.scalar(
+        select(UserPreference).where(UserPreference.owner_id == anon)
+    )
+    if sess_pref is not None:
+        user_pref = await session.scalar(
+            select(UserPreference).where(UserPreference.owner_id == user_id)
+        )
+        if user_pref is None:
+            sess_pref.owner_id = user_id
+        else:
+            merged = dict(sess_pref.model_pins or {})
+            merged.update(user_pref.model_pins or {})
+            user_pref.model_pins = merged
+            if (
+                not user_pref.openrouter_key_encrypted
+                and sess_pref.openrouter_key_encrypted
+            ):
+                user_pref.openrouter_key_encrypted = sess_pref.openrouter_key_encrypted
+            user_pref.updated_at = datetime.utcnow()
+            await session.execute(
+                delete(UserPreference).where(UserPreference.owner_id == anon)
+            )
+        stats["preferences"] = stats.get("preferences", 0) + 1
+
+    # --- usage events: plain reassign ---
+    await session.execute(
+        update(UsageEvent).where(UsageEvent.user_id == anon).values(user_id=user_id)
+    )
+
+    await session.commit()
+    return stats
