@@ -97,6 +97,9 @@ _ALLOWED_PROXY_DOMAINS: set[str] = {
     "papers.ssrn.com",
     "nber.org",
     "researchgate.net",
+    # Exa's publication index returns exa.ai/library/* links as the canonical
+    # paper URL; its pages are server-rendered so the proxy renders the paper.
+    "exa.ai",
 }
 
 
@@ -238,9 +241,11 @@ async def chat_modal(
                             db_session,
                             user_id=user_id,
                             report_id=report_id,
-                            paper_id=history_key.split(":", 1)[0]
-                            if history_key.startswith("topic:")
-                            else paper_id,
+                            paper_id=(
+                                history_key.split(":", 1)[0]
+                                if history_key.startswith("topic:")
+                                else paper_id
+                            ),
                         )
                         persisted = [
                             ChatMessage(role=r.role, content=r.content) for r in rows
