@@ -442,6 +442,11 @@ function initScrollAnimations(root) {
 // Fade-in on scroll (intersection observer). Extracted so pane renders
 // (/reports/{id} embedded blog, /topics/{id} sections) can reveal elements
 // too — without it .blog-fade-in stays at opacity:0 forever.
+// Retained references — a locally-scoped observer can be GC'd before it ever
+// delivers entries (seen: /reports/{id} pane rendered behind `await loadAllDeps`
+// stayed invisible while the same code worked on /topics).
+const _fadeObservers = new Set();
+
 function initFadeObserver(root) {
   const scope = root || document;
   const fadeEls = scope.querySelectorAll(".blog-fade-in");
@@ -460,6 +465,7 @@ function initFadeObserver(root) {
   );
 
   fadeEls.forEach((el) => observer.observe(el));
+  _fadeObservers.add(observer);
 }
 
 // ---------------------------------------------------------------------------
