@@ -49,4 +49,7 @@ USER officehours
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run pending migrations before serving; migrations must stay idempotent
+# because dev boots also create_all. A failed migration fails the deploy
+# rather than serving a stale schema.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
