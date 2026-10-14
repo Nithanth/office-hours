@@ -56,6 +56,10 @@ class Config(BaseSettings):
         str
     ] = None  # Primary LLM gateway - all model tiers route through OpenRouter
     SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
+    # OpenAlex is the keyless fallback for author search; these are optional.
+    # Free instant keys: https://help.openalex.org/api/authentication/
+    OPENALEX_API_KEY: Optional[str] = None
+    OPENALEX_MAILTO: Optional[str] = None  # polite-pool contact email
 
     # ------------------------------------------------------------------
     # Notion export

@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from urllib.error import HTTPError
+
+import pytest
 
 from services.paper.metadata.author_search import (
     AuthorPaper,
     AuthorProfile,
     AuthorResult,
+    S2UnavailableError,
     get_author_papers,
     get_author_profile,
     get_paper_url,
     search_authors,
 )
+
+
+def _http_error(code: int) -> HTTPError:
+    return HTTPError("http://x", code, "err", {}, None)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -204,11 +213,22 @@ class TestSearchAuthors:
         assert results == []
         mock_get.assert_not_called()
 
+    @patch("services.paper.metadata.author_search._oa_get")
     @patch("services.paper.metadata.author_search._s2_get")
-    def test_api_error_returns_empty(self, mock_get):
+    def test_api_error_raises_unavailable(self, mock_get, mock_oa):
+        """Transport failures surface only when the fallback also fails."""
         mock_get.side_effect = Exception("Network error")
-        results = search_authors("Test Author")
-        assert results == []
+        mock_oa.side_effect = Exception("openalex down")
+        with pytest.raises(S2UnavailableError):
+            search_authors("Test Author")
+
+    @patch("services.paper.metadata.author_search._oa_get")
+    @patch("services.paper.metadata.author_search._s2_get")
+    def test_rate_limit_raises_unavailable(self, mock_get, mock_oa):
+        mock_get.side_effect = _http_error(429)
+        mock_oa.side_effect = _http_error(429)
+        with pytest.raises(S2UnavailableError):
+            search_authors("Test Author")
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_empty_response(self, mock_get):
@@ -275,10 +295,10 @@ class TestGetAuthorPapers:
         assert papers[0].year == 2015
 
     @patch("services.paper.metadata.author_search._s2_get")
-    def test_api_error_returns_empty(self, mock_get):
+    def test_api_error_raises_unavailable(self, mock_get):
         mock_get.side_effect = Exception("Timeout")
-        papers = get_author_papers("1234567")
-        assert papers == []
+        with pytest.raises(S2UnavailableError):
+            get_author_papers("1234567")
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_papers_sorted_by_citations(self, mock_get):
@@ -348,9 +368,15 @@ class TestGetAuthorProfile:
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_author_not_found(self, mock_get):
-        mock_get.side_effect = Exception("404 Not Found")
+        mock_get.side_effect = _http_error(404)
         profile = get_author_profile("nonexistent")
         assert profile is None
+
+    @patch("services.paper.metadata.author_search._s2_get")
+    def test_profile_error_raises_unavailable(self, mock_get):
+        mock_get.side_effect = _http_error(429)
+        with pytest.raises(S2UnavailableError):
+            get_author_profile("1234567")
 
     @patch("services.paper.metadata.author_search._s2_get")
     def test_profile_type(self, mock_get):
@@ -493,3 +519,93 @@ class TestRenderAuthorList:
         assert "Author One" in html
         assert "Author Two" in html
         assert "Found 2 author(s)" in html
+
+
+# ---------------------------------------------------------------------------
+# OpenAlex fallback tests
+# ---------------------------------------------------------------------------
+
+_SAMPLE_OA_AUTHOR = {
+    "id": "https://openalex.org/A5023888391",
+    "display_name": "Yann LeCun",
+    "display_name_alternatives": ["Y. LeCun"],
+    "works_count": 450,
+    "cited_by_count": 200000,
+    "summary_stats": {"h_index": 120},
+}
+
+_SAMPLE_OA_WORK = {
+    "id": "https://openalex.org/W123",
+    "display_name": "Deep learning",
+    "publication_year": 2015,
+    "cited_by_count": 30000,
+    "ids": {
+        "openalex": "https://openalex.org/W123",
+        "doi": "https://doi.org/10.1038/x",
+    },
+    "primary_location": {"source": {"display_name": "Nature"}},
+    "abstract_inverted_index": {"Deep": [0], "learning": [1], "works": [2]},
+}
+
+
+class TestOpenAlexFallback:
+    """S2 429/failure should transparently fall back to OpenAlex."""
+
+    @patch("services.paper.metadata.author_search._oa_get")
+    @patch("services.paper.metadata.author_search._s2_get")
+    def test_s2_429_falls_back_to_openalex(self, mock_s2, mock_oa):
+        mock_s2.side_effect = _http_error(429)
+        mock_oa.return_value = {"results": [_SAMPLE_OA_AUTHOR]}
+        results = search_authors("Yann LeCun")
+        assert len(results) == 1
+        assert results[0].author_id == "A5023888391"
+        assert results[0].name == "Yann LeCun"
+        assert results[0].h_index == 120
+
+    @patch("services.paper.metadata.author_search._oa_get")
+    @patch("services.paper.metadata.author_search._s2_get")
+    def test_both_down_raises_unavailable(self, mock_s2, mock_oa):
+        mock_s2.side_effect = _http_error(429)
+        mock_oa.side_effect = Exception("openalex down")
+        with pytest.raises(S2UnavailableError):
+            search_authors("Yann LeCun")
+
+    @patch("services.paper.metadata.author_search._s2_get")
+    @patch("services.paper.metadata.author_search._oa_get")
+    def test_openalex_id_routes_to_openalex(self, mock_oa, mock_s2):
+        """IDs like A5023888391 (from an OA-backed search) skip S2 entirely."""
+        mock_oa.return_value = {"results": [_SAMPLE_OA_WORK]}
+        papers = get_author_papers("A5023888391")
+        mock_s2.assert_not_called()
+        assert len(papers) == 1
+        assert papers[0].title == "Deep learning"
+        assert papers[0].external_ids.get("DOI") == "10.1038/x"
+
+    @patch("services.paper.metadata.author_search._oa_get")
+    def test_openalex_profile(self, mock_oa):
+        def route(path, params=None, *, timeout=10):
+            if "/authors/" in path:
+                return _SAMPLE_OA_AUTHOR
+            return {"results": [_SAMPLE_OA_WORK]}
+
+        mock_oa.side_effect = route
+        profile = get_author_profile("A5023888391")
+        assert profile is not None
+        assert profile.author.name == "Yann LeCun"
+        assert len(profile.papers) == 1
+
+
+class TestOpenAlexHelpers:
+    def test_abstract_inverted_index_reconstruct(self):
+        from services.paper.metadata.author_search import _oa_abstract
+
+        assert _oa_abstract({"b": [1], "a": [0], "c": [2]}) == "a b c"
+        assert _oa_abstract(None) is None
+        assert _oa_abstract({}) is None
+
+    def test_unavailable_renders_panel(self):
+        from api.routes.author import _render_author_list
+
+        html = _render_author_list([], "Test", unavailable=True)
+        assert "temporarily unavailable" in html
+        assert "No authors found" not in html
