@@ -1017,15 +1017,13 @@ def home_page(page_data: SharedPageData) -> Body:
                             hx_include="#paper-search-form",
                             hx_target="#search-results-container",
                             hx_swap="innerHTML",
-                            **{
-                                "hx-trigger": "click[document.getElementById('search_query').value.trim().length>0]",
-                                "hx-indicator": "#loading-indicator",
-                            },
+                            **{"hx-indicator": "#loading-indicator"},
                             onclick=(
                                 "var q=document.getElementById('search_query').value;"
                                 "if(!q.trim()){"
                                 "document.getElementById('search-results-container').innerHTML="
                                 "\"<div class='error-banner'>Please enter an author name.</div>\";"
+                                "event.stopImmediatePropagation();"
                                 "}else{"
                                 "document.getElementById('oh-loading-text').textContent='Searching authors...';"
                                 "}"
