@@ -14,7 +14,7 @@ dependencies = [
     # API Clients & HTTP
     "httpx~=0.28",
     "exa-py>=2.25",
-    "openai~=2.36",
+    "openai>=2.36,<4.0",
     "anthropic~=0.53",
     "together~=1.4",
     "google-genai~=1.19",
