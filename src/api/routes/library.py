@@ -559,6 +559,10 @@ def _library_shell(content_html: str) -> str:
     .lib-header h1{{margin:0;}}
     .lib-header a,.lib-header button{{font-size:0.85rem;margin-left:auto;}}
     .lib-tabs{{display:flex;gap:0.5rem;margin-bottom:1.25rem;}}
+    .lib-empty{{border:1px dashed var(--container-border,#555);border-radius:8px;
+      padding:2rem;text-align:center;color:var(--fg-muted,#888);}}
+    .lib-empty strong{{color:var(--fg);display:block;margin-bottom:0.4rem;}}
+    .lib-empty a{{color:var(--accent,#7ab8ff);}}
     .lib-tabs a{{font-size:0.8rem;padding:3px 12px;border:1px solid var(--container-border,#555);
       border-radius:999px;text-decoration:none;color:var(--fg);}}
     .lib-tabs a.active{{background:var(--fg);color:var(--bg);}}
@@ -715,8 +719,19 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     if papers:
         items = "".join(_paper_item(p) for p in papers)
+    elif status:
+        items = (
+            '<div class="lib-empty"><strong>Nothing here yet.</strong>'
+            "<p>No papers with this status — pick another tab above, or add "
+            "papers from a search.</p></div>"
+        )
     else:
-        items = "<p>No saved papers yet. Hit the bookmark icon on any paper to add it here.</p>"
+        items = (
+            '<div class="lib-empty"><strong>Your library is empty.</strong>'
+            "<p>Save papers from search results with the bookmark icon and "
+            "they'll land here — anonymous sessions keep a library too.</p>"
+            '<a href="/">Search papers</a></div>'
+        )
 
     content = f"""<div class="lib-header">
       <h1>Library</h1>

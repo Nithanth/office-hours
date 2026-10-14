@@ -41,3 +41,31 @@ class TestDetectTopicKind:
 
     def test_author_key_is_normalized_name(self):
         assert canonical_key_for("papers by Yann LeCun", kind="author") == "yann lecun"
+
+
+class TestCleanGeneratedTitle:
+    def test_strips_title_prefix_and_quotes(self):
+        from api.routers.report_stream import _clean_generated_title
+
+        assert _clean_generated_title('TITLE: "Diffusion Models"') == "Diffusion Models"
+
+    def test_unwraps_balanced_parens(self):
+        from api.routers.report_stream import _clean_generated_title
+
+        assert _clean_generated_title("(Diffusion models survey)") == (
+            "Diffusion models survey"
+        )
+
+    def test_rejects_truncated_fragments(self):
+        from api.routers.report_stream import _clean_generated_title
+
+        assert _clean_generated_title("(their") == ""
+        assert _clean_generated_title("(") == ""
+        assert _clean_generated_title("") == ""
+        assert _clean_generated_title(None) == ""
+
+    def test_rejects_letterless_and_tiny(self):
+        from api.routers.report_stream import _clean_generated_title
+
+        assert _clean_generated_title("1234 — !") == ""
+        assert _clean_generated_title("a b") == ""

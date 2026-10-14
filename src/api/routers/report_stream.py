@@ -9,6 +9,7 @@ latency for the user.
 import asyncio
 import html
 import json
+import re
 import time
 import urllib.parse
 import uuid
@@ -45,6 +46,30 @@ _SSE_CHUNK_SIZE = 4000  # chars
 
 # Name of the extra SSE event carrying JSON envelope of each block.
 _JSON_EVENT = "report-block-json"
+
+
+def _clean_generated_title(raw: str | None) -> str:
+    """Normalize an LLM title; '' if it looks like a truncated fragment.
+
+    Observed bad outputs: '(their', '(' — the 30-token cap cutting a
+    parenthesized draft mid-word. We strip TITLE: prefixes, markdown
+    emphasis, quotes, and wrapping parens, then reject anything that still
+    looks like a fragment.
+    """
+    if not raw:
+        return ""
+    t = re.sub(r"(?i)^\s*title\s*[:\-]?\s*", "", raw.strip())
+    t = t.strip().strip('*"`').strip()
+    # unwrap one level of enclosing parens/quotes/brackets
+    for open_c, close_c in (("(", ")"), ("[", "]"), ("'", "'")):
+        if t.startswith(open_c) and t.endswith(close_c):
+            t = t[1:-1].strip()
+    # reject fragments: unclosed paren, too short, or no letters at all
+    if t.count("(") != t.count(")"):
+        return ""
+    if len(t) < 8 or not re.search(r"[A-Za-z]", t):
+        return ""
+    return t
 
 
 def _report_request_path(token: str) -> Path:
@@ -602,8 +627,9 @@ async def report_stream(
                         title_result = await rg._generate_report_title(
                             report_body, selected_model_key
                         )
-                        if title_result and title_result.strip():
-                            report_title = title_result.strip()[:300]
+                        cleaned = _clean_generated_title(title_result)
+                        if cleaned:
+                            report_title = cleaned[:300]
                     except Exception:  # noqa: BLE001 - title gen is best-effort
                         pass
 
