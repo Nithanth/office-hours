@@ -4,14 +4,26 @@ from __future__ import annotations
 
 import html
 import json
-from urllib.parse import quote
+from urllib.parse import quote, quote_plus
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from api.routers.report_stream import _clean_generated_title
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
+from services.persistence.models import Report
 from services.topics.keys import canonical_key_for, detect_topic_kind
+
+
+def _display_report_title(report: Report) -> str:
+    """Render-time cleanup of corrupt persisted titles (self-heals old rows)."""
+    return (
+        _clean_generated_title(report.title)
+        or report.original_query
+        or "Untitled report"
+    )
+
 
 router = APIRouter(tags=["topics"])
 
@@ -137,12 +149,22 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         )
         meta_bits = [b for b in (_fmt_authors(p.authors), _esc(p.published_date)) if b]
         meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
+        pid_q = quote(p.paper_id, safe="")
+        viewer_btn = (
+            f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
+            f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
+            f' hx-target="#modal-container" hx-swap="innerHTML">'
+            f'<i class="fa-solid fa-comment-dots"></i></button>'
+            if p.url
+            else ""
+        )
         paper_rows.append(
             f"""<div class="paper-row">
   <div><div class="pt">{title_link}</div>{meta}</div>
+  <div>{viewer_btn}
   <button type="button" class="copy-icon-btn" title="Remove from topic"
     hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe='')}/remove"
-    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button>
+    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>
 </div>"""
         )
     papers_html = "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
@@ -151,7 +173,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     for r in reports:
         report_rows.append(
             f"<div class='topic-meta'>&#8226; <a href='/reports/{_esc(r.id)}'>"
-            f"{_esc(r.title)}</a> — {r.created_at.strftime('%b %d, %Y')}</div>"
+            f"{_esc(_display_report_title(r))}</a> — {r.created_at.strftime('%b %d, %Y')}</div>"
         )
     reports_html = (
         "".join(report_rows) or "<div class='topic-meta'>No reports yet.</div>"
