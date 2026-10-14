@@ -251,6 +251,14 @@ async def report_stream(
     if safety_task and not safety_task.done():
         safety_task.cancel()
 
+    # One-shot claim: the EventSource reconnects when the stream closes
+    # (hx-sse-reconnect-delay=0), and a reconnect that still finds the payload
+    # re-runs the whole generator — persisting a duplicate report. Delete the
+    # payload on first connect so any later request gets a clean 204. The
+    # running generator keeps the payload in memory and finishes/persists
+    # normally, so a finished report still lands in "My Reports".
+    _delete_report_request(token)
+
     selected_papers_json = payload["selected_papers_json"]
     audience_type = payload["audience_type"]
     summary_size = payload["summary_size"]
@@ -530,13 +538,15 @@ async def report_stream(
             # Send JSON envelope alongside for consumers needing structure
             block_meta = json.dumps(
                 {
-                    "block_type": _role_label
-                    if _role_label != "main"
-                    else "paper_summary",
+                    "block_type": (
+                        _role_label if _role_label != "main" else "paper_summary"
+                    ),
                     "paper_id": getattr(task_paper_map.get(t), "id", None),
-                    "source": "url_input"
-                    if (_role_label == "main" and is_url_input_flag)
-                    else _role_label,
+                    "source": (
+                        "url_input"
+                        if (_role_label == "main" and is_url_input_flag)
+                        else _role_label
+                    ),
                     "html": block_html,
                     "timestamp": int(time.time()),
                 },
@@ -619,7 +629,6 @@ async def report_stream(
         )
 
         _cleanup_tasks.pop(token, None)
-        await _del_cache_later(token)
 
     return StreamingResponse(
         event_generator(),

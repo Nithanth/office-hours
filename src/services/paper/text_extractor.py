@@ -66,6 +66,25 @@ _MIN_FULL_TEXT = (
 )
 _MIN_PARTIAL = getattr(app_config, "MIN_PARTIAL_TEXT_CHARS", 400) if app_config else 400
 
+# .pdf links that are site boilerplate, not the paper — matched against the
+# href path/filename (case-insensitive).
+_NON_PAPER_PDF_RE = re.compile(
+    r"(?:terms|privacy|policy|policies|legal|imprint|impressum|disclaimer|"
+    r"cookie|copyright|licen[cs]e|conduct|accessibility|editorial|advertis)",
+    re.I,
+)
+
+
+def _paper_pdf_links(raw_html: str) -> list[str]:
+    """.pdf hrefs from *raw_html*, minus site boilerplate (legal/footer links)."""
+    links = re.findall(
+        r"href=[\'\"](?P<link>[^\'\"]+\.pdf)(?:[?#][^\'\"]*)?[\'\"]",
+        raw_html,
+        re.I,
+    )
+    return [link for link in links if not _NON_PAPER_PDF_RE.search(link)]
+
+
 # OCR settings
 _OCR_ENABLED = bool(getattr(app_config, "ENABLE_PDF_OCR", False))
 _OCR_MAX_BYTES = (
@@ -637,7 +656,13 @@ class TextExtractor:
         return await self._layer_pdf(pdf_url)
 
     async def _layer_html_pdf_link(self, url: str) -> str | None:
-        """Fetch HTML, look for the first hyperlink ending in .pdf, then extract."""
+        """Fetch HTML, find a paper-like .pdf hyperlink, then extract.
+
+        Pages litter footers/nav with legal PDFs (terms-of-service, privacy
+        policies) — the first .pdf href is frequently one of those, e.g.
+        exa.ai's ``/assets/Exa_Labs_Terms_of_Service.pdf``. Skip obvious
+        legal/boilerplate links and try each remaining candidate in order.
+        """
         async with (
             aiohttp.ClientSession() as session,
             session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp,
@@ -645,14 +670,15 @@ class TextExtractor:
             if resp.content_type != "text/html":
                 return None
             raw_html = await resp.text()
-        match = re.search(
-            r"href=[\'\"](?P<link>[^\'\"]+\.pdf)(?:[?#][^\'\"]*)?[\'\"]", raw_html, re.I
-        )
-        if not match:
-            return None
-        pdf_link = match.group("link")
-        pdf_link = urljoin(url, pdf_link)  # handle relative link
-        return await self._layer_pdf(pdf_link)
+        for link in _paper_pdf_links(raw_html):
+            pdf_link = urljoin(url, link)  # handle relative link
+            try:
+                extracted = await self._layer_pdf(pdf_link)
+            except Exception:  # noqa: BLE001 - dead/bogus pdf link; try next
+                continue
+            if extracted:
+                return extracted
+        return None
 
     async def _layer_pdf(self, url: str) -> str | None:
         if not (url.lower().endswith(".pdf") or "/pdf/" in url.lower()):
