@@ -130,7 +130,10 @@ async def google_callback(
             status_code=502, detail="Authentication failed. Please try again."
         ) from exc
 
-    from services.persistence.repositories import upsert_google_user
+    from services.persistence.repositories import (
+        claim_anonymous_session,
+        upsert_google_user,
+    )
 
     async for session in session_scope():
         user = await upsert_google_user(
@@ -142,6 +145,22 @@ async def google_callback(
             access_token=token_data.get("access_token"),
             refresh_token=token_data.get("refresh_token"),
         )
+        # Claim everything the anonymous session accumulated (topics, reports,
+        # library, prefs) onto the account so sign-in doesn't orphan it.
+        anon_session_id = getattr(request.state, "session_id", None)
+        if anon_session_id:
+            try:
+                stats = await claim_anonymous_session(
+                    session, user_id=user.id, session_id=str(anon_session_id)
+                )
+                if stats:
+                    logger.info("anon_claim", user_id=user.id, **stats)
+            except Exception as exc:  # noqa: BLE001 - claim must not break login
+                logger.error("anon_claim_failed", user_id=user.id, err=str(exc))
+
+    from services.core.model_prefs import invalidate_prefs_cache
+
+    invalidate_prefs_cache(user.id)
 
     redirect_to = str(payload.get("next") or "/")
     response = RedirectResponse(redirect_to if redirect_to.startswith("/") else "/")
