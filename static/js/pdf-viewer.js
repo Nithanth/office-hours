@@ -118,11 +118,11 @@ async function renderPdf(container) {
     const pdfDoc = await getDocument({ url: src, withCredentials: false, fontExtraProperties: true }).promise;
     viewer.setDocument(pdfDoc);
     linkService.setDocument(pdfDoc);
-    viewer.currentScaleValue = "page-width";
+    // "auto" fits the page to the viewer width — the old page-width +
+    // scale>1 clamp left the doc smaller than the pane on wide viewers.
+    viewer.currentScaleValue = "auto";
 
-    // Hide spinner when ready and constrain initial scale to ≤100%
     eventBus.on("pagesinit", () => {
-      if (viewer.currentScale > 1) viewer.currentScale = 1;
       spinner.remove();
     });
 

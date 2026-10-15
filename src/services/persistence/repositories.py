@@ -721,19 +721,41 @@ async def add_topic_papers(
     papers: list[Paper],
     source: str = "seed",
 ) -> int:
-    """Insert papers into a topic's set, skipping dupes. Returns count added."""
-    existing = set(
+    """Insert papers into a topic's set, skipping dupes. Returns count added.
+
+    Papers the user removed (removed_at tombstone) are never resurrected by
+    feed polls — but an explicit add (seed/manual/saved) DOES bring one back,
+    clearing the tombstone.
+    """
+    rows = list(
         (
             await session.execute(
-                select(TopicPaper.paper_id).where(TopicPaper.topic_id == topic_id)
+                select(TopicPaper.paper_id, TopicPaper.removed_at).where(
+                    TopicPaper.topic_id == topic_id
+                )
             )
-        )
-        .scalars()
-        .all()
+        ).all()
     )
+    existing = {r.paper_id for r in rows if r.removed_at is None}
+    tombstoned = {r.paper_id for r in rows if r.removed_at is not None}
     added = 0
     for paper in papers:
         if not paper.id or paper.id in existing:
+            continue
+        if paper.id in tombstoned:
+            if source == "feed":
+                continue  # user removed it; the feed doesn't get to undo that
+            await session.execute(
+                update(TopicPaper)
+                .where(
+                    TopicPaper.topic_id == topic_id,
+                    TopicPaper.paper_id == paper.id,
+                )
+                .values(removed_at=None, source=source)
+            )
+            tombstoned.discard(paper.id)
+            existing.add(paper.id)
+            added += 1
             continue
         session.add(
             TopicPaper(
@@ -782,7 +804,10 @@ async def list_topic_papers(
 ) -> list[TopicPaper]:
     result = await session.execute(
         select(TopicPaper)
-        .where(TopicPaper.topic_id == topic_id)
+        .where(
+            TopicPaper.topic_id == topic_id,
+            TopicPaper.removed_at.is_(None),
+        )
         .order_by(TopicPaper.added_at.asc())
     )
     return list(result.scalars().all())
@@ -803,14 +828,19 @@ async def list_topic_reports(
 async def remove_topic_paper(
     session: AsyncSession, *, topic_id: str, paper_id: str
 ) -> bool:
+    """Soft-delete: stamp removed_at so the feed won't resurrect the paper."""
     from sqlalchemy.engine import CursorResult
 
     result = cast(
         "CursorResult[Any]",
         await session.execute(
-            delete(TopicPaper).where(
-                TopicPaper.topic_id == topic_id, TopicPaper.paper_id == paper_id
+            update(TopicPaper)
+            .where(
+                TopicPaper.topic_id == topic_id,
+                TopicPaper.paper_id == paper_id,
+                TopicPaper.removed_at.is_(None),
             )
+            .values(removed_at=datetime.utcnow())
         ),
     )
     await session.commit()

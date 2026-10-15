@@ -254,7 +254,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers (<span id="papers-count">{len(papers)}</span>)
   <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
     hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML">Check for new</button>
 </h2>
@@ -420,6 +420,7 @@ async def topic_feed_now(topic_id: str, request: Request) -> HTMLResponse:
     oob = (
         f'<div id="topic-papers" hx-swap-oob="true">'
         f"{_paper_rows_html(topic, papers)}</div>"
+        f'<span id="papers-count" hx-swap-oob="true">{len(papers)}</span>'
     )
     return HTMLResponse(status + oob)
 
@@ -429,8 +430,13 @@ async def api_remove_paper(topic_id: str, paper_id: str, request: Request) -> Re
     owner = _owner_id(request)
     if not database_available():
         raise HTTPException(status_code=503, detail="Database unavailable")
-    from services.persistence.repositories import get_topic, remove_topic_paper
+    from services.persistence.repositories import (
+        get_topic,
+        list_topic_papers,
+        remove_topic_paper,
+    )
 
+    remaining = 0
     async for session in session_scope():
         topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
         if topic is None:
@@ -438,6 +444,11 @@ async def api_remove_paper(topic_id: str, paper_id: str, request: Request) -> Re
         removed = await remove_topic_paper(
             session, topic_id=topic_id, paper_id=paper_id
         )
+        remaining = len(await list_topic_papers(session, topic_id=topic_id))
     if request.headers.get("hx-request"):
-        return HTMLResponse("", status_code=200)
+        # OOB-swap the Papers heading count so it doesn't go stale.
+        return HTMLResponse(
+            f'<span id="papers-count" hx-swap-oob="true">{remaining}</span>',
+            status_code=200,
+        )
     return JSONResponse({"ok": True, "removed": removed})

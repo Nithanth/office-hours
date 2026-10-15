@@ -119,6 +119,9 @@ class TopicPaper(Base):
     # 'manual' (added by hand).
     source: Mapped[str] = mapped_column(String(16), default="seed")
     added_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    # Soft-delete tombstone: set when the user removes the paper so feed
+    # polls don't resurrect it. Explicit (non-feed) adds clear it.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime)
     metadata_json: Mapped[dict] = mapped_column(JSONType, default=dict)
 
     topic: Mapped[Topic] = relationship(back_populates="papers")
