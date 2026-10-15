@@ -39,15 +39,18 @@ def _owner_id(request: Request) -> str:
 
 
 def _history_shell(items_html: str) -> str:
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-  <title>My Reports · Office Hours</title>
-  <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/forms.css">
-  <link rel="stylesheet" href="/static/css/modal.css">
-  <link rel="stylesheet" href="/static/css/chat.css">
-  <style>
+    from pages.shell import page_shell
+
+    return str(
+        page_shell(
+            "My Reports",
+            f"""<div class="history-header">
+      <h1>My Reports</h1>
+      <a href="/" style="font-size:0.85rem;margin-left:auto;">+ New Search</a>
+    </div>
+    {items_html}""",
+            active="reports",
+            head_extra="""<style>
     .history-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .history-item{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
       background:var(--container-bg);transition:border-color 0.15s;}}
@@ -59,18 +62,10 @@ def _history_shell(items_html: str) -> str:
     .history-preview{{font-size:0.88rem;color:var(--fg-muted,#aaa);margin-top:0.4rem;line-height:1.4;}}
     .history-header{{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;}}
     .history-header h1{{margin:0;}}
-  </style>
-</head>
-<body>
-  <main class="history-wrap">
-    <div class="history-header">
-      <h1>My Reports</h1>
-      <a href="/" style="font-size:0.85rem;margin-left:auto;">+ New Search</a>
-    </div>
-    {items_html}
-  </main>
-</body>
-</html>"""
+  </style>""",
+            wrap_class="history-wrap",
+        )
+    )
 
 
 @router.get("/reports", response_class=HTMLResponse)
@@ -85,7 +80,13 @@ async def report_history(request: Request) -> HTMLResponse:
         reports = await list_reports(session, user_id=user_id)
 
     if not reports:
-        return HTMLResponse(_history_shell("<p>No saved reports yet.</p>"))
+        return HTMLResponse(
+            _history_shell(
+                '<div class="empty-state-card"><strong>No saved reports yet.</strong>'
+                "<p>Run a search and generate a report — your snapshots land here.</p>"
+                '<a href="/">New search</a></div>'
+            )
+        )
 
     items = []
     for report in reports:
@@ -123,37 +124,12 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     escaped_id = html.escape(report.id)
     escaped_audience = html.escape(report.audience_type or "technical")
     escaped_model = html.escape(report.model_key or "")
+    from pages.shell import page_shell
+
     return HTMLResponse(
-        f"""<!DOCTYPE html>
-<html>
-<head>
-  <title>{escaped_title} · Office Hours</title>
-  <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/forms.css">
-  <link rel="stylesheet" href="/static/css/modal.css">
-  <link rel="stylesheet" href="/static/css/chat.css">
-  <link rel="stylesheet" href="/static/css/blog.css">
-  <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
-  <script src="/static/js/report.js" defer></script>
-  <script src="/static/js/library.js?v=1" defer></script>
-  <script src="/static/js/blog-modal.js" defer></script>
-  <script src="/static/js/blog-view.js" defer></script>
-  <script src="/static/js/blog-pane.js" defer></script>
-  <style>
-    .report-actions{{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;
-      padding:0.75rem 0;border-bottom:1px solid #444;margin-bottom:1rem;}}
-    .report-actions button,.report-actions select{{
-      font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer;
-      border:1px solid #555;background:var(--container-bg,#1a1a1a);color:var(--fg);}}
-    .report-actions button:hover{{background:#333;}}
-    .report-meta{{font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.5rem;}}
-  </style>
-</head>
-<body>
-  <main style="max-width:1000px;margin:2rem auto;padding:0 1rem;">
-    <p><a href="/reports">&larr; My Reports</a> · <a href="/">New Search</a></p>
+        page_shell(
+            _display_title(report),
+            f"""
     <h1 style="font-size:1.3rem;margin:0.5rem 0;">{escaped_title}</h1>
     <div class="report-meta">
       {html.escape(report.created_at.strftime('%b %d, %Y'))} &middot;
@@ -178,16 +154,31 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
          data-audience="{escaped_audience}" data-model="{escaped_model}">
       {report_html}
     </div>
-    <div id="modal-container"></div>
-    <script type="module">
+""",
+            active="reports",
+            head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
+  <style>
+    .report-actions{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;
+      padding:0.75rem 0;border-bottom:1px solid #444;margin-bottom:1rem;}
+    .report-actions button,.report-actions select{
+      font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer;
+      border:1px solid #555;background:var(--container-bg,#1a1a1a);color:var(--fg);}
+    .report-actions button:hover{background:#333;}
+    .report-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.5rem;}
+  </style>""",
+            scripts="""<script src="/static/js/report.js" defer></script>
+  <script src="/static/js/library.js?v=1" defer></script>
+  <script src="/static/js/blog-modal.js" defer></script>
+  <script src="/static/js/blog-view.js" defer></script>
+  <script src="/static/js/blog-pane.js" defer></script>
+  <script type="module">
       import "/static/js/chat/stream.js?v=2";
       import "/static/js/chat/ui.js?v=2";
       import "/static/js/chat/events.js?v=2";
       import "/static/js/chat/snippet.js?v=1";
-    </script>
-  </main>
-</body>
-</html>"""
+    </script>""",
+            wrap_class="report-wrap",
+        )
     )
 
 

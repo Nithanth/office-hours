@@ -611,28 +611,19 @@ async def library_notion_answer_comments(request: Request) -> JSONResponse:
 
 
 def _library_shell(content_html: str) -> str:
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-  <title>Library · Office Hours</title>
-  <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/forms.css">
-  <link rel="stylesheet" href="/static/css/modal.css">
-  <link rel="stylesheet" href="/static/css/chat.css">
-  <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
-  <script src="/static/js/library.js?v=1" defer></script>
-  <style>
+    from pages.shell import page_shell
+
+    return str(
+        page_shell(
+            "Library",
+            content_html,
+            active="library",
+            head_extra="""<style>
     .lib-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .lib-header{{display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;}}
     .lib-header h1{{margin:0;}}
     .lib-header a,.lib-header button{{font-size:0.85rem;margin-left:auto;}}
     .lib-tabs{{display:flex;gap:0.5rem;margin-bottom:1.25rem;}}
-    .lib-empty{{border:1px dashed var(--container-border,#555);border-radius:8px;
-      padding:2rem;text-align:center;color:var(--fg-muted,#888);}}
-    .lib-empty strong{{color:var(--fg);display:block;margin-bottom:0.4rem;}}
-    .lib-empty a{{color:var(--accent,#7ab8ff);}}
     .lib-tabs a{{font-size:0.8rem;padding:3px 12px;border:1px solid var(--container-border,#555);
       border-radius:999px;text-decoration:none;color:var(--fg);}}
     .lib-tabs a.active{{background:var(--fg);color:var(--bg);}}
@@ -662,21 +653,17 @@ def _library_shell(content_html: str) -> str:
       border-radius:4px;background:var(--oh-accent,#0d6e63);color:#fff;
       text-decoration:none;}}
     .lib-notion-hint{{font-size:0.75rem;color:var(--fg-muted,#888);margin-top:0.45rem;}}
-  </style>
-</head>
-<body>
-  <main class="lib-wrap">
-    {content_html}
-  </main>
-  <div id="modal-container"></div>
+  </style>""",
+            scripts="""<script src="/static/js/library.js?v=1" defer></script>
   <script type="module">
     import "/static/js/chat/stream.js?v=2";
     import "/static/js/chat/ui.js?v=2";
     import "/static/js/chat/events.js?v=2";
     import "/static/js/chat/snippet.js?v=1";
-  </script>
-</body>
-</html>"""
+  </script>""",
+            wrap_class="lib-wrap",
+        )
+    )
 
 
 def _status_options(current: str, paper_id: str) -> str:
@@ -791,13 +778,13 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         items = "".join(_paper_item(p) for p in papers)
     elif status:
         items = (
-            '<div class="lib-empty"><strong>Nothing here yet.</strong>'
+            '<div class="empty-state-card"><strong>Nothing here yet.</strong>'
             "<p>No papers with this status — pick another tab above, or add "
             "papers from a search.</p></div>"
         )
     else:
         items = (
-            '<div class="lib-empty"><strong>Your library is empty.</strong>'
+            '<div class="empty-state-card"><strong>Your library is empty.</strong>'
             "<p>Save papers from search results with the bookmark icon and "
             "they'll land here — anonymous sessions keep a library too.</p>"
             '<a href="/">Search papers</a></div>'

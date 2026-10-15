@@ -20,6 +20,7 @@ from fasthtml.common import (
 )
 
 import config as _cfg
+from pages.shell import top_bar
 
 _TIER_DESCRIPTIONS = {
     "fast": "Quick lookups, summaries, glossary terms — cheapest models.",
@@ -134,18 +135,7 @@ def settings_page(
             Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
             Script(src="/static/js/settings.js"),
         ),
-        Div(
-            Link("█▓▒░ Office Hours ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
-            Div("", style="flex:1"),
-            Link(
-                "My Reports",
-                href="/reports",
-                cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
-            ),
-            BUTTON_DARK_TOGGLE(),
-            cls="top-bar",
-        ),
+        top_bar("settings"),
         Div(
             Div("Settings", style="font-size:1.4rem;font-weight:700;margin:0 0 4px 0;"),
             P(
@@ -207,13 +197,4 @@ def settings_page(
             ),
             style="max-width:760px;margin:0 auto;padding:24px 16px 60px 16px;",
         ),
-    )
-
-
-def BUTTON_DARK_TOGGLE() -> Button:  # noqa: N802 - FastHTML-style component
-    return Button(
-        "🌙 Dark",
-        id="oh-dark-toggle",
-        aria_label="Toggle dark mode",
-        type="button",
     )

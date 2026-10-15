@@ -38,20 +38,14 @@ def _owner_id(request: Request) -> str:
 
 
 def _shell(title: str, body: str) -> str:
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-  <title>{html.escape(title)} · Office Hours</title>
-  <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/forms.css">
-  <link rel="stylesheet" href="/static/css/modal.css">
-  <link rel="stylesheet" href="/static/css/chat.css">
-  <link rel="stylesheet" href="/static/css/blog.css">
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"></script>
-  <script src="/static/js/report.js?v=2" defer></script>
-  <script src="/static/js/main.js?v=2" type="module"></script>
-  <script src="/static/js/blog-view.js?v=1" defer></script>
+    from pages.shell import page_shell
+
+    return str(
+        page_shell(
+            title,
+            body,
+            active="topics",
+            head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
     .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .topic-card{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
@@ -79,15 +73,13 @@ def _shell(title: str, body: str) -> str:
     .topic-section h3{{font-size:0.95rem;margin-bottom:0.5rem;}}
     .topic-section .blog-article{{max-height:480px;overflow-y:auto;
       border:1px solid #444;border-radius:8px;padding:1rem;}}
-  </style>
-</head>
-<body>
-  <div class="topics-wrap">
-    <div style="margin-bottom:1rem;"><a href="/" style="text-decoration:none;">&larr; Office Hours</a></div>
-    {body}
-  </div>
-</body>
-</html>"""
+  </style>""",
+            scripts="""<script src="/static/js/report.js?v=2" defer></script>
+  <script src="/static/js/main.js?v=2" type="module"></script>
+  <script src="/static/js/blog-view.js?v=1" defer></script>""",
+            wrap_class="topics-wrap",
+        )
+    )
 
 
 def _esc(v: object) -> str:

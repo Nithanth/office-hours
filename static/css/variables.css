@@ -11,6 +11,10 @@
   --container-bg: #fffdf7;
   --container-border: #b8b0a0;
   --container-shadow: rgba(38, 34, 26, 0.2);
+  /* muted text + accent links — pages used to var(...,#fallback) these
+     everywhere because the tokens were never defined */
+  --fg-muted: #6e675a;
+  --accent: var(--oh-accent);
   /* main paper border (pinned) */
   --main-paper-border: var(--oh-accent);
 
@@ -29,7 +33,9 @@ body.oh-dark {
   --container-bg: var(--container-bg-dark);
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
+  --fg-muted: #9b927e;
   /* override pinned border */
   --main-paper-border: #35c9b3;
   --oh-accent: #35c9b3;
+  --accent: var(--oh-accent);
 }

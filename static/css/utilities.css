@@ -168,3 +168,25 @@ html, body { overflow-x: hidden; }
 #papers-list * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ================================================================
+   Shared page chrome — wraps + empty-state cards on every app page
+   ================================================================ */
+
+.page-wrap {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+/* "Nothing here yet" card — one style for every empty page. */
+.empty-state-card {
+  border: 1px dashed var(--container-border, #555);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--fg-muted, #888);
+}
+.empty-state-card strong { color: var(--fg); display: block; margin-bottom: 0.4rem; }
+.empty-state-card a { color: var(--oh-accent); }
+.report-wrap { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }

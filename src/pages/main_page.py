@@ -37,6 +37,7 @@ from pydantic import BaseModel
 
 import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
+from pages.shell import top_bar
 from services.chat.chat_components import ChatBubble, CitationCard
 
 
@@ -853,9 +854,8 @@ def home_page(page_data: SharedPageData) -> Body:
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
-        Div(
-            Link("█▓▒░ Office Hours ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
-            Div("", style="flex:1"),
+        top_bar(
+            "",
             Select(
                 Option("Audience", value="", disabled=True, selected=True),
                 Option("Technical (PhD)", value="technical"),
@@ -873,30 +873,6 @@ def home_page(page_data: SharedPageData) -> Body:
                 id="model-select",
                 name="model_key",
             ),
-            Link(
-                "Topics",
-                href="/topics",
-                cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);",
-            ),
-            Link(
-                "My Reports",
-                href="/reports",
-                cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);margin-left:6px;",
-            ),
-            Link(
-                "Library",
-                href="/library",
-                cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);margin-left:6px;",
-            ),
-            Link(
-                "Settings",
-                href="/settings",
-                cls="top-bar-link",
-                style="font-size:0.85rem;padding:4px 10px;border:1px solid #666;border-radius:4px;text-decoration:none;color:var(--fg);margin-left:6px;",
-            ),
             BUTTON(
                 "💬 Assistant",
                 id="open-global-chat",
@@ -912,16 +888,7 @@ def home_page(page_data: SharedPageData) -> Body:
                 title="Settings",
                 style="border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 8px;",
             ),
-            Span(id="oh-auth-status", cls="top-auth-status"),
-            BUTTON(
-                "🌙 Dark",
-                id="oh-dark-toggle",
-                aria_label="Toggle dark mode",
-                type="button",
-            ),
-            cls="top-bar",
         ),
-        # Comma added above after top-bar Div
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
@@ -1113,17 +1080,7 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
             # the same script so the welcome page respects the user's theme.
             Script(src="/static/js/settings.js"),
         ),
-        Div(
-            Link("█▓▒░ Office Hours ░▒▓█", href="/", cls="text-lg font-bold mr-4"),
-            Div("", style="flex:1"),
-            BUTTON(
-                "🌙 Dark",
-                id="oh-dark-toggle",
-                aria_label="Toggle dark mode",
-                type="button",
-            ),
-            cls="top-bar",
-        ),
+        top_bar(""),
         Div(
             Div(
                 Div(
