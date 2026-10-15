@@ -127,6 +127,35 @@ def _is_url_allowed(url: str) -> bool:
         return False
 
 
+def _is_public_http_url(url: str) -> bool:
+    """Looser check for the PDF proxy: any public https host.
+
+    The PDF endpoint blindly streams bytes back — it doesn't inject or
+    rewrite content — so the SSRF risk is hitting internal services, not
+    content injection. Block non-http(s) and private/reserved IPs only.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if not host:
+            return False
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                return False
+        except ValueError:
+            pass
+        # Block obvious internal hostnames
+        return not (
+            host in ("localhost", "metadata.google.internal")
+            or host.endswith((".internal", ".local", ".localhost"))
+        )
+    except Exception:
+        return False
+
+
 @router.get("/chat-modal", response_class=HTMLResponse)
 async def chat_modal(
     request: Request,
@@ -509,8 +538,10 @@ async def pdf_proxy(
     if not url.lower().startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Invalid URL scheme")
 
-    # SSRF protection: only proxy to allowed academic domains
-    if not _is_url_allowed(url):
+    # SSRF protection: any public http(s) host is fine for a blind byte
+    # stream — papers come from far more domains than the academic
+    # allowlist covers, and the old hard-403 made the viewer unusable.
+    if not _is_public_http_url(url):
         raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
 
     # Forward Range / If-Modified-Since so seeking & caching still work

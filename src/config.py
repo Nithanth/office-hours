@@ -215,10 +215,13 @@ class Config(BaseSettings):
         "L": "detailed and thorough (≈ 900 words), exploring nuances and providing substantial supporting information for each key aspect",
     }
 
+    # Generous caps: reasoning models on the OpenRouter tiers spend hidden
+    # thinking tokens against max_tokens, so tight targets truncate the
+    # visible answer mid-sentence (finish_reason="length").
     SUMMARY_OUTPUT_TOKEN_TARGETS: dict[str, dict[str, int]] = {
-        "technical": {"S": 2000, "M": 4000, "L": 6000},
-        "semi_technical": {"S": 2000, "M": 4000, "L": 6000},
-        "non_technical": {"S": 2000, "M": 4000, "L": 6000},
+        "technical": {"S": 4000, "M": 6000, "L": 9000},
+        "semi_technical": {"S": 4000, "M": 6000, "L": 9000},
+        "non_technical": {"S": 4000, "M": 6000, "L": 9000},
     }
 
     # ------------------------------------------------------------------
