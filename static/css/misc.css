@@ -325,3 +325,10 @@ body.oh-dark .search-card textarea:focus {
 .facet-kind{font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;opacity:0.55;}
 .facet-remove{border:none;background:none;color:inherit;opacity:0.5;cursor:pointer;font-size:0.9rem;padding:0 0 0 4px;}
 .facet-remove:hover{opacity:1;}
+
+/* Decluttered paper-card footer: actions on hover, meta on one line */
+.paper-actions{display:inline-flex;gap:2px;margin-left:8px;opacity:.45;transition:opacity .12s;vertical-align:middle;}
+li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
+.paper-authors{margin-top:2px;font-size:0.85rem;}
+.paper-meta{display:flex;align-items:center;gap:8px;margin-top:3px;font-size:0.8rem;color:var(--fg-muted,#888);}
+.paper-meta .citation-badge{margin-left:0 !important;}
