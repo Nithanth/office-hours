@@ -876,6 +876,15 @@ def home_page(page_data: SharedPageData) -> Body:
                 id="model-select",
                 name="model_key",
             ),
+            Select(
+                Option("Report length", value="", disabled=True),
+                Option("S (Concise)", value="S"),
+                Option("M (Standard)", value="M", selected=True),
+                Option("L (Detailed)", value="L"),
+                id="size-select",
+                name="size",
+                title="Report length",
+            ),
             BUTTON(
                 "💬 Assistant",
                 id="open-global-chat",
