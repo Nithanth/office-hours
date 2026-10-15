@@ -16,6 +16,30 @@
 
 .top-bar a { color: #000; text-decoration: none; }
 
+.top-bar-brand {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-right: 0.75rem;
+  white-space: nowrap;
+}
+
+/* Nav links — same pill on every page; .active marks the current one. */
+.top-bar-link {
+  font-size: 0.75rem;
+  padding: 2px 9px;
+  border: 1px solid #888;
+  border-radius: 4px;
+  text-decoration: none;
+  color: #000;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.top-bar-link.active {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
 .top-auth-status {
   display: inline-flex;
   align-items: center;
@@ -75,7 +99,19 @@ body.oh-dark .top-bar {
   color: var(--fg-dark);
   border-bottom-color: #333;
 }
-body.oh-dark .top-bar a { color: var(--oh-red); }
+body.oh-dark .top-bar a { color: var(--fg-dark); }
+body.oh-dark .top-bar-brand { color: var(--oh-accent); }
+
+body.oh-dark .top-bar-link {
+  background: transparent;
+  color: var(--fg-dark);
+  border: 1px solid #555;
+}
+body.oh-dark .top-bar-link.active {
+  background: var(--fg-dark);
+  color: var(--bg-dark);
+  border-color: var(--fg-dark);
+}
 
 body.oh-dark .top-auth-status a {
   background: #2a2a2a;
@@ -101,9 +137,13 @@ body.oh-dark .top-bar select.placeholder {
     padding: 4px 8px;
     font-size: 0.75rem;
   }
-  .top-bar a.text-lg {
+  .top-bar a.top-bar-brand {
     font-size: 0.75rem;
     margin-right: 0;
+  }
+  .top-bar-link {
+    font-size: 0.62rem;
+    padding: 1px 6px;
   }
   .top-bar select {
     width: 90px;
