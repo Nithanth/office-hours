@@ -258,7 +258,14 @@ class OpenRouterProvider(LLMProvider):
             )
             if not response.choices or response.choices[0].message.content is None:
                 raise LLMProviderError("openrouter", "Invalid response structure")
-            return str(response.choices[0].message.content).strip()
+            choice = response.choices[0]
+            if getattr(choice, "finish_reason", None) == "length":
+                self.logger.warning(
+                    "openrouter_output_truncated",
+                    model=selected_model,
+                    max_tokens=max_tokens,
+                )
+            return str(choice.message.content).strip()
         except OpenAIRateLimitError as e:
             raise LLMRateLimitError("openrouter", "Rate limit exceeded", e) from e
         except OpenAIAPIError as e:
