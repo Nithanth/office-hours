@@ -151,9 +151,19 @@ def enrich_papers_with_citations(
             paper.citation_count = count
             enriched += 1
 
-    logger.info(
-        "s2_citation_enrichment",
-        total_papers=len(papers),
-        resolved=len(citations),
-        enriched=enriched,
-    )
+    if citations or not id_map:
+        logger.info(
+            "s2_citation_enrichment",
+            total_papers=len(papers),
+            resolved=len(citations),
+            enriched=enriched,
+        )
+    else:
+        # Zero resolved = silent citation-blind ranking (batch failure,
+        # rate limit) — the composite falls back to pure rank order and a
+        # 1-citation paper can top the list. Warn so prod logs show it.
+        logger.warning(
+            "s2_citation_enrichment_empty",
+            total_papers=len(papers),
+            attempted_ids=len(id_map),
+        )
