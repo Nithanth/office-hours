@@ -248,3 +248,55 @@ class TestFetchPerKind:
         assert (
             feed._fetch_candidates_sync(topic, since=datetime(2025, 1, 1)) == []
         )  # noqa: SLF001
+
+
+class TestTombstones:
+    async def test_feed_never_resurrects_removed_paper(
+        self, db_session: AsyncSession, monkeypatch
+    ):
+        from services.persistence.repositories import (
+            list_topic_papers,
+            remove_topic_paper,
+        )
+
+        topic = _topic()
+        db_session.add(topic)
+        await db_session.commit()
+        await add_topic_papers(
+            db_session, topic_id=topic.id, papers=[_paper("2501.0001")], source="feed"
+        )
+        await db_session.commit()
+        assert await remove_topic_paper(
+            db_session, topic_id=topic.id, paper_id="2501.0001"
+        )
+
+        async def fake_fetch(t, *, since):
+            return [_paper("2501.0001")]  # provider still returns it
+
+        monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
+        added = await feed.feed_topic(db_session, topic)
+        assert added == 0
+        assert await list_topic_papers(db_session, topic_id=topic.id) == []
+
+    async def test_explicit_add_clears_tombstone(self, db_session: AsyncSession):
+        from services.persistence.repositories import (
+            list_topic_papers,
+            remove_topic_paper,
+        )
+
+        topic = _topic()
+        db_session.add(topic)
+        await db_session.commit()
+        await add_topic_papers(
+            db_session, topic_id=topic.id, papers=[_paper("2501.0001")]
+        )
+        await db_session.commit()
+        await remove_topic_paper(db_session, topic_id=topic.id, paper_id="2501.0001")
+        # A non-feed add (seed/manual) resurrects — the user put it back.
+        added = await add_topic_papers(
+            db_session, topic_id=topic.id, papers=[_paper("2501.0001")], source="seed"
+        )
+        await db_session.commit()
+        assert added == 1
+        papers = await list_topic_papers(db_session, topic_id=topic.id)
+        assert [p.paper_id for p in papers] == ["2501.0001"]
