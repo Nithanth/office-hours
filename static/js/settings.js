@@ -322,21 +322,28 @@
         LS.setItem(SIZE_KEY, saved);
       }
       if (!saved) return;
-      document.querySelectorAll('#summary_size_select').forEach(sel => {
+      document.querySelectorAll('#summary_size_select, #size-select').forEach(sel => {
         if (sel && sel.value !== saved) sel.value = saved;
       });
     }
 
-    // On change, persist value
+    // Persist + keep the toolbar select and report-form selects in sync
+    function syncSize(value, source) {
+      LS.setItem(SIZE_KEY, value);
+      document.querySelectorAll('#summary_size_select, #size-select').forEach(sel => {
+        if (sel && sel !== source && sel.value !== value) sel.value = value;
+      });
+    }
     document.body.addEventListener('change', evt => {
       const t = evt.target;
-      if (t && t.id === 'summary_size_select') {
-        LS.setItem(SIZE_KEY, t.value);
+      if (t && (t.id === 'summary_size_select' || t.id === 'size-select') && t.value) {
+        syncSize(t.value, t);
       }
     });
 
     // Initial restore (in case form already present)
     restoreSummarySize();
+    { const saved = LS.getItem(SIZE_KEY); if (saved) syncSize(saved); }
 
     // Re-sync after HTMX swaps
     document.addEventListener('htmx:afterSwap', evt => {

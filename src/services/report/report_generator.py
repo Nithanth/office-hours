@@ -610,7 +610,7 @@ class ReportGenerator:
                     str(paper_obj.url) if paper_obj and paper_obj.url else ""
                 )
                 report_parts.append(
-                    f"<button class='ask-assistant-btn' hx-get='/chat-modal?paper_id={paper_id_safe}&title={title_q}&paper_url={url_q}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About Paper</button>"
+                    f"<button class='ask-assistant-btn' hx-get='/viewer/{paper_id_safe}?url={url_q}&title={title_q}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About Paper</button>"
                 )
                 report_parts.append("</div>")
 

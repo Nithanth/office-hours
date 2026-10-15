@@ -423,6 +423,15 @@ def _render_paper_item(
         style="display:none;",
     )
 
+    # Action buttons grouped into a hover row so the card stays readable
+    actions_row = Span(
+        toggle_btn,
+        bibtex_btn,
+        save_btn,
+        similar_btn,
+        cls="paper-actions",
+    )
+
     return LI(
         Div(
             *selection_inputs,
@@ -433,16 +442,17 @@ def _render_paper_item(
             ),
             relevance_span,
             enrich_span,
-            toggle_btn,
-            bibtex_btn,
-            save_btn,
-            similar_btn,
-            Br(),
-            EM(authors_display),
-            Br(),
-            Span(f"Published: {formatted_date}"),
-            citation_span,
-            selection_label,
+            actions_row,
+            Div(
+                EM(authors_display),
+                cls="paper-authors",
+            ),
+            Div(
+                Span(f"Published: {formatted_date}"),
+                citation_span,
+                selection_label,
+                cls="paper-meta",
+            ),
         ),
         similar_container,
         **li_attrs,
@@ -875,6 +885,15 @@ def home_page(page_data: SharedPageData) -> Body:
                 ],
                 id="model-select",
                 name="model_key",
+            ),
+            Select(
+                Option("Report length", value="", disabled=True),
+                Option("S (Concise)", value="S"),
+                Option("M (Standard)", value="M", selected=True),
+                Option("L (Detailed)", value="L"),
+                id="size-select",
+                name="size",
+                title="Report length",
             ),
             BUTTON(
                 "💬 Assistant",
