@@ -66,6 +66,11 @@ def _shell(title: str, body: str) -> str:
     .paper-row{{display:flex;justify-content:space-between;gap:0.75rem;
       border:1px solid #444;border-radius:8px;padding:0.75rem;margin:0.5rem 0;
       background:var(--container-bg);}}
+    /* long unbreakable titles (URLs/ids) must not push the action buttons
+       offscreen — constrain the text column and keep buttons on-row */
+    .paper-row>div:first-child{{min-width:0;flex:1 1 auto;}}
+    .paper-row>div:last-child{{flex:0 0 auto;white-space:nowrap;align-self:center;}}
+    .paper-row .pt{{overflow-wrap:anywhere;}}
     .paper-row .pt a{{color:var(--fg);font-weight:600;}}
     .paper-row .pm{{font-size:0.78rem;color:var(--fg-muted,#888);margin-top:0.2rem;}}
     .topic-actions a,.topic-actions button{{margin-right:0.5rem;}}
