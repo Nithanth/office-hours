@@ -193,26 +193,60 @@ function _flushTokens(targetEl) {
 // ---------------------------------------------------------------------------
 /* legacy markdown helpers removed – now using chat/markdown.js */
 
-/** Add a "Copy" button to an assistant message bubble (copies plain text). */
-function _addMessageCopyButton(bubbleEl) {
+/** ChatGPT-style action row on an assistant bubble: Copy + Regenerate. */
+function _addMessageActions(bubbleEl) {
   if (!bubbleEl || !bubbleEl.classList.contains("assistant-message")) return;
-  if (bubbleEl.querySelector(".msg-copy-btn")) return;
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "msg-copy-btn";
-  btn.title = "Copy message";
-  btn.setAttribute("aria-label", "Copy message");
-  btn.textContent = "Copy";
-  btn.addEventListener("click", (e) => {
+  if (bubbleEl.querySelector(".msg-actions")) return;
+
+  const row = document.createElement("div");
+  row.className = "msg-actions";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "msg-act-btn";
+  copyBtn.title = "Copy message";
+  copyBtn.setAttribute("aria-label", "Copy message");
+  copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy';
+  copyBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const text = bubbleEl.innerText.replace(/Copy$/, "").trim();
-    navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = "Copied!";
-      setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+    const clone = bubbleEl.cloneNode(true);
+    clone.querySelectorAll(".msg-actions,.chat-sources").forEach(n => n.remove());
+    navigator.clipboard.writeText(clone.innerText.trim()).then(() => {
+      copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+      setTimeout(() => { copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy'; }, 1500);
     });
   });
+  row.appendChild(copyBtn);
+
+  const regenBtn = document.createElement("button");
+  regenBtn.type = "button";
+  regenBtn.className = "msg-act-btn";
+  regenBtn.title = "Resend the message that produced this answer";
+  regenBtn.setAttribute("aria-label", "Regenerate response");
+  regenBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Regenerate';
+  regenBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // Find the user bubble that produced this answer.
+    let sib = bubbleEl.previousElementSibling;
+    while (sib && !sib.classList.contains("user-message")) sib = sib.previousElementSibling;
+    if (!sib) return;
+    const lastUserText = sib.innerText.trim();
+    if (!lastUserText) return;
+    // Drop the assistant bubble and everything after it.
+    let node = bubbleEl;
+    while (node) { const next = node.nextElementSibling; node.remove(); node = next; }
+    // Resubmit via the chat form.
+    const form = bubbleEl.closest(".chat-modal, .modal-content, body")?.querySelector("form");
+    const ta = form?.querySelector("textarea[name='message'], textarea");
+    if (!form || !ta) return;
+    ta.value = lastUserText;
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  row.appendChild(regenBtn);
+
   bubbleEl.style.position = "relative";
-  bubbleEl.appendChild(btn);
+  bubbleEl.appendChild(row);
 }
 
 /** Render final markdown & clean up timers, attributes, UI state. */
@@ -311,7 +345,7 @@ function _finalizeBubble(targetEl) {
     .then(() => {
       targetEl.querySelectorAll("pre code").forEach((block) => window.hljs && window.hljs.highlightElement(block));
       addCopyButtons(targetEl);
-      _addMessageCopyButton(targetEl);
+      _addMessageActions(targetEl);
     })
     .finally(doneCleanup)
     .catch((e) => console.error("markdown render error", e));

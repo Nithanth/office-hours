@@ -530,7 +530,7 @@ async def report_stream(
         html_block = (
             f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
             f"{rg._text_to_html_paragraphs(summary)}"
-            f"<button class='ask-assistant-btn' style='position:static;display:inline-block;margin-top:0.75rem;' hx-get='/chat-modal?paper_id={paper.id}&title={urllib.parse.quote_plus(paper.title or '')}&paper_url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
+            f"<button class='ask-assistant-btn' style='position:static;display:inline-block;margin-top:0.75rem;' hx-get='/viewer/{paper.id}?url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&title={urllib.parse.quote_plus(paper.title or '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
             "</div>"
         )
         return role, html_block

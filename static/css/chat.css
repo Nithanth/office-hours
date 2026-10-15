@@ -281,3 +281,10 @@ body.oh-dark .sources-toggle { color: #666; }
 .oh-snippet-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .oh-snippet-x{border:none;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;opacity:.65;}
 .oh-snippet-x:hover{opacity:1;}
+
+/* ChatGPT-style action row on assistant bubbles */
+.msg-actions{display:flex;gap:4px;margin-top:6px;opacity:0;transition:opacity .15s;}
+.assistant-message:hover .msg-actions{opacity:1;}
+.msg-act-btn{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid var(--container-border,#ccc);border-radius:10px;background:var(--container-bg,#fff);color:var(--fg,#444);font-size:0.72rem;cursor:pointer;}
+.msg-act-btn:hover{background:var(--hover-bg,#eee);}
+.msg-act-btn i{font-size:0.7rem;}
