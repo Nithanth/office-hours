@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from api.routers.report_stream import _clean_generated_title
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
-from services.persistence.models import Report
+from services.persistence.models import Report, Topic, TopicPaper
 from services.topics.keys import canonical_key_for, detect_topic_kind
 
 
@@ -129,6 +129,43 @@ async def topics_page(request: Request) -> HTMLResponse:
     return HTMLResponse(_shell("Topics", f"<h1>Your Topics</h1>{items}"))
 
 
+def _paper_rows_html(topic: Topic, papers: list[TopicPaper]) -> str:
+    """One rendered row per topic paper (shared by the page and feed refresh)."""
+    paper_rows = []
+    for p in papers:
+        title_link = (
+            f'<a href="{_esc(p.url)}" target="_blank" rel="noopener">{_esc(p.title)}</a>'
+            if p.url
+            else _esc(p.title)
+        )
+        feed_chip = (
+            ' <span class="topic-kind" title="Added by the topic feed">feed</span>'
+            if p.source == "feed"
+            else ""
+        )
+        meta_bits = [b for b in (_fmt_authors(p.authors), _esc(p.published_date)) if b]
+        meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
+        pid_q = quote(p.paper_id, safe="")
+        viewer_btn = (
+            f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
+            f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
+            f' hx-target="#modal-container" hx-swap="innerHTML">'
+            f'<i class="fa-solid fa-comment-dots"></i></button>'
+            if p.url
+            else ""
+        )
+        paper_rows.append(
+            f"""<div class="paper-row">
+  <div><div class="pt">{title_link}{feed_chip}</div>{meta}</div>
+  <div>{viewer_btn}
+  <button type="button" class="copy-icon-btn" title="Remove from topic"
+    hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe='')}/remove"
+    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>
+</div>"""
+        )
+    return "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
+
+
 @router.get("/topics/{topic_id}", response_class=HTMLResponse)
 async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     """One topic: its paper set, latest report snapshot, and actions."""
@@ -148,34 +185,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         papers = await list_topic_papers(session, topic_id=topic.id)
         reports = await list_topic_reports(session, topic_id=topic.id, limit=5)
 
-    paper_rows = []
-    for p in papers:
-        title_link = (
-            f'<a href="{_esc(p.url)}" target="_blank" rel="noopener">{_esc(p.title)}</a>'
-            if p.url
-            else _esc(p.title)
-        )
-        meta_bits = [b for b in (_fmt_authors(p.authors), _esc(p.published_date)) if b]
-        meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
-        pid_q = quote(p.paper_id, safe="")
-        viewer_btn = (
-            f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
-            f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
-            f' hx-target="#modal-container" hx-swap="innerHTML">'
-            f'<i class="fa-solid fa-comment-dots"></i></button>'
-            if p.url
-            else ""
-        )
-        paper_rows.append(
-            f"""<div class="paper-row">
-  <div><div class="pt">{title_link}</div>{meta}</div>
-  <div>{viewer_btn}
-  <button type="button" class="copy-icon-btn" title="Remove from topic"
-    hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe='')}/remove"
-    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>
-</div>"""
-        )
-    papers_html = "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
+    papers_html = _paper_rows_html(topic, papers)
 
     # Render markdown server-side so a CDN hiccup can never surface raw
     # markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
@@ -247,8 +257,12 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>
-{papers_html}
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})
+  <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
+    hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML">Check for new</button>
+</h2>
+<div id="feed-status" class="topic-meta"></div>
+<div id="topic-papers">{papers_html}</div>
 {blog_html}
 {notes_html}"""
     return HTMLResponse(_shell(topic.title, body))
@@ -371,6 +385,46 @@ async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
         }
     )
     return HTMLResponse(_report_skeleton_html(token))
+
+
+@router.post("/topics/{topic_id}/feed", response_class=HTMLResponse)
+async def topic_feed_now(topic_id: str, request: Request) -> HTMLResponse:
+    """Manual feed check — polls this topic's source now and swaps in the
+    updated paper list. Floored to one poll per minute so rapid clicks
+    can't hammer providers; the automatic sweep handles regular polling."""
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from datetime import datetime
+
+    from services.persistence.repositories import get_topic, list_topic_papers
+    from services.topics import feed as topic_feed
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        if (
+            topic.last_feed_check
+            and (datetime.utcnow() - topic.last_feed_check).total_seconds()
+            < topic_feed.MANUAL_MIN_INTERVAL_S
+        ):
+            return HTMLResponse(
+                "Checked just now — the feed polls this topic automatically."
+            )
+        added = await topic_feed.feed_topic(session, topic)
+        papers = await list_topic_papers(session, topic_id=topic.id)
+
+    status = (
+        f"<b>{added}</b> new paper{'s' if added != 1 else ''} added."
+        if added
+        else "Checked — nothing new yet."
+    )
+    oob = (
+        f'<div id="topic-papers" hx-swap-oob="true">'
+        f"{_paper_rows_html(topic, papers)}</div>"
+    )
+    return HTMLResponse(status + oob)
 
 
 @router.post("/api/topics/{topic_id}/papers/{paper_id:path}/remove")

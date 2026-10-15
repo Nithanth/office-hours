@@ -91,6 +91,8 @@ class Topic(Base):
     # snapshots keep their own frozen copy on reports.blog_markdown.
     blog_markdown: Mapped[str | None] = mapped_column(Text)
     notes_markdown: Mapped[str | None] = mapped_column(Text)
+    # Last time the feed polled external sources for this topic (None = never).
+    last_feed_check: Mapped[datetime | None] = mapped_column(DateTime)
 
     papers: Mapped[list[TopicPaper]] = relationship(back_populates="topic")
 

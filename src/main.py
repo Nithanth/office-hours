@@ -33,7 +33,11 @@ from services.chat.chat_state import _chat_states
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMConfigurationError, LLMService
 from services.paper.text_extractor import TextExtractor
-from services.persistence.database import close_database, init_database
+from services.persistence.database import (
+    close_database,
+    database_available,
+    init_database,
+)
 from services.tasks import task_queue
 from utils.observability import setup_observability
 
@@ -69,6 +73,7 @@ async def _prewarm_cached(url: str, paper_id: str) -> None:
 llm_service_instance: Optional[LLMService] = None
 exa_client_instance: Optional[ExaClient] = None
 _gc_task: Optional[asyncio.Task[None]] = None
+_feed_task: Optional[asyncio.Task[None]] = None
 
 KEEP_ALIVE_SEC = config.config.CHAT_KEEPALIVE_SEC
 
@@ -139,8 +144,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if purged:
                     logger.debug("taskqueue_gc", purged=purged)
 
-        global _gc_task
+        global _gc_task, _feed_task
         _gc_task = asyncio.create_task(_chatstate_gc_loop())
+        if database_available():
+            from services.topics.feed import feed_loop
+
+            _feed_task = asyncio.create_task(feed_loop())
         yield
     except ValueError as ve:
         logger.critical("startup configuration error", err=str(ve))
@@ -158,6 +167,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("LLM Service closed.")
             if _gc_task:
                 _gc_task.cancel()
+            if _feed_task:
+                _feed_task.cancel()
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
         await close_database()
