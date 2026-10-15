@@ -93,6 +93,9 @@ class Topic(Base):
     notes_markdown: Mapped[str | None] = mapped_column(Text)
     # Last time the feed polled external sources for this topic (None = never).
     last_feed_check: Mapped[datetime | None] = mapped_column(DateTime)
+    # sha256 of the markdown body last mirrored to the Notion page — lets the
+    # sync skip rewrites when blog/notes haven't changed.
+    notion_body_hash: Mapped[str | None] = mapped_column(String(64))
 
     papers: Mapped[list[TopicPaper]] = relationship(back_populates="topic")
 

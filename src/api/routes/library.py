@@ -18,9 +18,11 @@ from services.persistence.repositories import (
     get_notion_integration,
     get_report,
     get_saved_paper,
+    get_topic,
     list_paper_chat_messages,
     list_saved_paper_ids,
     list_saved_papers,
+    list_topics,
     notion_access_token,
     save_paper,
     set_notion_databases,
@@ -29,6 +31,7 @@ from services.persistence.repositories import (
     set_saved_paper_notion_page,
     set_saved_paper_notion_status,
     set_saved_paper_status,
+    set_topic_notion,
     unsave_paper,
 )
 
@@ -263,7 +266,20 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
                     "created_date": report.created_at.date().isoformat(),
                     "notion_page_id": report.notion_page_id,
                     "content": report.report_text,
+                    "topic_id": report.topic_id,
                 }
+    # Point the paper's Topic relation at the living topic page when the
+    # report belongs to a topic that already has one — otherwise this
+    # single-paper sync would overwrite it back to the report row.
+    topic_page_by_report: dict[str, str] = {}
+    rid = row["report_id"]
+    if rid and reports.get(rid, {}).get("topic_id"):
+        async for session in session_scope():
+            topic = await get_topic(
+                session, owner_id=owner_id, topic_id=reports[rid]["topic_id"]
+            )
+            if topic is not None and topic.notion_page_id:
+                topic_page_by_report[rid] = topic.notion_page_id
 
     exporter = NotionExporter(token)
     try:
@@ -287,6 +303,7 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
             papers=[row],
             reports=reports,
             owner_id=owner_id,
+            topic_page_by_report_id=topic_page_by_report,
         )
         # Answer any open comment threads while we're here — questions
         # get replies whenever library state changes, no button needed.
@@ -356,7 +373,11 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    from services.notion.library_sync import provision_databases, sync_library
+    from services.notion.library_sync import (
+        provision_databases,
+        sync_library,
+        sync_topics,
+    )
     from services.notion.notion_exporter import NotionExporter
 
     exporter = NotionExporter(token)
@@ -418,7 +439,39 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                             "created_date": report.created_at.date().isoformat(),
                             "notion_page_id": report.notion_page_id,
                             "content": report.report_text,
+                            "topic_id": report.topic_id,
                         }
+
+        # Workspace topics — mirrored into the same Topics DB, one row per
+        # topic with the living blog + notes as the page body.
+        async for session in session_scope():
+            topics = await list_topics(session, owner_id=str(user_id), limit=200)
+            topic_rows = [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "kind": t.kind,
+                    "seed_query": t.seed_query,
+                    "created_date": t.created_at.date().isoformat(),
+                    "blog_markdown": t.blog_markdown,
+                    "notes_markdown": t.notes_markdown,
+                    "notion_page_id": t.notion_page_id,
+                    "notion_body_hash": t.notion_body_hash,
+                }
+                for t in topics
+            ]
+
+        ws_stats = await sync_topics(
+            exporter, topics_db_id=topics_db_id, topics=topic_rows
+        )
+        # Saved papers relate to the living topic page when their report
+        # belongs to one; otherwise to the per-report snapshot row.
+        topic_page_by_report = {
+            rid: ws_stats["topic_page_ids"][reports[rid]["topic_id"]]
+            for rid in reports
+            if reports[rid].get("topic_id")
+            and reports[rid]["topic_id"] in ws_stats["topic_page_ids"]
+        }
 
         stats = await sync_library(
             exporter,
@@ -427,6 +480,7 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             papers=paper_rows,
             reports=reports,
             owner_id=str(user_id),
+            topic_page_by_report_id=topic_page_by_report,
         )
     finally:
         await exporter.close()
@@ -464,16 +518,32 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                 session, owner_id=str(user_id), paper_id=paper_id, count=count
             )
 
+    # Persist workspace-topic sync bookkeeping (page ids + body hashes).
+    for row in topic_rows:
+        tid = row["id"]
+        page_id = ws_stats["topic_page_ids"].get(tid)
+        body_hash = ws_stats["body_hashes"].get(tid)
+        if (page_id and page_id != row["notion_page_id"]) or body_hash:
+            async for session in session_scope():
+                await set_topic_notion(
+                    session,
+                    owner_id=str(user_id),
+                    topic_id=tid,
+                    notion_page_id=page_id,
+                    notion_body_hash=body_hash,
+                )
+
     return JSONResponse(
         {
-            "ok": stats["failed"] == 0,
+            "ok": stats["failed"] == 0 and ws_stats["failed"] == 0,
             "created": stats["created"],
             "updated": stats["updated"],
-            "topics_created": stats["topics_created"],
-            "topics_updated": stats["topics_updated"],
+            "topics_created": stats["topics_created"] + ws_stats["topics_created"],
+            "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
+            "topic_bodies_written": ws_stats["bodies_written"],
             "status_pulled": len(stats["status_updates"]),
-            "failed": stats["failed"],
-            "errors": stats["errors"][:5],
+            "failed": stats["failed"] + ws_stats["failed"],
+            "errors": (stats["errors"] + ws_stats["errors"])[:5],
         }
     )
 
