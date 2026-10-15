@@ -44,11 +44,11 @@ def _exa_client() -> Any:
     return get_exa_client()
 
 
-def _author_name(topic: Topic) -> str:
+def _author_name(seed_query: str, title: str = "") -> str:
     from api.routes.search import _detect_author_query
 
-    detected = _detect_author_query(topic.seed_query or "")
-    return str(detected) if detected else (topic.seed_query or topic.title)
+    detected = _detect_author_query(seed_query or "")
+    return str(detected) if detected else (seed_query or title)
 
 
 def _author_paper_to_paper(ap: Any) -> Paper | None:
@@ -68,17 +68,19 @@ def _author_paper_to_paper(ap: Any) -> Paper | None:
     )
 
 
-def _fetch_candidates_sync(topic: Topic, *, since: datetime) -> list[Paper]:
-    """Blocking provider fetch — run via ``asyncio.to_thread``."""
+def _fetch_candidates_sync(
+    kind: str, query: str, *, since: datetime, log_ctx: str = ""
+) -> list[Paper]:
+    """Blocking provider fetch for one angle — run via ``asyncio.to_thread``."""
     papers: list[Paper] = []
-    if topic.kind == "author":
+    if kind == "author":
         from services.paper.metadata.author_search import (
             S2UnavailableError,
             get_author_papers,
             search_authors,
         )
 
-        name = _author_name(topic)
+        name = _author_name(query)
         try:
             authors = search_authors(name, limit=1, timeout=10)
             if not authors:
@@ -87,7 +89,7 @@ def _fetch_candidates_sync(topic: Topic, *, since: datetime) -> list[Paper]:
                 authors[0].author_id, limit=FEED_PER_TOPIC_LIMIT * 3
             )
         except S2UnavailableError:
-            logger.warning("feed_author_unavailable", topic_id=topic.id)
+            logger.warning("feed_author_unavailable", ctx=log_ctx)
             return []
         for ap in s2_papers:
             if ap.year and ap.year < since.year:
@@ -101,17 +103,17 @@ def _fetch_candidates_sync(topic: Topic, *, since: datetime) -> list[Paper]:
 
     client = _exa_client()
     if client is None:
-        logger.warning("feed_no_exa_client", topic_id=topic.id)
+        logger.warning("feed_no_exa_client", ctx=log_ctx)
         return []
-    if topic.kind == "paper":
+    if kind == "paper":
         papers = client.find_similar_papers(
-            topic.seed_query,
+            query,
             num_results=FEED_PER_TOPIC_LIMIT,
             start_published_date=since,
         )
     else:  # subject
         papers = client._fetch_papers_from_exa(  # noqa: SLF001
-            topic.seed_query or topic.title,
+            query,
             FEED_PER_TOPIC_LIMIT,
             category="publication",
             start_published_date=since,
@@ -120,18 +122,53 @@ def _fetch_candidates_sync(topic: Topic, *, since: datetime) -> list[Paper]:
 
 
 async def fetch_feed_papers(topic: Topic, *, since: datetime) -> list[Paper]:
-    """Provider-facing fetch for one topic (off-thread; providers are sync)."""
+    """Provider-facing fetch for a topic — every facet contributes candidates.
+
+    A topic is a research question; its facets are the different vocabularies
+    into it. Each facet polls by its own kind (subject/paper/author) and the
+    results merge into the shared paper set.
+    """
+    from services.persistence.repositories import list_topic_facets
+
+    facets: list[tuple[str, str]] = []
     try:
-        return await asyncio.to_thread(_fetch_candidates_sync, topic, since=since)
-    except Exception as exc:  # noqa: BLE001 - a flaky provider must not kill a sweep
-        logger.warning("feed_fetch_failed", topic_id=topic.id, err=str(exc))
-        return []
+        from services.persistence.database import session_scope
+
+        async for s in session_scope():
+            facets = [
+                (f.kind, f.query or "")
+                for f in await list_topic_facets(s, topic_id=topic.id)
+            ]
+    except Exception as exc:  # noqa: BLE001 - facets table may not exist yet
+        logger.debug("feed_facets_fallback", err=str(exc))
+    if not facets:
+        facets = [(topic.kind, topic.seed_query or topic.title)]
+
+    papers: list[Paper] = []
+    for kind, query in facets:
+        if not query:
+            continue
+        try:
+            papers.extend(
+                await asyncio.to_thread(
+                    _fetch_candidates_sync,
+                    kind,
+                    query,
+                    since=since,
+                    log_ctx=f"{topic.id}:{kind}",
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - one bad facet can't kill a sweep
+            logger.warning(
+                "feed_fetch_failed", topic_id=topic.id, kind=kind, err=str(exc)
+            )
+    return papers
 
 
 async def feed_topic(
     session: AsyncSession, topic: Topic, *, now: datetime | None = None
 ) -> int:
-    """Poll one topic's source and add any new papers. Returns count added."""
+    """Poll all of a topic's facets and add any new papers. Returns count added."""
     from services.persistence.repositories import add_topic_papers
 
     now = now or datetime.utcnow()
@@ -145,6 +182,30 @@ async def feed_topic(
         topic.updated_at = now
     await session.commit()
     return int(added)
+
+
+async def feed_facet_once(topic: Topic, *, kind: str, query: str) -> int:
+    """One-shot harvest for a freshly added facet — pulls its current papers
+    in immediately rather than waiting for the next sweep."""
+    papers = await asyncio.to_thread(
+        _fetch_candidates_sync,
+        kind,
+        query,
+        since=datetime.utcnow() - timedelta(days=FEED_LOOKBACK_DAYS),
+        log_ctx=f"{topic.id}:{kind}:init",
+    )
+    if not papers:
+        return 0
+    from services.persistence.database import session_scope
+    from services.persistence.repositories import add_topic_papers
+
+    async for session in session_scope():
+        added = await add_topic_papers(
+            session, topic_id=topic.id, papers=papers, source="feed"
+        )
+        await session.commit()
+        return int(added)
+    return 0
 
 
 async def feed_sweep() -> int:

@@ -133,7 +133,6 @@ class TestFeedTopic:
 
 class TestFetchPerKind:
     def test_subject_hits_exa_search_with_date(self, monkeypatch):
-        topic = _topic()
         calls: dict = {}
 
         class FakeExa:
@@ -143,18 +142,15 @@ class TestFetchPerKind:
 
         monkeypatch.setattr(feed, "_exa_client", lambda: FakeExa())
         since = datetime(2026, 10, 1)
-        papers = feed._fetch_candidates_sync(topic, since=since)  # noqa: SLF001
+        papers = feed._fetch_candidates_sync(
+            "subject", "implicit neural representations", since=since
+        )  # noqa: SLF001
         assert calls["query"] == "implicit neural representations"
         assert calls["category"] == "publication"
         assert calls["start_published_date"] == since
         assert len(papers) == 2
 
     def test_paper_kind_uses_find_similar(self, monkeypatch):
-        topic = _topic(
-            kind="paper",
-            canonical_key="paper:x",
-            seed_query="https://arxiv.org/abs/2401.0001",
-        )
         calls: dict = {}
 
         class FakeExa:
@@ -164,19 +160,15 @@ class TestFetchPerKind:
 
         monkeypatch.setattr(feed, "_exa_client", lambda: FakeExa())
         since = datetime(2026, 10, 1)
-        papers = feed._fetch_candidates_sync(topic, since=since)  # noqa: SLF001
+        papers = feed._fetch_candidates_sync(
+            "paper", "https://arxiv.org/abs/2401.0001", since=since
+        )  # noqa: SLF001
         assert calls["url"] == "https://arxiv.org/abs/2401.0001"
         assert calls["start_published_date"] == since
         assert [p.id for p in papers] == ["3"]
 
     def test_author_kind_maps_and_filters_by_year(self, monkeypatch):
         from services.paper.metadata.author_search import AuthorPaper, AuthorResult
-
-        topic = _topic(
-            kind="author",
-            canonical_key="author:yann lecun",
-            seed_query="papers by Yann LeCun",
-        )
 
         monkeypatch.setattr(
             "services.paper.metadata.author_search.search_authors",
@@ -226,7 +218,7 @@ class TestFetchPerKind:
             ),
         )
         papers = feed._fetch_candidates_sync(  # noqa: SLF001
-            topic, since=datetime(2025, 1, 1)
+            "author", "papers by Yann LeCun", since=datetime(2025, 1, 1)
         )
         assert [p.title for p in papers] == ["New"]
         assert str(papers[0].url) == "https://arxiv.org/abs/2601.0002"
@@ -235,10 +227,6 @@ class TestFetchPerKind:
     def test_author_kind_unavailable_returns_empty(self, monkeypatch):
         from services.paper.metadata.author_search import S2UnavailableError
 
-        topic = _topic(
-            kind="author", canonical_key="author:x", seed_query="papers by X"
-        )
-
         def _raise(name, **kw):
             raise S2UnavailableError("429")
 
@@ -246,7 +234,10 @@ class TestFetchPerKind:
             "services.paper.metadata.author_search.search_authors", _raise
         )
         assert (
-            feed._fetch_candidates_sync(topic, since=datetime(2025, 1, 1)) == []
+            feed._fetch_candidates_sync(
+                "author", "papers by X", since=datetime(2025, 1, 1)
+            )
+            == []
         )  # noqa: SLF001
 
 

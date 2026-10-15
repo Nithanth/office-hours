@@ -5,10 +5,12 @@ from __future__ import annotations
 import html
 import json
 import secrets
+from typing import Any
 from urllib.parse import quote, quote_plus
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from loguru import logger
 
 from api.routers.report_stream import _clean_generated_title
 from services.core.model_prefs import prefs_owner_id
@@ -216,6 +218,188 @@ def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> st
     )
 
 
+def _facets_section(topic: Topic, facets: list[Any]) -> str:
+    """The topic's search angles — each facet is polled by the feed."""
+    items = []
+    for f in facets:
+        remove_btn = ""
+        if len(facets) > 1:
+            remove_btn = (
+                f'<button type="button" class="facet-remove" title="Stop tracking this angle" '
+                f'hx-post="/topics/{_esc(topic.id)}/facets/{_esc(f.id)}/remove" '
+                'hx-target="#facets-section" hx-swap="outerHTML">&times;</button>'
+            )
+        items.append(
+            f'<span class="oh-related-chip facet-chip">'
+            f'<span class="facet-kind">{_esc(f.kind)}</span> {_esc(f.query[:80])}{remove_btn}</span>'
+        )
+    return f"""<div id="facets-section">
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Search angles</h2>
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
+{''.join(items)}
+</div>
+<form hx-post="/topics/{_esc(topic.id)}/facets" hx-target="#facets-section" hx-swap="outerHTML"
+      style="display:flex;gap:8px;align-items:center;">
+  <input type="text" name="query" placeholder="Add an angle — another term, a paper link, an author…"
+         style="flex:1;min-width:200px;padding:5px 10px;font-size:0.85rem;border:1px solid var(--container-border,#ccc);border-radius:6px;background:var(--container-bg,#fff);color:var(--fg,#222);"/>
+  <button type="submit" class="btn-secondary" style="font-size:0.8rem;">Add angle</button>
+</form>
+<div id="facet-status" class="topic-meta"></div>
+</div>"""
+
+
+def _related_topics_section(topic: Topic, siblings: list[Topic]) -> str:
+    """Adjacent topics the user also tracks — shared-word hint + one-click merge."""
+    import re as _r
+
+    def _sig_words(title: str) -> set[str]:
+        return {
+            w
+            for w in _r.findall(r"[a-z0-9]+", title.lower())
+            if len(w) > 3 and w not in _STOP_WORDS
+        }
+
+    mine = _sig_words(topic.title)
+    related = [t for t in siblings if mine and len(mine & _sig_words(t.title)) >= 2][:3]
+    if not related:
+        return ""
+    rows = []
+    for t in related:
+        rows.append(
+            f"<div class='topic-meta' style='display:flex;gap:10px;align-items:center;'>"
+            f"<a href='/topics/{_esc(t.id)}'>{_esc(t.title)}</a>"
+            f"<button type='button' class='btn-secondary' style='font-size:0.7rem;padding:2px 8px;' "
+            f"hx-post='/api/topics/{_esc(t.id)}/merge' hx-vals='{{\"into_id\": \"{_esc(topic.id)}\"}}' "
+            f"hx-confirm='Merge &quot;{_esc(t.title)}&quot; into this topic? Its papers, angles, and reports move here; the old topic is archived.' "
+            f"hx-swap='none'>merge into this topic</button></div>"
+        )
+    return (
+        "<h2 style='font-size:0.95rem;margin-top:1.5rem;'>Possibly related topics</h2>"
+        + "".join(rows)
+    )
+
+
+_STOP_WORDS = {
+    "with",
+    "from",
+    "using",
+    "based",
+    "learning",
+    "neural",
+    "networks",
+    "deep",
+    "paper",
+    "papers",
+    "research",
+    "study",
+    "analysis",
+    "model",
+    "models",
+    "methods",
+    "approach",
+    "via",
+    "towards",
+    "about",
+    "into",
+}
+
+
+@router.post("/topics/{topic_id}/facets", response_class=HTMLResponse)
+async def add_facet(
+    topic_id: str, request: Request, query: str = Form(...)
+) -> HTMLResponse:
+    """Add a search angle to a topic and immediately harvest its papers."""
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import (
+        add_topic_facet,
+        get_topic,
+        list_topic_facets,
+    )
+    from services.topics.keys import canonical_key_for, detect_topic_kind
+
+    q = query.strip()[:300]
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty query")
+    kind = detect_topic_kind(q)
+    ckey = canonical_key_for(q, kind=kind)
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        _facet, created = await add_topic_facet(
+            session, topic_id=topic.id, kind=kind, query=q, canonical_key=ckey
+        )
+        await session.commit()
+        facets = await list_topic_facets(session, topic_id=topic.id)
+
+    added = 0
+    if created:
+        try:
+            from services.topics.feed import feed_facet_once
+
+            added = await feed_facet_once(topic, kind=kind, query=q)
+        except Exception as exc:  # noqa: BLE001 - harvest failure isn't fatal
+            logger.warning("facet_initial_harvest_failed", err=str(exc))
+
+    status = (
+        f"<div class='topic-meta' style='margin-top:6px;'>"
+        f"{'Added — ' + str(added) + ' papers pulled in.' if created else 'Already tracking that angle.'}</div>"
+    )
+    return HTMLResponse(_facets_section(topic, facets) + status)
+
+
+@router.post("/topics/{topic_id}/facets/{facet_id}/remove", response_class=HTMLResponse)
+async def remove_facet(topic_id: str, facet_id: str, request: Request) -> HTMLResponse:
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import (
+        get_topic,
+        list_topic_facets,
+        remove_topic_facet,
+    )
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        removed = await remove_topic_facet(
+            session, facet_id=facet_id, topic_id=topic.id
+        )
+        await session.commit()
+        facets = await list_topic_facets(session, topic_id=topic.id)
+
+    msg = (
+        ""
+        if removed
+        else "<div class='topic-meta'>A topic needs at least one angle.</div>"
+    )
+    return HTMLResponse(_facets_section(topic, facets) + msg)
+
+
+@router.post("/api/topics/{topic_id}/merge")
+async def merge_topic_route(
+    topic_id: str, request: Request, into_id: str = Form(...)
+) -> JSONResponse:
+    """Merge this topic into another — papers, facets, reports move; this one archives."""
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import merge_topics
+
+    async for session in session_scope():
+        target = await merge_topics(
+            session, source_id=topic_id, into_id=into_id, owner_id=owner
+        )
+        await session.commit()
+    if target is None:
+        raise HTTPException(status_code=400, detail="Cannot merge these topics")
+    return JSONResponse({"ok": True, "into_id": target.id})
+
+
 @router.get("/topics/{topic_id}", response_class=HTMLResponse)
 async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     """One topic: its paper set, latest report snapshot, and actions."""
@@ -234,6 +418,20 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
             raise HTTPException(status_code=404, detail="Topic not found")
         papers = await list_topic_papers(session, topic_id=topic.id)
         reports = await list_topic_reports(session, topic_id=topic.id, limit=5)
+        from services.persistence.repositories import (
+            list_topic_facets,
+            list_topics,
+        )
+
+        facets = await list_topic_facets(session, topic_id=topic.id)
+        siblings = [
+            t
+            for t in await list_topics(session, owner_id=owner)
+            if t.id != topic.id and not t.archived
+        ]
+
+    facets_html = _facets_section(topic, facets)
+    related_html = _related_topics_section(topic, siblings)
 
     papers_html = _paper_rows_html(topic, papers)
 
@@ -278,6 +476,8 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <div id="share-status" class="topic-meta">{share_status_html}</div>
 <div id="topic-report-out"></div>
 <div id="modal-container"></div>
+{facets_html}
+{related_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
 {reports_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers (<span id="papers-count">{len(papers)}</span>)
@@ -340,6 +540,10 @@ async def api_create_topic(request: Request, query: str = Form(...)) -> JSONResp
             title=query,
             seed_query=query,
         )
+        if created:
+            from services.persistence.repositories import ensure_seed_facet
+
+            await ensure_seed_facet(session, topic=topic)
         await session.commit()
     return JSONResponse(
         {"id": topic.id, "kind": topic.kind, "created": created},
