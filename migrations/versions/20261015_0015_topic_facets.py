@@ -30,6 +30,10 @@ def _tables() -> set[str]:
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
+def _indexes(table: str) -> set[str]:
+    return {ix["name"] for ix in sa.inspect(op.get_bind()).get_indexes(table)}
+
+
 def upgrade() -> None:
     tables = _tables()
     if "topics" not in tables:
@@ -56,6 +60,9 @@ def upgrade() -> None:
             ),
             sa.UniqueConstraint("topic_id", "kind", "canonical_key"),
         )
+    # create_all boots may have built the table (and index) ahead of us —
+    # add the index only when it isn't there yet.
+    if "ix_topic_facets_topic_id" not in _indexes("topic_facets"):
         op.create_index("ix_topic_facets_topic_id", "topic_facets", ["topic_id"])
 
     # Backfill: every existing topic gets its seed query as facet zero.
