@@ -332,3 +332,15 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 .paper-authors{margin-top:2px;font-size:0.85rem;}
 .paper-meta{display:flex;align-items:center;gap:8px;margin-top:3px;font-size:0.8rem;color:var(--fg-muted,#888);}
 .paper-meta .citation-badge{margin-left:0 !important;}
+
+/* Home page: topics strip + collapsible search options */
+.oh-topics-strip{display:flex;align-items:baseline;gap:10px;margin-top:0.9rem;padding-top:0.7rem;border-top:1px dashed var(--container-border,#ccc);flex-wrap:wrap;}
+.oh-topics-strip-label{font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--fg-muted,#888);flex-shrink:0;}
+.oh-topics-strip-pills{display:flex;gap:6px;flex-wrap:wrap;}
+.oh-topic-pill{display:inline-block;padding:3px 12px;font-size:0.78rem;border:1px solid var(--container-border,#999);border-radius:999px;color:var(--fg);text-decoration:none;background:var(--container-bg,#fff);transition:border-color .12s;}
+.oh-topic-pill:hover{border-color:var(--accent,#888);text-decoration:none;}
+.oh-search-options{margin-top:0.45rem;font-size:0.82rem;}
+.oh-search-options>summary{cursor:pointer;color:var(--fg-muted,#888);font-size:0.8rem;list-style:none;user-select:none;display:inline-flex;align-items:center;gap:4px;}
+.oh-search-options>summary::before{content:"▸";transition:transform .12s;}
+.oh-search-options[open]>summary::before{transform:rotate(90deg);}
+.oh-search-options>summary::-webkit-details-marker{display:none;}

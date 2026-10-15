@@ -17,6 +17,9 @@ from pages.main_page import (
     welcome_page,
 )
 from services.auth.session import get_auth_user_id
+from services.core.model_prefs import prefs_owner_id
+from services.persistence.database import database_available, session_scope
+from services.persistence.repositories import list_topics
 
 # No module-level singleton to avoid stale DI instances.
 
@@ -79,6 +82,18 @@ async def get_home(
                         error=str(exc),
                     )
                     page_data.search_results = []
+
+    # Recent topics for the "Your topics" strip on the landing view
+    if database_available():
+        try:
+            owner = prefs_owner_id(request)
+            if owner:
+                async with session_scope() as session:
+                    page_data.recent_topics = await list_topics(
+                        session, owner_id=owner, limit=6
+                    )
+        except Exception as exc:  # noqa: BLE001 - strip is best-effort
+            logger.warning("home_topics_strip_failed", error=str(exc))
 
     # Prepend a standards-mode doctype to avoid browser Quirks Mode.
     return HTMLResponse(f"<!DOCTYPE html>{str(home_page(page_data=page_data))}")
