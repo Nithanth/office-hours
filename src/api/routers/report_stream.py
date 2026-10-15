@@ -708,7 +708,14 @@ async def report_stream(
                     "Report generated but could not be saved. You can still export it.",
                 )
 
-        yield _format_sse_event("done", "")
+        # The done payload replaces #report-progress — an inline <script> runs
+        # post-swap (htmx evaluates scripts in swapped content) to typeset math
+        # in the finished report.
+        yield _format_sse_event(
+            "done",
+            "<script>var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){"
+            "r.renderKaTeX(document.getElementById('report-content'));});</script>",
+        )
         # Also signal done for JSON stream so any listener can clean up.
         yield _format_sse_event(f"{_JSON_EVENT}-done", "")
 

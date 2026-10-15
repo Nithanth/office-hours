@@ -60,9 +60,16 @@ async def cluster_papers_endpoint(request: Request) -> JSONResponse:
     paper_dicts = await _prepare_paper_dicts(client, display_papers)
 
     # Run clustering in thread pool (CPU-bound: embedding + t-SNE + k-means)
-    from services.paper.clustering import cluster_papers
+    try:
+        from services.paper.clustering import cluster_papers
 
-    result = await asyncio.to_thread(cluster_papers, paper_dicts)
+        result = await asyncio.to_thread(cluster_papers, paper_dicts)
+    except Exception as exc:  # noqa: BLE001 - surface honestly, not a bare 500
+        logger.warning("cluster_failed", err=str(exc))
+        return JSONResponse(
+            {"ok": False, "error": "Clustering is temporarily unavailable."},
+            status_code=503,
+        )
 
     return JSONResponse(
         {

@@ -20,11 +20,19 @@ RUN uv pip install --system --no-cache --prefix=/install -r pyproject.toml
 # Copy application source
 COPY . .
 
+# Pre-download the MiniLM embedding model so runtime never depends on HF
+# egress. Deps live under /install; put them on PYTHONPATH for this step.
+RUN PYTHONPATH=/install/lib/python3.11/site-packages HF_HOME=/hf-cache \
+    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
 # -------- Runtime stage --------
 FROM python:3.11-slim
 
 WORKDIR /app
 ENV PYTHONPATH="/app/src" PYTHONUNBUFFERED=1
+# The runtime user has no usable $HOME — point the HF/transformers cache at a
+# dir it can write (otherwise model loads fail instantly → 500s).
+ENV HF_HOME=/app/.cache/huggingface SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
 
 # Create non-root user
 RUN addgroup --system officehours \
@@ -35,6 +43,9 @@ COPY --from=builder /install /usr/local
 
 # Copy application code (only runtime files)
 COPY --from=builder /app /app
+
+# Baked embedding model (see builder stage)
+COPY --from=builder /hf-cache /app/.cache/huggingface
 
 # Install Tesseract OCR for optional PDF image extraction
 RUN apt-get update \
