@@ -23,7 +23,9 @@ function _readDocSelection() {
 
   if (sel && sel.rangeCount > 0) {
     const t = sel.toString().trim();
-    if (t && sel.anchorNode && sel.anchorNode.parentElement?.closest(".modal-content.pdf-viewer, .pdf-container")) {
+    // Only selections inside the document pane (pdf text layer, text pane,
+    // doc-pane slot) count — not selections in the chat column.
+    if (t && sel.anchorNode && sel.anchorNode.parentElement?.closest(".doc-pane-wrap")) {
       text = t;
       rect = sel.getRangeAt(0).getBoundingClientRect();
     }
@@ -76,9 +78,13 @@ function _ensureFab() {
 
 function _showFab(rect) {
   const fab = _ensureFab();
-  // A selection may span several rendered pages; keep the button on-screen.
-  const left = Math.max(Math.min(rect.right, window.innerWidth - 140), 8);
-  const top = Math.max(Math.min(rect.bottom + 6, window.innerHeight - 44), 8);
+  const FAB_H = 34;
+  const left = Math.max(Math.min(rect.right - 24, window.innerWidth - 150), 8);
+  // Follow the highlight: below it when there's room, above when the
+  // selection is near the window bottom — never pin to the viewport edge.
+  let top = rect.bottom + 6;
+  if (top + FAB_H > window.innerHeight - 8) top = rect.top - FAB_H - 4;
+  if (top < 8) top = 8;
   fab.style.left = `${left}px`;
   fab.style.top = `${top}px`;
   fab.style.display = "block";
@@ -174,9 +180,16 @@ function _hookFrame() {
 _hookFrame();
 document.body.addEventListener("htmx:afterSwap", _hookFrame);
 
-// Chips are sent as `> ` quoted lines prepended to the message; a quote-only
-// submit gets a default instruction. htmx serializes before beforeRequest, so
-// patch evt.detail.parameters in configRequest.
+function _excerptLine(text) {
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length > 160 ? `${one.slice(0, 160)}…` : one;
+}
+
+// Chips are sent as a one-line `> ` excerpt in the visible message; the full
+// passage travels separately in `snippet_context` so the model is grounded
+// without a multi-line quote wall in the bubble. A quote-only submit gets a
+// default instruction. htmx serializes before beforeRequest, so patch
+// evt.detail.parameters in configRequest.
 document.body.addEventListener("htmx:configRequest", (evt) => {
   const form = evt.target;
   if (!(form instanceof HTMLFormElement)) return;
@@ -187,18 +200,9 @@ document.body.addEventListener("htmx:configRequest", (evt) => {
   const chips = tray ? [...tray.querySelectorAll(".oh-snippet-chip")] : [];
   const rest = (typeof params.message === "string" ? params.message : "").trim();
   if (chips.length) {
-    const quotes = chips
-      .map(
-        (c) =>
-          "> " +
-          c.dataset.snippet
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean)
-            .join("\n> ")
-      )
-      .join("\n\n");
+    const quotes = chips.map((c) => `> ${_excerptLine(c.dataset.snippet)}`).join("\n");
     params.message = quotes + (rest ? `\n\n${rest}` : "\nExplain this passage.");
+    params.snippet_context = chips.map((c) => c.dataset.snippet).join("\n\n");
   } else if (rest.startsWith(">")) {
     const hasQuestion = rest
       .split("\n")

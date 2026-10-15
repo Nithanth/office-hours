@@ -243,7 +243,10 @@ class Config(BaseSettings):
     # ------------------------------------------------------------------
     ENABLE_URL_SIMILAR_OVERVIEW: bool = False
     URL_THEME_MIN_PAPERS: int = Field(default=3, ge=1)
-    MAX_TOPIC_SUMMARY_TOKENS: int = Field(default=2048, ge=1)
+    # Clamp for the topic-overview call. Reasoning tiers spend hidden
+    # thinking tokens against max_tokens — 2048 truncated the Overview
+    # mid-word even after the size targets were raised.
+    MAX_TOPIC_SUMMARY_TOKENS: int = Field(default=9000, ge=1)
 
     # ------------------------------------------------------------------
     # Chat prompt sizing
