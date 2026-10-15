@@ -84,6 +84,71 @@ body.oh-dark .modal-close-btn { color: var(--oh-red); }
   overflow-y: auto;
 }
 
+/* -------------------- Reader-mode tabs + text pane -------------------- */
+.pdf-viewer .doc-pane-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pdf-viewer .viewer-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--oh-border, #ddd);
+  padding: 0 6px;
+  flex: 0 0 auto;
+}
+
+.pdf-viewer .viewer-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 5px 12px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  color: #888;
+}
+
+.pdf-viewer .viewer-tab.active {
+  color: var(--fg, #222);
+  border-bottom-color: var(--oh-accent, #0d6e63);
+}
+
+.pdf-viewer #doc-pane-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-viewer #doc-pane-slot > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.paper-text-pane {
+  overflow-y: auto;
+  padding: 1.2rem 1.6rem;
+}
+
+.paper-text-body {
+  white-space: pre-wrap;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--fg, #222);
+  max-width: 70ch;
+  margin: 0 auto;
+}
+
+.paper-text-empty {
+  color: #888;
+  font-size: 0.85rem;
+  padding: 1rem;
+}
+
 .pdf-viewer .pdf-container canvas {
   display: block;
   margin: 0 auto 8px auto;

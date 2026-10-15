@@ -703,6 +703,46 @@ async def viewer_modal(
     safe_url = html.escape(url)
     is_pdf = safe_url.lower().endswith(".pdf")
 
+    # Reader-mode tabs — the left pane is a swappable slot. Source is the
+    # default embed (PDF via pdf.js or proxied HTML); for arXiv papers an
+    # ar5iv HTML render is a real reading surface; Text renders the
+    # extractor's plain text so paywalled/unrenderable sources still read.
+    from services.core.exa_utils import url_utils as _url_utils
+
+    arxiv_id = _url_utils.extract_arxiv_id(url)
+    _tab_js = (
+        "this.parentNode.querySelectorAll('.viewer-tab')"
+        ".forEach(function(b){b.classList.remove('active')});"
+        "this.classList.add('active')"
+    )
+    src_label = "PDF" if is_pdf else "Source"
+    tabs = [
+        (
+            f'<button type="button" class="viewer-tab active" onclick="{_tab_js}"'
+            f' hx-get="/doc-pane?url={urllib.parse.quote_plus(url)}"'
+            ' hx-target="#doc-pane-slot" hx-swap="innerHTML">'
+            f"{src_label}</button>"
+        )
+    ]
+    if arxiv_id:
+        ar5iv_url = f"https://ar5iv.labs.arxiv.org/html/{arxiv_id}"
+        tabs.append(
+            f'<button type="button" class="viewer-tab" onclick="{_tab_js}"'
+            f' hx-get="/doc-pane?url={urllib.parse.quote_plus(ar5iv_url)}"'
+            ' hx-target="#doc-pane-slot" hx-swap="innerHTML">HTML</button>'
+        )
+    text_q = (
+        f"paper_id={urllib.parse.quote_plus(paper_id)}"
+        f"&url={urllib.parse.quote_plus(url)}"
+    )
+    tabs.append(
+        f'<button type="button" class="viewer-tab" onclick="{_tab_js}"'
+        f' hx-get="/text-pane?{text_q}"'
+        ' hx-target="#doc-pane-slot" hx-swap="innerHTML"'
+        ' hx-indicator="#text-loading">Text</button>'
+    )
+    tabs_html = '<div class="viewer-tabs">' + "".join(tabs) + "</div>"
+
     # Determine display title – fall back to generic label when no explicit title given.
     display_title = (
         html.escape(title) if title else ("PDF" if is_pdf else "Web") + " Viewer"
@@ -717,19 +757,7 @@ async def viewer_modal(
     if report_id:
         panel_q += f"&report_id={urllib.parse.quote_plus(report_id)}"
 
-    # Build viewer pane markup. PDFs go through our proxy so they render via pdf.js.
-    if is_pdf:
-        proxied = f"/pdf-proxy?url={urllib.parse.quote_plus(url)}"
-        embed_html = (
-            f'<div class="pdf-container" data-pdf-src="{proxied}"></div>'
-            f'<script type="module" src="/static/js/pdf-viewer.js"></script>'
-        )
-    else:
-        proxied = f"/html-proxy?url={urllib.parse.quote_plus(url)}"
-        embed_html = (
-            f'<iframe id="doc-frame" src="{proxied}" '
-            'sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>'
-        )
+    embed_html = _doc_embed(url)
 
     modal_html = f"""
 <div class=\"modal\" id=\"viewer-{paper_id}\">
@@ -745,7 +773,13 @@ async def viewer_modal(
       <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
     </div>
     <div class=\"viewer-grid\">
-      {embed_html}
+      <div class=\"doc-pane-wrap\">
+        {tabs_html}
+        <div id=\"doc-pane-slot\">
+          {embed_html}
+        </div>
+        <div id=\"text-loading\" class=\"htmx-indicator\" style=\"padding:0.4rem;color:#888;\">Extracting full text…</div>
+      </div>
       <div class=\"chat-column\" hx-get=\"{panel_q}\" hx-trigger=\"load delay:100ms\" hx-target=\"this\" hx-swap=\"innerHTML\" style=\"min-width:320px; max-width:100%; overflow:hidden;\">
         <div class=\"htmx-indicator\" style=\"padding:1rem; color:#888;\">Loading chat…</div>
       </div>
@@ -814,6 +848,42 @@ async def doc_pane(
     if not _is_url_allowed(url):
         raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
     return HTMLResponse(content=_doc_embed(url))
+
+
+_TEXT_PANE_CAP = 200_000
+
+
+@router.get("/text-pane", response_class=HTMLResponse)
+async def text_pane(
+    request: Request,
+    paper_id: str = Query(...),
+    url: str | None = Query(None),
+) -> HTMLResponse:
+    """Reader-mode text pane: the extractor's plain text in a clean column.
+
+    Serves papers whose source won't render (paywalled DOIs, html-proxy
+    blockers) — extraction runs lazily on first request, then hits cache.
+    """
+    from services.paper.text_extractor import TextExtractor
+
+    ext = TextExtractor.instance()
+    text = await ext.read_full_text(paper_id)
+    if text is None and url and _is_url_allowed(url):
+        try:
+            await ext.ensure_cached(url, paper_id=paper_id)
+            text = await ext.read_full_text(paper_id)
+        except Exception as exc:  # noqa: BLE001 - degrade to honest message
+            logger.warning("text_pane_extract_failed", paper_id=paper_id, err=str(exc))
+    if text is None:
+        return HTMLResponse(
+            "<div class='paper-text-pane'><div class='paper-text-empty'>"
+            "Full text isn't available for this paper — the PDF or Source "
+            "tab may still work.</div></div>"
+        )
+    body = html.escape(text[:_TEXT_PANE_CAP])
+    return HTMLResponse(
+        f"<div class='paper-text-pane'><div class='paper-text-body'>{body}</div></div>"
+    )
 
 
 async def _topic_viewer_html(
