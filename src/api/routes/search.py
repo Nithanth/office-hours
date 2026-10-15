@@ -365,6 +365,15 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 "Detected a paper link &mdash; pinned it and listed similar papers.",
                 input_query_stripped,
             ) + str(results_component)
+        else:
+            # Lazy-load related-term chips after results render — an extra
+            # LLM round-trip must not slow the paper list itself.
+            from urllib.parse import quote as _quote
+
+            results_component = (
+                f"<div hx-get='/related_terms?q={_quote(input_query_stripped)}' "
+                "hx-trigger='load' hx-swap='outerHTML'></div>"
+            ) + str(results_component)
 
         # Fire-and-forget pre-warm of text cache for top 5 results -----------------
         for paper in exa_results[:5]:
@@ -587,3 +596,73 @@ async def reset_papers(
     )
     logger.debug("reset_results_html_snippet", snippet=rendered_ul[:120])
     return HTMLResponse(content=rendered_ul, headers={"HX-Reswap": "outerHTML"})
+
+
+@router.get("/related_terms", response_class=HTMLResponse)
+async def related_terms(
+    request: Request,
+    q: str,
+    settings: AppConfig = Depends(get_settings),  # noqa: B008
+) -> HTMLResponse:
+    """LLM-suggested adjacent search terms, lazy-loaded under the results.
+
+    Returns a chip row ("Also search:") or an empty fragment — failure is
+    silent by design (the placeholder div swaps away and nothing shows).
+    """
+    llm_service = get_llm_service()
+    if llm_service is None or not llm_service._initialized:
+        return HTMLResponse("")
+
+    prompt = (
+        "A user searched an academic-paper engine for:\n"
+        f'"{q.strip()[:300]}"\n\n'
+        "Suggest up to 5 closely related but distinct search queries that "
+        "would surface important papers this query likely misses — canonical "
+        "synonyms, adjacent subfields, key techniques or named methods. "
+        "Do not restate the original query. Reply with ONLY a JSON array of "
+        "strings, nothing else."
+    )
+    try:
+        mi = (
+            settings.AVAILABLE_MODELS.get("fast")
+            or settings.AVAILABLE_MODELS[settings.DEFAULT_MODEL_KEY]
+        )
+        raw = await llm_service.generate_completion(
+            provider_name=mi["provider"],
+            model_name=model_prefs.resolve_model_id("fast"),
+            prompt=prompt,
+            max_tokens=200,
+            temperature=0.4,
+        )
+    except Exception as exc:  # noqa: BLE001 - chips are best-effort
+        logger.debug("related_terms_llm_failed", err=str(exc))
+        return HTMLResponse("")
+
+    # Lenient JSON-array extraction — models sometimes wrap in prose/fences.
+    terms: list[str] = []
+    m = re.search(r"\[.*?\]", raw, re.S)
+    if m:
+        try:
+            parsed = _json.loads(m.group(0))
+            terms = [str(t).strip() for t in parsed if str(t).strip()][:5]
+        except Exception:  # noqa: BLE001
+            pass
+    if not terms:
+        return HTMLResponse("")
+
+    chips = []
+    for term in terms:
+        vals = html.escape(
+            _json.dumps({"search_query": term, "mode": "topic"}), quote=True
+        )
+        chips.append(
+            "<a href='#' class='oh-chip oh-related-chip' "
+            "hx-post='/search' hx-target='#search-results-container' "
+            "hx-swap='innerHTML' hx-indicator='#loading-indicator' "
+            f"hx-vals='{vals}' onclick='event.preventDefault()'>"
+            f"{html.escape(term)}</a>"
+        )
+    return HTMLResponse(
+        "<div class='oh-related-terms'>"
+        "<span class='oh-related-label'>Also search:</span>" + "".join(chips) + "</div>"
+    )

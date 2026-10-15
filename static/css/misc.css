@@ -313,3 +313,9 @@ body.oh-dark .search-card textarea:focus {
     font-size: 0.8rem;
   }
 }
+
+/* Related-search term chips (lazy-loaded under search results) */
+.oh-related-terms{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px 0;font-size:0.85rem;}
+.oh-related-label{opacity:0.6;font-style:italic;}
+.oh-related-chip{display:inline-block;padding:4px 12px;border:1px solid var(--container-border,#ccc);border-radius:14px;background:var(--container-bg,#fff);color:var(--oh-accent,#0d6e63);text-decoration:none;cursor:pointer;transition:background 0.15s;}
+.oh-related-chip:hover{background:var(--hover-bg,#f0f0f0);}
