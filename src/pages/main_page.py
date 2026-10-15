@@ -18,6 +18,7 @@ from fasthtml.components import (
     A,
     Body,
     Br,
+    Details,
     Div,
     Footer,
     Head,
@@ -29,6 +30,7 @@ from fasthtml.components import (
     Script,
     Select,
     Span,
+    Summary,
     Textarea,
     Title,
 )
@@ -45,9 +47,12 @@ from services.chat.chat_components import ChatBubble, CitationCard
 class SharedPageData(BaseModel):
     """Lightweight container of state used by the home-page template."""
 
+    model_config = {"arbitrary_types_allowed": True}
+
     title: str = config.config.APP_TITLE
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
+    recent_topics: Optional[list] = None  # Topic rows for the home strip
 
 
 # --- UI Components ---
@@ -773,6 +778,27 @@ def render_chat_message(message: str, role: str) -> Div:
 
 
 def home_page(page_data: SharedPageData) -> Body:
+    # "Your topics" strip — quick links back into existing workspaces.
+    topics_strip = None
+    if page_data.recent_topics:
+        topics_strip = Div(
+            Div(
+                "Your topics",
+                cls="oh-topics-strip-label",
+            ),
+            Div(
+                *[
+                    A(
+                        t.title or t.seed_query or "Untitled",
+                        href=f"/topics/{t.id}",
+                        cls="oh-topic-pill",
+                    )
+                    for t in page_data.recent_topics
+                ],
+                cls="oh-topics-strip-pills",
+            ),
+            cls="oh-topics-strip",
+        )
     """The main page layout, including search form and results area."""
     # Initial content for search results area
     if (
@@ -928,63 +954,83 @@ def home_page(page_data: SharedPageData) -> Body:
                         value=page_data.current_query or "",
                         style="width:100%;max-width:44rem;padding:6px 10px;font-size:0.95rem;",
                     ),
-                    # Filters row — date + sources dropdown
-                    Div(
+                    # Filters row — date + sources dropdown (collapsible)
+                    Details(
+                        Summary("Search options", cls="oh-options-summary"),
                         Div(
-                            Span("After ", cls="filter-label"),
-                            INPUT(
-                                type="text",
-                                id="start_published_date",
-                                name="start_published_date",
-                                placeholder="YYYY-MM-DD",
-                                autocomplete="off",
-                                style="font-size:0.8rem;padding:2px 4px;width:9rem;",
-                            ),
-                        ),
-                        # Custom dropdown-checkbox for sources
-                        Div(
-                            Span("Sources ", cls="filter-label"),
                             Div(
-                                BUTTON(
-                                    "All sources ▾",
-                                    type="button",
-                                    id="sources-dropdown-btn",
-                                    style="font-size:0.8rem;padding:2px 8px;cursor:pointer;background:var(--container-bg);border:1px solid #aaa;border-radius:3px;min-width:9rem;text-align:left;",
+                                Span("After ", cls="filter-label"),
+                                INPUT(
+                                    type="text",
+                                    id="start_published_date",
+                                    name="start_published_date",
+                                    placeholder="YYYY-MM-DD",
+                                    autocomplete="off",
+                                    style="font-size:0.8rem;padding:2px 4px;width:9rem;",
                                 ),
-                                Div(
-                                    *[
-                                        Label(
-                                            INPUT(
-                                                type="checkbox",
-                                                name="include_domains",
-                                                value=dom,
-                                                id=f"src-{dom.split('.')[0]}",
-                                                cls="source-checkbox",
-                                            ),
-                                            Span(
-                                                f" {label}", style="font-size:0.8rem;"
-                                            ),
-                                            style="display:flex;align-items:center;gap:4px;padding:3px 8px;cursor:pointer;",
-                                        )
-                                        for dom, label in [
-                                            ("arxiv.org", "arXiv"),
-                                            ("biorxiv.org", "bioRxiv"),
-                                            ("medrxiv.org", "medRxiv"),
-                                            ("ieeexplore.ieee.org", "IEEE"),
-                                            ("dl.acm.org", "ACM"),
-                                            ("openreview.net", "OpenReview"),
-                                            ("aclanthology.org", "ACL"),
-                                        ]
-                                    ],
-                                    id="sources-dropdown-menu",
-                                    style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--container-bg);border:1px solid #aaa;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:4px 0;min-width:10rem;",
-                                ),
-                                style="position:relative;display:inline-block;",
                             ),
+                            # Custom dropdown-checkbox for sources
+                            Div(
+                                Span("Sources ", cls="filter-label"),
+                                Div(
+                                    BUTTON(
+                                        "All sources ▾",
+                                        type="button",
+                                        id="sources-dropdown-btn",
+                                        style="font-size:0.8rem;padding:2px 8px;cursor:pointer;background:var(--container-bg);border:1px solid #aaa;border-radius:3px;min-width:9rem;text-align:left;",
+                                    ),
+                                    Div(
+                                        *[
+                                            Label(
+                                                INPUT(
+                                                    type="checkbox",
+                                                    name="include_domains",
+                                                    value=dom,
+                                                    id=f"src-{dom.split('.')[0]}",
+                                                    cls="source-checkbox",
+                                                ),
+                                                Span(
+                                                    f" {label}",
+                                                    style="font-size:0.8rem;",
+                                                ),
+                                                style="display:flex;align-items:center;gap:4px;padding:3px 8px;cursor:pointer;",
+                                            )
+                                            for dom, label in [
+                                                ("arxiv.org", "arXiv"),
+                                                ("biorxiv.org", "bioRxiv"),
+                                                ("medrxiv.org", "medRxiv"),
+                                                ("ieeexplore.ieee.org", "IEEE"),
+                                                ("dl.acm.org", "ACM"),
+                                                ("openreview.net", "OpenReview"),
+                                                ("aclanthology.org", "ACL"),
+                                            ]
+                                        ],
+                                        id="sources-dropdown-menu",
+                                        style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--container-bg);border:1px solid #aaa;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:4px 0;min-width:10rem;",
+                                    ),
+                                    style="position:relative;display:inline-block;",
+                                ),
+                            ),
+                            cls="search-form-filters",
                         ),
-                        cls="search-form-filters",
+                        Label(
+                            INPUT(
+                                type="checkbox",
+                                name="deep_search",
+                                id="deep-search-toggle",
+                                value="1",
+                                style="margin:0;",
+                            ),
+                            Span(
+                                " Deep Research",
+                                style="font-size:0.78rem;color:var(--fg-muted,#aaa);",
+                            ),
+                            title="Slower but more comprehensive results (uses Exa deep search)",
+                            style="display:inline-flex;align-items:center;gap:3px;margin-left:0.75rem;cursor:pointer;user-select:none;",
+                        ),
+                        cls="oh-search-options",
                     ),
-                    # Action buttons + deep research toggle
+                    # Action buttons
                     Div(
                         BUTTON(
                             "Search Papers",
@@ -1018,21 +1064,6 @@ def home_page(page_data: SharedPageData) -> Body:
                                 "}"
                             ),
                         ),
-                        Label(
-                            INPUT(
-                                type="checkbox",
-                                name="deep_search",
-                                id="deep-search-toggle",
-                                value="1",
-                                style="margin:0;",
-                            ),
-                            Span(
-                                " Deep Research",
-                                style="font-size:0.78rem;color:var(--fg-muted,#aaa);",
-                            ),
-                            title="Slower but more comprehensive results (uses Exa deep search)",
-                            style="display:inline-flex;align-items:center;gap:3px;margin-left:0.75rem;cursor:pointer;user-select:none;",
-                        ),
                         style="margin-top:0.4rem;display:flex;align-items:center;",
                     ),
                     hx_post="/search",
@@ -1044,6 +1075,8 @@ def home_page(page_data: SharedPageData) -> Body:
                     id="paper-search-form",
                     style="background:inherit;padding:0.5rem 0;",
                 ),
+                # "Your topics" quick-link strip (only when the owner has any)
+                topics_strip,
                 # Centered search spinner (outside search form so it spans the card)
                 loading_indicator_component(),
                 # Results and Report Form (wraps hidden inputs etc.)
