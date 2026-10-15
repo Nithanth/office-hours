@@ -145,6 +145,32 @@ class NotionExporter:
         children = await self._client.blocks.children.list(block_id=page_id)
         return not children.get("results")
 
+    async def replace_page_content(self, page_id: str, markdown: str) -> None:
+        """Replace a page's whole body with *markdown* — archives every
+        existing child block, then appends the new content. Used by the
+        topic mirror where blog/notes are living documents that change
+        between syncs (unlike one-shot report exports)."""
+        cursor = None
+        while True:
+            resp = await self._client.blocks.children.list(
+                block_id=page_id, start_cursor=cursor
+            )
+            for child in resp.get("results", []):
+                try:
+                    await self._client.request(
+                        path=f"blocks/{child['id']}", method="DELETE"
+                    )
+                except Exception as err:  # noqa: BLE001
+                    logger.warning(
+                        "notion_block_delete_failed",
+                        block_id=child.get("id"),
+                        error=str(err),
+                    )
+            if not resp.get("has_more"):
+                break
+            cursor = resp.get("next_cursor")
+        await self.append_blocks(page_id, markdown_to_blocks(markdown))
+
     async def archive_page(self, page_id: str) -> None:
         """Archive a page — used when a saved paper is removed from the
         library so its Notion row disappears too."""

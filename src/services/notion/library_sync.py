@@ -76,6 +76,88 @@ def _paper_properties(paper: dict, topic_page_id: str | None) -> dict:
     return props
 
 
+def _topic_row_properties(topic: dict) -> dict:
+    """Row properties for a workspace topic snapshot dict (see the route)."""
+    props: dict = {
+        "Name": {
+            "title": [{"type": "text", "text": {"content": topic["title"][:200]}}]
+        },
+        "Created": {"date": {"start": topic["created_date"]}},
+    }
+    seed = topic.get("seed_query") or ""
+    if seed:
+        props["Query"] = {
+            "rich_text": [{"type": "text", "text": {"content": seed[:2000]}}]
+        }
+    return props
+
+
+def _topic_body_markdown(topic: dict) -> str:
+    """Page body for a mirrored topic — blog first (the shareable take),
+    then notes (the running synthesis)."""
+    parts = [f"_Workspace mirror — {topic['kind']} topic._", ""]
+    parts.append("## Blog")
+    parts.append(topic.get("blog_markdown") or "_No blog generated yet._")
+    parts.append("")
+    parts.append("## Notes")
+    parts.append(topic.get("notes_markdown") or "_No notes generated yet._")
+    return "\n".join(parts)
+
+
+async def sync_topics(
+    exporter: NotionExporter,
+    *,
+    topics_db_id: str,
+    topics: list[dict],
+) -> dict[str, Any]:
+    """Mirror workspace topics into the Topics DB — one row per topic, with
+    the living blog + notes as the page body (replaced only when its hash
+    changed since the last sync). Each topic dict carries id, title, kind,
+    seed_query, created_date, blog_markdown, notes_markdown, notion_page_id,
+    and notion_body_hash.
+    """
+    import hashlib
+
+    stats: dict[str, Any] = {
+        "topic_page_ids": {},
+        "body_hashes": {},
+        "topics_created": 0,
+        "topics_updated": 0,
+        "bodies_written": 0,
+        "bodies_skipped": 0,
+        "failed": 0,
+        "errors": [],
+    }
+    for topic in topics:
+        tid = topic["id"]
+        try:
+            props = _topic_row_properties(topic)
+            page_id = topic.get("notion_page_id")
+            if page_id:
+                await exporter.update_page_properties(page_id, props)
+                stats["topics_updated"] += 1
+            else:
+                page_id = await exporter.create_database_row(topics_db_id, props)
+                stats["topics_created"] += 1
+            stats["topic_page_ids"][tid] = page_id
+
+            body = _topic_body_markdown(topic)
+            body_hash = hashlib.sha256(body.encode()).hexdigest()
+            if body_hash != topic.get("notion_body_hash"):
+                if page_id and await exporter.page_is_empty(page_id):
+                    await exporter.append_blocks(page_id, markdown_to_blocks(body))
+                elif page_id:
+                    await exporter.replace_page_content(page_id, body)
+                stats["bodies_written"] += 1
+                stats["body_hashes"][tid] = body_hash
+            else:
+                stats["bodies_skipped"] += 1
+        except Exception as exc:  # noqa: BLE001 - one bad topic can't stop the sync
+            stats["failed"] += 1
+            stats["errors"].append(f"topic {tid}: {exc}"[:200])
+    return stats
+
+
 def _topic_properties(report: dict) -> dict:
     """Row properties for a report snapshot dict (see the route)."""
     props: dict = {
@@ -191,6 +273,7 @@ async def sync_library(
     papers: list[dict],
     reports: dict[str, dict],
     owner_id: str | None = None,
+    topic_page_by_report_id: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Upsert topics + papers, then pull Status edits back.
 
@@ -200,6 +283,11 @@ async def sync_library(
     ``status_updates`` (paper_id → status pulled from Notion), and
     ``synced_status`` (paper_id → the status now written in Notion) for the
     caller to persist.
+
+    ``topic_page_by_report_id``: report_id → workspace-topic page id from
+    ``sync_topics``; when a saved paper's report belongs to a topic, its
+    Topic relation points at the living topic page instead of the
+    per-report snapshot row.
     """
     stats: dict[str, Any] = {
         "topics_created": 0,
@@ -255,11 +343,14 @@ async def sync_library(
                     stats["status_updates"][paper["paper_id"]] = notion_status
                     paper["status"] = notion_status
 
-            topic_page = (
-                stats["topic_page_ids"].get(paper["report_id"])
-                if paper["report_id"]
-                else None
-            )
+            # Relation prefers the living topic-workspace page over the
+            # per-report snapshot row when the paper's report has a topic.
+            topic_page = None
+            if paper["report_id"]:
+                if topic_page_by_report_id:
+                    topic_page = topic_page_by_report_id.get(paper["report_id"])
+                if not topic_page:
+                    topic_page = stats["topic_page_ids"].get(paper["report_id"])
             props = _paper_properties(paper, topic_page)
             if paper["notion_page_id"]:
                 await exporter.update_page_properties(paper["notion_page_id"], props)

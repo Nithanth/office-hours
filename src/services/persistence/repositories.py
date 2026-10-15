@@ -852,6 +852,26 @@ async def set_topic_notes(
     return topic
 
 
+async def set_topic_notion(
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    topic_id: str,
+    notion_page_id: str | None = None,
+    notion_body_hash: str | None = None,
+) -> None:
+    """Persist Notion sync bookkeeping on a topic (idempotent fields set
+    only when provided)."""
+    topic = await get_topic(session, owner_id=owner_id, topic_id=topic_id)
+    if topic is None:
+        return
+    if notion_page_id is not None:
+        topic.notion_page_id = notion_page_id
+    if notion_body_hash is not None:
+        topic.notion_body_hash = notion_body_hash
+    await session.commit()
+
+
 async def get_report_topic_id(session: AsyncSession, *, report_id: str) -> str | None:
     """Resolve a report to its parent topic id (None if unlinked/missing)."""
     return await session.scalar(select(Report.topic_id).where(Report.id == report_id))

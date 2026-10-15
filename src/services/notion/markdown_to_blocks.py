@@ -145,9 +145,11 @@ def markdown_to_blocks(markdown: str) -> list[dict[str, Any]]:
                 _block(
                     "code",
                     _rich_text_segment(code_text),
-                    language=lang.lower()
-                    if lang.lower() in _NOTION_CODE_LANGS
-                    else "plain text",
+                    language=(
+                        lang.lower()
+                        if lang.lower() in _NOTION_CODE_LANGS
+                        else "plain text"
+                    ),
                 )
             )
             continue
