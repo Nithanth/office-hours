@@ -7,6 +7,7 @@ lighter and allows unit-testing without network or cache access.
 
 import re
 from collections.abc import Iterable
+from datetime import UTC
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -129,20 +130,40 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
     Composite score blending Exa's semantic relevance with paper quality
     signals.  Each component is normalised to 0–1, then weighted:
 
-        rank_signal      (0.50) — Exa's per-result semantic score (or rank
+        rank_signal      (0.45) — Exa's per-result semantic score (or rank
                                   position fallback when score is unavailable)
-        source_authority (0.20) — trusted academic domains score higher
-        metadata_quality (0.20) — authors, date, completeness
+        citation_authority (0.20) — year-normalised citation velocity
+                                  (citations/age), pool-relative + log-scaled,
+                                  so seminal work surfaces without burying
+                                  new papers
+        source_authority (0.15) — trusted academic domains score higher
+        metadata_quality (0.10) — authors, date, completeness
         content_richness (0.10) — how much extractable text we have
 
-    Compared to the previous version this gives Exa's *actual* semantic score
-    primary weight and softens the source-authority binary so legitimate
-    venues outside the trusted set are not over-penalised.
+    Papers are then re-sorted by the composite so the score drives display
+    order — previously it was badge-only while order stayed pure Exa rank,
+    which is why seminal papers (e.g. Sitzmann for INR) never surfaced.
     """
     if not papers:
         return
 
     n = len(papers)
+
+    # Pool-relative year-normalised citation velocity, computed once.
+    import math
+    from datetime import datetime
+
+    today = datetime.now(UTC)
+    velocities: list[float] = []
+    for p in papers:
+        count = float(getattr(p, "citation_count", None) or 0)
+        pub = getattr(p, "published_date", None)
+        age_years = 1.0
+        if pub is not None:
+            pub_dt = pub if pub.tzinfo else pub.replace(tzinfo=UTC)
+            age_years = max((today - pub_dt).days / 365.25, 0.25)
+        velocities.append(count / age_years)
+    max_vel = max(velocities) if velocities else 0.0
 
     for rank, p in enumerate(papers):
         # --- Rank signal (0–1) ----------------------------------------------
@@ -192,14 +213,27 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
         else:
             content_score = 0.0
 
+        # --- Citation authority (0–1) ----------------------------------------
+        # log-compressed citation velocity relative to the pool leader; a
+        # pool with no citation data contributes 0 for everyone (relevance
+        # components still dominate).
+        citation_authority = (
+            math.log1p(velocities[rank]) / math.log1p(max_vel) if max_vel > 0 else 0.0
+        )
+
         # --- Weighted composite ---------------------------------------------
         final = (
-            0.50 * rank_signal
-            + 0.20 * source_authority
-            + 0.20 * meta_score
+            0.45 * rank_signal
+            + 0.20 * citation_authority
+            + 0.15 * source_authority
+            + 0.10 * meta_score
             + 0.10 * content_score
         )
         p.relevance_score = round(max(0.0, min(1.0, final)), 2)
+
+    # The composite now drives display order — stable for papers without
+    # citation data since rank_signal still dominates the blend.
+    papers.sort(key=lambda p: p.relevance_score or 0.0, reverse=True)
 
 
 def pre_filter_papers(
