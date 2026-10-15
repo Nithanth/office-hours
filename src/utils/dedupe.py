@@ -68,17 +68,21 @@ def deduplicate_chat(
     Returns:
         Filtered chat text containing only non-redundant sentences.
     """
-    # Dependencies are assumed present; proceed directly.
-
     report_sents = _sentences(report_text)
     chat_sents = _sentences(chat_text)
 
     if not chat_sents or not report_sents:
         return chat_text
 
-    model = _get_model()
-    rep_emb = model.encode(report_sents, normalize_embeddings=True)
-    chat_emb = model.encode(chat_sents, normalize_embeddings=True)
+    try:
+        model = _get_model()
+        rep_emb = model.encode(report_sents, normalize_embeddings=True)
+        chat_emb = model.encode(chat_sents, normalize_embeddings=True)
+    except Exception as err:  # noqa: BLE001 - dedupe is best-effort
+        # Model download/load can fail (no HF egress, unwritable cache) —
+        # degrade to the full transcript instead of 500ing the request.
+        logger.warning("dedupe_model_unavailable", error=str(err))
+        return chat_text
 
     keep: list[str] = []
     for sent, emb in zip(chat_sents, chat_emb, strict=False):

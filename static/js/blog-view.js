@@ -386,9 +386,12 @@ function vegaErrorMarkup(message, rawSpec) {
 function renderKaTeX(root) {
   if (!window.renderMathInElement) return;
   const scope = root || document;
-  const article = scope.classList && scope.classList.contains("blog-article")
+  let article = scope.classList && scope.classList.contains("blog-article")
     ? scope
     : scope.querySelector(".blog-article");
+  // When handed an explicit element (e.g. #report-content), render inside it
+  // even if it isn't a .blog-article — reports contain the same $math$.
+  if (!article && scope !== document && scope.nodeType === 1) article = scope;
   if (!article) return;
   renderMathInElement(article, {
     delimiters: [

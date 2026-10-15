@@ -171,6 +171,9 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
   <script src="/static/js/blog-modal.js" defer></script>
   <script src="/static/js/blog-view.js" defer></script>
   <script src="/static/js/blog-pane.js" defer></script>
+  <script>document.addEventListener("DOMContentLoaded",function(){
+      var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){
+        r.renderKaTeX(document.getElementById('report-content'));});});</script>
   <script type="module">
       import "/static/js/chat/stream.js?v=2";
       import "/static/js/chat/ui.js?v=2";

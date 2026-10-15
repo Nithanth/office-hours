@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import html
 import json
-import re
 import secrets
 from urllib.parse import quote, quote_plus
 
-import markdown as _markdown
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
@@ -191,19 +189,13 @@ def _paper_rows_html(
 # Markdown → HTML, rendered server-side so a CDN hiccup can never surface raw
 # markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
 # HTML — strip active-content tags and on* handlers before parsing.
-_DANGEROUS = re.compile(
-    r"(?is)</?\s*(script|iframe|object|embed|form|style|link|meta|base)[^>]*>"
-)
-_HANDLERS = re.compile(r"(?is)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
-_JS_SCHEME = re.compile(r"(?i)javascript\s*:")
 
 
 def _md_to_html(md: str) -> str:
-    safe = _JS_SCHEME.sub("", _HANDLERS.sub("", _DANGEROUS.sub("", md)))
-    rendered: str = _markdown.markdown(
-        safe, extensions=["extra", "sane_lists"], output_format="html"
-    )
-    return rendered
+    """Sanitized markdown -> HTML for topic blog/notes sections (shared util)."""
+    from utils.md_render import render_markdown_safe
+
+    return str(render_markdown_safe(md))
 
 
 def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> str:

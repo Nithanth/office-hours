@@ -292,9 +292,14 @@ async def chat_modal(
     if history_html:
         import re as _re
 
+        # history_html is user/LLM content — passing it as the re.sub
+        # replacement string treats backslashes (LaTeX \alpha, \cdot, \() as
+        # escapes: legal ones silently mangle text, invalid ones raise
+        # re.error → the "unexpected server error" on reopen. A lambda
+        # replacement inserts it literally.
         modal_html = _re.sub(
             r'(<div[^>]*class="chat-empty-hint"[^>]*>.*?</div>)',
-            history_html,
+            lambda _m: history_html,
             modal_html,
             count=1,
         )

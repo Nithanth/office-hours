@@ -850,6 +850,9 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src="/static/js/main.js?v=2", type="module"),
             Script(src="/static/js/library.js?v=1", defer=True),
             Script(src="/static/js/cluster-viz.js", defer=True),
+            # ohBlogRender lazy-loads KaTeX — the report stream's done event
+            # calls renderKaTeX(#report-content) to typeset math.
+            Script(src="/static/js/blog-view.js", defer=True),
             Script(src="/static/js/similar-papers.js", defer=True),
             # No inline init - handled in settings.js
         ),
