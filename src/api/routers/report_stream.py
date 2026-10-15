@@ -239,6 +239,10 @@ async def generate_report_incremental(  # noqa: PLR0913
                     title=original_query_for_report,
                     seed_query=original_query_for_report,
                 )
+                from services.persistence.repositories import ensure_seed_facet
+
+                await ensure_seed_facet(session, topic=topic)
+                await session.commit()
                 topic_id = topic.id
                 await session.commit()
 

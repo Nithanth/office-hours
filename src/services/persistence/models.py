@@ -100,6 +100,34 @@ class Topic(Base):
     share_token: Mapped[str | None] = mapped_column(String(64), index=True)
 
     papers: Mapped[list[TopicPaper]] = relationship(back_populates="topic")
+    facets: Mapped[list[TopicFacet]] = relationship(
+        back_populates="topic", cascade="all, delete-orphan"
+    )
+
+
+class TopicFacet(Base):
+    """One search angle of a topic — a query the topic tracks.
+
+    A topic is a research question; facets are the different vocabularies
+    into it ("implicit neural representations", "NeRF", "coordinate-based
+    MLPs" can all be facets of one topic). Every topic carries at least one
+    facet — its seed query — and feeds poll each facet and merge new papers
+    into the shared set.
+    """
+
+    __tablename__ = "topic_facets"
+    __table_args__ = (UniqueConstraint("topic_id", "kind", "canonical_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    topic_id: Mapped[str] = mapped_column(
+        ForeignKey("topics.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16), default="subject")
+    query: Mapped[str] = mapped_column(Text)
+    canonical_key: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    topic: Mapped[Topic] = relationship(back_populates="facets")
 
 
 class TopicPaper(Base):

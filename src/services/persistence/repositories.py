@@ -669,7 +669,7 @@ async def set_saved_paper_notion_chat_count(
 # Topics
 # ---------------------------------------------------------------------------
 
-from services.persistence.models import Topic, TopicPaper  # noqa: E402
+from services.persistence.models import Topic, TopicFacet, TopicPaper  # noqa: E402
 
 
 async def get_or_create_topic(
@@ -712,6 +712,139 @@ async def get_or_create_topic(
         )
         return topic, False
     return topic, True
+
+
+async def list_topic_facets(
+    session: AsyncSession, *, topic_id: str
+) -> list[TopicFacet]:
+    """All search angles of a topic, oldest first."""
+    result = await session.execute(
+        select(TopicFacet)
+        .where(TopicFacet.topic_id == topic_id)
+        .order_by(TopicFacet.created_at)
+    )
+    return list(result.scalars().all())
+
+
+async def add_topic_facet(
+    session: AsyncSession,
+    *,
+    topic_id: str,
+    kind: str,
+    query: str,
+    canonical_key: str,
+) -> tuple[TopicFacet, bool]:
+    """Add a search angle to a topic. Returns (facet, created)."""
+    facet = await session.scalar(
+        select(TopicFacet).where(
+            TopicFacet.topic_id == topic_id,
+            TopicFacet.kind == kind,
+            TopicFacet.canonical_key == canonical_key,
+        )
+    )
+    if facet is not None:
+        return facet, False
+    facet = TopicFacet(
+        topic_id=topic_id, kind=kind, query=query, canonical_key=canonical_key
+    )
+    session.add(facet)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        facet = await session.scalar(
+            select(TopicFacet).where(
+                TopicFacet.topic_id == topic_id,
+                TopicFacet.kind == kind,
+                TopicFacet.canonical_key == canonical_key,
+            )
+        )
+        return facet, False
+    return facet, True
+
+
+async def remove_topic_facet(
+    session: AsyncSession, *, facet_id: str, topic_id: str
+) -> bool:
+    """Delete a facet (never the last one — a topic needs >=1 angle)."""
+    facets = await list_topic_facets(session, topic_id=topic_id)
+    if len(facets) <= 1:
+        return False
+    facet = await session.get(TopicFacet, facet_id)
+    if facet is None or facet.topic_id != topic_id:
+        return False
+    await session.delete(facet)
+    return True
+
+
+async def ensure_seed_facet(session: AsyncSession, *, topic: Topic) -> None:
+    """Guarantee the topic's seed query exists as a facet (create-time)."""
+    if await list_topic_facets(session, topic_id=topic.id):
+        return
+    await add_topic_facet(
+        session,
+        topic_id=topic.id,
+        kind=topic.kind,
+        query=topic.seed_query or topic.title,
+        canonical_key=topic.canonical_key,
+    )
+
+
+async def merge_topics(
+    session: AsyncSession, *, source_id: str, into_id: str, owner_id: str
+) -> Topic | None:
+    """Merge an adjacent topic into another: facets + papers + reports move,
+    source is archived. Returns the surviving topic or None on bad input."""
+    if source_id == into_id:
+        return None
+    source = await session.get(Topic, source_id)
+    target = await session.get(Topic, into_id)
+    if (
+        source is None
+        or target is None
+        or source.owner_id != owner_id
+        or target.owner_id != owner_id
+    ):
+        return None
+
+    from services.topics.keys import canonical_key_for
+
+    for f in await list_topic_facets(session, topic_id=source.id):
+        await add_topic_facet(
+            session,
+            topic_id=target.id,
+            kind=f.kind,
+            query=f.query,
+            canonical_key=f.canonical_key or canonical_key_for(f.query, kind=f.kind),
+        )
+    # Repoint papers the target doesn't already have (unique constraint on
+    # topic_id+paper_id means dupes are skipped via a fetch-then-add walk).
+    target_paper_ids = {
+        p.paper_id for p in await list_topic_papers(session, topic_id=target.id)
+    }
+    for tp in await list_topic_papers(session, topic_id=source.id):
+        if tp.paper_id in target_paper_ids:
+            continue
+        session.add(
+            TopicPaper(
+                topic_id=target.id,
+                paper_id=tp.paper_id,
+                title=tp.title,
+                url=tp.url,
+                authors=tp.authors,
+                published_date=tp.published_date,
+                source=tp.source,
+                removed_at=tp.removed_at,
+                metadata_json=tp.metadata_json,
+            )
+        )
+    # Move snapshot reports so history follows the merge.
+    await session.execute(
+        update(Report).where(Report.topic_id == source.id).values(topic_id=target.id)
+    )
+    source.archived = True
+    target.updated_at = datetime.utcnow()
+    return target
 
 
 async def add_topic_papers(
