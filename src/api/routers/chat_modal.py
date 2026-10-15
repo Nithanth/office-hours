@@ -737,7 +737,7 @@ async def viewer_modal(
     url = canonical_url
 
     safe_url = html.escape(url)
-    is_pdf = safe_url.lower().endswith(".pdf")
+    is_pdf = _resolve_pdf_url(url) is not None
 
     # Reader-mode tabs — the left pane is a swappable slot. Source is the
     # default embed (PDF via pdf.js or proxied HTML); for arXiv papers an
@@ -861,10 +861,27 @@ async def _topic_papers(request: Request, report_id: str) -> list[tuple[str, str
         return []
 
 
+def _resolve_pdf_url(url: str) -> str | None:
+    """Return a real PDF URL for *url* when one is derivable, else None.
+
+    Paper URLs are usually landing pages (arXiv abs, DOI resolvers), not
+    .pdf links — for arXiv-backed papers the PDF is a deterministic URL.
+    """
+    if url.lower().endswith(".pdf"):
+        return url
+    from services.core.exa_utils import url_utils as _url_utils
+
+    arxiv_id = _url_utils.extract_arxiv_id(url)
+    if arxiv_id:
+        return f"https://arxiv.org/pdf/{arxiv_id}"
+    return None
+
+
 def _doc_embed(url: str) -> str:
     """Viewer-pane markup for a doc URL (pdf.js container or proxied iframe)."""
-    if url.lower().endswith(".pdf"):
-        proxied = f"/pdf-proxy?url={urllib.parse.quote_plus(url)}"
+    pdf_url = _resolve_pdf_url(url)
+    if pdf_url:
+        proxied = f"/pdf-proxy?url={urllib.parse.quote_plus(pdf_url)}"
         return (
             f'<div class="pdf-container" data-pdf-src="{html.escape(proxied)}"></div>'
             '<script type="module" src="/static/js/pdf-viewer.js"></script>'

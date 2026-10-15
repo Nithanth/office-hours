@@ -260,7 +260,7 @@ class OpenRouterProvider(LLMProvider):
                 raise LLMProviderError("openrouter", "Invalid response structure")
             choice = response.choices[0]
             if getattr(choice, "finish_reason", None) == "length":
-                self.logger.warning(
+                logger.warning(
                     "openrouter_output_truncated",
                     model=selected_model,
                     max_tokens=max_tokens,
