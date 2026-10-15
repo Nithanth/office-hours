@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import secrets
 from urllib.parse import quote, quote_plus
 
 import markdown as _markdown
@@ -86,6 +87,22 @@ def _esc(v: object) -> str:
     return html.escape(str(v or ""))
 
 
+def _share_url(request: Request, token: str) -> str:
+    return f"{str(request.base_url).rstrip('/')}/share/{token}"
+
+
+def _share_link_html(request: Request, topic: Topic) -> str:
+    """The share-status content: the public URL + unshare control."""
+    url = _share_url(request, topic.share_token or "")
+    return (
+        f'🔗 <a href="{_esc(url)}" target="_blank" rel="noopener">{_esc(url)}</a>'
+        " — anyone with this link can view (read-only)."
+        ' <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"'
+        f' hx-post="/topics/{_esc(topic.id)}/unshare" hx-target="#share-status"'
+        ' hx-swap="innerHTML">Unshare</button>'
+    )
+
+
 def _fmt_authors(authors: object) -> str:
     if isinstance(authors, dict):
         authors = authors.get("items") or []
@@ -126,8 +143,11 @@ async def topics_page(request: Request) -> HTMLResponse:
     return HTMLResponse(_shell("Topics", f"<h1>Your Topics</h1>{items}"))
 
 
-def _paper_rows_html(topic: Topic, papers: list[TopicPaper]) -> str:
-    """One rendered row per topic paper (shared by the page and feed refresh)."""
+def _paper_rows_html(
+    topic: Topic, papers: list[TopicPaper], *, readonly: bool = False
+) -> str:
+    """One rendered row per topic paper (shared by the page, feed refresh,
+    and the public share page — readonly drops the remove/viewer buttons)."""
     paper_rows = []
     for p in papers:
         title_link = (
@@ -142,25 +162,66 @@ def _paper_rows_html(topic: Topic, papers: list[TopicPaper]) -> str:
         )
         meta_bits = [b for b in (_fmt_authors(p.authors), _esc(p.published_date)) if b]
         meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
-        pid_q = quote(p.paper_id, safe="")
-        viewer_btn = (
-            f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
-            f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
-            f' hx-target="#modal-container" hx-swap="innerHTML">'
-            f'<i class="fa-solid fa-comment-dots"></i></button>'
-            if p.url
-            else ""
-        )
+        actions = ""
+        if not readonly:
+            pid_q = quote(p.paper_id, safe="")
+            viewer_btn = (
+                f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
+                f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
+                f' hx-target="#modal-container" hx-swap="innerHTML">'
+                f'<i class="fa-solid fa-comment-dots"></i></button>'
+                if p.url
+                else ""
+            )
+            actions = (
+                f"<div>{viewer_btn}"
+                f'<button type="button" class="copy-icon-btn" title="Remove from topic"'
+                f' hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe="")}/remove"'
+                f' hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>'
+            )
         paper_rows.append(
             f"""<div class="paper-row">
   <div><div class="pt">{title_link}{feed_chip}</div>{meta}</div>
-  <div>{viewer_btn}
-  <button type="button" class="copy-icon-btn" title="Remove from topic"
-    hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe='')}/remove"
-    hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>
+  {actions}
 </div>"""
         )
     return "".join(paper_rows) or "<div class='empty-note'>No papers yet.</div>"
+
+
+# Markdown → HTML, rendered server-side so a CDN hiccup can never surface raw
+# markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
+# HTML — strip active-content tags and on* handlers before parsing.
+_DANGEROUS = re.compile(
+    r"(?is)</?\s*(script|iframe|object|embed|form|style|link|meta|base)[^>]*>"
+)
+_HANDLERS = re.compile(r"(?is)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
+_JS_SCHEME = re.compile(r"(?i)javascript\s*:")
+
+
+def _md_to_html(md: str) -> str:
+    safe = _JS_SCHEME.sub("", _HANDLERS.sub("", _DANGEROUS.sub("", md)))
+    rendered: str = _markdown.markdown(
+        safe, extensions=["extra", "sane_lists"], output_format="html"
+    )
+    return rendered
+
+
+def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> str:
+    if not md:
+        return (
+            f'<div class="topic-section"><h3>{heading}</h3>'
+            f'<div class="topic-meta">{empty_msg}</div></div>'
+        )
+    return (
+        f'<div class="topic-section"><h3>{heading}</h3>'
+        f'<div class="blog-scope">'
+        f'<article id="{sec_id}" class="blog-article">{_md_to_html(md)}</article>'
+        f"</div>"
+        f'<script>document.addEventListener("DOMContentLoaded",function(){{'
+        f"var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){{"
+        f'r.renderKaTeX(document.getElementById("{sec_id}"));'
+        f"}});}});</script></div>"
+    )
 
 
 @router.get("/topics/{topic_id}", response_class=HTMLResponse)
@@ -183,39 +244,6 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         reports = await list_topic_reports(session, topic_id=topic.id, limit=5)
 
     papers_html = _paper_rows_html(topic, papers)
-
-    # Render markdown server-side so a CDN hiccup can never surface raw
-    # markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
-    # HTML — strip active-content tags and on* handlers before parsing.
-    _DANGEROUS = re.compile(
-        r"(?is)</?\s*(script|iframe|object|embed|form|style|link|meta|base)[^>]*>"
-    )
-    _HANDLERS = re.compile(r"(?is)\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
-    _JS_SCHEME = re.compile(r"(?i)javascript\s*:")
-
-    def _md_to_html(md: str) -> str:
-        safe = _JS_SCHEME.sub("", _HANDLERS.sub("", _DANGEROUS.sub("", md)))
-        rendered: str = _markdown.markdown(
-            safe, extensions=["extra", "sane_lists"], output_format="html"
-        )
-        return rendered
-
-    def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> str:
-        if not md:
-            return (
-                f'<div class="topic-section"><h3>{heading}</h3>'
-                f'<div class="topic-meta">{empty_msg}</div></div>'
-            )
-        return (
-            f'<div class="topic-section"><h3>{heading}</h3>'
-            f'<div class="blog-scope">'
-            f'<article id="{sec_id}" class="blog-article">{_md_to_html(md)}</article>'
-            f"</div>"
-            f'<script>document.addEventListener("DOMContentLoaded",function(){{'
-            f"var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){{"
-            f'r.renderKaTeX(document.getElementById("{sec_id}"));'
-            f"}});}});</script></div>"
-        )
 
     blog_html = _md_section(
         "topic-blog",
@@ -240,6 +268,8 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         "".join(report_rows) or "<div class='topic-meta'>No reports yet.</div>"
     )
 
+    share_status_html = _share_link_html(request, topic) if topic.share_token else ""
+
     body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
   <a class="btn-secondary" href="/" style="text-decoration:none;">+ New report</a>
@@ -249,7 +279,11 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
   <button type="button" class="btn-secondary"
     hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
     hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
+  <button type="button" class="btn-secondary" title="Get a public read-only link to this topic"
+    hx-post="/topics/{_esc(topic.id)}/share" hx-target="#share-status"
+    hx-swap="innerHTML">Share</button>
 </div>
+<div id="share-status" class="topic-meta">{share_status_html}</div>
 <div id="topic-report-out"></div>
 <div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
@@ -452,3 +486,82 @@ async def api_remove_paper(topic_id: str, paper_id: str, request: Request) -> Re
             status_code=200,
         )
     return JSONResponse({"ok": True, "removed": removed})
+
+
+# ---------------------------------------------------------------------------
+# Shareable topics — public read-only /share/{token} page
+# ---------------------------------------------------------------------------
+
+
+@router.post("/topics/{topic_id}/share", response_class=HTMLResponse)
+async def topic_share(topic_id: str, request: Request) -> HTMLResponse:
+    """Generate (or reuse) the topic's public share token; return the URL."""
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import get_topic, set_topic_share_token
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        if not topic.share_token:
+            await set_topic_share_token(
+                session,
+                owner_id=owner,
+                topic_id=topic_id,
+                token=secrets.token_urlsafe(12),
+            )
+            await session.refresh(topic)
+        return HTMLResponse(_share_link_html(request, topic))
+    return HTMLResponse("")  # pragma: no cover - session_scope always yields
+
+
+@router.post("/topics/{topic_id}/unshare", response_class=HTMLResponse)
+async def topic_unshare(topic_id: str, request: Request) -> HTMLResponse:
+    """Clear the share token — the public link goes dead immediately."""
+    owner = _owner_id(request)
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import get_topic, set_topic_share_token
+
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        await set_topic_share_token(
+            session, owner_id=owner, topic_id=topic_id, token=None
+        )
+        return HTMLResponse("Share link disabled.")
+    return HTMLResponse("")  # pragma: no cover
+
+
+@router.get("/share/{token}", response_class=HTMLResponse)
+async def share_page(token: str) -> HTMLResponse:
+    """Public read-only view of a shared topic — no account needed."""
+    if not database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from services.persistence.repositories import (
+        get_topic_by_share_token,
+        list_topic_papers,
+    )
+
+    async for session in session_scope():
+        topic = await get_topic_by_share_token(session, token=token)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Shared topic not found")
+        papers = await list_topic_papers(session, topic_id=topic.id)
+
+    papers_html = _paper_rows_html(topic, papers, readonly=True)
+    blog_html = _md_section("share-blog", "Blog", topic.blog_markdown, "No blog yet.")
+    notes_html = _md_section(
+        "share-notes", "Notes", topic.notes_markdown, "No notes yet."
+    )
+    body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
+<div class="topic-meta">Shared workspace — read-only.
+  <a href="/">Make your own with Office Hours →</a></div>
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>
+<div id="topic-papers">{papers_html}</div>
+{blog_html}
+{notes_html}"""
+    return HTMLResponse(_shell(topic.title, body))

@@ -902,6 +902,23 @@ async def set_topic_notion(
     await session.commit()
 
 
+async def get_topic_by_share_token(
+    session: AsyncSession, *, token: str
+) -> Topic | None:
+    """Public lookup — the token IS the capability, no owner check."""
+    return await session.scalar(select(Topic).where(Topic.share_token == token))
+
+
+async def set_topic_share_token(
+    session: AsyncSession, *, owner_id: str, topic_id: str, token: str | None
+) -> None:
+    topic = await get_topic(session, owner_id=owner_id, topic_id=topic_id)
+    if topic is None:
+        return
+    topic.share_token = token
+    await session.commit()
+
+
 async def get_report_topic_id(session: AsyncSession, *, report_id: str) -> str | None:
     """Resolve a report to its parent topic id (None if unlinked/missing)."""
     return await session.scalar(select(Report.topic_id).where(Report.id == report_id))

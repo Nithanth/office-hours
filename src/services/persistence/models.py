@@ -96,6 +96,8 @@ class Topic(Base):
     # sha256 of the markdown body last mirrored to the Notion page — lets the
     # sync skip rewrites when blog/notes haven't changed.
     notion_body_hash: Mapped[str | None] = mapped_column(String(64))
+    # Public read-only share link (/share/{token}); None = not shared.
+    share_token: Mapped[str | None] = mapped_column(String(64), index=True)
 
     papers: Mapped[list[TopicPaper]] = relationship(back_populates="topic")
 
