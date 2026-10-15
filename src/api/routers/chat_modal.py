@@ -898,7 +898,10 @@ async def doc_pane(
     request: Request, url: str = Query(..., description="Document URL to render")
 ) -> HTMLResponse:  # noqa: D401
     """Viewer-pane fragment for the topic picker: pdf container or proxied iframe."""
-    if not _is_url_allowed(url):
+    # Gate like the pdf-proxy: any public http(s) host may reach the embed —
+    # the proxies it delegates to enforce their own rules (pdf-proxy: any
+    # public host; html-proxy: academic allowlist).
+    if not _is_public_http_url(url):
         raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
     return HTMLResponse(content=_doc_embed(url))
 
