@@ -831,28 +831,28 @@ def home_page(page_data: SharedPageData) -> Body:
             "https://arxiv.org/abs/1706.03762",
         ]
         results_display_content = Div(
-            P(
+            Div(
                 "A workbench for research questions.",
-                style="font-size:1.15rem;font-weight:600;margin:0 0 0.4rem;",
+                cls="oh-hero-title",
             ),
-            P(
+            Div(
                 "Search a topic, a paper link, or an author — Office Hours builds "
                 "a living topic page around it: the paper set, streamed reports, "
                 "notes, a blog, and a chat that knows all of them.",
-                style="font-size:0.9rem;color:var(--fg-muted,#888);max-width:36rem;margin:0 auto 0.9rem;",
+                cls="oh-hero-sub",
             ),
             Div(
-                Span("Try ", style="font-size:0.85rem;color:var(--fg-muted,#888);"),
+                Span("Try", cls="oh-hero-try"),
                 *[
                     BUTTON(
                         q,
                         type="button",
                         cls="oh-hero-chip",
                         data_q=q,
-                        style="font-size:0.8rem;padding:3px 10px;margin:0 3px;border:1px solid #666;border-radius:999px;background:var(--container-bg);color:var(--fg);cursor:pointer;",
                     )
                     for q in example_queries
                 ],
+                cls="oh-hero-chips",
             ),
             Script(
                 "document.addEventListener('click',function(ev){"
@@ -864,7 +864,6 @@ def home_page(page_data: SharedPageData) -> Body:
                 "});"
             ),
             cls="empty-state",
-            style="padding:1.5rem 1rem;",
         )
 
     return Body(
@@ -1045,11 +1044,13 @@ def home_page(page_data: SharedPageData) -> Body:
                     # Action buttons
                     Div(
                         BUTTON(
-                            "Search Papers",
+                            I(cls="fa-solid fa-magnifying-glass"),
+                            " Search Papers",
                             type="submit",
                             name="mode",
                             value="auto",
                             id="search-papers-btn",
+                            cls="oh-search-btn",
                             onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
                         ),
                         BUTTON(
@@ -1057,9 +1058,8 @@ def home_page(page_data: SharedPageData) -> Body:
                             " Search by Author",
                             type="button",
                             id="search-author-btn",
-                            cls="btn-secondary",
+                            cls="oh-search-btn",
                             title="Search for a researcher by name (Semantic Scholar)",
-                            style="font-size:0.85rem;padding:5px 10px;margin-left:6px;",
                             hx_post="/author/search",
                             hx_include="#paper-search-form",
                             hx_target="#search-results-container",
@@ -1076,7 +1076,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                 "}"
                             ),
                         ),
-                        style="margin-top:0.4rem;display:flex;align-items:center;",
+                        style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;",
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",

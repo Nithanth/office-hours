@@ -16,7 +16,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from fasthtml.common import Button, Div, Link, Span
+from fasthtml.common import A, Button, Div, Span
 
 # (label, href, key) — order is the nav order on every page.
 NAV_LINKS: list[tuple[str, str, str]] = [
@@ -102,8 +102,10 @@ def page_shell(
 
 
 def nav_links(active: str = "") -> list:
+    # `A`, not `Link`: fasthtml's Link emits a void <link> element, so the
+    # anchors silently dropped href/class and only their text rendered.
     return [
-        Link(
+        A(
             label,
             href=href,
             cls="top-bar-link" + (" active" if key == active else ""),
@@ -117,7 +119,7 @@ def top_bar(active: str = "", *extra_controls: Any) -> Div:
     page-specific widgets rendered between the nav and the auth/dark
     cluster (e.g. the home page's audience/model selects)."""
     return Div(
-        Link(
+        A(
             "█▓▒░ Office Hours ░▒▓█",
             href="/",
             cls="top-bar-brand",

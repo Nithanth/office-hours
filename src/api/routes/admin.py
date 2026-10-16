@@ -95,6 +95,7 @@ async def notion_status(request: Request) -> dict[str, Any]:
             return {
                 "connected": True,
                 "oauth_connected": True,
+                "authenticated": True,
                 "database_id": masked_id,
                 "has_api_key": True,
                 "has_parent": bool(target_id),
@@ -116,6 +117,7 @@ async def notion_status(request: Request) -> dict[str, Any]:
     return {
         "connected": has_key and has_parent,
         "oauth_connected": False,
+        "authenticated": bool(user_id),
         "database_id": masked_id if has_parent else "",
         "has_api_key": has_key,
         "has_parent": has_parent,

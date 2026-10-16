@@ -15,6 +15,7 @@ import config as _cfg
 from services.auth.session import (
     OAUTH_STATE_COOKIE_NAME,
     clear_oauth_state_cookie,
+    get_auth_user_id,
     require_auth_user_id,
     set_oauth_state_cookie,
     sign_oauth_state,
@@ -54,7 +55,15 @@ def _basic_auth_header() -> str:
 async def notion_connect(
     request: Request, next: str = "/"
 ) -> RedirectResponse:  # noqa: A002
-    require_auth_user_id(request)
+    if not get_auth_user_id(request):
+        # Safety net for direct hits (library link, bookmarks): bounce through
+        # Google sign-in and come back here instead of a bare 401 page.
+        login_next = (
+            f"/integrations/notion/connect?next={urllib.parse.quote(next, safe='')}"
+        )
+        return RedirectResponse(
+            "/auth/google/login?next=" + urllib.parse.quote(login_next, safe="/?&=")
+        )
     if not _notion_oauth_configured():
         raise HTTPException(status_code=503, detail="Notion OAuth is not configured.")
 
