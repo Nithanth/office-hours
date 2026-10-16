@@ -99,6 +99,82 @@ def _fetch_batch(ids: list[str], timeout: int = 10) -> dict[str, int]:
     return results
 
 
+def fetch_top_cited_papers(
+    query: str,
+    *,
+    limit: int = 20,
+    min_citations: int = 50,
+    timeout: int = 10,
+) -> list[Any]:
+    """Search S2 for the most-cited papers matching *query*.
+
+    Used to expand the Exa result pool with seminal papers Exa may have
+    missed (e.g. "Attention Is All You Need" for a transformer query).
+    Returns Paper objects sorted by citation count desc; empty on failure.
+    """
+    from models.paper import Paper
+
+    params = urllib.parse.urlencode(
+        {
+            "query": query,
+            "limit": limit,
+            "fields": "title,authors,year,citationCount,externalIds,url,"
+            "abstract,publicationDate",
+        }
+    )
+    req = urllib.request.Request(
+        f"{_S2_BASE}/paper/search?{params}", headers=_get_headers()
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.load(resp)
+    except (URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
+        logger.warning("s2_top_cited_fetch_failed", query=query[:60], err=str(exc))
+        return []
+
+    papers: list[Any] = []
+    for item in data.get("data") or []:
+        ext = item.get("externalIds") or {}
+        arxiv_id = ext.get("ArXiv")
+        doi = ext.get("DOI")
+        if arxiv_id:
+            url = f"https://arxiv.org/abs/{arxiv_id}"
+        elif doi:
+            url = f"https://doi.org/{doi}"
+        elif item.get("url"):
+            url = item["url"]
+        else:
+            continue
+
+        count = item.get("citationCount") or 0
+        if count < min_citations:
+            continue
+
+        try:
+            papers.append(
+                Paper(
+                    id=url,
+                    title=item.get("title") or "Untitled",
+                    url=url,
+                    authors=[
+                        a.get("name", "")
+                        for a in (item.get("authors") or [])
+                        if a.get("name")
+                    ],
+                    text_content=item.get("abstract"),
+                    published_date=item.get("publicationDate")
+                    or (f"{item['year']}-01-01" if item.get("year") else None),
+                    citation_count=count,
+                    source="Semantic Scholar",
+                )
+            )
+        except Exception:
+            continue
+
+    papers.sort(key=lambda p: p.citation_count or 0, reverse=True)
+    return papers
+
+
 def enrich_papers_with_citations(
     papers: list[Any],
     *,
