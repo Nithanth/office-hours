@@ -39,13 +39,13 @@ def _owner_id(request: Request) -> str:
 
 
 def _shell(title: str, body: str) -> str:
-    from pages.shell import page_shell
+    from pages.shell import lib_subtabs_html, page_shell
 
     return str(
         page_shell(
             title,
-            body,
-            active="topics",
+            lib_subtabs_html("topics") + body,
+            active="library",
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
     .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}

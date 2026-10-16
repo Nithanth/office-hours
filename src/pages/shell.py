@@ -22,11 +22,27 @@ from utils.static_assets import static_url
 
 # (label, href, key) — order is the nav order on every page.
 NAV_LINKS: list[tuple[str, str, str]] = [
-    ("Topics", "/topics", "topics"),
-    ("My Reports", "/reports", "reports"),
     ("Library", "/library", "library"),
     ("Settings", "/settings", "settings"),
 ]
+
+# Sub-tabs inside the Library hub — Papers | Topics | Reports share one
+# strip rendered at the top of each of the three pages.
+LIB_SUBTABS: list[tuple[str, str, str]] = [
+    ("Papers", "/library", "papers"),
+    ("Topics", "/topics", "topics"),
+    ("Reports", "/reports", "reports"),
+]
+
+
+def lib_subtabs_html(active: str) -> str:
+    """Sub-tab strip for the Library hub pages."""
+    parts = []
+    for label, href, key in LIB_SUBTABS:
+        cls = "lib-subtab" + (" active" if key == active else "")
+        parts.append(f'<a href="{href}" class="{cls}">{html.escape(label)}</a>')
+    return '<div class="lib-subtabs">' + "".join(parts) + "</div>"
+
 
 # Pinned client deps — every page loads the same versions.
 _HTMX = "https://unpkg.com/htmx.org@1.9.12"

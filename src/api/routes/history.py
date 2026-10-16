@@ -39,17 +39,18 @@ def _owner_id(request: Request) -> str:
 
 
 def _history_shell(items_html: str) -> str:
-    from pages.shell import page_shell
+    from pages.shell import lib_subtabs_html, page_shell
 
     return str(
         page_shell(
             "My Reports",
-            f"""<div class="history-header">
+            lib_subtabs_html("reports")
+            + f"""<div class="history-header">
       <h1>My Reports</h1>
       <a href="/" style="font-size:0.85rem;margin-left:auto;">+ New Search</a>
     </div>
     {items_html}""",
-            active="reports",
+            active="library",
             head_extra="""<style>
     .history-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
     .history-item{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
