@@ -808,3 +808,12 @@ body.blog-printing .blog-footer { display: none !important; }
   color: var(--fg-muted, #6b7280);
   margin-top: -1.2em;
 }
+
+/* Sandboxed iframe hosting vega-embed charts (its own CSP allows eval) */
+.blog-vega-frame {
+  width: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+  min-height: 160px;
+}

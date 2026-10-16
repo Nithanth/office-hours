@@ -8,7 +8,7 @@
  * the app's localStorage 'theme' key so the blog page matches the main app.
  */
 
-/* globals: marked, DOMPurify, mermaid, katex, renderMathInElement, hljs, vegaEmbed */
+/* globals: marked, DOMPurify, mermaid, katex, renderMathInElement, hljs */
 
 // ---------------------------------------------------------------------------
 // Theme — driven by the app's localStorage 'theme' key for cross-page consistency
@@ -276,25 +276,24 @@ async function renderMermaidDiagrams(mermaidBlocks, root) {
 // ---------------------------------------------------------------------------
 // Render Vega-Lite charts
 // ---------------------------------------------------------------------------
-// Lazy-loaded only when the rendered post actually contains a `vega-lite`
-// fenced block. The CDN bundle is ~330KB gzip combined; we don't pay the
-// download cost on posts that have no interactive charts.
-const VEGA_DEPS = [
-  { id: "vega",       src: "https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js" },
-  { id: "vega-lite",  src: "https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js" },
-  { id: "vega-embed", src: "https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js" },
-];
-
-async function loadVegaDeps() {
-  // Dependencies must load in order — vega-lite needs vega, vega-embed needs both.
-  for (const dep of VEGA_DEPS) {
-    try {
-      await loadDep(dep);
-    } catch (err) {
-      throw new Error(`Failed to load ${dep.id}`);
+// Charts render inside a sandboxed /vega-frame iframe: vega's expression
+// compiler needs 'unsafe-eval', which the page CSP rightly forbids — the
+// frame's own CSP allows it. Each iframe gets an opaque origin
+// (sandbox=allow-scripts), receives the spec via postMessage, and posts
+// its content height back so the parent autosizes it. Bonus: hostile
+// specs (expressions run arbitrary JS) are confined to the frame instead
+// of executing in the app origin.
+const _vegaFrames = new Set();
+window.addEventListener("message", (e) => {
+  const d = e.data || {};
+  if (d.type !== "vega-height") return;
+  for (const iframe of _vegaFrames) {
+    if (e.source === iframe.contentWindow && typeof d.height === "number") {
+      iframe.style.height = Math.min(Math.max(d.height, 80), 1400) + "px";
+      return;
     }
   }
-}
+});
 
 async function renderVegaCharts(vegaBlocks, root) {
   if (!vegaBlocks || vegaBlocks.length === 0) return;
@@ -302,40 +301,7 @@ async function renderVegaCharts(vegaBlocks, root) {
   const wrappers = scope.querySelectorAll("[data-vega-idx]");
   if (wrappers.length === 0) return;
 
-  try {
-    await loadVegaDeps();
-  } catch (err) {
-    console.warn("[blog] vega-embed CDN load failed", err);
-    wrappers.forEach((w) => {
-      const idx = parseInt(w.dataset.vegaIdx, 10);
-      const spec = vegaBlocks[idx] || "";
-      w.innerHTML = vegaErrorMarkup("Could not load Vega-Lite library.", spec);
-    });
-    return;
-  }
-
-  if (typeof window.vegaEmbed !== "function") {
-    wrappers.forEach((w) => {
-      const idx = parseInt(w.dataset.vegaIdx, 10);
-      const spec = vegaBlocks[idx] || "";
-      w.innerHTML = vegaErrorMarkup("vegaEmbed not available.", spec);
-    });
-    return;
-  }
-
   const isDark = currentTheme() === "dark";
-  const embedConfig = {
-    actions: { export: true, source: true, compiled: false, editor: true },
-    theme: isDark ? "dark" : undefined,
-    renderer: "canvas",
-    config: {
-      background: "transparent",
-      view: { stroke: "transparent" },
-      axis: isDark
-        ? { labelColor: "#94a3b8", titleColor: "#e2e8f0", gridColor: "#1e293b" }
-        : undefined,
-    },
-  };
 
   for (const wrapper of wrappers) {
     const idx = parseInt(wrapper.dataset.vegaIdx, 10);
@@ -352,18 +318,36 @@ async function renderVegaCharts(vegaBlocks, root) {
       continue;
     }
 
-    try {
-      // Mount inside a child div so we can preserve our wrapper styling.
-      const host = document.createElement("div");
-      host.className = "blog-vega-host";
-      wrapper.innerHTML = "";
-      wrapper.appendChild(host);
-      await window.vegaEmbed(host, spec, embedConfig);
-    } catch (err) {
-      console.warn("[blog] Vega-Lite render failed for block", idx, err);
-      wrapper.innerHTML = vegaErrorMarkup("Failed to render: " + (err && err.message ? err.message : String(err)), rawSpec);
-      wrapper.style.borderColor = "#f59e0b";
-    }
+    const iframe = document.createElement("iframe");
+    iframe.className = "blog-vega-frame";
+    iframe.src = "/vega-frame";
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.setAttribute("title", "Interactive chart");
+    wrapper.innerHTML = "";
+    wrapper.appendChild(iframe);
+    _vegaFrames.add(iframe);
+    iframe.addEventListener("load", () => {
+      iframe.contentWindow.postMessage(
+        {
+          type: "vega-spec",
+          idx,
+          spec,
+          config: {
+            actions: { export: true, source: true, compiled: false, editor: true },
+            theme: isDark ? "dark" : undefined,
+            renderer: "canvas",
+            config: {
+              background: "transparent",
+              view: { stroke: "transparent" },
+              axis: isDark
+                ? { labelColor: "#94a3b8", titleColor: "#e2e8f0", gridColor: "#1e293b" }
+                : undefined,
+            },
+          },
+        },
+        "*"
+      );
+    });
   }
 }
 
