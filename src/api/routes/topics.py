@@ -48,32 +48,32 @@ def _shell(title: str, body: str) -> str:
             active="library",
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
-    .topics-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
-    .topic-card{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
-      background:var(--container-bg);transition:border-color 0.15s;}}
-    .topic-card:hover{{border-color:#888;}}
-    .topic-card h2{{font-size:1.05rem;margin:0 0 0.3rem;}}
-    .topic-card h2 a{{text-decoration:none;color:var(--fg);}}
-    .topic-card h2 a:hover{{text-decoration:underline;}}
-    .topic-meta{{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}}
-    .topic-kind{{display:inline-block;font-size:0.7rem;padding:0.1rem 0.45rem;
-      border:1px solid #555;border-radius:999px;margin-right:0.4rem;text-transform:uppercase;}}
-    .paper-row{{display:flex;justify-content:space-between;gap:0.75rem;
+    .topics-wrap{max-width:900px;margin:2rem auto;padding:0 1rem;}
+    .topic-card{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
+      background:var(--container-bg);transition:border-color 0.15s;}
+    .topic-card:hover{border-color:#888;}
+    .topic-card h2{font-size:1.05rem;margin:0 0 0.3rem;}
+    .topic-card h2 a{text-decoration:none;color:var(--fg);}
+    .topic-card h2 a:hover{text-decoration:underline;}
+    .topic-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}
+    .topic-kind{display:inline-block;font-size:0.7rem;padding:0.1rem 0.45rem;
+      border:1px solid #555;border-radius:999px;margin-right:0.4rem;text-transform:uppercase;}
+    .paper-row{display:flex;justify-content:space-between;gap:0.75rem;
       border:1px solid #444;border-radius:8px;padding:0.75rem;margin:0.5rem 0;
-      background:var(--container-bg);}}
+      background:var(--container-bg);}
     /* long unbreakable titles (URLs/ids) must not push the action buttons
        offscreen — constrain the text column and keep buttons on-row */
-    .paper-row>div:first-child{{min-width:0;flex:1 1 auto;}}
-    .paper-row>div:last-child{{flex:0 0 auto;white-space:nowrap;align-self:center;}}
-    .paper-row .pt{{overflow-wrap:anywhere;}}
-    .paper-row .pt a{{color:var(--fg);font-weight:600;}}
-    .paper-row .pm{{font-size:0.78rem;color:var(--fg-muted,#888);margin-top:0.2rem;}}
-    .topic-actions a,.topic-actions button{{margin-right:0.5rem;}}
-    .empty-note{{color:var(--fg-muted,#888);padding:2rem 0;text-align:center;}}
-    .topic-section{{margin-top:1.5rem;}}
-    .topic-section h3{{font-size:0.95rem;margin-bottom:0.5rem;}}
-    .topic-section .blog-article{{max-height:480px;overflow-y:auto;
-      border:1px solid #444;border-radius:8px;padding:1rem;}}
+    .paper-row>div:first-child{min-width:0;flex:1 1 auto;}
+    .paper-row>div:last-child{flex:0 0 auto;white-space:nowrap;align-self:center;}
+    .paper-row .pt{overflow-wrap:anywhere;}
+    .paper-row .pt a{color:var(--fg);font-weight:600;}
+    .paper-row .pm{font-size:0.78rem;color:var(--fg-muted,#888);margin-top:0.2rem;}
+    .topic-actions a,.topic-actions button{margin-right:0.5rem;}
+    .empty-note{color:var(--fg-muted,#888);padding:2rem 0;text-align:center;}
+    .topic-section{margin-top:1.5rem;}
+    .topic-section h3{font-size:0.95rem;margin-bottom:0.5rem;}
+    .topic-section .blog-article{max-height:480px;overflow-y:auto;
+      border:1px solid #444;border-radius:8px;padding:1rem;}
   </style>""",
             scripts="""<script src="/static/js/report.js?v=2" defer></script>
   <script src="/static/js/main.js?v=2" type="module"></script>
@@ -128,7 +128,11 @@ async def topics_page(request: Request) -> HTMLResponse:
         topics = await list_topics(session, owner_id=owner)
 
     if not topics:
-        items = "<div class='empty-note'>No topics yet — run a search and generate a report to start one.</div>"
+        items = (
+            '<div class="empty-state-card"><strong>No topics yet.</strong>'
+            "<p>Run a search and generate a report — your topics land here.</p>"
+            '<a href="/">New search</a></div>'
+        )
     else:
         rows = []
         for t in topics:

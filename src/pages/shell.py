@@ -96,11 +96,11 @@ def top_bar_html(active: str = "", extra_html: str = "") -> str:
     """Full top-bar markup (brand + nav + auth status + dark toggle)."""
     return f"""<div class="top-bar">
     <a href="/" class="top-bar-brand">█▓▒░ Office Hours ░▒▓█</a>
-    {nav_links_html(active)}
     <div style="flex:1"></div>
     {extra_html}
+    {nav_links_html(active)}
     <span id="oh-auth-status" class="top-auth-status"></span>
-    <button id="oh-dark-toggle" type="button" aria-label="Toggle dark mode">🌙 Dark</button>
+    <button id="oh-dark-toggle" class="oh-theme-toggle" type="button" aria-label="Toggle dark mode"><i class="fa-solid fa-moon"></i></button>
   </div>"""
 
 
@@ -164,13 +164,14 @@ def top_bar(active: str = "", *extra_controls: Any) -> Div:
             href="/",
             cls="top-bar-brand",
         ),
-        *nav_links(active),
         Div("", style="flex:1"),
         *extra_controls,
+        *nav_links(active),
         Span(id="oh-auth-status", cls="top-auth-status"),
         Button(
-            "🌙 Dark",
+            I(cls="fa-solid fa-moon"),
             id="oh-dark-toggle",
+            cls="oh-theme-toggle",
             aria_label="Toggle dark mode",
             type="button",
         ),

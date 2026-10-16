@@ -40,6 +40,19 @@
 .top-bar-link i {
   font-size: 0.9rem;
 }
+
+/* Theme toggle — icon-only, accent-coloured sun/moon. */
+.oh-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--oh-accent, #0d6e63);
+  font-size: 1rem;
+  cursor: pointer;
+}
 .top-bar-link.active {
   background: #000;
   color: #fff;
