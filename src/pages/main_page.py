@@ -908,50 +908,8 @@ def home_page(page_data: SharedPageData) -> Body:
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
-        top_bar(
-            "",
-            Select(
-                Option("Audience", value="", disabled=True, selected=True),
-                Option("Technical (PhD)", value="technical"),
-                Option("Semi-Technical", value="semi_technical"),
-                Option("Non-Technical", value="non_technical"),
-                id="aud-select",
-                name="audience",
-            ),
-            Select(
-                Option("Model", value="", disabled=True, selected=True),
-                *[
-                    Option(cfg["display_name"], value=key)
-                    for key, cfg in config.config.AVAILABLE_MODELS.items()
-                ],
-                id="model-select",
-                name="model_key",
-            ),
-            Select(
-                Option("Report length", value="", disabled=True),
-                Option("S (Concise)", value="S"),
-                Option("M (Standard)", value="M", selected=True),
-                Option("L (Detailed)", value="L"),
-                id="size-select",
-                name="size",
-                title="Report length",
-            ),
-            BUTTON(
-                "💬 Assistant",
-                id="open-global-chat",
-                type="button",
-                hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
-                hx_target="#modal-container",
-                hx_swap="innerHTML",
-            ),
-            BUTTON(
-                I(cls="fa-solid fa-gear"),
-                id="oh-settings-btn",
-                type="button",
-                title="Settings",
-                style="border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 8px;",
-            ),
-        ),
+        # No extra_controls — the top bar stays identical on every tab.
+        top_bar(""),
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
@@ -1028,6 +986,46 @@ def home_page(page_data: SharedPageData) -> Body:
                             ),
                             cls="search-form-filters",
                         ),
+                        # Report-affecting options — moved out of the top bar
+                        # so the bar stays identical across tabs.
+                        Div(
+                            Span("Audience ", cls="filter-label"),
+                            Select(
+                                Option(
+                                    "Audience",
+                                    value="",
+                                    disabled=True,
+                                    selected=True,
+                                ),
+                                Option("Technical (PhD)", value="technical"),
+                                Option("Semi-Technical", value="semi_technical"),
+                                Option("Non-Technical", value="non_technical"),
+                                id="aud-select",
+                                name="audience",
+                            ),
+                            Span("Model ", cls="filter-label"),
+                            Select(
+                                Option("Model", value="", disabled=True, selected=True),
+                                *[
+                                    Option(cfg["display_name"], value=key)
+                                    for key, cfg in config.config.AVAILABLE_MODELS.items()
+                                ],
+                                id="model-select",
+                                name="model_key",
+                            ),
+                            Span("Report ", cls="filter-label"),
+                            Select(
+                                Option("Report length", value="", disabled=True),
+                                Option("S (Concise)", value="S"),
+                                Option("M (Standard)", value="M", selected=True),
+                                Option("L (Detailed)", value="L"),
+                                id="size-select",
+                                name="size",
+                                title="Report length",
+                            ),
+                            cls="search-form-filters",
+                            style="margin-top:6px;",
+                        ),
                         Label(
                             INPUT(
                                 type="checkbox",
@@ -1079,6 +1077,24 @@ def home_page(page_data: SharedPageData) -> Body:
                                 "document.getElementById('oh-loading-text').textContent='Searching authors...';"
                                 "}"
                             ),
+                        ),
+                        BUTTON(
+                            "💬 Assistant",
+                            id="open-global-chat",
+                            type="button",
+                            cls="oh-search-btn",
+                            title="Open the research assistant",
+                            hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
+                            hx_target="#modal-container",
+                            hx_swap="innerHTML",
+                        ),
+                        BUTTON(
+                            I(cls="fa-solid fa-gear"),
+                            id="oh-settings-btn",
+                            type="button",
+                            title="Account & Notion integration",
+                            cls="oh-search-btn",
+                            style="padding-left:10px;padding-right:10px;",
                         ),
                         style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;",
                     ),
