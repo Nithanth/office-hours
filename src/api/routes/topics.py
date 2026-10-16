@@ -140,7 +140,12 @@ async def topics_page(request: Request) -> HTMLResponse:
 </div>"""
             )
         items = "".join(rows)
-    return HTMLResponse(_shell("Topics", f"<h1>Your Topics</h1>{items}"))
+    return HTMLResponse(
+        _shell(
+            "Topics",
+            f'<div class="lib-header"><h1>Your Topics</h1></div>{items}',
+        )
+    )
 
 
 def _paper_rows_html(
