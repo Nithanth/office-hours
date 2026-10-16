@@ -608,7 +608,10 @@ async def _plan_blog_figures(
         "report to a technical reader. Pick up to "
         f"{n} CONCEPTUAL figures an image-generation model should render — "
         "metaphors and visual intuitions, NOT charts, tables, or data plots "
-        "(the writer already uses Mermaid for structural diagrams).\n"
+        "(the writer already uses Mermaid for structural diagrams). Each "
+        "prompt must request a minimal flat editorial illustration on a "
+        "light/cream background, ONE clear focal concept, and explicitly "
+        "NO text, labels, or lettering inside the image.\n"
         'Return ONLY JSON: {"figures":[{"after":"<short section/topic '
         'phrase where the figure belongs>","caption":"<one sentence>",'
         '"prompt":"<detailed image-generation prompt, clean editorial '
@@ -672,7 +675,9 @@ async def _resolve_figure_blocks(blog_md: str, llm_service: LLMService) -> str:
             continue
         rendered += 1
         url = await provider.generate_image(prompt, model=config.BLOG_IMAGE_MODEL)
-        out.append(f"\n\n![{caption}]({url})\n\n" if url else fallback)
+        out.append(
+            f"\n\n![{caption}]({url})\n\n*Figure: {caption}*\n\n" if url else fallback
+        )
     out.append(blog_md[last:])
     return _FIGURE_STRAY_RE.sub("", "".join(out))
 
