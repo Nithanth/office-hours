@@ -491,44 +491,12 @@
     });
 
     // ------------------------------------------------------------------
-    // Settings modal (gear icon) — shows Notion connection status
+    // Account + Notion panels on /settings — hydrated on page load.
+    // (Replaces the old gear-icon modal; /settings is the single surface.)
     // ------------------------------------------------------------------
-    const settingsBtn = document.getElementById('oh-settings-btn');
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', () => {
-        let dlg = document.getElementById('settings-dialog');
-        if (!dlg) {
-          document.body.insertAdjacentHTML(
-            'beforeend',
-            `<dialog id="settings-dialog" class="oh-modal">
-              <form method="dialog">
-                <h3 style="margin:0 0 16px">Settings</h3>
-                <div id="account-status-area" style="margin-bottom:16px;">
-                  <h4 style="margin:0 0 8px;font-size:0.95rem;">Account</h4>
-                  <div id="account-status-content">
-                    <span class="oh-spinner small" style="display:inline-block;vertical-align:middle;"></span>
-                    Checking…
-                  </div>
-                </div>
-                <div id="notion-status-area" style="margin-bottom:16px;">
-                  <h4 style="margin:0 0 8px;font-size:0.95rem;">Notion Integration</h4>
-                  <div id="notion-status-content">
-                    <span class="oh-spinner small" style="display:inline-block;vertical-align:middle;"></span>
-                    Checking…
-                  </div>
-                </div>
-                <menu style="display:flex;justify-content:flex-end;">
-                  <button value="close">Close</button>
-                </menu>
-              </form>
-            </dialog>`
-          );
-          dlg = document.getElementById('settings-dialog');
-        }
-
-        const accountEl = document.getElementById('account-status-content');
-        if (accountEl) {
-          fetch('/api/me')
+    function renderAccountPanel(accountEl) {
+      if (!accountEl) return;
+      fetch('/api/me')
             .then(r => r.json())
             .then(data => {
               if (data.authenticated) {
@@ -549,12 +517,11 @@
             .catch(() => {
               accountEl.innerHTML = '<span style="color:#eab308;">Could not check account status</span>';
             });
-        }
+    }
 
-        // Fetch Notion status every time the modal opens
-        const statusEl = document.getElementById('notion-status-content');
-        if (statusEl) {
-          statusEl.innerHTML = '<span class="oh-spinner small" style="display:inline-block;vertical-align:middle;"></span> Checking…';
+    function renderNotionPanel(statusEl) {
+      if (!statusEl) return;
+      statusEl.innerHTML = '<span class="oh-spinner small" style="display:inline-block;vertical-align:middle;"></span> Checking…';
           fetch('/api/notion-status')
             .then(r => r.json())
             .then(data => {
@@ -605,11 +572,14 @@
             .catch(() => {
               statusEl.innerHTML = '<span style="color:#eab308;">● Could not check status</span>';
             });
-        }
-
-        dlg.showModal();
-      });
     }
+
+    function refreshNotionPanel() {
+      renderNotionPanel(document.getElementById('settings-notion'));
+    }
+
+    renderAccountPanel(document.getElementById('settings-account'));
+    renderNotionPanel(document.getElementById('settings-notion'));
 
     function hydrateTopAuthStatus() {
       const authEl = document.getElementById('oh-auth-status');
@@ -647,7 +617,7 @@
         disconnect.addEventListener('click', () => {
           fetch('/integrations/notion/disconnect', { method: 'POST' }).then(() => {
             if (typeof window.showToast === 'function') window.showToast('Notion disconnected');
-            document.getElementById('oh-settings-btn')?.click();
+            refreshNotionPanel();
           });
         });
       }
@@ -685,7 +655,7 @@
                   .then(r => r.json())
                   .then(() => {
                     if (typeof window.showToast === 'function') window.showToast('Notion sync location saved');
-                    document.getElementById('oh-settings-btn')?.click();
+                    refreshNotionPanel();
                   });
               });
             });

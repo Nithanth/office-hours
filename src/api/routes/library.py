@@ -612,12 +612,12 @@ async def library_notion_answer_comments(request: Request) -> JSONResponse:
 
 
 def _library_shell(content_html: str) -> str:
-    from pages.shell import page_shell
+    from pages.shell import lib_subtabs_html, page_shell
 
     return str(
         page_shell(
             "Library",
-            content_html,
+            lib_subtabs_html("papers") + content_html,
             active="library",
             scripts=f"""<script src="{static_url('/static/js/library.js')}" defer></script>
   <script type="module">
@@ -758,7 +758,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         )
 
     content = f"""<div class="lib-header">
-      <h1>Library</h1>
+      <h1>Saved papers</h1>
       {sync_btn}
       <a href="/">+ New Search</a>
     </div>
