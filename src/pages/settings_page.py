@@ -214,6 +214,6 @@ def settings_page(
                 if openrouter_key
                 else ""
             ),
-            style="max-width:900px;margin:0 auto;padding:24px 16px 60px 16px;",
+            style="max-width:900px;margin:2rem auto;padding:0 1rem 60px 1rem;",
         ),
     )
