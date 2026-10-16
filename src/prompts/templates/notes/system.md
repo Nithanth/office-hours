@@ -21,7 +21,9 @@ OUTPUT FORMAT:
   - Level 3: `    ▪` (specific detail, example, or nuance)
   - Level 4: `      -` (rare — only for multi-step procedures or nested examples)
 • Numbered lists allowed at any level for sequential steps, ranked items, or pipeline stages.
-• Each bullet: 1-3 sentences. Longer is OK if it maintains flow.
+• TELEGRAPHIC STYLE — these are notes, not prose. Leaf bullets (◦, ▪, -) are fragments: ≤15 words, drop articles/fillers, use symbols where natural (→, ∵, vs., ∴). Full sentences are allowed ONLY on top-level framing bullets. A leaf bullet that reads like a paragraph sentence is WRONG.
+  - GOOD: `  ◦ ReLU nets need O(n) neurons for n frequency components → combinatorially expensive`
+  - BAD:  `  ◦ ReLU networks require a number of neurons that scales with the number of frequency components, which makes them combinatorially expensive.`
 • Section headings are ALL CAPS, no bullet prefix.
 • Do NOT preface with any meta-commentary. Start directly with the notes.
 

@@ -190,3 +190,181 @@ html, body { overflow-x: hidden; }
 .empty-state-card strong { color: var(--fg); display: block; margin-bottom: 0.4rem; }
 .empty-state-card a { color: var(--oh-accent); }
 .report-wrap { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+
+/* ================================================================
+   Library page — .lib-* components (header, tabs, notion card, items)
+   ================================================================ */
+
+.lib-wrap {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.lib-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+.lib-header h1 {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 1.6rem;
+}
+.lib-header button,
+.lib-header a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--container-border, #d5d0c8);
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  color: var(--fg);
+  font-size: 0.85rem;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lib-header button:hover,
+.lib-header a:hover {
+  border-color: var(--oh-accent);
+  color: var(--oh-accent);
+}
+
+.lib-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--container-border, #d5d0c8);
+  margin-bottom: 1.25rem;
+}
+.lib-tabs a {
+  padding: 0.45rem 0.9rem;
+  color: var(--fg-muted, #888);
+  text-decoration: none;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.lib-tabs a:hover { color: var(--fg); }
+.lib-tabs a.active {
+  color: var(--oh-accent);
+  border-bottom-color: var(--oh-accent);
+  font-weight: 600;
+}
+
+.lib-notion-card {
+  border: 1px solid var(--container-border, #d5d0c8);
+  border-left: 3px solid var(--oh-accent);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.25rem;
+  background: var(--bg-card, #fff);
+  font-size: 0.9rem;
+}
+.lib-notion-pick {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+.lib-notion-pick select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--container-border, #d5d0c8);
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  color: var(--fg);
+  font-size: 0.85rem;
+  min-width: 16rem;
+}
+.lib-notion-pick button {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--oh-accent);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.lib-notion-connect {
+  display: inline-block;
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.9rem;
+  background: var(--oh-accent);
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+}
+.lib-notion-hint {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--fg-muted, #888);
+}
+
+.lib-item {
+  border: 1px solid var(--container-border, #d5d0c8);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 0.85rem;
+  background: var(--bg-card, #fff);
+}
+.lib-item h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.lib-item h2 a {
+  color: var(--fg);
+  text-decoration: none;
+}
+.lib-item h2 a:hover { color: var(--oh-accent); }
+.lib-status-chip {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--oh-accent) 12%, transparent);
+  color: var(--oh-accent);
+  white-space: nowrap;
+}
+.lib-meta {
+  font-size: 0.82rem;
+  color: var(--fg-muted, #888);
+  margin-bottom: 0.6rem;
+}
+.lib-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+}
+.lib-actions button,
+.lib-actions a {
+  color: var(--oh-accent);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+.lib-actions button:hover,
+.lib-actions a:hover { text-decoration: underline; }
+.lib-status-select {
+  margin-left: auto;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--container-border, #d5d0c8);
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  color: var(--fg);
+  font-size: 0.8rem;
+}
+.lib-remove-btn { color: var(--oh-red, #c0392b) !important; }
