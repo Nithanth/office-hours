@@ -637,6 +637,8 @@ async def _plan_blog_figures(
                         "prompt": str(fig["prompt"]).strip(),
                     }
                 )
+        if not out:
+            logger.info("blog_plan_no_figures", raw_head=raw[:200])
         return out
     except Exception as e:  # noqa: BLE001
         logger.info("blog_plan_parse_failed", error=str(e))

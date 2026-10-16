@@ -302,9 +302,15 @@ class OpenRouterProvider(LLMProvider):
                 return None
             images = getattr(response.choices[0].message, "images", None) or []
             for image in images:
-                url = getattr(getattr(image, "image_url", None), "url", None)
+                # Non-standard response fields stay raw dicts in the SDK —
+                # handle both dict and attribute access.
+                if isinstance(image, dict):
+                    url = (image.get("image_url") or {}).get("url")
+                else:
+                    url = getattr(getattr(image, "image_url", None), "url", None)
                 if url:
                     return str(url)
+            logger.info("openrouter_image_empty", model=model)
             return None
         except Exception as e:  # noqa: BLE001 — best-effort, never raise
             logger.warning("openrouter_image_failed", model=model, error=str(e))

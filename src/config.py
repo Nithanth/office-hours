@@ -357,7 +357,9 @@ class Config(BaseSettings):
     BLOG_IMAGES_ENABLED: bool = Field(default=True)
     BLOG_IMAGE_MODEL: str = Field(default="google/gemini-2.5-flash-image")
     BLOG_MAX_FIGURES: int = Field(default=3, ge=0)
-    BLOG_PLAN_MAX_TOKENS: int = Field(default=800, ge=1)
+    # Reasoning tiers eat the cap on hidden thinking — 800 truncated the
+    # plan's JSON mid-object and the writer silently got no figures.
+    BLOG_PLAN_MAX_TOKENS: int = Field(default=6000, ge=1)
     BLOG_TTL_SECONDS: int = Field(default=3600, ge=0)
     BLOG_CACHE_MAX_ENTRIES: int = Field(default=200, ge=1)
 
