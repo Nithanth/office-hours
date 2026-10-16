@@ -21,6 +21,7 @@ from starlette.background import BackgroundTask
 
 from api.deps import get_paper_service  # lightweight helper, no heavy imports
 from services.chat.chat_components import ChatBubble, ChatModal
+from utils.static_assets import static_url
 
 router: APIRouter = APIRouter()
 
@@ -884,7 +885,7 @@ def _doc_embed(url: str) -> str:
         proxied = f"/pdf-proxy?url={urllib.parse.quote_plus(pdf_url)}"
         return (
             f'<div class="pdf-container" data-pdf-src="{html.escape(proxied)}"></div>'
-            '<script type="module" src="/static/js/pdf-viewer.js"></script>'
+            f'<script type="module" src="{static_url("/static/js/pdf-viewer.js")}"></script>'
         )
     proxied = f"/html-proxy?url={urllib.parse.quote_plus(url)}"
     return (

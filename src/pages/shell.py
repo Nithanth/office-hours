@@ -18,6 +18,8 @@ from typing import Any
 
 from fasthtml.common import A, Button, Div, Span
 
+from utils.static_assets import static_url
+
 # (label, href, key) — order is the nav order on every page.
 NAV_LINKS: list[tuple[str, str, str]] = [
     ("Topics", "/topics", "topics"),
@@ -31,17 +33,17 @@ _HTMX = "https://unpkg.com/htmx.org@1.9.12"
 _HTMX_SSE = "https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"
 
 _HEAD_LINKS = (
-    '<link rel="stylesheet" href="/static/css/base.css">\n'
-    '  <link rel="stylesheet" href="/static/css/variables.css">\n'
-    '  <link rel="stylesheet" href="/static/css/top-bar.css">\n'
-    '  <link rel="stylesheet" href="/static/css/utilities.css">\n'
-    '  <link rel="stylesheet" href="/static/css/forms.css">\n'
-    '  <link rel="stylesheet" href="/static/css/modal.css">\n'
-    '  <link rel="stylesheet" href="/static/css/chat.css">\n'
-    '  <link rel="stylesheet" href="/static/vendor/fontawesome/css/all.min.css">\n'
+    f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/css/variables.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/css/top-bar.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/css/utilities.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/css/forms.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/css/modal.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/css/chat.css")}">\n'
+    f'  <link rel="stylesheet" href="{static_url("/static/vendor/fontawesome/css/all.min.css")}">\n'
     f'  <script src="{_HTMX}"></script>\n'
     f'  <script src="{_HTMX_SSE}"></script>\n'
-    '  <script src="/static/js/settings.js" defer></script>'
+    f'  <script src="{static_url("/static/js/settings.js")}" defer></script>'
 )
 
 
