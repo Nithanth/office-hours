@@ -254,6 +254,11 @@ html, body { overflow-x: hidden; }
   transition: opacity 0.12s ease;
   z-index: 60;
 }
+/* Below-anchor variant for elements near the top edge (e.g. the top bar). */
+.oh-tip-below::after {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
 .oh-tip:hover::after,
 .oh-tip:focus-visible::after {
   opacity: 1;

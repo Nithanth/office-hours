@@ -20,27 +20,43 @@ from fasthtml.common import A, Button, Div, I, Span
 
 from utils.static_assets import static_url
 
-# (label, href, key, fa icon) — order is the nav order on every page.
-NAV_LINKS: list[tuple[str, str, str, str]] = [
-    ("Library", "/library", "library", "fa-solid fa-book"),
-    ("Settings", "/settings", "settings", "fa-solid fa-gear"),
+# (label, href, key, fa icon, tooltip) — order is the nav order on every page.
+NAV_LINKS: list[tuple[str, str, str, str, str]] = [
+    (
+        "Library",
+        "/library",
+        "library",
+        "fa-solid fa-book",
+        "Library — saved papers, topics & reports",
+    ),
+    (
+        "Settings",
+        "/settings",
+        "settings",
+        "fa-solid fa-gear",
+        "Settings — models, Notion & account",
+    ),
 ]
 
 # Sub-tabs inside the Library hub — Papers | Topics | Reports share one
 # strip rendered at the top of each of the three pages.
-LIB_SUBTABS: list[tuple[str, str, str]] = [
-    ("Papers", "/library", "papers"),
-    ("Topics", "/topics", "topics"),
-    ("Reports", "/reports", "reports"),
+# (label, href, key, tooltip)
+LIB_SUBTABS: list[tuple[str, str, str, str]] = [
+    ("Papers", "/library", "papers", "Papers — your saved reading list"),
+    ("Topics", "/topics", "topics", "Topics — research projects you're running"),
+    ("Reports", "/reports", "reports", "Reports — generated research write-ups"),
 ]
 
 
 def lib_subtabs_html(active: str) -> str:
     """Sub-tab strip for the Library hub pages."""
     parts = []
-    for label, href, key in LIB_SUBTABS:
-        cls = "lib-subtab" + (" active" if key == active else "")
-        parts.append(f'<a href="{href}" class="{cls}">{html.escape(label)}</a>')
+    for label, href, key, tip in LIB_SUBTABS:
+        cls = "lib-subtab oh-tip" + (" active" if key == active else "")
+        parts.append(
+            f'<a href="{href}" class="{cls}" data-tip="{html.escape(tip, quote=True)}">'
+            f"{html.escape(label)}</a>"
+        )
     return '<div class="lib-subtabs">' + "".join(parts) + "</div>"
 
 
@@ -67,11 +83,11 @@ def nav_links_html(active: str = "") -> str:
     """Nav anchor markup — used by both the f-string shell and the
     FastHTML top_bar (same output, so every page's nav is identical)."""
     parts = []
-    for label, href, key, icon in NAV_LINKS:
-        cls = "top-bar-link" + (" active" if key == active else "")
+    for label, href, key, icon, tip in NAV_LINKS:
+        cls = "top-bar-link oh-tip oh-tip-below" + (" active" if key == active else "")
         parts.append(
-            f'<a href="{href}" class="{cls}" title="{html.escape(label, quote=True)}" '
-            f'aria-label="{html.escape(label, quote=True)}"><i class="{icon}"></i></a>'
+            f'<a href="{href}" class="{cls}" aria-label="{html.escape(label, quote=True)}" '
+            f'data-tip="{html.escape(tip, quote=True)}"><i class="{icon}"></i></a>'
         )
     return "\n    ".join(parts)
 
@@ -129,11 +145,12 @@ def nav_links(active: str = "") -> list:
         A(
             I(cls=icon),
             href=href,
-            cls="top-bar-link" + (" active" if key == active else ""),
-            title=label,
+            cls="top-bar-link oh-tip oh-tip-below"
+            + (" active" if key == active else ""),
             aria_label=label,
+            data_tip=tip,
         )
-        for label, href, key, icon in NAV_LINKS
+        for label, href, key, icon, tip in NAV_LINKS
     ]
 
 
