@@ -687,6 +687,66 @@ async def _resolve_figure_blocks(blog_md: str, llm_service: LLMService) -> str:
     return _FIGURE_STRAY_RE.sub("", "".join(out))
 
 
+# Sandboxed host page for vega-embed interactive charts. Vega's
+# expression compiler needs 'unsafe-eval', which the site-wide CSP
+# forbids — so charts render inside an iframe pointing at this route,
+# whose own CSP permits eval. The frame gets an opaque origin (sandbox
+# attribute), receives the spec via postMessage, and reports its height
+# back so the parent can autosize it.
+_VEGA_FRAME_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;padding:0;background:transparent}#chart{width:100%}</style>
+<script src="https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js"></script>
+</head><body>
+<div id="chart"></div>
+<script>
+var _idx = null;
+function reportHeight() {
+  try { parent.postMessage({type:"vega-height", idx:_idx, height:document.body.scrollHeight}, "*"); } catch(e) {}
+}
+window.addEventListener("message", function(e) {
+  var d = e.data || {};
+  if (d.type !== "vega-spec") return;
+  _idx = d.idx;
+  try {
+    vegaEmbed("#chart", d.spec, d.config || {}).then(reportHeight).catch(function(err) {
+      throw err;
+    });
+  } catch (err) {
+    document.body.innerHTML = '<p style="font:13px sans-serif;color:#f59e0b">Chart render failed: ' + String(err).replace(/</g, "&lt;") + '</p>';
+    parent.postMessage({type:"vega-error", idx:_idx, message:String(err)}, "*");
+    reportHeight();
+  }
+});
+window.addEventListener("resize", reportHeight);
+</script>
+</body></html>"""
+
+
+@router.get("/vega-frame")
+async def vega_frame() -> HTMLResponse:
+    """Serve the sandboxed iframe page that hosts vega-embed charts."""
+    return HTMLResponse(
+        _VEGA_FRAME_HTML,
+        headers={
+            # Tight, frame-scoped CSP: only what vega needs. The global
+            # middleware uses setdefault so this header wins.
+            "Content-Security-Policy": (
+                "default-src 'none'; "
+                "script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+                "style-src 'unsafe-inline'; "
+                "img-src data: https:; "
+                "font-src https://cdn.jsdelivr.net data:"
+            ),
+            # The global middleware defaults X-Frame-Options to DENY;
+            # this page must be frameable same-origin.
+            "X-Frame-Options": "SAMEORIGIN",
+        },
+    )
+
+
 async def _run_blog_generation(
     token: str,
     *,
