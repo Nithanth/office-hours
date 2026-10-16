@@ -1034,6 +1034,9 @@ class ExaClient:
         # 3. Adaptive score / breadth filter -------------------------------
         filtered = _filter_utils.apply_score_threshold(pre_pool, k)
 
+        # 3b. Canonical expansion — merge seminal papers Exa missed --------
+        filtered = self._merge_canonical_papers(query, filtered)
+
         # 4. Compute composite relevance scores ----------------------------
         _filter_utils.compute_relevance_scores(filtered)
         # Detailed pipeline stats -------------------------------------------
@@ -1080,6 +1083,42 @@ class ExaClient:
             ],
         )
         return filtered
+
+    _CANONICAL_POOL_LIMIT = 5
+
+    def _merge_canonical_papers(self, query: str, papers: list[Paper]) -> list[Paper]:
+        """Append top-cited S2 papers for *query* that Exa didn't return.
+
+        Exa ranks by semantic fit, so seminal-but-missed papers (e.g.
+        "Attention Is All You Need" for a transformer query) never reach
+        the reranker — no weight change can surface them. One extra S2
+        search, deduped by arXiv/DOI/URL equivalence, caps at
+        ``_CANONICAL_POOL_LIMIT`` additions.
+        """
+        from services.core.exa_utils import url_utils as _url_utils
+        from services.paper.metadata import semantic_scholar as _s2
+
+        try:
+            canonical = _s2.fetch_top_cited_papers(query)
+        except Exception as exc:  # noqa: BLE001 — expansion is best-effort
+            logger.debug("canonical_pool_expand_failed", err=str(exc))
+            return papers
+
+        additions = [
+            p
+            for p in canonical
+            if not any(
+                _url_utils.url_equivalent(str(p.url), str(q.url)) for q in papers
+            )
+        ][: self._CANONICAL_POOL_LIMIT]
+        if additions:
+            logger.info(
+                "canonical_pool_expand",
+                query=query,
+                added=len(additions),
+                titles=[(p.title or "")[:60] for p in additions],
+            )
+        return papers + additions
 
     # -- Result-pool TTL cache -------------------------------------------------
     _RESULT_POOL_MAX = 128
