@@ -21,6 +21,7 @@ from fasthtml.common import (
 
 import config as _cfg
 from pages.shell import top_bar
+from utils.static_assets import static_url
 
 _TIER_DESCRIPTIONS = {
     "fast": "Quick lookups, summaries, glossary terms — cheapest models.",
@@ -127,13 +128,16 @@ def settings_page(
     return Body(
         Head(
             Title("Settings — Office Hours"),
-            Link(rel="stylesheet", href="/static/css/spinners.css"),
-            Link(rel="stylesheet", href="/static/css/base.css"),
-            Link(rel="stylesheet", href="/static/css/top-bar.css"),
-            Link(rel="stylesheet", href="/static/css/utilities.css"),
-            Link(rel="stylesheet", href="/static/css/misc.css"),
-            Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
-            Script(src="/static/js/settings.js"),
+            Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/base.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
+            Link(
+                rel="stylesheet",
+                href=static_url("/static/vendor/fontawesome/css/all.min.css"),
+            ),
+            Script(src=static_url("/static/js/settings.js")),
         ),
         top_bar("settings"),
         Div(

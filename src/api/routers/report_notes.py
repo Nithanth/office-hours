@@ -29,6 +29,7 @@ from services.core.llm_service import LLMService
 from services.notes.notes_generator import NotesGenerator
 from utils.dedupe import deduplicate_chat
 from utils.rate_limit import limiter
+from utils.static_assets import static_url
 
 router = APIRouter(tags=["report-notes"])
 
@@ -1226,9 +1227,9 @@ async def blog_view(
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/blog.css">
+  <link rel="stylesheet" href="{static_url('/static/css/blog.css')}">
   <!-- modal.css supplies styles for the customize modal triggered by Revise. -->
-  <link rel="stylesheet" href="/static/css/modal.css">
+  <link rel="stylesheet" href="{static_url('/static/css/modal.css')}">
 </head>
 <body class="blog-is-loading blog-scope">
 
@@ -1290,8 +1291,8 @@ async def blog_view(
   <script>window.__BLOG_TOKEN__ = "{safe_token}"; window.__BLOG_ACCENT__ = "{safe_theme}";</script>
   <!-- Shared customization modal (used by the Revise button). Loaded before
        blog-view.js so window.ohBlog.openCustomizeModal is available. -->
-  <script src="/static/js/blog-modal.js"></script>
-  <script src="/static/js/blog-view.js"></script>
+  <script src="{static_url('/static/js/blog-modal.js')}"></script>
+  <script src="{static_url('/static/js/blog-view.js')}"></script>
 </body>
 </html>"""
 

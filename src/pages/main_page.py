@@ -41,6 +41,7 @@ import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
 from pages.shell import top_bar
 from services.chat.chat_components import ChatBubble, CitationCard
+from utils.static_assets import static_url
 
 
 # --- Pydantic Models ---
@@ -878,29 +879,32 @@ def home_page(page_data: SharedPageData) -> Body:
                 href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
             ),
             Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
-            Link(rel="stylesheet", href="/static/css/spinners.css"),
+            Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
             # Modular CSS (Phase-3 refactor)
-            Link(rel="stylesheet", href="/static/css/base.css"),
-            Link(rel="stylesheet", href="/static/css/top-bar.css"),
-            Link(rel="stylesheet", href="/static/css/utilities.css"),
-            Link(rel="stylesheet", href="/static/css/modal.css"),
-            Link(rel="stylesheet", href="/static/css/chat.css"),
-            Link(rel="stylesheet", href="/static/css/forms.css"),
-            Link(rel="stylesheet", href="/static/css/flatpickr-dark.css"),
-            Link(rel="stylesheet", href="/static/css/misc.css"),
-            Link(rel="stylesheet", href="/static/css/blog.css"),
+            Link(rel="stylesheet", href=static_url("/static/css/base.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/modal.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/chat.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/forms.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/flatpickr-dark.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/blog.css")),
             # Font Awesome (self-hosted) – required for icon glyphs
-            Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
-            Script(src="/static/js/settings.js"),
-            Script(src="/static/js/htmx-url-reset.js", defer=True),
+            Link(
+                rel="stylesheet",
+                href=static_url("/static/vendor/fontawesome/css/all.min.css"),
+            ),
+            Script(src=static_url("/static/js/settings.js")),
+            Script(src=static_url("/static/js/htmx-url-reset.js"), defer=True),
             # Modular JS entry-points
-            Script(src="/static/js/main.js?v=2", type="module"),
-            Script(src="/static/js/library.js?v=1", defer=True),
-            Script(src="/static/js/cluster-viz.js", defer=True),
+            Script(src=static_url("/static/js/main.js"), type="module"),
+            Script(src=static_url("/static/js/library.js"), defer=True),
+            Script(src=static_url("/static/js/cluster-viz.js"), defer=True),
             # ohBlogRender lazy-loads KaTeX — the report stream's done event
             # calls renderKaTeX(#report-content) to typeset math.
-            Script(src="/static/js/blog-view.js", defer=True),
-            Script(src="/static/js/similar-papers.js", defer=True),
+            Script(src=static_url("/static/js/blog-view.js"), defer=True),
+            Script(src=static_url("/static/js/similar-papers.js"), defer=True),
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
@@ -1033,10 +1037,10 @@ def home_page(page_data: SharedPageData) -> Body:
                                 style="margin:0;",
                             ),
                             Span(
-                                " Deep Research",
+                                " Deep search",
                                 style="font-size:0.78rem;color:var(--fg-muted,#aaa);",
                             ),
-                            title="Slower but more comprehensive results (uses Exa deep search)",
+                            title="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
                             style="display:inline-flex;align-items:center;gap:3px;margin-left:0.75rem;cursor:pointer;user-select:none;",
                         ),
                         cls="oh-search-options",
@@ -1136,16 +1140,19 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
     return Body(
         Head(
             Title(page_data.title),
-            Link(rel="stylesheet", href="/static/css/spinners.css"),
-            Link(rel="stylesheet", href="/static/css/base.css"),
-            Link(rel="stylesheet", href="/static/css/top-bar.css"),
-            Link(rel="stylesheet", href="/static/css/utilities.css"),
-            Link(rel="stylesheet", href="/static/css/misc.css"),
-            Link(rel="stylesheet", href="/static/css/welcome.css"),
-            Link(rel="stylesheet", href="/static/vendor/fontawesome/css/all.min.css"),
+            Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/base.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/welcome.css")),
+            Link(
+                rel="stylesheet",
+                href=static_url("/static/vendor/fontawesome/css/all.min.css"),
+            ),
             # settings.js handles the dark-mode toggle + persistence; we reuse
             # the same script so the welcome page respects the user's theme.
-            Script(src="/static/js/settings.js"),
+            Script(src=static_url("/static/js/settings.js")),
         ),
         top_bar(""),
         Div(
