@@ -56,6 +56,7 @@ async def chat_post(
     model_key: Optional[str] = Form(None),
     report_id: str | None = Form(None),
     topic_id: str | None = Form(None),
+    snippet_context: str | None = Form(None),
 ) -> Response:
     """Handle a user chat message and return HTML skeleton for streaming reply."""
 
@@ -106,7 +107,15 @@ async def chat_post(
         if topic_id
         else (f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id)
     )
-    chat_state.append(state_key, ChatMessage(role="user", content=clean_msg))
+    # Selection quotes: the bubble + persisted history show the one-line
+    # excerpt (clean_msg); the model-facing turn carries the full passage.
+    model_msg = clean_msg
+    if snippet_context and snippet_context.strip():
+        model_msg = (
+            "The user highlighted this passage in the document:\n"
+            f'"""{snippet_context.strip()[:_MAX_MSG_CHARS]}"""\n\n{clean_msg}'
+        )
+    chat_state.append(state_key, ChatMessage(role="user", content=model_msg))
     from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope
 

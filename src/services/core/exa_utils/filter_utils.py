@@ -130,9 +130,9 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
     Composite score blending Exa's semantic relevance with paper quality
     signals.  Each component is normalised to 0–1, then weighted:
 
-        rank_signal      (0.45) — Exa's per-result semantic score (or rank
+        rank_signal      (0.35) — Exa's per-result semantic score (or rank
                                   position fallback when score is unavailable)
-        citation_authority (0.20) — year-normalised citation velocity
+        citation_authority (0.30) — year-normalised citation velocity
                                   (citations/age), pool-relative + log-scaled,
                                   so seminal work surfaces without burying
                                   new papers
@@ -223,8 +223,8 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
 
         # --- Weighted composite ---------------------------------------------
         final = (
-            0.45 * rank_signal
-            + 0.20 * citation_authority
+            0.35 * rank_signal
+            + 0.30 * citation_authority
             + 0.15 * source_authority
             + 0.10 * meta_score
             + 0.10 * content_score

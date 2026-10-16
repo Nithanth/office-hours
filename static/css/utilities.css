@@ -41,13 +41,13 @@ body.oh-dark .error-banner {
   background: #1e40af;
 }
 body.oh-dark .ask-assistant-btn {
-  background: #333;
-  color: var(--oh-red);
-  border: 1px solid #555;
+  background: #2563eb;
+  color: #fff;
+  border: 1px solid #1e40af;
 }
 body.oh-dark .ask-assistant-btn:hover {
-  background: #444;
-  color: var(--oh-red);
+  background: #1e40af;
+  color: #fff;
 }
 
 /* --- Legacy layout utility classes (migrated from styles.css) --- */

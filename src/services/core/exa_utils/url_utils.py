@@ -97,7 +97,10 @@ def upgrade_to_pdf_url(url: str | None) -> str | None:
     if url_str.lower().endswith(".pdf"):
         return url_str
 
-    if "arxiv.org" in url_str or "ar5iv.org" in url_str:
+    # Any URL that references arXiv — arxiv.org/ar5iv.org links plus DOI
+    # resolvers like doi.org/10.48550/arxiv.<id>. Requiring "arxiv" in the
+    # string avoids false-positives on unrelated DOIs (e.g. TPAMI.2020.12345).
+    if "arxiv" in url_str.lower():
         arxiv_id = extract_arxiv_id(url_str)
         if arxiv_id:
             upgraded = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
