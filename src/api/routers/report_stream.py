@@ -41,6 +41,59 @@ _REPORT_REQUEST_DIR = Path(config.CACHE_DIR) / "report_requests"
 # Safety-cleanup tasks keyed by token so we can cancel them once the stream starts.
 _cleanup_tasks: dict[str, asyncio.Task[None]] = {}
 
+# Detached report-generation jobs keyed by token. The SSE handler only
+# drains a queue — the generator runs in its own task so navigating away
+# mid-report can't cancel it; the report still persists to My Reports.
+_REPORT_JOB_QUEUES: dict[str, asyncio.Queue[str | None]] = {}
+_REPORT_JOB_TASKS: dict[str, asyncio.Task[None]] = {}
+_REPORT_JOB_GC_DELAY = 300  # seconds a finished job stays re-drainable
+
+_JOB_SENTINEL = None
+
+
+async def _gc_report_job(token: str) -> None:
+    await asyncio.sleep(_REPORT_JOB_GC_DELAY)
+    _REPORT_JOB_QUEUES.pop(token, None)
+    _REPORT_JOB_TASKS.pop(token, None)
+
+
+async def _pump_report_gen(
+    token: str, agen: AsyncIterator[str], queue: asyncio.Queue[str | None]
+) -> None:
+    """Feed the report generator's SSE frames into *queue* until exhausted.
+
+    Runs as its own task: a client disconnect cancels the draining response,
+    not this pump, so generation and DB persistence always complete.
+    """
+    try:
+        async for item in agen:
+            await queue.put(item)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("report_job_pump_failed", token=token)
+    finally:
+        await queue.put(_JOB_SENTINEL)
+        asyncio.create_task(_gc_report_job(token))
+
+
+def _drain_job_queue(
+    queue: asyncio.Queue[str | None],
+) -> AsyncIterator[str]:
+    """Yield queued SSE frames until the job's sentinel."""
+
+    async def _gen() -> AsyncIterator[str]:
+        while True:
+            item = await queue.get()
+            if item is _JOB_SENTINEL:
+                # Re-arm the sentinel so a later reconnect sees a clean end.
+                await queue.put(_JOB_SENTINEL)
+                return
+            yield item
+
+    return _gen()
+
+
 # Max size of each SSE data line - keeping well below 64 KiB browser limit
 _SSE_CHUNK_SIZE = 4000  # chars
 
@@ -315,6 +368,17 @@ async def report_stream(
 
     payload = _load_report_request(token)
     if payload is None:
+        # If the report job is already running (client navigated away and
+        # came back), re-attach by draining its queue — earlier events were
+        # consumed by the original connection but the page re-renders them
+        # from the saved report anyway.
+        job_queue = _REPORT_JOB_QUEUES.get(token)
+        job_task = _REPORT_JOB_TASKS.get(token)
+        if job_queue is not None and job_task is not None and not job_task.done():
+            return StreamingResponse(
+                _drain_job_queue(job_queue), media_type="text/event-stream"
+            )
+
         # Unknown, expired, or already-claimed token — emit a terminal SSE so
         # the reconnect loop stops (the 'done' event swaps the connector out
         # of the DOM) and the spinner resolves to a visible message instead
@@ -736,8 +800,18 @@ async def report_stream(
 
         _cleanup_tasks.pop(token, None)
 
+    # Detach generation from the SSE connection: a background pump drains the
+    # generator into a per-token queue so navigating away mid-report can't
+    # cancel the LLM work or the final persist — the report still lands in
+    # "My Reports". The response merely drains the queue.
+    new_job_queue: asyncio.Queue[str | None] = asyncio.Queue()
+    _REPORT_JOB_QUEUES[token] = new_job_queue
+    _REPORT_JOB_TASKS[token] = asyncio.create_task(
+        _pump_report_gen(token, event_generator(), new_job_queue)
+    )
+
     return StreamingResponse(
-        event_generator(),
+        _drain_job_queue(new_job_queue),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache"},
     )
