@@ -606,12 +606,17 @@ async def _plan_blog_figures(
     plan_prompt = (
         "You are planning figures for a blog post that explains this research "
         "report to a technical reader. Pick up to "
-        f"{n} CONCEPTUAL figures an image-generation model should render — "
-        "metaphors and visual intuitions, NOT charts, tables, or data plots "
-        "(the writer already uses Mermaid for structural diagrams). Each "
-        "prompt must request a minimal flat editorial illustration on a "
-        "light/cream background, ONE clear focal concept, and explicitly "
-        "NO text, labels, or lettering inside the image.\n"
+        f"{n} figures an image-generation model should render. Pick the "
+        "hardest technical or mathematical concepts in the report — figures "
+        "must be EXPLANATORY visuals that make the idea click (a schematic "
+        "of the mechanism, a geometric intuition, a before/after visual), "
+        "NOT decorative art or generic tech imagery. Structural flow "
+        "diagrams stay Mermaid's job — prefer concepts Mermaid can't draw "
+        "(curves, fields, volumes, mixing weights). Each prompt must "
+        "describe a clean explainer-style schematic on a light/cream "
+        "background: simple shapes, arrows, and shading conveying the "
+        "concept, ONE clear focal idea, and explicitly NO text, labels, "
+        "or lettering inside the image.\n"
         'Return ONLY JSON: {"figures":[{"after":"<short section/topic '
         'phrase where the figure belongs>","caption":"<one sentence>",'
         '"prompt":"<detailed image-generation prompt, clean editorial '
