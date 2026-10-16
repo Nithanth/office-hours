@@ -342,7 +342,9 @@ class Config(BaseSettings):
     # Chat / notes parameters
     # ------------------------------------------------------------------
     CHAT_DEDUPE_SIM_THRESHOLD: float = Field(default=0.9, ge=0.0, le=1.0)
-    NOTES_MAX_TOKENS: int = Field(default=2048, ge=1)
+    # Notes run the same reasoning tiers as reports — 2048 truncated them
+    # mid-bullet (same failure class as the overview clamp).
+    NOTES_MAX_TOKENS: int = Field(default=6000, ge=1)
 
     # ------------------------------------------------------------------
     # Blog generator

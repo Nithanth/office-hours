@@ -160,7 +160,10 @@ def _clean_author_list(authors: list[str]) -> list[str]:
 
 
 def _render_paper_item(
-    paper: Paper, is_main_paper: bool = False, wildcard: bool = False
+    paper: Paper,
+    is_main_paper: bool = False,
+    wildcard: bool = False,
+    max_score: float | None = None,
 ) -> LI:
     """Helper function to render a single paper item for the search results list."""
     formatted_date = "Unknown date"
@@ -271,9 +274,13 @@ def _render_paper_item(
     relevance_span = None
     if paper.relevance_score is not None:
         rs = paper.relevance_score
-        if rs >= 0.75:
+        # Colour relative to the result set's top score: the composite is a
+        # weighted blend that rarely exceeds ~0.65, so absolute thresholds
+        # left every mid-pack paper in red. Top-of-list reads green.
+        rel = rs / max_score if max_score else rs
+        if rel >= 0.75:
             badge_color = "var(--relevance-high, #22c55e)"
-        elif rs >= 0.50:
+        elif rel >= 0.55:
             badge_color = "var(--relevance-mid, #eab308)"
         else:
             badge_color = "var(--relevance-low, #ef4444)"
@@ -506,11 +513,16 @@ def render_search_results(
 
     # Unified list display for both query and URL searches
     if papers_list:
+        _max_rs = max(
+            (p.relevance_score for p in papers_list if p.relevance_score),
+            default=None,
+        )
         list_items = [
             _render_paper_item(
                 p,
                 is_main_paper=(is_url_search and i == 0),
                 wildcard=(i == len(papers_list) - 1),
+                max_score=_max_rs,
             )
             for i, p in enumerate(papers_list)
         ]
