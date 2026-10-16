@@ -34,6 +34,7 @@ from services.persistence.repositories import (
     set_topic_notion,
     unsave_paper,
 )
+from utils.static_assets import static_url
 
 router = APIRouter(tags=["library"])
 
@@ -618,48 +619,12 @@ def _library_shell(content_html: str) -> str:
             "Library",
             content_html,
             active="library",
-            head_extra="""<style>
-    .lib-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
-    .lib-header{{display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;}}
-    .lib-header h1{{margin:0;}}
-    .lib-header a,.lib-header button{{font-size:0.85rem;margin-left:auto;}}
-    .lib-tabs{{display:flex;gap:0.5rem;margin-bottom:1.25rem;}}
-    .lib-tabs a{{font-size:0.8rem;padding:3px 12px;border:1px solid var(--container-border,#555);
-      border-radius:999px;text-decoration:none;color:var(--fg);}}
-    .lib-tabs a.active{{background:var(--fg);color:var(--bg);}}
-    .lib-item{{border:1px solid var(--container-border,#444);border-radius:8px;padding:0.9rem 1rem;
-      margin:0.75rem 0;background:var(--container-bg);}}
-    .lib-item h2{{font-size:1.02rem;margin:0 0 0.3rem;}}
-    .lib-item h2 a{{text-decoration:none;color:var(--fg);}}
-    .lib-item h2 a:hover{{text-decoration:underline;}}
-    .lib-meta{{font-size:0.8rem;color:var(--fg-muted,#888);}}
-    .lib-actions{{display:flex;gap:0.5rem;align-items:center;margin-top:0.6rem;flex-wrap:wrap;}}
-    .lib-actions select,.lib-actions button{{
-      font-size:0.78rem;padding:3px 9px;border-radius:4px;cursor:pointer;
-      border:1px solid var(--container-border,#555);background:var(--container-bg,#1a1a1a);
-      color:var(--fg);}}
-    .lib-status-chip{{font-size:0.72rem;padding:2px 8px;border-radius:999px;
-      border:1px solid var(--container-border,#666);margin-left:0.5rem;color:var(--fg-muted,#aaa);}}
-    .lib-notion-card{{border:1px dashed var(--oh-accent,#0d6e63);border-radius:8px;
-      padding:0.8rem 1rem;margin:0.75rem 0 1.1rem;font-size:0.85rem;
-      background:var(--container-bg);}}
-    .lib-notion-pick{{display:flex;gap:0.5rem;align-items:center;margin-top:0.55rem;flex-wrap:wrap;}}
-    .lib-notion-pick select,.lib-notion-pick button{{
-      font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer;
-      border:1px solid var(--container-border,#555);background:var(--container-bg,#1a1a1a);
-      color:var(--fg);}}
-    .lib-notion-pick select{{min-width:240px;}}
-    .lib-notion-connect{{display:inline-block;font-size:0.82rem;padding:4px 12px;
-      border-radius:4px;background:var(--oh-accent,#0d6e63);color:#fff;
-      text-decoration:none;}}
-    .lib-notion-hint{{font-size:0.75rem;color:var(--fg-muted,#888);margin-top:0.45rem;}}
-  </style>""",
-            scripts="""<script src="/static/js/library.js?v=1" defer></script>
+            scripts=f"""<script src="{static_url('/static/js/library.js')}" defer></script>
   <script type="module">
-    import "/static/js/chat/stream.js?v=2";
-    import "/static/js/chat/ui.js?v=2";
-    import "/static/js/chat/events.js?v=2";
-    import "/static/js/chat/snippet.js?v=1";
+    import "{static_url('/static/js/chat/stream.js')}";
+    import "{static_url('/static/js/chat/ui.js')}";
+    import "{static_url('/static/js/chat/events.js')}";
+    import "{static_url('/static/js/chat/snippet.js')}";
   </script>""",
             wrap_class="lib-wrap",
         )
@@ -746,10 +711,12 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     if notion_connected:
         sync_btn = (
-            '<button id="lib-notion-sync-btn" type="button">Sync to Notion</button>'
+            '<button id="lib-notion-sync-btn" type="button" '
+            'title="Re-push every saved paper to your Notion databases — sync already runs automatically when you save papers or change a status; use this only if Notion drifted">'
+            "Re-sync library</button>"
             '<button id="lib-notion-answer-btn" type="button" '
-            'title="Reply to unanswered comments on your synced paper pages">'
-            "Answer comments</button>"
+            'title="Scan your synced Notion paper pages for unanswered comments and reply to them with the agent">'
+            "Answer Notion comments</button>"
         )
         notion_card = ""
     elif notion_needs_destination:

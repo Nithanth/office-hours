@@ -6,6 +6,7 @@ from fastapi import APIRouter, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from loguru import logger
 
+import config as _cfg
 from pages.settings_page import settings_page
 from services.core import model_prefs, openrouter_catalog
 from services.persistence import database
@@ -59,6 +60,10 @@ async def save_model_prefs(request: Request) -> Response:
         exists = await openrouter_catalog.model_exists(value)
         if exists is False:
             invalid.append(f"{tier}: '{value}' is not a known OpenRouter model ID")
+            continue
+        tier_error = await _tier_fit_error(tier, value)
+        if tier_error:
+            invalid.append(tier_error)
         else:
             pins[tier] = value
 
@@ -81,6 +86,38 @@ async def save_model_prefs(request: Request) -> Response:
         _prefs_direct_set(owner_id, pins)
 
     return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+async def _tier_fit_error(tier: str, model_id: str) -> str | None:
+    """Reject pins whose model doesn't fit the tier's purpose.
+
+    Curated models are checked against their declared ``tiers``; custom
+    IDs are checked against the OpenRouter prompt-price band for the
+    tier (``TIER_PRICE_BANDS_USD_PER_MTOK``). Unknown price → allow,
+    since we can't verify.
+    """
+    for m in _cfg.config.CURATED_OPENROUTER_MODELS:
+        if m["id"] == model_id:
+            if tier not in m.get("tiers", []):
+                return (
+                    f"{tier}: '{model_id}' doesn't fit the "
+                    f"{tier.capitalize()} tier (pick a {tier}-class model)"
+                )
+            return None
+
+    band = _cfg.config.TIER_PRICE_BANDS_USD_PER_MTOK.get(tier)
+    if band is None:
+        return None
+    price = await openrouter_catalog.model_prompt_price_per_mtok(model_id)
+    if price is None:
+        return None  # can't verify — allow
+    lo, hi = band
+    if not (lo <= price <= hi):
+        return (
+            f"{tier}: '{model_id}' costs ${price:.2f}/MTok — outside the "
+            f"{tier.capitalize()} tier's range"
+        )
+    return None
 
 
 def _prefs_direct_set(owner_id: str, pins: dict[str, str]) -> None:

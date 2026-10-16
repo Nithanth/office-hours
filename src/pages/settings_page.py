@@ -43,8 +43,23 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
         )
     ]
     for m in curated:
+        # Only offer models whose declared tiers include this one — a flash
+        # model can't be pinned to Deep, an opus-class model can't go on Fast.
+        if tier not in m.get("tiers", []):
+            continue
         options.append(
             Option(m["label"], value=m["id"], selected=(pinned_id == m["id"]))
+        )
+    offered_ids = {o.attrs["value"] for o in options[1:]}
+    if pinned_id and pinned_id in curated_ids and pinned_id not in offered_ids:
+        # Existing pin no longer fits this tier — keep it visible so the
+        # user sees it (server validation rejects it on save, forcing a fix).
+        options.append(
+            Option(
+                f"{_label_for(pinned_id)} (current — off-tier)",
+                value=pinned_id,
+                selected=True,
+            )
         )
     is_custom = bool(pinned_id) and pinned_id not in curated_ids
     options.append(Option("Custom model ID…", value="__custom__", selected=is_custom))
@@ -199,6 +214,6 @@ def settings_page(
                 if openrouter_key
                 else ""
             ),
-            style="max-width:760px;margin:0 auto;padding:24px 16px 60px 16px;",
+            style="max-width:900px;margin:0 auto;padding:24px 16px 60px 16px;",
         ),
     )
