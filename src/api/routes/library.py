@@ -711,11 +711,11 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     if notion_connected:
         sync_btn = (
-            '<button id="lib-notion-sync-btn" type="button" '
-            'title="Re-push every saved paper to your Notion databases — sync already runs automatically when you save papers or change a status; use this only if Notion drifted">'
+            '<button id="lib-notion-sync-btn" class="oh-tip" type="button" '
+            'data-tip="Re-push every saved paper to your Notion databases — sync already runs automatically when you save papers or change a status; use this only if Notion drifted">'
             "Re-sync library</button>"
-            '<button id="lib-notion-answer-btn" type="button" '
-            'title="Scan your synced Notion paper pages for unanswered comments and reply to them with the agent">'
+            '<button id="lib-notion-answer-btn" class="oh-tip" type="button" '
+            'data-tip="Scan your synced Notion paper pages for unanswered comments and reply to them with the agent">'
             "Answer Notion comments</button>"
         )
         notion_card = ""
