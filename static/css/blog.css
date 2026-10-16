@@ -800,3 +800,11 @@ body.blog-printing .blog-footer { display: none !important; }
   max-width: 420px;
   margin: 0;
 }
+
+/* Figure captions — italic line emitted right under generated images */
+.blog-article p:has(> img) + p {
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--fg-muted, #6b7280);
+  margin-top: -1.2em;
+}

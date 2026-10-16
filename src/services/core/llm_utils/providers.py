@@ -273,6 +273,49 @@ class OpenRouterProvider(LLMProvider):
         except Exception as e:
             raise LLMProviderError("openrouter", f"Unexpected error: {e}", e) from e
 
+    async def generate_image(
+        self,
+        prompt: str,
+        model: str,
+        timeout: float = 120.0,
+    ) -> Optional[str]:
+        """Generate an image via an image-capable chat model.
+
+        OpenRouter image models (e.g. ``google/gemini-2.5-flash-image``)
+        respond through the chat completions endpoint with
+        ``modalities=["image", "text"]``; the reply carries
+        ``message.images[].image_url.url`` as a data URL.
+
+        Returns the first image's data URL, or ``None`` on any failure —
+        callers treat image generation as best-effort.
+        """
+        await self.initialize_client()
+        assert self._async_client is not None
+        try:
+            response = await self._async_client.chat.completions.create(
+                model=model,
+                messages=cast(list[Any], [{"role": "user", "content": prompt}]),
+                extra_body={"modalities": ["image", "text"]},
+                timeout=timeout,
+            )
+            if not response.choices:
+                return None
+            images = getattr(response.choices[0].message, "images", None) or []
+            for image in images:
+                # Non-standard response fields stay raw dicts in the SDK —
+                # handle both dict and attribute access.
+                if isinstance(image, dict):
+                    url = (image.get("image_url") or {}).get("url")
+                else:
+                    url = getattr(getattr(image, "image_url", None), "url", None)
+                if url:
+                    return str(url)
+            logger.info("openrouter_image_empty", model=model)
+            return None
+        except Exception as e:  # noqa: BLE001 — best-effort, never raise
+            logger.warning("openrouter_image_failed", model=model, error=str(e))
+            return None
+
 
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude messages provider (Async)."""

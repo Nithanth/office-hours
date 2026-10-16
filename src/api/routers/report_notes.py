@@ -9,6 +9,7 @@ POST `/export-notion` – push report to a Notion page/database and return its U
 
 import asyncio
 import html as _html
+import json as _json
 import re as _re
 import time as _time
 import uuid as _uuid
@@ -575,6 +576,117 @@ def _purge_expired_blogs() -> None:
             _BLOG_CACHE.pop(tok, None)
 
 
+_FIGURE_BLOCK_RE = _re.compile(r":::figure\s*(\{.*?\})\s*:::", _re.DOTALL)
+# Malformed :::figure ... ::: blocks that never carried JSON — strip residue.
+_FIGURE_STRAY_RE = _re.compile(r":::figure[^\n{]*:::")
+
+
+async def _plan_blog_figures(
+    llm_service: LLMService,
+    provider: str,
+    model_id: str,
+    report_text: str,
+) -> list[dict[str, str]]:
+    """Fast-tier planning call: pick conceptual figures for the blog.
+
+    Returns a list of {caption, prompt} specs. Any failure returns [] so
+    the writer simply emits the post without figure blocks — the plan
+    call improves the result but can never break it.
+    """
+    if not config.BLOG_IMAGES_ENABLED or int(config.BLOG_MAX_FIGURES) <= 0:
+        return []
+    plan_provider, plan_model = provider, model_id
+    if "openrouter" in (getattr(llm_service, "providers", None) or {}):
+        plan_provider = "openrouter"
+        try:
+            plan_model = model_prefs.resolve_model_id("fast") or model_id
+        except Exception:  # noqa: BLE001
+            plan_model = model_id
+    n = int(config.BLOG_MAX_FIGURES)
+    plan_prompt = (
+        "You are planning figures for a blog post that explains this research "
+        "report to a technical reader. Pick up to "
+        f"{n} figures an image-generation model should render. Pick the "
+        "hardest technical or mathematical concepts in the report — figures "
+        "must be EXPLANATORY visuals that make the idea click (a schematic "
+        "of the mechanism, a geometric intuition, a before/after visual), "
+        "NOT decorative art or generic tech imagery. Structural flow "
+        "diagrams stay Mermaid's job — prefer concepts Mermaid can't draw "
+        "(curves, fields, volumes, mixing weights). Each prompt must "
+        "describe a clean explainer-style schematic on a light/cream "
+        "background: simple shapes, arrows, and shading conveying the "
+        "concept, ONE clear focal idea, and explicitly NO text, labels, "
+        "or lettering inside the image.\n"
+        'Return ONLY JSON: {"figures":[{"after":"<short section/topic '
+        'phrase where the figure belongs>","caption":"<one sentence>",'
+        '"prompt":"<detailed image-generation prompt, clean editorial '
+        'illustration style>"}]}\n\nREPORT:\n' + report_text.strip()[:8000]
+    )
+    try:
+        raw = await llm_service.generate_completion(
+            provider_name=plan_provider,
+            model_name=plan_model,
+            prompt=plan_prompt,
+            max_tokens=int(config.BLOG_PLAN_MAX_TOKENS),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.info("blog_plan_failed", error=str(e))
+        return []
+    try:
+        start, end = raw.find("{"), raw.rfind("}")
+        data = _json.loads(raw[start : end + 1]) if 0 <= start < end else {}
+        figures = data.get("figures") or []
+        out: list[dict[str, str]] = []
+        for fig in figures[:n]:
+            if isinstance(fig, dict) and fig.get("prompt"):
+                out.append(
+                    {
+                        "caption": str(fig.get("caption", "")).strip(),
+                        "prompt": str(fig["prompt"]).strip(),
+                    }
+                )
+        if not out:
+            logger.info("blog_plan_no_figures", raw_head=raw[:200])
+        return out
+    except Exception as e:  # noqa: BLE001
+        logger.info("blog_plan_parse_failed", error=str(e))
+        return []
+
+
+async def _resolve_figure_blocks(blog_md: str, llm_service: LLMService) -> str:
+    """Replace :::figure {json}::: blocks with generated images.
+
+    Best-effort per figure: a missing provider, a parse failure, or a
+    generation error degrades to an italic caption line — never to a
+    broken post. Figures past BLOG_MAX_FIGURES are also captioned."""
+    providers = getattr(llm_service, "providers", None) or {}
+    provider = providers.get("openrouter") if config.BLOG_IMAGES_ENABLED else None
+    rendered = 0
+    out: list[str] = []
+    last = 0
+    for m in _FIGURE_BLOCK_RE.finditer(blog_md):
+        out.append(blog_md[last : m.start()])
+        last = m.end()
+        try:
+            spec = _json.loads(m.group(1))
+            caption = str(spec.get("caption", "")).strip()
+            prompt = str(spec.get("prompt", "")).strip()
+        except Exception:  # noqa: BLE001 — malformed block, drop it
+            out.append("")
+            continue
+        fallback = f"\n\n*Figure: {caption}*\n\n" if caption else ""
+        if rendered >= int(config.BLOG_MAX_FIGURES) or not prompt or provider is None:
+            out.append(fallback)
+            continue
+        rendered += 1
+        url = await provider.generate_image(prompt, model=config.BLOG_IMAGE_MODEL)
+        out.append(
+            f"\n\n![{caption}]({url})\n\n*Figure: {caption}*\n\n" if url else fallback
+        )
+    out.append(blog_md[last:])
+    return _FIGURE_STRAY_RE.sub("", "".join(out))
+
+
 async def _run_blog_generation(
     token: str,
     *,
@@ -610,6 +722,21 @@ async def _run_blog_generation(
 
         max_tokens = int(config.BLOG_MAX_TOKENS)
 
+        # Figure planning: a fast-tier call picks conceptual figures; the
+        # writer is asked to place :::figure blocks, resolved to generated
+        # images after writing. Any failure here just means no figures.
+        figures = await _plan_blog_figures(llm_service, provider, model_id, report_text)
+        if figures:
+            user_prompt += (
+                "\n\nFIGURES: after each relevant section, insert a figure "
+                "block on its own line exactly in this form:\n"
+                ':::figure {"caption":"<caption>","prompt":"<image-generation '
+                'prompt>"}:::\n'
+                f"Use these planned figures: {_json.dumps(figures)}\n"
+                "Do not render or describe the image yourself — the block is "
+                "replaced with a generated image after writing."
+            )
+
         blog_md_raw = await llm_service.generate_completion(
             provider_name=provider,
             model_name=model_id,
@@ -618,6 +745,8 @@ async def _run_blog_generation(
             system_prompt=system_prompt,
         )
         blog_md = _clean_blog_markdown(blog_md_raw)
+        if ":::figure" in blog_md:
+            blog_md = await _resolve_figure_blocks(blog_md, llm_service)
 
         entry = _BLOG_CACHE.get(token)
         if entry is None:
