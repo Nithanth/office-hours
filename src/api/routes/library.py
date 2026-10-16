@@ -760,7 +760,6 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     content = f"""<div class="lib-header">
       <h1>Saved papers</h1>
       {sync_btn}
-      <a href="/">+ New Search</a>
     </div>
     {notion_card}
     <div class="lib-tabs">{"".join(tabs)}</div>

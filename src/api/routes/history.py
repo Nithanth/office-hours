@@ -47,20 +47,19 @@ def _history_shell(items_html: str) -> str:
             lib_subtabs_html("reports")
             + f"""<div class="lib-header">
       <h1>My Reports</h1>
-      <a href="/">+ New Search</a>
     </div>
     {items_html}""",
             active="library",
             head_extra="""<style>
-    .history-wrap{{max-width:900px;margin:2rem auto;padding:0 1rem;}}
-    .history-item{{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
-      background:var(--container-bg);transition:border-color 0.15s;}}
-    .history-item:hover{{border-color:#888;}}
-    .history-item h2{{font-size:1.05rem;margin:0 0 0.3rem;}}
-    .history-item h2 a{{text-decoration:none;color:var(--fg);}}
-    .history-item h2 a:hover{{text-decoration:underline;}}
-    .history-meta{{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}}
-    .history-preview{{font-size:0.88rem;color:var(--fg-muted,#aaa);margin-top:0.4rem;line-height:1.4;}}
+    .history-wrap{max-width:900px;margin:2rem auto;padding:0 1rem;}
+    .history-item{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
+      background:var(--container-bg);transition:border-color 0.15s;}
+    .history-item:hover{border-color:#888;}
+    .history-item h2{font-size:1.05rem;margin:0 0 0.3rem;}
+    .history-item h2 a{text-decoration:none;color:var(--fg);}
+    .history-item h2 a:hover{text-decoration:underline;}
+    .history-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}
+    .history-preview{font-size:0.88rem;color:var(--fg-muted,#aaa);margin-top:0.4rem;line-height:1.4;}
   </style>""",
             wrap_class="history-wrap",
         )

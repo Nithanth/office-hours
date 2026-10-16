@@ -290,7 +290,9 @@
 
     const updateThemeBtnText = () => {
       const isDark = document.body.classList.contains('oh-dark');
-      themeBtn.textContent = isDark ? '☀️ Light' : '🌙 Dark';
+      themeBtn.innerHTML = isDark
+        ? '<i class="fa-solid fa-sun"></i>'
+        : '<i class="fa-solid fa-moon"></i>';
     };
 
     const applyTheme = theme => {
