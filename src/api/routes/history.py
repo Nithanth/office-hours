@@ -45,9 +45,9 @@ def _history_shell(items_html: str) -> str:
         page_shell(
             "My Reports",
             lib_subtabs_html("reports")
-            + f"""<div class="history-header">
+            + f"""<div class="lib-header">
       <h1>My Reports</h1>
-      <a href="/" style="font-size:0.85rem;margin-left:auto;">+ New Search</a>
+      <a href="/">+ New Search</a>
     </div>
     {items_html}""",
             active="library",
@@ -61,8 +61,6 @@ def _history_shell(items_html: str) -> str:
     .history-item h2 a:hover{{text-decoration:underline;}}
     .history-meta{{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}}
     .history-preview{{font-size:0.88rem;color:var(--fg-muted,#aaa);margin-top:0.4rem;line-height:1.4;}}
-    .history-header{{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;}}
-    .history-header h1{{margin:0;}}
   </style>""",
             wrap_class="history-wrap",
         )
@@ -125,12 +123,13 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     escaped_id = html.escape(report.id)
     escaped_audience = html.escape(report.audience_type or "technical")
     escaped_model = html.escape(report.model_key or "")
-    from pages.shell import page_shell
+    from pages.shell import lib_subtabs_html, page_shell
 
     return HTMLResponse(
         page_shell(
             _display_title(report),
-            f"""
+            lib_subtabs_html("reports")
+            + f"""
     <h1 style="font-size:1.3rem;margin:0.5rem 0;">{escaped_title}</h1>
     <div class="report-meta">
       {html.escape(report.created_at.strftime('%b %d, %Y'))} &middot;
@@ -156,7 +155,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       {report_html}
     </div>
 """,
-            active="reports",
+            active="library",
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
     .report-actions{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;

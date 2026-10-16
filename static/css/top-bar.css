@@ -25,14 +25,20 @@
 
 /* Nav links — same pill on every page; .active marks the current one. */
 .top-bar-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.75rem;
-  padding: 2px 9px;
+  padding: 4px 10px;
   border: 1px solid #888;
   border-radius: 4px;
   text-decoration: none;
   color: #000;
   margin-right: 4px;
   white-space: nowrap;
+}
+.top-bar-link i {
+  font-size: 0.9rem;
 }
 .top-bar-link.active {
   background: #000;

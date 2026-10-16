@@ -16,14 +16,14 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from fasthtml.common import A, Button, Div, Span
+from fasthtml.common import A, Button, Div, I, Span
 
 from utils.static_assets import static_url
 
-# (label, href, key) — order is the nav order on every page.
-NAV_LINKS: list[tuple[str, str, str]] = [
-    ("Library", "/library", "library"),
-    ("Settings", "/settings", "settings"),
+# (label, href, key, fa icon) — order is the nav order on every page.
+NAV_LINKS: list[tuple[str, str, str, str]] = [
+    ("Library", "/library", "library", "fa-solid fa-book"),
+    ("Settings", "/settings", "settings", "fa-solid fa-gear"),
 ]
 
 # Sub-tabs inside the Library hub — Papers | Topics | Reports share one
@@ -67,9 +67,12 @@ def nav_links_html(active: str = "") -> str:
     """Nav anchor markup — used by both the f-string shell and the
     FastHTML top_bar (same output, so every page's nav is identical)."""
     parts = []
-    for label, href, key in NAV_LINKS:
+    for label, href, key, icon in NAV_LINKS:
         cls = "top-bar-link" + (" active" if key == active else "")
-        parts.append(f'<a href="{href}" class="{cls}">{html.escape(label)}</a>')
+        parts.append(
+            f'<a href="{href}" class="{cls}" title="{html.escape(label, quote=True)}" '
+            f'aria-label="{html.escape(label, quote=True)}"><i class="{icon}"></i></a>'
+        )
     return "\n    ".join(parts)
 
 
@@ -124,11 +127,13 @@ def nav_links(active: str = "") -> list:
     # anchors silently dropped href/class and only their text rendered.
     return [
         A(
-            label,
+            I(cls=icon),
             href=href,
             cls="top-bar-link" + (" active" if key == active else ""),
+            title=label,
+            aria_label=label,
         )
-        for label, href, key in NAV_LINKS
+        for label, href, key, icon in NAV_LINKS
     ]
 
 
