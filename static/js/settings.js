@@ -563,16 +563,31 @@
                   '<span style="color:#22c55e;font-weight:600;">● Connected</span>' +
                   '<div style="margin-top:6px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
                   (data.workspace_name ? 'Workspace: ' + escapeHtml(data.workspace_name) + '<br>' : '') +
-                  'Target: ' + (data.target_type === 'database' ? 'Database' : data.target_type === 'page' ? 'Page' : 'Not selected') +
+                  'Syncs into: ' + (data.target_type === 'database' ? 'a database' : data.target_type === 'page' ? 'a page' : 'nothing yet — pick a location below') +
                   (data.database_id ? ' <code>' + escapeHtml(data.database_id) + '</code>' : '') +
                   '</div>' +
                   (data.oauth_connected
                     ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
-                      '<button type="button" id="notion-refresh-destinations">Choose destination</button>' +
+                      '<button type="button" id="notion-refresh-destinations">' +
+                      (data.target_type === 'none' ? 'Pick where to sync…' : 'Change sync location…') +
+                      '</button>' +
                       '<button type="button" id="notion-disconnect">Disconnect</button>' +
                       '</div><div id="notion-destinations" style="margin-top:8px;"></div>'
                     : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
                 if (data.oauth_connected) wireNotionControls(statusEl);
+              } else if (data.authenticated === false) {
+                // Not signed in: keep the connect action inside the modal —
+                // a Google sign-in that returns here, not a bare 401 page.
+                statusEl.innerHTML =
+                  '<div style="padding:10px 12px;border:1px solid var(--container-border,#888);border-radius:6px;background:var(--container-bg,#f8f8f8);">' +
+                  '<div style="font-weight:600;margin-bottom:4px;">Sign in to connect Notion</div>' +
+                  '<div style="font-size:0.85rem;color:var(--fg-muted,#888);margin-bottom:8px;">' +
+                  'Syncing reports and topics to your own Notion workspace needs an account.' +
+                  '</div>' +
+                  '<a class="btn-secondary" href="/auth/google/login?next=' +
+                  encodeURIComponent(window.location.pathname) +
+                  '">Sign in with Google</a>' +
+                  '</div>';
               } else {
                 let detail = data.oauth_connected === false
                   ? '<div>Connect your own Notion workspace for private beta exports.</div>'
@@ -641,7 +656,7 @@
       choose.addEventListener('click', () => {
         const destEl = statusEl.querySelector('#notion-destinations');
         if (!destEl) return;
-        destEl.innerHTML = '<span class="oh-spinner small"></span> Loading destinations…';
+        destEl.innerHTML = '<span class="oh-spinner small"></span> Loading your Notion pages…';
         fetch('/api/notion/destinations')
           .then(r => r.json())
           .then(data => {
@@ -649,11 +664,18 @@
               destEl.textContent = data.detail || 'Could not load destinations.';
               return;
             }
-            destEl.innerHTML = data.destinations.map(dest =>
-              '<button type="button" class="notion-destination" data-id="' + escapeHtml(dest.id) +
-              '" data-type="' + escapeHtml(dest.type) + '">' +
-              escapeHtml(dest.type) + ': ' + escapeHtml(dest.title) + '</button>'
-            ).join(' ');
+            destEl.innerHTML =
+              '<div style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:6px;">' +
+              'Office Hours creates two databases — <em>Office Hours Papers</em> and ' +
+              '<em>Office Hours Topics</em> — under whichever page or database you pick:' +
+              '</div>' +
+              data.destinations.map(dest =>
+                '<button type="button" class="notion-destination" data-id="' + escapeHtml(dest.id) +
+                '" data-type="' + escapeHtml(dest.type) + '" ' +
+                'style="display:block;width:100%;text-align:left;margin:3px 0;padding:5px 8px;border:1px solid var(--container-border,#aaa);border-radius:4px;background:var(--container-bg);color:var(--fg);cursor:pointer;font-size:0.8rem;">' +
+                (dest.type === 'database' ? '🗃 ' : '📄 ') + escapeHtml(dest.title) +
+                '</button>'
+              ).join('');
             destEl.querySelectorAll('.notion-destination').forEach(btn => {
               btn.addEventListener('click', () => {
                 const fd = new FormData();
@@ -662,7 +684,7 @@
                 fetch('/api/notion/destination', { method: 'POST', body: fd })
                   .then(r => r.json())
                   .then(() => {
-                    if (typeof window.showToast === 'function') window.showToast('Notion destination saved');
+                    if (typeof window.showToast === 'function') window.showToast('Notion sync location saved');
                     document.getElementById('oh-settings-btn')?.click();
                   });
               });

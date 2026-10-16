@@ -200,15 +200,66 @@ body.oh-dark .domain-pill:has(input:checked) {
 .empty-state {
   flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #bbb;
+  gap: 0.9rem;
+  padding: 2rem 1rem;
+  color: var(--fg, #bbb);
   font-family: "Lucida Console", "Courier New", monospace;
   font-size: 0.8rem;
   letter-spacing: 1px;
 }
-body.oh-dark .empty-state { color: #444; }
+
+/* First-run hero — title / explainer / example-query chips */
+.oh-hero-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+.oh-hero-sub {
+  font-size: 0.85rem;
+  color: var(--fg-muted, #888);
+  max-width: 34rem;
+  line-height: 1.6;
+  letter-spacing: 0.2px;
+}
+.oh-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+.oh-hero-try {
+  font-size: 0.78rem;
+  color: var(--fg-muted, #888);
+}
+.oh-hero-chip {
+  font-family: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.2px;
+  padding: 5px 14px;
+  border: 1px solid var(--container-border, #888);
+  border-radius: 999px;
+  background: var(--container-bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.oh-hero-chip:hover {
+  border-color: var(--oh-accent);
+  color: var(--oh-accent);
+}
+
+/* Equal-size search action buttons */
+.oh-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  padding: 6px 14px;
+}
 
 /* ================================================================
    Search form layout tightening
