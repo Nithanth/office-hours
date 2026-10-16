@@ -52,6 +52,21 @@ async def catalog() -> dict[str, dict]:
     return models
 
 
+async def model_prompt_price_per_mtok(model_id: str) -> float | None:
+    """Prompt price in USD per 1M tokens, or ``None`` if unknown."""
+    models = await catalog()
+    entry = models.get(model_id.strip())
+    if not entry:
+        return None
+    raw = (entry.get("pricing") or {}).get("prompt")
+    if not isinstance(raw, (str, int, float)):
+        return None
+    try:
+        return float(raw) * 1_000_000
+    except (TypeError, ValueError):
+        return None
+
+
 async def model_exists(model_id: str) -> bool | None:
     """Whether ``model_id`` is in the OpenRouter catalog.
 

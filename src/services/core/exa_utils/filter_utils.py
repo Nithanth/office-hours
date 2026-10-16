@@ -7,7 +7,7 @@ lighter and allows unit-testing without network or cache access.
 
 import re
 from collections.abc import Iterable
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -28,6 +28,41 @@ ADAPTIVE_KEEP_FRAC: float = 0.25  # keep ≥25 % of pool (or ≥20)
 # ---------------------------------------------------------------------------
 # Public helper
 # ---------------------------------------------------------------------------
+
+
+def _coerce_published_date(pub: object) -> datetime | None:
+    """Normalise ``Paper.published_date`` (``datetime | str``) to a tz-aware
+    ``datetime``, or ``None`` when absent/unparseable.
+
+    ``Paper.published_date`` is a pydantic union — providers and enrichment
+    paths hand us ISO strings (or the literal ``"None"``), so the velocity
+    computation must not assume a datetime.
+    """
+    from datetime import date
+
+    if pub is None or isinstance(pub, bool):
+        return None
+    if isinstance(pub, datetime):
+        return pub if pub.tzinfo else pub.replace(tzinfo=UTC)
+    if isinstance(pub, date):
+        return datetime(pub.year, pub.month, pub.day, tzinfo=UTC)
+    if isinstance(pub, str):
+        text = pub.strip()
+        if not text or text.lower() == "none":
+            return None
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            for fmt in ("%Y-%m-%d", "%Y"):
+                try:
+                    dt = datetime.strptime(text, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+    return None
 
 
 def filter_papers(
@@ -151,7 +186,6 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
 
     # Pool-relative year-normalised citation velocity, computed once.
     import math
-    from datetime import datetime
 
     today = datetime.now(UTC)
     velocities: list[float] = []
@@ -159,8 +193,8 @@ def compute_relevance_scores(papers: list[Paper]) -> None:
         count = float(getattr(p, "citation_count", None) or 0)
         pub = getattr(p, "published_date", None)
         age_years = 1.0
-        if pub is not None:
-            pub_dt = pub if pub.tzinfo else pub.replace(tzinfo=UTC)
+        pub_dt = _coerce_published_date(pub)
+        if pub_dt is not None:
             age_years = max((today - pub_dt).days / 365.25, 0.25)
         velocities.append(count / age_years)
     max_vel = max(velocities) if velocities else 0.0

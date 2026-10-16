@@ -277,17 +277,51 @@ class Config(BaseSettings):
     OPENROUTER_MODEL_DEEP: Optional[str] = None
 
     # Models offered in the per-user tier picker (OpenRouter author/slug IDs).
-    # Users can also enter any catalog ID; this list is just the curated set.
-    CURATED_OPENROUTER_MODELS: list[dict[str, str]] = [
-        {"id": "google/gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
-        {"id": "anthropic/claude-sonnet-4.6", "label": "Claude Sonnet 4.6"},
-        {"id": "google/gemini-3.1-pro-preview", "label": "Gemini 3.1 Pro"},
-        {"id": "anthropic/claude-opus-4.8", "label": "Claude Opus 4.8"},
-        {"id": "openai/gpt-5.5", "label": "GPT-5.5"},
-        {"id": "openai/gpt-5.5-pro", "label": "GPT-5.5 Pro"},
-        {"id": "z-ai/glm-5.2", "label": "GLM 5.2 (Z.ai)"},
-        {"id": "deepseek/deepseek-v3.2", "label": "DeepSeek v3.2"},
+    # "tiers" gates which tier selects a model can be pinned to — the picker
+    # only offers fitting models, and custom IDs are price-band-checked.
+    CURATED_OPENROUTER_MODELS: list[dict[str, Any]] = [
+        {
+            "id": "google/gemini-3.5-flash",
+            "label": "Gemini 3.5 Flash",
+            "tiers": ["fast", "standard"],
+        },
+        {
+            "id": "anthropic/claude-sonnet-4.6",
+            "label": "Claude Sonnet 4.6",
+            "tiers": ["standard", "deep"],
+        },
+        {
+            "id": "google/gemini-3.1-pro-preview",
+            "label": "Gemini 3.1 Pro",
+            "tiers": ["standard", "deep"],
+        },
+        {
+            "id": "anthropic/claude-opus-4.8",
+            "label": "Claude Opus 4.8",
+            "tiers": ["deep"],
+        },
+        {"id": "openai/gpt-5.5", "label": "GPT-5.5", "tiers": ["standard", "deep"]},
+        {"id": "openai/gpt-5.5-pro", "label": "GPT-5.5 Pro", "tiers": ["deep"]},
+        {
+            "id": "z-ai/glm-5.2",
+            "label": "GLM 5.2 (Z.ai)",
+            "tiers": ["fast", "standard"],
+        },
+        {
+            "id": "deepseek/deepseek-v3.2",
+            "label": "DeepSeek v3.2",
+            "tiers": ["fast", "standard"],
+        },
     ]
+
+    # Price bands (USD per 1M *prompt* tokens) used to check custom model IDs
+    # against each tier's purpose. Bands overlap on purpose: fast is strictly
+    # cheap, deep is strictly premium, standard covers the middle.
+    TIER_PRICE_BANDS_USD_PER_MTOK: dict[str, tuple[float, float]] = {
+        "fast": (0.0, 1.00),
+        "standard": (0.30, 10.00),
+        "deep": (1.50, 1e9),
+    }
 
     AVAILABLE_MODELS: dict[str, dict[str, Any]] = {
         # Three task tiers, all routed through OpenRouter. Tier names are
