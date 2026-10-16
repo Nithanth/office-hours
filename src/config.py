@@ -156,6 +156,10 @@ class Config(BaseSettings):
     CE_RERANK_POOL: int = Field(default=40, ge=1)
     ENABLE_CE_RERANK: bool = False
     EXA_POOL_SIZE: int = Field(default=35, ge=1)
+    # Repeat searches for the same query+filters reuse the fetched pool —
+    # the fetch pipeline (Exa + arXiv batch + enrichment + S2 citations)
+    # is the slowest part of the first search. 0 disables.
+    SEARCH_CACHE_TTL_S: int = Field(default=21600, ge=0)
     # Exa search type: "auto" (fast, balanced), "neural" (semantic),
     # "keyword", or "deep" (higher quality, slower, costs more credits)
     EXA_SEARCH_TYPE: str = "auto"

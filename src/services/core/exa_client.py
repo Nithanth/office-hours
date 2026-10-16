@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 import time
 from collections import Counter
 
@@ -187,6 +188,13 @@ class ExaClient:
         # Avoids race conditions when multiple users search concurrently.
         self._cached_searches: dict[str, CachedSearch] = {}
         self._url_pinned_ids: dict[str, str | None] = {}
+
+        # Cross-session result-pool cache keyed by (query, filters): the
+        # fetch pipeline (Exa + arXiv batch + enrichment + S2 citations) is
+        # the expensive part of a search and paper metadata is durable for
+        # hours. Per-session CachedSearch is rebuilt cheaply on every hit.
+        self._result_pools: dict[str, tuple[float, list[Paper], str | None]] = {}
+        self._result_pools_lock = threading.Lock()
 
     def _get_id_from_url(self, url: str) -> Optional[str]:
         """Return Exa document ID for a given URL.
@@ -1073,6 +1081,44 @@ class ExaClient:
         )
         return filtered
 
+    # -- Result-pool TTL cache -------------------------------------------------
+    _RESULT_POOL_MAX = 128
+
+    def _pool_cache_key(self, scope: str, query: str, kwargs: dict[str, Any]) -> str:
+        parts = [scope, query.strip().lower()]
+        for k in sorted(kwargs):
+            v = kwargs[k]
+            if v is None:
+                continue
+            parts.append(f"{k}={sorted(v) if isinstance(v, (list, tuple)) else v}")
+        return "|".join(parts)
+
+    def _pool_cache_get(self, key: str) -> tuple[list[Paper], str | None] | None:
+        ttl = _cfg.config.SEARCH_CACHE_TTL_S
+        if ttl <= 0:
+            return None
+        with self._result_pools_lock:
+            entry = self._result_pools.get(key)
+            if entry is None:
+                return None
+            ts, papers, pinned_id = entry
+            if time.monotonic() - ts > ttl:
+                del self._result_pools[key]
+                return None
+        return papers, pinned_id
+
+    def _pool_cache_set(
+        self, key: str, papers: list[Paper], pinned_id: str | None
+    ) -> None:
+        if _cfg.config.SEARCH_CACHE_TTL_S <= 0 or not papers:
+            return
+        with self._result_pools_lock:
+            # Bound the cache: evict oldest entries when full.
+            while len(self._result_pools) >= self._RESULT_POOL_MAX:
+                oldest = min(self._result_pools, key=lambda k: self._result_pools[k][0])
+                del self._result_pools[oldest]
+            self._result_pools[key] = (time.monotonic(), papers, pinned_id)
+
     def _build_cache(
         self, papers: list[Paper], k: int, query: str
     ) -> CachedSearch | None:
@@ -1106,7 +1152,14 @@ class ExaClient:
         self, query: str, k: int = 10, *, session_id: str = "_default", **kwargs: Any
     ) -> list[Paper]:
         """Fetches papers from Exa, caches them, and returns the initial display list."""
-        papers = self._fetch_papers_from_exa(query, k, **kwargs)
+        pool_key = self._pool_cache_key("q", query, kwargs)
+        hit = self._pool_cache_get(pool_key)
+        if hit is not None:
+            papers = hit[0]
+            logger.info("search_pool_cache_hit", query=query)
+        else:
+            papers = self._fetch_papers_from_exa(query, k, **kwargs)
+            self._pool_cache_set(pool_key, papers, None)
 
         cached_search = self._build_cache(papers, k, query)
         if cached_search is None:
@@ -1131,48 +1184,56 @@ class ExaClient:
         slots.
         """
         # Fetch details and similar papers (larger pool for caching)
-        request_count = self.MAX_RETURNED_PAPERS
-        url_results = self.get_paper_details_and_similar_from_url(
-            paper_url,
-            num_similar_results=request_count,
-            category=kwargs.get("category", "publication"),
-            start_published_date=kwargs.get("start_published_date"),
-            include_domains=kwargs.get("include_domains"),
-            exclude_domains=kwargs.get("exclude_domains"),
-        )
-        main_paper = url_results.get("main_paper")
-        similar_papers: list[Paper] = url_results.get("similar_papers", [])
-
-        if not main_paper:
-            # Fallback: if main paper failed, we just behave like a normal search on similars
-            papers_pool = similar_papers
-            pinned_id: str | None = None
+        pool_key = self._pool_cache_key("url", paper_url, kwargs)
+        hit = self._pool_cache_get(pool_key)
+        if hit is not None:
+            papers_pool, pinned_id = hit
+            main_paper = next((p for p in papers_pool if p.id == pinned_id), None)
+            logger.info("search_pool_cache_hit", query=paper_url)
         else:
-            papers_pool = [main_paper] + similar_papers
+            request_count = self.MAX_RETURNED_PAPERS
+            url_results = self.get_paper_details_and_similar_from_url(
+                paper_url,
+                num_similar_results=request_count,
+                category=kwargs.get("category", "publication"),
+                start_published_date=kwargs.get("start_published_date"),
+                include_domains=kwargs.get("include_domains"),
+                exclude_domains=kwargs.get("exclude_domains"),
+            )
+            main_paper = url_results.get("main_paper")
+            similar_papers: list[Paper] = url_results.get("similar_papers", [])
 
-            try:
-                from services.paper.text_extractor import TextExtractor
-                from services.tasks import task_queue
+            if not main_paper:
+                # Fallback: if main paper failed, we just behave like a normal search on similars
+                papers_pool = similar_papers
+                pinned_id = None
+            else:
+                papers_pool = [main_paper] + similar_papers
 
-                async def _bg_cache(url: str, pid: str) -> None:
-                    await TextExtractor.instance().ensure_cached(url, pid)
+                try:
+                    from services.paper.text_extractor import TextExtractor
+                    from services.tasks import task_queue
 
-                task_queue.enqueue_fn(
-                    "prewarm",
-                    _bg_cache,
-                    main_paper.url,
-                    main_paper.id,
-                    name=f"prewarm:{main_paper.id[:12]}",
-                    max_retries=1,
-                )
-            except Exception as bg_exc:
-                logger.debug(
-                    "TextExtractor background task failed to start: {}", bg_exc
-                )
-            pinned_id = main_paper.id if main_paper.id else None
+                    async def _bg_cache(url: str, pid: str) -> None:
+                        await TextExtractor.instance().ensure_cached(url, pid)
 
-        # Compute composite relevance scores for all papers in the URL pool
-        _filter_utils.compute_relevance_scores(papers_pool)
+                    task_queue.enqueue_fn(
+                        "prewarm",
+                        _bg_cache,
+                        main_paper.url,
+                        main_paper.id,
+                        name=f"prewarm:{main_paper.id[:12]}",
+                        max_retries=1,
+                    )
+                except Exception as bg_exc:
+                    logger.debug(
+                        "TextExtractor background task failed to start: {}", bg_exc
+                    )
+                pinned_id = main_paper.id if main_paper.id else None
+
+            # Compute composite relevance scores for all papers in the URL pool
+            _filter_utils.compute_relevance_scores(papers_pool)
+            self._pool_cache_set(pool_key, papers_pool, pinned_id)
 
         paper_by_id = {p.id: p for p in papers_pool if p.id}
         if not paper_by_id:
