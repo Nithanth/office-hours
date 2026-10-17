@@ -1038,7 +1038,8 @@ def home_page(page_data: SharedPageData) -> Body:
                                 " Deep search",
                                 style="font-size:0.78rem;color:var(--fg-muted,#aaa);",
                             ),
-                            title="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
+                            cls="oh-tip",
+                            data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
                             style="display:inline-flex;align-items:center;gap:3px;margin-left:0.75rem;cursor:pointer;user-select:none;",
                         ),
                         cls="oh-search-options",
@@ -1077,16 +1078,6 @@ def home_page(page_data: SharedPageData) -> Body:
                                 "document.getElementById('oh-loading-text').textContent='Searching authors...';"
                                 "}"
                             ),
-                        ),
-                        BUTTON(
-                            "💬 Assistant",
-                            id="open-global-chat",
-                            type="button",
-                            cls="oh-search-btn",
-                            title="Open the research assistant",
-                            hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
-                            hx_target="#modal-container",
-                            hx_swap="innerHTML",
                         ),
                         style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;",
                     ),

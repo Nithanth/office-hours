@@ -51,7 +51,6 @@ def _history_shell(items_html: str) -> str:
     {items_html}""",
             active="library",
             head_extra="""<style>
-    .history-wrap{max-width:900px;margin:2rem auto;padding:0 1rem;}
     .history-item{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
       background:var(--container-bg);transition:border-color 0.15s;}
     .history-item:hover{border-color:#888;}
@@ -61,7 +60,7 @@ def _history_shell(items_html: str) -> str:
     .history-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}
     .history-preview{font-size:0.88rem;color:var(--fg-muted,#aaa);margin-top:0.4rem;line-height:1.4;}
   </style>""",
-            wrap_class="history-wrap",
+            wrap_class="page-wrap",
         )
     )
 

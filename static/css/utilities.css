@@ -195,6 +195,7 @@ html, body { overflow-x: hidden; }
    Library page — .lib-* components (header, tabs, notion card, items)
    ================================================================ */
 
+/* legacy alias — the three Library sub-tab pages all use .page-wrap now */
 .lib-wrap {
   max-width: 900px;
   margin: 2rem auto;

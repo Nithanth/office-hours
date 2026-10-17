@@ -144,6 +144,11 @@ _ARXIV_BATCH_CHUNK = 10
 # us a much better chance of recovering than the previous 2-attempt window.
 _ARXIV_MAX_RETRIES = 4
 _ARXIV_BACKOFF_BASE_SEC = 4.0
+# Hard wall-clock budget for the whole batch. Each attempt can block up to
+# ``timeout`` seconds and every chunk retries independently, so without a
+# global cap a 35-paper pool could stall the search render for many minutes
+# when arXiv is degraded (observed in prod: ~4min of retries for one search).
+_ARXIV_TOTAL_BUDGET_SEC = 60.0
 
 
 def fetch_arxiv_metadata_batch(
@@ -176,7 +181,16 @@ def fetch_arxiv_metadata_batch(
         for i in range(0, len(deduped_ids), _ARXIV_BATCH_CHUNK)
     ]
 
+    deadline = time.monotonic() + _ARXIV_TOTAL_BUDGET_SEC
+
     for chunk in chunks:
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "arXiv batch time budget exhausted — returning {} of {} ids",
+                len(all_results),
+                len(deduped_ids),
+            )
+            break
         for attempt in range(_ARXIV_MAX_RETRIES + 1):
             try:
                 chunk_results = _arxiv_batch_chunk(chunk, timeout)
@@ -185,6 +199,11 @@ def fetch_arxiv_metadata_batch(
             except HTTPError as exc:
                 if exc.code == 429 and attempt < _ARXIV_MAX_RETRIES:
                     wait = _ARXIV_BACKOFF_BASE_SEC * (2**attempt)
+                    if time.monotonic() + wait > deadline:
+                        logger.warning(
+                            "arXiv batch time budget exhausted — giving up on chunk"
+                        )
+                        break
                     logger.warning(
                         "arXiv 429 rate-limit, backing off {:.0f}s (attempt {}/{})",
                         wait,
@@ -200,6 +219,11 @@ def fetch_arxiv_metadata_batch(
                 # often they resolve on the next attempt.
                 if attempt < _ARXIV_MAX_RETRIES:
                     wait = _ARXIV_BACKOFF_BASE_SEC * (2**attempt)
+                    if time.monotonic() + wait > deadline:
+                        logger.warning(
+                            "arXiv batch time budget exhausted — giving up on chunk"
+                        )
+                        break
                     logger.warning(
                         "arXiv batch transient error ({}), backing off {:.0f}s "
                         "(attempt {}/{})",

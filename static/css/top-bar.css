@@ -41,18 +41,7 @@
   font-size: 0.9rem;
 }
 
-/* Theme toggle — icon-only, accent-coloured sun/moon. */
-.oh-theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: var(--oh-accent, #0d6e63);
-  font-size: 1rem;
-  cursor: pointer;
-}
+
 .top-bar-link.active {
   background: #000;
   color: #fff;
@@ -112,6 +101,27 @@
   border-style: inset;
 }
 
+/* Theme toggle + global assistant — icon-only, accent-coloured.
+   Must come AFTER the generic .top-bar button rule: that rule would
+   otherwise paint them as white Win95 buttons with black text. */
+.top-bar button.oh-theme-toggle,
+.top-bar button.oh-assistant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--oh-accent, #0d6e63);
+  font-size: 1rem;
+  height: auto;
+  cursor: pointer;
+}
+.top-bar button.oh-theme-toggle:hover,
+.top-bar button.oh-assistant-btn:hover {
+  opacity: 0.75;
+}
+
 /* --- Dark mode --- */
 body.oh-dark .top-bar {
   background: var(--bg-dark);
@@ -143,6 +153,12 @@ body.oh-dark .top-bar button {
   background: #2a2a2a;
   color: var(--oh-red);
   border: 1px solid #555;
+}
+body.oh-dark .top-bar button.oh-theme-toggle,
+body.oh-dark .top-bar button.oh-assistant-btn {
+  background: transparent;
+  border: none;
+  color: var(--oh-accent, #35c9b3);
 }
 body.oh-dark .top-bar select.placeholder {
   color: #666 !important;

@@ -48,7 +48,6 @@ def _shell(title: str, body: str) -> str:
             active="library",
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
-    .topics-wrap{max-width:900px;margin:2rem auto;padding:0 1rem;}
     .topic-card{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
       background:var(--container-bg);transition:border-color 0.15s;}
     .topic-card:hover{border-color:#888;}
@@ -78,7 +77,7 @@ def _shell(title: str, body: str) -> str:
             scripts="""<script src="/static/js/report.js?v=2" defer></script>
   <script src="/static/js/main.js?v=2" type="module"></script>
   <script src="/static/js/blog-view.js?v=1" defer></script>""",
-            wrap_class="topics-wrap",
+            wrap_class="page-wrap",
         )
     )
 
@@ -147,7 +146,7 @@ async def topics_page(request: Request) -> HTMLResponse:
     return HTMLResponse(
         _shell(
             "Topics",
-            f'<div class="lib-header"><h1>Your Topics</h1></div>{items}',
+            f'<div class="lib-header"><h1>My Topics</h1></div>{items}',
         )
     )
 
