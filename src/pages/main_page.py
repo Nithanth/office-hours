@@ -99,17 +99,6 @@ def render_report_config_form(
             # Hidden fields populated by settings.js so we still POST them
             INPUT(type="hidden", name="audience_type", id="aud-hidden"),
             INPUT(type="hidden", name="selected_model_key", id="model-hidden"),
-            Label("Select Report Size:", for_="summary_size_select"),
-            Br(),
-            Select(
-                Option("S (Concise)", value="S"),
-                Option("M (Standard)", value="M", selected=True),
-                Option("L (Detailed)", value="L"),
-                name="summary_size",
-                id="summary_size_select",
-            ),
-            Br(),
-            Br(),
             INPUT(
                 type="hidden",
                 name="original_query_for_report",
@@ -127,7 +116,7 @@ def render_report_config_form(
             hx_disabled_elt="#generate-report-btn-top",
             hx_target="#report-display-area",
             hx_swap="innerHTML",
-            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input']",
+            hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input'], #size-select",
         ),
     )
 
@@ -628,20 +617,6 @@ def render_search_results(
                     ),
                     Br(),
                     Div(
-                        Select(
-                            Option(
-                                "Select Report Size",
-                                value="",
-                                disabled=True,
-                                selected=True,
-                            ),
-                            Option("S (Concise)", value="S"),
-                            Option("M (Standard)", value="M"),
-                            Option("L (Detailed)", value="L"),
-                            name="summary_size",
-                            id="summary_size_select",
-                            style="margin-right:0.5rem;",
-                        ),
                         BUTTON(
                             "Generate Report",
                             type="submit",
@@ -654,7 +629,7 @@ def render_search_results(
                     hx_disabled_elt="#generate-report-btn",
                     hx_target="#report-display-area",
                     hx_swap="innerHTML",
-                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input']",
+                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input'], #size-select",
                 ),
             ]
         )
@@ -908,8 +883,70 @@ def home_page(page_data: SharedPageData) -> Body:
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
-        # No extra_controls — the top bar stays identical on every tab.
-        top_bar(""),
+        # Report controls live in the (sticky) top bar — one place for all
+        # three; the search-options collapsible only keeps real search
+        # filters (date + sources).
+        top_bar(
+            "",
+            Span(
+                Select(
+                    Option(
+                        "Audience",
+                        value="",
+                        disabled=True,
+                        selected=True,
+                    ),
+                    Option("Technical (PhD)", value="technical"),
+                    Option("Semi-Technical", value="semi_technical"),
+                    Option("Non-Technical", value="non_technical"),
+                    id="aud-select",
+                    name="audience",
+                ),
+                cls="oh-tip oh-tip-below",
+                data_tip="Who the report is written for",
+            ),
+            Span(
+                Select(
+                    Option("Model", value="", disabled=True, selected=True),
+                    *[
+                        Option(cfg["display_name"], value=key)
+                        for key, cfg in config.config.AVAILABLE_MODELS.items()
+                    ],
+                    id="model-select",
+                    name="model_key",
+                ),
+                cls="oh-tip oh-tip-below",
+                data_tip="Effort tier — which model each tier runs is pinned in Settings",
+            ),
+            Span(
+                Select(
+                    Option("Detail", value="", disabled=True),
+                    Option("S (Concise)", value="S"),
+                    Option("M (Standard)", value="M", selected=True),
+                    Option("L (Detailed)", value="L"),
+                    id="size-select",
+                    name="summary_size",
+                ),
+                cls="oh-tip oh-tip-below",
+                data_tip="Report depth — S concise, L detailed",
+            ),
+            Label(
+                INPUT(
+                    type="checkbox",
+                    name="deep_search",
+                    id="deep-search-toggle",
+                    value="1",
+                    style="margin:0;",
+                ),
+                Span(
+                    " Deep",
+                    style="font-size:0.7rem;",
+                ),
+                cls="oh-tip oh-tip-below",
+                data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
+                style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;user-select:none;",
+            ),
+        ),
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
@@ -985,62 +1022,6 @@ def home_page(page_data: SharedPageData) -> Body:
                                 ),
                             ),
                             cls="search-form-filters",
-                        ),
-                        # Report-affecting options — moved out of the top bar
-                        # so the bar stays identical across tabs.
-                        Div(
-                            Span("Audience ", cls="filter-label"),
-                            Select(
-                                Option(
-                                    "Audience",
-                                    value="",
-                                    disabled=True,
-                                    selected=True,
-                                ),
-                                Option("Technical (PhD)", value="technical"),
-                                Option("Semi-Technical", value="semi_technical"),
-                                Option("Non-Technical", value="non_technical"),
-                                id="aud-select",
-                                name="audience",
-                            ),
-                            Span("Model ", cls="filter-label"),
-                            Select(
-                                Option("Model", value="", disabled=True, selected=True),
-                                *[
-                                    Option(cfg["display_name"], value=key)
-                                    for key, cfg in config.config.AVAILABLE_MODELS.items()
-                                ],
-                                id="model-select",
-                                name="model_key",
-                            ),
-                            Span("Report ", cls="filter-label"),
-                            Select(
-                                Option("Report length", value="", disabled=True),
-                                Option("S (Concise)", value="S"),
-                                Option("M (Standard)", value="M", selected=True),
-                                Option("L (Detailed)", value="L"),
-                                id="size-select",
-                                name="size",
-                                title="Report length",
-                            ),
-                            cls="search-form-filters",
-                            style="margin-top:6px;",
-                        ),
-                        Label(
-                            INPUT(
-                                type="checkbox",
-                                name="deep_search",
-                                id="deep-search-toggle",
-                                value="1",
-                                style="margin:0;",
-                            ),
-                            Span(
-                                " Deep search",
-                                style="font-size:0.78rem;color:var(--fg-muted,#aaa);",
-                            ),
-                            cls="oh-tip",
-                            data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
-                            style="display:inline-flex;align-items:center;gap:3px;margin-left:0.75rem;cursor:pointer;user-select:none;",
                         ),
                         cls="oh-search-options",
                     ),

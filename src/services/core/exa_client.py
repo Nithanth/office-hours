@@ -1104,13 +1104,30 @@ class ExaClient:
             logger.debug("canonical_pool_expand_failed", err=str(exc))
             return papers
 
-        additions = [
-            p
-            for p in canonical
-            if not any(
-                _url_utils.url_equivalent(str(p.url), str(q.url)) for q in papers
+        additions: list[Paper] = []
+        for cand in canonical:
+            match = next(
+                (
+                    q
+                    for q in papers
+                    if _url_utils.url_equivalent(str(cand.url), str(q.url))
+                ),
+                None,
             )
-        ][: self._CANONICAL_POOL_LIMIT]
+            if match is not None:
+                # Already in Exa's pool but possibly ranked low — a top-cited
+                # hit for this exact query deserves a semantic floor so its
+                # composite isn't dragged to ~0.5 by rank_signal alone.
+                match.score = max(match.score or 0.0, 0.6)
+            else:
+                additions.append(cand)
+
+        additions = additions[: self._CANONICAL_POOL_LIMIT]
+        for i, p in enumerate(additions):
+            # Merged papers had no Exa rank (score=None → rank_signal ≈ 0 in
+            # the composite, pinning the score near 0.5). They're query-matched
+            # top-cited papers — give them a decaying floor by citation rank.
+            p.score = max(p.score or 0.0, 0.7 - 0.05 * i)
         if additions:
             logger.info(
                 "canonical_pool_expand",
