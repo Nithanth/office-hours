@@ -1084,7 +1084,7 @@ class ExaClient:
         )
         return filtered
 
-    _CANONICAL_POOL_LIMIT = 5
+    _CANONICAL_POOL_LIMIT = 8
 
     def _merge_canonical_papers(self, query: str, papers: list[Paper]) -> list[Paper]:
         """Append top-cited S2 papers for *query* that Exa didn't return.

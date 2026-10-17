@@ -639,6 +639,12 @@ def loading_indicator_component() -> Div:
             id="oh-loading-text",
             style="display:inline-block; margin-left:6px;",
         ),
+        BUTTON(
+            "Cancel",
+            type="button",
+            id="oh-cancel-search",
+            cls="oh-cancel-btn",
+        ),
         id="loading-indicator",
         cls="htmx-indicator",
         style="display:flex; align-items:center; justify-content:center; gap:8px; padding:1rem 0; width:100%;",

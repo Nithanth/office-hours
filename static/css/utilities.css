@@ -188,6 +188,19 @@ html, body { overflow-x: clip; }
   padding: 0 1rem;
 }
 
+/* Cancel button inside the in-flight search indicator. */
+.oh-cancel-btn {
+  font-size: 0.75rem;
+  padding: 3px 12px;
+  margin-left: 10px;
+  border: 1px solid var(--container-border, #888);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted, #888);
+  cursor: pointer;
+}
+.oh-cancel-btn:hover { color: var(--fg, #eee); }
+
 /* Caption under the cluster-viz scatter — explains what the chart means. */
 .cluster-viz-caption {
   font-size: 0.78rem;
