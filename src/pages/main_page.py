@@ -997,6 +997,13 @@ def home_page(page_data: SharedPageData) -> Body:
                                 data_tip="Effort tier — which model each tier runs is pinned in Settings",
                             ),
                             Div(
+                                A(
+                                    "edit model defaults →",
+                                    href="/settings",
+                                    style="font-size:0.72rem;color:var(--fg-muted,#888);text-decoration:none;",
+                                ),
+                            ),
+                            Div(
                                 Span("Detail ", cls="filter-label"),
                                 Select(
                                     Option("S (Concise)", value="S"),
