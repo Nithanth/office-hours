@@ -6,13 +6,13 @@ input, select, textarea, button { font-family: Arial, sans-serif !important; }
 
 /* Number input spinner recolour */
 body.oh-dark input[type="number"] {
-  background:#2a2a2a !important; color:var(--oh-red); border:1px solid #555;
+  background:var(--container-bg) !important; color:var(--fg); border:1px solid var(--container-border);
 }
 body.oh-dark input[type="number"]::-webkit-inner-spin-button,
 body.oh-dark input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: inner-spin-button !important;
 }
-body.oh-dark input[type="number"]:hover { background:#333 !important; }
+body.oh-dark input[type="number"]:hover { background:#232b38 !important; }
 
 /* Ask-LLM strip backgrounds */
 #ask-assistant-form, .ask-llm-subtitle, #ask-result-container { background:transparent !important; }
@@ -22,13 +22,10 @@ form[hx-post='/chat'] { display:block; }
 
 .send-btn { padding:6px 10px; background:#2563eb; color:#fff; border:1px solid #000; border-radius:4px; cursor:pointer; }
 .send-btn:hover { background:#1e40af; }
-body.oh-dark .send-btn { background:#333; color:var(--oh-red); border:1px solid #555; }
-body.oh-dark .send-btn:hover { background:#444; color:var(--oh-red); }
-
 .stop-gen-btn-global { padding:6px 10px; background:transparent; color:var(--oh-red); border:1px solid var(--oh-red); border-radius:4px; cursor:pointer; display:none; }
 
 /* Office Hours spinner */
-body.oh-dark .oh-spinner { border-color:#444; border-top-color:var(--oh-red); }
+body.oh-dark .oh-spinner { border-color:var(--container-border); border-top-color:var(--oh-accent); }
 
 /* Transparent backgrounds for various containers (dark & light) */
 body.oh-dark form,
@@ -45,10 +42,7 @@ body.oh-dark #report-display-area { background:transparent !important; }
 
 /* Checkbox accent in dark mode */
 input.paper-select-checkbox { vertical-align: middle; margin-top:0.1em; width:13px; height:13px; }
-body.oh-dark input.paper-select-checkbox { accent-color:var(--oh-red); }
-@supports not (accent-color: red) {
-  body.oh-dark input.paper-select-checkbox { filter:hue-rotate(330deg) saturate(4); }
-}
+body.oh-dark input.paper-select-checkbox { accent-color:var(--oh-accent); }
 
 /* ------------------------------------------------------------------ */
 /* Choices.js compact styling – make multi-select resemble native select */
@@ -79,26 +73,26 @@ body.oh-dark input.paper-select-checkbox { accent-color:var(--oh-red); }
 
 /* Dark-mode tweaks */
 body.oh-dark .choices__inner {
-  background: #2a2a2a;
-  border-color: #555;
-  color: var(--oh-red);
+  background: var(--container-bg);
+  border-color: var(--container-border);
+  color: var(--fg);
 }
 body.oh-dark .choices__list--dropdown {
-  background: #2a2a2a;
-  border-color: #555;
+  background: var(--container-bg);
+  border-color: var(--container-border);
 }
 
 /* Sources dropdown dark-mode */
 body.oh-dark #sources-dropdown-btn {
-  background: #2a2a2a;
-  color: #eee;
-  border-color: #555;
+  background: var(--container-bg);
+  color: var(--fg);
+  border-color: var(--container-border);
 }
 body.oh-dark #sources-dropdown-menu {
-  background: #2a2a2a;
-  border-color: #555;
-  color: #eee;
+  background: var(--container-bg);
+  border-color: var(--container-border);
+  color: var(--fg);
 }
 body.oh-dark #sources-dropdown-menu label:hover {
-  background: #333;
+  background: #232b38;
 }

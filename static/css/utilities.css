@@ -88,14 +88,14 @@ nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
 body.oh-dark button { background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352; }
-body.oh-dark button:hover:not(:disabled) { background:#444; }
+body.oh-dark button:hover:not(:disabled) { background:#2b3546; }
 
 /* Inputs / text areas to match dark grey */
 body.oh-dark input, body.oh-dark textarea, body.oh-dark select {
   background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352;
 }
 body.oh-dark input:hover, body.oh-dark textarea:hover, body.oh-dark select:hover {
-  background:#333;
+  background:#2b3546;
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
@@ -213,13 +213,13 @@ html, body { overflow-x: clip; }
 }
 body.oh-dark .btn-secondary,
 body.oh-dark .oh-search-btn {
-  background: #2a2a2a;
+  background: #232b38;
   color: var(--fg, #eee);
-  border-color: #555;
+  border-color: #3a4352;
 }
 body.oh-dark .btn-secondary:hover:not(:disabled),
 body.oh-dark .oh-search-btn:hover:not(:disabled) {
-  background: #333;
+  background: #2b3546;
   border-color: var(--accent);
   color: var(--accent);
 }

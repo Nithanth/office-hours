@@ -145,7 +145,7 @@ body.oh-dark .top-bar-link.active {
 body.oh-dark .top-bar {
   background: var(--bg-dark);
   color: var(--fg-dark);
-  border-bottom-color: #333;
+  border-bottom-color: var(--container-border);
 }
 body.oh-dark .top-bar a { color: var(--fg-dark); }
 body.oh-dark .top-bar a.top-bar-link { color: var(--oh-icon, #60a5fa); }

@@ -1,14 +1,14 @@
 /* variables.css – theme tokens for Office Hours */
 :root {
-  /* brand & layout */
-  --oh-red: #b45309;
+  /* brand & layout — --oh-red is semantic danger (stop/remove/error) */
+  --oh-red: #dc2626;
   /* accent = the same brand/link blue the icons use — no more teal */
   --oh-accent: #2563eb;
   /* icon blue — matches the brand/link blue the whole UI already uses */
   --oh-icon: #2563eb;
   --page-padding: 0.5rem;
 
-  /* light theme colours — warm paper, teal accent (retro-2000s scheme) */
+  /* light theme colours — warm paper, blue accent */
   --bg: #f7f4ec;
   --fg: #26221a;
   --container-bg: #fffdf7;
@@ -38,6 +38,7 @@ body.oh-dark {
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
   --fg-muted: #93a0b4;
+  --oh-red: #f87171;
   /* override pinned border */
   --main-paper-border: #60a5fa;
   --oh-accent: #60a5fa;

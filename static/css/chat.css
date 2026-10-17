@@ -42,7 +42,7 @@
 }
 
 body.oh-dark .assistant-message li::marker {
-  color: var(--oh-red);
+  color: var(--fg);
 }
 
 /* Soften blink – caret stays semi-visible instead of disappearing */
@@ -82,17 +82,17 @@ body.oh-dark .assistant-message li::marker {
 
 .assistant-message.interrupted::after { content:""; }
 
-body.oh-dark .assistant-message { color: var(--oh-red); }
-body.oh-dark .user-message { background:#333; }
+body.oh-dark .assistant-message { color: var(--fg); }
+body.oh-dark .user-message { background:#232b38; }
 body.oh-dark .user-message,
-body.oh-dark .user-message * { color: var(--oh-red) !important; }
+body.oh-dark .user-message * { color: var(--fg) !important; }
 
 /* Citation results list hover card border */
 .citation-card {
   border: 1px solid #e5e7eb;
 }
 body.oh-dark .citation-card {
-  border-color: #333;
+  border-color: var(--container-border);
 }
 
 /* Restore-toast banner (appears when transcript restored) */
@@ -105,9 +105,9 @@ body.oh-dark .citation-card {
   margin-bottom: 0.75rem;
 }
 body.oh-dark .restore-toast {
-  background-color: #333;
-  border-color: #555;
-  color: var(--oh-red);
+  background-color: #232b38;
+  border-color: var(--container-border);
+  color: var(--fg);
 }
 
 /* Dark form controls within chat modals */
@@ -116,30 +116,30 @@ body.oh-dark input[type="date"],
 body.oh-dark input[type="search"],
 body.oh-dark textarea,
 body.oh-dark select {
-  background:#2a2a2a !important;
-  color:var(--oh-red) !important;
-  border:1px solid #555 !important;
+  background:var(--container-bg) !important;
+  color:var(--fg) !important;
+  border:1px solid var(--container-border) !important;
 }
-body.oh-dark select option { background:#2a2a2a; color:var(--oh-red); }
-body.oh-dark textarea::placeholder { color:#7f7f7f; }
+body.oh-dark select option { background:var(--container-bg); color:var(--fg); }
+body.oh-dark textarea::placeholder { color:var(--fg-muted); }
 body.oh-dark textarea:focus,
-body.oh-dark textarea:active { background:#2a2a2a !important; color:var(--oh-red); border:1px solid #555; outline:none; }
+body.oh-dark textarea:active { background:var(--container-bg) !important; color:var(--fg); border:1px solid var(--container-border); outline:none; }
 
 body.oh-dark input:-webkit-autofill,
 body.oh-dark textarea:-webkit-autofill,
 body.oh-dark select:-webkit-autofill {
-  background:#2a2a2a !important;
-  -webkit-box-shadow:0 0 0px 1000px #2a2a2a inset !important;
-  -webkit-text-fill-color:var(--oh-red) !important;
-  color:var(--oh-red) !important;
-  border:1px solid #555 !important;
+  background:var(--container-bg) !important;
+  -webkit-box-shadow:0 0 0px 1000px var(--container-bg) inset !important;
+  -webkit-text-fill-color:var(--fg) !important;
+  color:var(--fg) !important;
+  border:1px solid var(--container-border) !important;
 }
 body.oh-dark input:-moz-autofill,
 body.oh-dark textarea:-moz-autofill,
 body.oh-dark select:-moz-autofill {
-  background:#2a2a2a !important;
-  color:var(--oh-red) !important;
-  border:1px solid #555 !important;
+  background:var(--container-bg) !important;
+  color:var(--fg) !important;
+  border:1px solid var(--container-border) !important;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -175,7 +175,7 @@ h2.chat-modal-title {
   padding: 0.5rem 0;
 }
 body.oh-dark .modal-content:has(.chat-log-container) .chat-log-container {
-  border-color: #333;
+  border-color: var(--container-border);
 }
 
 .modal-content:has(.chat-log-container) form {
@@ -196,7 +196,7 @@ body.oh-dark .modal-content:has(.chat-log-container) .chat-log-container {
   letter-spacing: 0.5px;
 }
 .chat-empty-hint p { margin: 0; }
-body.oh-dark .chat-empty-hint { color: #444; }
+body.oh-dark .chat-empty-hint { color: var(--fg-muted); }
 
 /* Chat input area */
 .chat-input-row {
@@ -239,7 +239,7 @@ body.oh-dark .chat-empty-hint { color: #444; }
   color: #888;
 }
 .sources-toggle input { margin: 0; width: 13px; height: 13px; }
-body.oh-dark .sources-toggle { color: #666; }
+body.oh-dark .sources-toggle { color: var(--fg-muted); }
 
 /* Hide legacy stop button */
 .stop-btn { display: none !important; }
@@ -258,8 +258,8 @@ body.oh-dark .sources-toggle { color: #666; }
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid var(--oh-border, #555);
-  background: var(--container-bg, #2a2a2a);
+  border: 1px solid var(--oh-border, var(--container-border));
+  background: var(--container-bg, var(--container-bg));
   color: var(--fg, #ccc);
   cursor: pointer;
   opacity: 0;

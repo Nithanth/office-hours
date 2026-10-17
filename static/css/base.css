@@ -62,7 +62,7 @@ footer {
 }
 
 body.oh-dark .pinned-label{
-  color:var(--oh-red); /* dark mode: red */
+  color:var(--oh-accent); /* dark mode: same blue */
 }
 
 /* dark-mode tweaks handled via CSS vars above */
