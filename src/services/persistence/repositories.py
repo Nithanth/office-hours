@@ -1248,3 +1248,58 @@ async def claim_anonymous_session(
 
     await session.commit()
     return stats
+
+
+async def home_stats(session: AsyncSession, *, owner_id: str) -> dict[str, int]:
+    """Counts for the home research surface: saved papers by status,
+    topics, reports."""
+    saved_rows = await session.execute(
+        select(SavedPaper.status, func.count())
+        .where(SavedPaper.owner_id == owner_id)
+        .group_by(SavedPaper.status)
+    )
+    by_status: dict[str, int] = {
+        str(status): cast(int, n) for status, n in saved_rows.all()
+    }
+    topics_n = (
+        await session.scalar(
+            select(func.count())
+            .select_from(Topic)
+            .where(Topic.owner_id == owner_id, Topic.archived.is_(False))
+        )
+        or 0
+    )
+    reports_n = (
+        await session.scalar(
+            select(func.count()).select_from(Report).where(Report.user_id == owner_id)
+        )
+        or 0
+    )
+    return {
+        "saved": sum(by_status.values()),
+        "to_read": by_status.get("to_read", 0),
+        "reading": by_status.get("reading", 0),
+        "done": by_status.get("done", 0),
+        "topics": int(topics_n),
+        "reports": int(reports_n),
+    }
+
+
+async def feed_new_counts(
+    session: AsyncSession, *, topic_ids: list[str], days: int = 7
+) -> dict[str, int]:
+    """topic_id -> count of feed-sourced papers added in the last ``days``."""
+    if not topic_ids:
+        return {}
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    rows = await session.execute(
+        select(TopicPaper.topic_id, func.count())
+        .where(
+            TopicPaper.topic_id.in_(topic_ids),
+            TopicPaper.source == "feed",
+            TopicPaper.removed_at.is_(None),
+            TopicPaper.added_at >= cutoff,
+        )
+        .group_by(TopicPaper.topic_id)
+    )
+    return {str(tid): cast(int, n) for tid, n in rows.all()}

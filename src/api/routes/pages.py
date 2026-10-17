@@ -83,20 +83,120 @@ async def get_home(
                     )
                     page_data.search_results = []
 
-    # Recent topics for the "Your topics" strip on the landing view
+    # Recent topics for the "Your topics" strip + research-surface counts
     if database_available():
         try:
             owner = prefs_owner_id(request)
             if owner:
+                from services.persistence.repositories import (
+                    feed_new_counts,
+                    home_stats,
+                )
+
                 async with session_scope() as session:
                     page_data.recent_topics = await list_topics(
                         session, owner_id=owner, limit=6
+                    )
+                    page_data.home_stats = await home_stats(session, owner_id=owner)
+                    page_data.topic_new_counts = await feed_new_counts(
+                        session,
+                        topic_ids=[t.id for t in page_data.recent_topics],
                     )
         except Exception as exc:  # noqa: BLE001 - strip is best-effort
             logger.warning("home_topics_strip_failed", error=str(exc))
 
     # Prepend a standards-mode doctype to avoid browser Quirks Mode.
     return HTMLResponse(f"<!DOCTYPE html>{str(home_page(page_data=page_data))}")
+
+
+# In-process TTL cache for the for-you row — recommendation calls (Exa
+# find_similar) shouldn't fire on every home render.
+_foryou_cache: dict[str, tuple[float, dict]] = {}
+
+
+@router.get("/api/home/for-you")
+async def home_for_you(request: Request) -> HTMLResponse:
+    """Lazy-loaded 'for you' recommendations: similar papers to recent saves
+    + authors that recur across the library. Rendered as chips."""
+    import time
+    from html import escape as _esc
+
+    owner = prefs_owner_id(request)
+    empty = HTMLResponse("<span class='oh-foryou-empty'></span>")
+    if not owner or not database_available():
+        return empty
+
+    cached = _foryou_cache.get(owner)
+    if cached and time.monotonic() - cached[0] < 3600:
+        return HTMLResponse(cached[1]["html"])
+
+    from services.persistence.repositories import (
+        list_saved_paper_ids,
+        list_saved_papers,
+    )
+
+    papers_html: list[str] = []
+    authors_html: list[str] = []
+    async with session_scope() as session:
+        saved = await list_saved_papers(session, owner_id=owner)
+        saved_ids = await list_saved_paper_ids(session, owner_id=owner)
+
+    # Authors: rank by how many saved papers carry them — recurring names
+    # are the people whose work keeps resonating.
+    counts: dict[str, int] = {}
+    for p in saved:
+        names = (p.authors or {}).get("list") or []
+        for n in names:
+            n = n.strip()
+            if n:
+                counts[n] = counts.get(n, 0) + 1
+    top_authors = sorted(counts.items(), key=lambda kv: -kv[1])[:3]
+    for name, n in top_authors:
+        if n < 2:
+            continue  # one-off authors aren't a signal
+        authors_html.append(
+            f'<a class="oh-foryou-chip" href="/?search_query={_esc(name)}"'
+            f' title="Author on {n} of your saved papers — click to search">'
+            f"{_esc(name)} ×{n}</a>"
+        )
+
+    # Papers: Exa find_similar seeded by the 2 most recent saves with URLs.
+    exa = get_exa_client()
+    if exa is not None:
+        for seed in [p for p in saved if p.url][:2]:
+            try:
+                sims = await asyncio.to_thread(exa.find_similar_papers, seed.url, 5)
+            except Exception:
+                continue
+            for pap in sims:
+                key = pap.url or pap.paper_id
+                if not key or key in saved_ids or pap.paper_id in saved_ids:
+                    continue
+                title = (pap.title or pap.url or "").strip()
+                if not title:
+                    continue
+                papers_html.append(
+                    f'<a class="oh-foryou-chip oh-foryou-paper" href="{_esc(pap.url)}"'
+                    f' target="_blank" rel="noopener" title="Similar to one of your saves">'
+                    f"{_esc(title[:90])}</a>"
+                )
+                if len(papers_html) >= 4:
+                    break
+            if len(papers_html) >= 4:
+                break
+
+    body = ""
+    if authors_html:
+        body += '<span class="oh-foryou-label">Authors to watch</span> ' + " ".join(
+            authors_html
+        )
+    if papers_html:
+        body += ' <span class="oh-foryou-label">Papers you may like</span> ' + " ".join(
+            papers_html
+        )
+    html = f'<div class="oh-foryou-inner">{body}</div>' if body else ""
+    _foryou_cache[owner] = (time.monotonic(), {"html": html})
+    return HTMLResponse(html)
 
 
 @router.post("/show-report-config", response_class=HTMLResponse)

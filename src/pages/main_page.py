@@ -54,6 +54,8 @@ class SharedPageData(BaseModel):
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
     recent_topics: Optional[list] = None  # Topic rows for the home strip
+    home_stats: Optional[dict] = None  # research-surface counts (saved/topics/reports)
+    topic_new_counts: Optional[dict] = None  # topic_id -> feed-added papers this week
 
 
 # --- UI Components ---
@@ -761,6 +763,50 @@ def render_chat_message(message: str, role: str) -> Div:
 
 
 def home_page(page_data: SharedPageData) -> Body:
+    # Research surface — only when the owner has anything to surface.
+    surface = None
+    stats = page_data.home_stats or {}
+    if page_data.recent_topics or stats.get("saved"):
+        stat_bits = []
+        if stats.get("saved"):
+            stat_bits.append(f"{stats['saved']} saved")
+        if stats.get("done"):
+            stat_bits.append(f"{stats['done']} read")
+        if stats.get("to_read"):
+            stat_bits.append(f"{stats['to_read']} to read")
+        if stats.get("topics"):
+            stat_bits.append(f"{stats['topics']} topics")
+        if stats.get("reports"):
+            stat_bits.append(f"{stats['reports']} reports")
+        surface_children = [
+            Div("Your research", cls="oh-surface-title"),
+            Div(" · ".join(stat_bits), cls="oh-surface-stats"),
+        ]
+        top = page_data.recent_topics[0] if page_data.recent_topics else None
+        if top is not None:
+            new_n = (page_data.topic_new_counts or {}).get(top.id, 0)
+            badge = (
+                Span(f" +{new_n} this week", cls="oh-surface-badge") if new_n else ""
+            )
+            surface_children.append(
+                Div(
+                    Span("Continue: ", cls="oh-surface-cont-label"),
+                    A(top.title, href=f"/topics/{top.id}", cls="oh-surface-cont-link"),
+                    badge,
+                    cls="oh-surface-continue",
+                )
+            )
+        surface_children.append(
+            Div(
+                id="oh-for-you",
+                cls="oh-surface-foryou",
+                hx_get="/api/home/for-you",
+                hx_trigger="load",
+                hx_swap="innerHTML",
+            )
+        )
+        surface = Div(*surface_children, cls="oh-surface")
+
     # "Your topics" strip — quick links back into existing workspaces.
     topics_strip = None
     if page_data.recent_topics:
@@ -1079,6 +1125,8 @@ def home_page(page_data: SharedPageData) -> Body:
                     id="paper-search-form",
                     style="background:inherit;padding:0.5rem 0;",
                 ),
+                # Research surface — stats + continue + for-you (owners with data)
+                surface,
                 # "Your topics" quick-link strip (only when the owner has any)
                 topics_strip,
                 # Centered search spinner (outside search form so it spans the card)
