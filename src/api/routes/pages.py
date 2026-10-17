@@ -169,15 +169,16 @@ async def home_for_you(request: Request) -> HTMLResponse:
                 except Exception:
                     continue
                 for pap in sims:
-                    key = pap.url or pap.id
-                    if not key or key in saved_ids or pap.id in saved_ids:
+                    pap_url = str(pap.url) if pap.url else ""
+                    pap_id = str(pap.id) if pap.id else ""
+                    if not pap_url or pap_url in saved_ids or pap_id in saved_ids:
                         continue
-                    title = (pap.title or pap.url or "").strip()
+                    title = (str(pap.title) if pap.title else pap_url).strip()
                     if not title:
                         continue
                     papers_html.append(
                         '<a class="oh-foryou-chip oh-foryou-paper"'
-                        f' href="{_esc(pap.url)}" target="_blank" rel="noopener"'
+                        f' href="{_esc(pap_url)}" target="_blank" rel="noopener"'
                         ' title="Similar to one of your saves">'
                         f"{_esc(title[:90])}</a>"
                     )
