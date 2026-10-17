@@ -88,7 +88,7 @@ async def get_home(
         try:
             owner = prefs_owner_id(request)
             if owner:
-                async with session_scope() as session:
+                async for session in session_scope():
                     page_data.recent_topics = await list_topics(
                         session, owner_id=owner, limit=6
                     )
