@@ -148,6 +148,8 @@ def settings_page(
             Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
             Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
             Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/modal.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/chat.css")),
             Link(
                 rel="stylesheet",
                 href=static_url("/static/vendor/fontawesome/css/all.min.css"),

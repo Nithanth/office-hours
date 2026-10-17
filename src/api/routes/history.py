@@ -46,7 +46,7 @@ def _history_shell(items_html: str) -> str:
             "My Reports",
             lib_subtabs_html("reports")
             + f"""<div class="lib-header">
-      <h1>My Reports</h1>
+      <h1>My reports</h1>
     </div>
     {items_html}""",
             active="library",

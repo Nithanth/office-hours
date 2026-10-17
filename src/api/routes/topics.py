@@ -146,7 +146,7 @@ async def topics_page(request: Request) -> HTMLResponse:
     return HTMLResponse(
         _shell(
             "Topics",
-            f'<div class="lib-header"><h1>My Topics</h1></div>{items}',
+            f'<div class="lib-header"><h1>My topics</h1></div>{items}',
         )
     )
 
