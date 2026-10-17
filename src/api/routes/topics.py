@@ -227,13 +227,13 @@ def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> st
 
 
 def _facets_section(topic: Topic, facets: list[Any]) -> str:
-    """The topic's search angles — each facet is polled by the feed."""
+    """The topic's tracked queries — each one is polled by the feed."""
     items = []
     for f in facets:
         remove_btn = ""
         if len(facets) > 1:
             remove_btn = (
-                f'<button type="button" class="facet-remove" title="Stop tracking this angle" '
+                f'<button type="button" class="facet-remove" title="Stop tracking this query" '
                 f'hx-post="/topics/{_esc(topic.id)}/facets/{_esc(f.id)}/remove" '
                 'hx-target="#facets-section" hx-swap="outerHTML">&times;</button>'
             )
@@ -242,15 +242,16 @@ def _facets_section(topic: Topic, facets: list[Any]) -> str:
             f'<span class="facet-kind">{_esc(f.kind)}</span> {_esc(f.query[:80])}{remove_btn}</span>'
         )
     return f"""<div id="facets-section">
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Search angles</h2>
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Tracked queries</h2>
+<div class="topic-meta" style="margin-bottom:8px;">New papers matching any of these automatically join this topic's set.</div>
 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
 {''.join(items)}
 </div>
 <form hx-post="/topics/{_esc(topic.id)}/facets" hx-target="#facets-section" hx-swap="outerHTML"
       style="display:flex;gap:8px;align-items:center;">
-  <input type="text" name="query" placeholder="Add an angle — another term, a paper link, an author…"
+  <input type="text" name="query" placeholder="Track another term, paper link, or author…"
          style="flex:1;min-width:200px;padding:5px 10px;font-size:0.85rem;border:1px solid var(--container-border,#ccc);border-radius:6px;background:var(--container-bg,#fff);color:var(--fg,#222);"/>
-  <button type="submit" class="btn-secondary" style="font-size:0.8rem;">Add angle</button>
+  <button type="submit" class="btn-secondary" style="font-size:0.8rem;">Add query</button>
 </form>
 <div id="facet-status" class="topic-meta"></div>
 </div>"""
@@ -278,7 +279,7 @@ def _related_topics_section(topic: Topic, siblings: list[Topic]) -> str:
             f"<a href='/topics/{_esc(t.id)}'>{_esc(t.title)}</a>"
             f"<button type='button' class='btn-secondary' style='font-size:0.7rem;padding:2px 8px;' "
             f"hx-post='/api/topics/{_esc(t.id)}/merge' hx-vals='{{\"into_id\": \"{_esc(topic.id)}\"}}' "
-            f"hx-confirm='Merge &quot;{_esc(t.title)}&quot; into this topic? Its papers, angles, and reports move here; the old topic is archived.' "
+            f"hx-confirm='Merge &quot;{_esc(t.title)}&quot; into this topic? Its papers, tracked queries, and reports move here; the old topic is archived.' "
             f"hx-swap='none'>merge into this topic</button></div>"
         )
     return (
@@ -316,7 +317,7 @@ _STOP_WORDS = {
 async def add_facet(
     topic_id: str, request: Request, query: str = Form(...)
 ) -> HTMLResponse:
-    """Add a search angle to a topic and immediately harvest its papers."""
+    """Add a tracked query to a topic and immediately harvest its papers."""
     owner = _owner_id(request)
     if not database_available():
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -354,7 +355,7 @@ async def add_facet(
 
     status = (
         f"<div class='topic-meta' style='margin-top:6px;'>"
-        f"{'Added — ' + str(added) + ' papers pulled in.' if created else 'Already tracking that angle.'}</div>"
+        f"{'Added — ' + str(added) + ' papers pulled in.' if created else 'Already tracking that query.'}</div>"
     )
     return HTMLResponse(_facets_section(topic, facets) + status)
 
@@ -383,7 +384,7 @@ async def remove_facet(topic_id: str, facet_id: str, request: Request) -> HTMLRe
     msg = (
         ""
         if removed
-        else "<div class='topic-meta'>A topic needs at least one angle.</div>"
+        else "<div class='topic-meta'>A topic needs at least one tracked query.</div>"
     )
     return HTMLResponse(_facets_section(topic, facets) + msg)
 
@@ -470,10 +471,9 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 
     body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
-  <a class="btn-secondary" href="/" style="text-decoration:none;">+ New report</a>
-  <button type="button" class="btn-secondary" title="Re-render the report against this topic's current papers"
+  <button type="button" class="btn-secondary" title="Write a fresh report version from this topic's current papers"
     hx-post="/topics/{_esc(topic.id)}/report" hx-target="#topic-report-out"
-    hx-swap="innerHTML" hx-disabled-elt="this">Refresh report</button>
+    hx-swap="innerHTML" hx-disabled-elt="this">Update report</button>
   <button type="button" class="btn-secondary"
     hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
     hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
@@ -486,11 +486,12 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <div id="modal-container"></div>
 {facets_html}
 {related_html}
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Reports</h2>
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Report versions</h2>
+<div class="topic-meta" style="margin-bottom:8px;">Each update snapshots the topic's papers at that moment — older versions are kept.</div>
 {reports_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers (<span id="papers-count">{len(papers)}</span>)
   <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
-    hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML">Check for new</button>
+    hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML" title="Poll the tracked queries for newly published papers">Check for new</button>
 </h2>
 <div id="feed-status" class="topic-meta"></div>
 <div id="topic-papers">{papers_html}</div>
