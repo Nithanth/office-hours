@@ -148,10 +148,13 @@ def settings_page(
             Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
             Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
             Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/modal.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/chat.css")),
             Link(
                 rel="stylesheet",
                 href=static_url("/static/vendor/fontawesome/css/all.min.css"),
             ),
+            Script(src="https://unpkg.com/htmx.org@1.9.12"),
             Script(src=static_url("/static/js/settings.js")),
         ),
         top_bar("settings"),
@@ -234,4 +237,6 @@ def settings_page(
             ),
             style="max-width:900px;margin:2rem auto;padding:0 1rem 60px 1rem;",
         ),
+        # target for the toolbar assistant's chat modal
+        Div(id="modal-container"),
     )

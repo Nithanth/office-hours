@@ -99,6 +99,10 @@ def top_bar_html(active: str = "", extra_html: str = "") -> str:
     <div style="flex:1"></div>
     {extra_html}
     {nav_links_html(active)}
+    <button class="oh-assistant-btn oh-tip oh-tip-below" type="button" aria-label="Research Assistant"
+      data-tip="Assistant — ask questions across your papers & reports"
+      hx-get="/chat-modal?paper_id=global&title=Research%20Assistant"
+      hx-target="#modal-container" hx-swap="innerHTML"><i class="fa-solid fa-comment-dots"></i></button>
     <span id="oh-auth-status" class="top-auth-status"></span>
     <button id="oh-dark-toggle" class="oh-theme-toggle" type="button" aria-label="Toggle dark mode"><i class="fa-solid fa-moon"></i></button>
   </div>"""
@@ -167,6 +171,16 @@ def top_bar(active: str = "", *extra_controls: Any) -> Div:
         Div("", style="flex:1"),
         *extra_controls,
         *nav_links(active),
+        Button(
+            I(cls="fa-solid fa-comment-dots"),
+            cls="oh-assistant-btn oh-tip oh-tip-below",
+            type="button",
+            aria_label="Research Assistant",
+            data_tip="Assistant — ask questions across your papers & reports",
+            hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
+            hx_target="#modal-container",
+            hx_swap="innerHTML",
+        ),
         Span(id="oh-auth-status", cls="top-auth-status"),
         Button(
             I(cls="fa-solid fa-moon"),

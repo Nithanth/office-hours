@@ -626,7 +626,7 @@ def _library_shell(content_html: str) -> str:
     import "{static_url('/static/js/chat/events.js')}";
     import "{static_url('/static/js/chat/snippet.js')}";
   </script>""",
-            wrap_class="lib-wrap",
+            wrap_class="page-wrap",
         )
     )
 
@@ -715,7 +715,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             'data-tip="Re-push every saved paper to your Notion databases — sync already runs automatically when you save papers or change a status; use this only if Notion drifted">'
             "Re-sync library</button>"
             '<button id="lib-notion-answer-btn" class="oh-tip" type="button" '
-            'data-tip="Scan your synced Notion paper pages for unanswered comments and reply to them with the agent">'
+            'data-tip="Reads unanswered comments on your synced Notion paper pages, then posts the assistant&apos;s replies back into those comment threads in Notion">'
             "Answer Notion comments</button>"
         )
         notion_card = ""
@@ -758,7 +758,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         )
 
     content = f"""<div class="lib-header">
-      <h1>Saved papers</h1>
+      <h1>My saved papers</h1>
       {sync_btn}
     </div>
     {notion_card}

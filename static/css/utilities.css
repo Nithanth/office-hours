@@ -173,7 +173,13 @@ html, body { overflow-x: hidden; }
    Shared page chrome — wraps + empty-state cards on every app page
    ================================================================ */
 
+/* width:100% + border-box: body is `display:flex;flex-direction:column`,
+   so a bare `margin:auto` flex item shrink-wraps to its content — empty
+   pages rendered a narrower column than full ones. Forcing the width
+   makes every page the same min(viewport, 900px) box. */
 .page-wrap {
+  width: 100%;
+  box-sizing: border-box;
   max-width: 900px;
   margin: 2rem auto;
   padding: 0 1rem;
@@ -189,12 +195,19 @@ html, body { overflow-x: hidden; }
 }
 .empty-state-card strong { color: var(--fg); display: block; margin-bottom: 0.4rem; }
 .empty-state-card a { color: var(--oh-accent); }
-.report-wrap { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+.report-wrap {
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
 
 /* ================================================================
    Library page — .lib-* components (header, tabs, notion card, items)
    ================================================================ */
 
+/* legacy alias — the three Library sub-tab pages all use .page-wrap now */
 .lib-wrap {
   max-width: 900px;
   margin: 2rem auto;
