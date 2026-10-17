@@ -235,7 +235,10 @@
 
       const isPlaceholder = v => !v || /^\s*$/.test(v) || v.startsWith('Select ');
 
-      const sizeVal = form.querySelector('#summary_size_select')?.value || '';
+      // Report length now lives in the (sticky) top bar — outside the
+      // form — so query document, not the form. The submit's hx_include
+      // posts its value via the hidden #size-select selector.
+      const sizeVal = document.querySelector('#size-select')?.value || '';
 
       const papersCount = paperSources.length;
 
