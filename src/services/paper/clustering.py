@@ -102,14 +102,24 @@ def _generate_cluster_labels(
         feature_names = vectorizer.get_feature_names_out()
 
         labels: dict[int, str] = {}
+        # Terms already used by an earlier cluster's label — clusters whose
+        # top TF-IDF terms overlap read identically ("Neural/Implicit" vs
+        # "Implicit/Neural"); skip repeats so labels stay distinctive.
+        used_terms: set[str] = set()
         for idx, cid in enumerate(cluster_ids):
             row = tfidf_matrix[idx].toarray().flatten()
-            # Top 2-3 terms
-            top_indices = row.argsort()[-3:][::-1]
-            top_terms = [feature_names[i] for i in top_indices if row[i] > 0]
-            label = (
-                " / ".join(top_terms[:2]).title() if top_terms else f"Group {cid + 1}"
-            )
+            top_terms: list[str] = []
+            for i in row.argsort()[::-1]:
+                if row[i] <= 0:
+                    break
+                term = feature_names[i]
+                if term in used_terms:
+                    continue
+                top_terms.append(term)
+                used_terms.add(term)
+                if len(top_terms) == 2:
+                    break
+            label = " / ".join(top_terms).title() if top_terms else f"Group {cid + 1}"
             labels[cid] = label
         return labels
     except Exception as exc:

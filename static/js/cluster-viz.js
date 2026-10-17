@@ -135,6 +135,16 @@
 
     window.Plotly.newPlot(container, traces, layout, config);
 
+    // Explainer caption — without it the scatter reads as decoration.
+    // Removed automatically when the chart re-renders or hides.
+    const caption = document.createElement("div");
+    caption.className = "cluster-viz-caption";
+    caption.textContent =
+      "Each dot is one of your saved papers — papers about similar topics sit " +
+      "close together. Bigger dots = more citations. Click a dot to jump to " +
+      "the paper in the list.";
+    container.appendChild(caption);
+
     // Click handler: scroll to paper in the list
     container.on("plotly_click", function (eventData) {
       if (!eventData.points || !eventData.points.length) return;
