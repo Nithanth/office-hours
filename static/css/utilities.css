@@ -188,6 +188,42 @@ html, body { overflow-x: clip; }
   padding: 0 1rem;
 }
 
+/* Shared button chrome — the app's standard secondary-button look.
+   .btn-secondary is used across ~12 templates but previously had no CSS
+   rule, so those buttons rendered as browser defaults (light) / the
+   generic dark palette (dark). One consistent style for both. */
+.btn-secondary,
+.oh-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border: 1px solid var(--container-border, #888);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg, #222);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn-secondary:hover:not(:disabled),
+.oh-search-btn:hover:not(:disabled) {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+body.oh-dark .btn-secondary,
+body.oh-dark .oh-search-btn {
+  background: #2a2a2a;
+  color: var(--fg, #eee);
+  border-color: #555;
+}
+body.oh-dark .btn-secondary:hover:not(:disabled),
+body.oh-dark .oh-search-btn:hover:not(:disabled) {
+  background: #333;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Cancel button inside the in-flight search indicator. */
 .oh-cancel-btn {
   font-size: 0.75rem;
