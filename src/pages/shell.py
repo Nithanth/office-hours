@@ -49,7 +49,12 @@ LIB_SUBTABS: list[tuple[str, str, str, str]] = [
 
 
 def lib_subtabs_html(active: str) -> str:
-    """Sub-tab strip for the Library hub pages."""
+    """Sub-tab strip for the Library hub pages, with a one-line role note."""
+    desc = {
+        "papers": "Your saved reading list — papers you bookmarked to read.",
+        "topics": "Research projects that keep collecting papers over time.",
+        "reports": "Write-ups snapshotted from a topic's paper set.",
+    }
     parts = []
     for label, href, key, tip in LIB_SUBTABS:
         cls = "lib-subtab oh-tip" + (" active" if key == active else "")
@@ -57,7 +62,13 @@ def lib_subtabs_html(active: str) -> str:
             f'<a href="{href}" class="{cls}" data-tip="{html.escape(tip, quote=True)}">'
             f"{html.escape(label)}</a>"
         )
-    return '<div class="lib-subtabs">' + "".join(parts) + "</div>"
+    strip = '<div class="lib-subtabs">' + "".join(parts) + "</div>"
+    note = (
+        f'<div class="subtab-desc">{html.escape(desc.get(active, ""))}</div>'
+        if desc.get(active)
+        else ""
+    )
+    return strip + note
 
 
 # Pinned client deps — every page loads the same versions.
