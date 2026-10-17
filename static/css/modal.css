@@ -27,8 +27,8 @@ body.oh-dark .modal {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 body.oh-dark .modal-content {
-  background: #2a2a2a;
-  border: 1px solid #444;
+  background: var(--container-bg);
+  border: 1px solid var(--container-border);
 }
 
 /* PDF viewer modal: large but leaves breathing room so bottom controls remain visible */
@@ -58,7 +58,7 @@ body.oh-dark .modal-content {
   cursor: pointer;
   line-height: 1;
 }
-body.oh-dark .modal-close-btn { color: var(--oh-red); }
+body.oh-dark .modal-close-btn { color: var(--fg-muted); }
 
 /* -------------------- PDF Viewer Layout -------------------- */
 /* grid fills remaining vertical space flexibly so textarea remains visible */

@@ -81,25 +81,25 @@ body.oh-dark .ask-assistant-btn:hover {
 
 /* --- Link colour normalisation ----------------------------------------- */
 a, a:visited { color:#2563eb; }
-body.oh-dark a, body.oh-dark a:visited { color:var(--oh-red); }
+body.oh-dark a, body.oh-dark a:visited { color:#8ab4f8; }
 
 /* Preserve white nav links */
 nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
-body.oh-dark button { background:#333; color:var(--oh-red); border:1px solid #555; }
-body.oh-dark button:hover:not(:disabled) { background:#444; }
+body.oh-dark button { background:#2b3546; color:var(--fg,#dbe4f0); border:1px solid #41506b; }
+body.oh-dark button:hover:not(:disabled) { background:#36435c; }
 
 /* Inputs / text areas to match dark grey */
 body.oh-dark input, body.oh-dark textarea, body.oh-dark select {
-  background:#2a2a2a; color:var(--oh-red); border:1px solid #555;
+  background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352;
 }
 body.oh-dark input:hover, body.oh-dark textarea:hover, body.oh-dark select:hover {
-  background:#333;
+  background:#2b3546;
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
-body.oh-dark .text-blue-500 { color: var(--oh-red); }
+body.oh-dark .text-blue-500 { color: #8ab4f8; }
 
 /* Ensure mobile no-horizontal-scroll.
    clip (not hidden): any non-visible overflow value on html/body creates a
@@ -186,6 +186,43 @@ html, body { overflow-x: clip; }
   max-width: 900px;
   margin: 2rem auto;
   padding: 0 1rem;
+}
+
+/* Shared button chrome — the app's standard secondary-button look.
+   .btn-secondary is used across ~12 templates but previously had no CSS
+   rule, so those buttons rendered as browser defaults (light) / the
+   generic dark palette (dark). One consistent style for both. */
+.btn-secondary,
+.oh-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border: 1px solid var(--container-border, #888);
+  border-radius: 6px;
+  /* lift off the card/page background — buttons shouldn't blend in */
+  background: #fff;
+  color: var(--fg, #222);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn-secondary:hover:not(:disabled),
+.oh-search-btn:hover:not(:disabled) {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+body.oh-dark .btn-secondary,
+body.oh-dark .oh-search-btn {
+  background: #2b3546;
+  color: var(--fg, #eee);
+  border-color: #41506b;
+}
+body.oh-dark .btn-secondary:hover:not(:disabled),
+body.oh-dark .oh-search-btn:hover:not(:disabled) {
+  background: #36435c;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Cancel button inside the in-flight search indicator. */

@@ -536,7 +536,7 @@
                   '<div><strong>' + escapeHtml(name) + '</strong></div>' +
                   '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
                   '<a href="/reports">My Reports</a>' +
-                  '<button type="button" id="logout-btn">Log out</button>' +
+                  '<button type="button" id="logout-btn" class="btn-secondary">Log out</button>' +
                   '</div>';
                 document.getElementById('logout-btn')?.addEventListener('click', () => {
                   fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
@@ -565,12 +565,18 @@
                   (data.database_id ? ' <code>' + escapeHtml(data.database_id) + '</code>' : '') +
                   '</div>' +
                   (data.oauth_connected
-                    ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
-                      '<button type="button" id="notion-refresh-destinations">' +
+                    ? '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
+                      'Papers, topics and reading status sync automatically; comments on synced pages get answered on sync.' +
+                      '</div>' +
+                      '<details style="margin-top:8px;">' +
+                      '<summary style="cursor:pointer;font-size:0.8rem;color:var(--fg-muted,#888);">Manage</summary>' +
+                      '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
+                      '<button type="button" id="notion-refresh-destinations" class="btn-secondary">' +
                       (data.target_type === 'none' ? 'Pick where to sync…' : 'Change sync location…') +
                       '</button>' +
-                      '<button type="button" id="notion-disconnect">Disconnect</button>' +
-                      '</div><div id="notion-destinations" style="margin-top:8px;"></div>'
+                      '<button type="button" id="notion-disconnect" class="btn-secondary">Disconnect</button>' +
+                      '</div><div id="notion-destinations" style="margin-top:8px;"></div>' +
+                      '</details>'
                     : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
                 if (data.oauth_connected) wireNotionControls(statusEl);
               } else if (data.authenticated === false) {

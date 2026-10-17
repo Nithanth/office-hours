@@ -9,7 +9,7 @@ body.oh-dark footer { border-top:1px solid rgba(255,255,255,0.227) !important; c
 .copy-icon-btn { background-color:transparent!important; border:none!important; outline:none!important; appearance:none!important; cursor:pointer; font-size:1.15rem; color:#1d4ed8; /* blue-700 */ }
 .copy-icon-btn:hover { opacity:0.8; }
 .copy-icon-btn.copied { color:#16a34a !important; }
-body.oh-dark .copy-icon-btn { color:var(--oh-red); }
+body.oh-dark .copy-icon-btn { color:var(--oh-accent); }
 body.oh-dark .copy-icon-btn.copied { color:#16a34a !important; }
 
 #report-content { display:flex; flex-direction:column; }
@@ -32,14 +32,14 @@ body.oh-dark .copy-icon-btn.copied { color:#16a34a !important; }
 /* Ensure labels & legends inherit dark-mode colour */
 body.oh-dark .oh-modal label,
 body.oh-dark .oh-modal legend {
-  color: var(--oh-red);
+  color: var(--fg);
 }
 
 /* Pager buttons dark-mode blend */
 body.oh-dark .pager-btn {
   background: var(--container-bg) !important;
   border: 1px solid var(--container-bg) !important;
-  color: var(--oh-red);
+  color: var(--fg);
 }
 body.oh-dark .pager-btn:hover:not(:disabled) {
   opacity: 0.85;
@@ -169,17 +169,17 @@ body.oh-dark .search-card #domain-filter-container {
 }
 
 body.oh-dark .domain-pill {
-  background: #2a2a2a;
-  border-color: #555;
-  color: #ccc;
+  background: var(--container-bg);
+  border-color: var(--container-border);
+  color: var(--fg);
 }
 body.oh-dark .domain-pill:hover {
   border-color: #888;
 }
 body.oh-dark .domain-pill:has(input:checked) {
-  background: var(--oh-red);
+  background: var(--oh-accent);
   color: #fff;
-  border-color: var(--oh-red);
+  border-color: var(--oh-accent);
 }
 
 /* ================================================================
@@ -295,8 +295,8 @@ body.oh-dark .katex {
 body.oh-dark .search-card input,
 body.oh-dark .search-card select,
 body.oh-dark .search-card textarea {
-  border: 1px solid #555;
-  background: #2a2a2a;
+  border: 1px solid var(--container-border);
+  background: var(--container-bg);
   color: #eee;
 }
 
@@ -304,7 +304,7 @@ body.oh-dark .search-card input:focus,
 body.oh-dark .search-card select:focus,
 body.oh-dark .search-card textarea:focus {
   outline: none;
-  border-color: var(--oh-red);
+  border-color: var(--oh-accent);
 }
 
 /* ================================================================
@@ -395,3 +395,4 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 .oh-search-options>summary::before{content:"▸";transition:transform .12s;}
 .oh-search-options[open]>summary::before{transform:rotate(90deg);}
 .oh-search-options>summary::-webkit-details-marker{display:none;}
+.oh-opt-select{font-size:0.8rem;padding:2px 6px;background:var(--container-bg);color:var(--fg);border:1px solid var(--container-border,#aaa);border-radius:4px;}

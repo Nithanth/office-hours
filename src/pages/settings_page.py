@@ -195,7 +195,7 @@ def settings_page(
                 Button(
                     "Save model preferences",
                     type="submit",
-                    style="padding:8px 16px;background:var(--accent,#4a9eff);color:#fff;border:none;border-radius:4px;cursor:pointer;",
+                    cls="btn-secondary",
                 ),
                 method="post",
                 action="/settings/models",

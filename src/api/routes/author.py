@@ -199,7 +199,7 @@ async def author_profile_view(
         f"{a.paper_count:,} papers &middot; {a.citation_count:,} citations &middot; h-index {a.h_index}"
         f"</div>"
         f"</div>"
-        f"<button class='btn-primary' style='font-size:0.85rem;padding:6px 14px;'"
+        f"<button class='btn-secondary'"
         f" hx-post='/author/research-profile'"
         f" hx-target='#author-profile-container'"
         f" hx-swap='innerHTML'"

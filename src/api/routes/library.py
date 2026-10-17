@@ -483,6 +483,28 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             owner_id=str(user_id),
             topic_page_by_report_id=topic_page_by_report,
         )
+
+        # One button, full loop: also answer any unanswered comments on the
+        # synced paper pages — no separate "Answer comments" action.
+        from services.notion.library_sync import answer_comments_for_paper
+
+        comments_answered = 0
+        for row in paper_rows:
+            page_id = (
+                stats["paper_page_ids"].get(row["paper_id"]) or row["notion_page_id"]
+            )
+            if not page_id:
+                continue
+            try:
+                comments_answered += await answer_comments_for_paper(
+                    exporter,
+                    notion_page_id=str(page_id),
+                    paper_id=row["paper_id"],
+                    user_id=str(user_id),
+                    bot_id=integration["bot_id"],
+                )
+            except Exception as exc:
+                stats["errors"].append(f"comments {row['paper_id']}: {exc}"[:200])
     finally:
         await exporter.close()
 
@@ -543,6 +565,7 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
             "topic_bodies_written": ws_stats["bodies_written"],
             "status_pulled": len(stats["status_updates"]),
+            "comments_answered": comments_answered,
             "failed": stats["failed"] + ws_stats["failed"],
             "errors": (stats["errors"] + ws_stats["errors"])[:5],
         }
@@ -669,7 +692,7 @@ def _paper_item(paper: SavedPaper) -> str:
     <span class="lib-status-chip">{status_label}</span></h2>
   <div class="lib-meta">{authors_str}</div>
   <div class="lib-actions">
-    <button hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
+    <button class="btn-secondary" hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
     {open_link}{report_link}
     {_status_options(paper.status, paper.paper_id)}
     <button class="lib-remove-btn" data-paper-id="{pid_attr}">Remove</button>
@@ -712,12 +735,11 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     if notion_connected:
         sync_btn = (
-            '<button id="lib-notion-sync-btn" class="oh-tip" type="button" '
-            'data-tip="Re-push every saved paper to your Notion databases — sync already runs automatically when you save papers or change a status; use this only if Notion drifted">'
-            "Re-sync library</button>"
-            '<button id="lib-notion-answer-btn" class="oh-tip" type="button" '
-            'data-tip="Reads unanswered comments on your synced Notion paper pages, then posts the assistant&apos;s replies back into those comment threads in Notion">'
-            "Answer Notion comments</button>"
+            '<button id="lib-notion-sync-btn" class="btn-secondary oh-tip" type="button" '
+            'data-tip="One shot: re-push every saved paper + topic to Notion and reply to '
+            "unanswered comments on your synced pages. Sync already runs automatically "
+            'when you save or change status — use this only if Notion drifted">'
+            "Sync now</button>"
         )
         notion_card = ""
     elif notion_needs_destination:
@@ -726,7 +748,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
   <strong>Notion connected</strong> — one last step: pick where your library lives.
   <div class="lib-notion-pick">
     <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
-    <button id="lib-notion-set-dest" type="button">Set up sync</button>
+    <button id="lib-notion-set-dest" type="button" class="btn-secondary">Set up sync</button>
   </div>
   <div class="lib-notion-hint">Office Hours creates two linked databases — Papers ↔ Topics — under the page you pick.</div>
 </div>"""
@@ -844,22 +866,9 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
                 sync.disabled = false;
                 statusEl.textContent = res.ok
                   ? `Synced: ${{res.created}} papers + ${{res.topics_created}} topics added, ${{res.updated + res.topics_updated}} updated.` +
-                    (res.status_pulled ? ` ${{res.status_pulled}} status pulled from Notion.` : "")
+                    (res.status_pulled ? ` ${{res.status_pulled}} status pulled from Notion.` : "") +
+                    (res.comments_answered ? ` ${{res.comments_answered}} comment thread(s) answered.` : "")
                   : (res.detail || `Sync failed (${{res.failed || "?"}} errors)`);
-              }});
-          }}
-          const answer = ev.target.closest("#lib-notion-answer-btn");
-          if (answer) {{
-            answer.disabled = true;
-            const statusEl = document.getElementById("lib-sync-status");
-            statusEl.textContent = "Checking comments…";
-            fetch("/api/library/notion-answer-comments", {{method: "POST"}})
-              .then(r => r.json())
-              .then(res => {{
-                answer.disabled = false;
-                statusEl.textContent = res.answered
-                  ? `Replied to ${{res.answered}} comment thread(s) in Notion.`
-                  : (res.detail || "No unanswered comments.");
               }});
           }}
         }});
