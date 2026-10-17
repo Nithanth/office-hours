@@ -496,6 +496,32 @@
     });
 
     // ------------------------------------------------------------------
+    // Cancel in-flight search — remember the element that issued the
+    // current request; the indicator's Cancel button aborts it.
+    // ------------------------------------------------------------------
+    let ohActiveTrigger = null;
+    document.body.addEventListener('htmx:beforeRequest', e => {
+      ohActiveTrigger = e.detail?.elt || null;
+    });
+    document.body.addEventListener('htmx:afterRequest', () => {
+      ohActiveTrigger = null;
+    });
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('#oh-cancel-search');
+      if (!btn) return;
+      e.preventDefault();
+      const trig = ohActiveTrigger;
+      ohActiveTrigger = null;
+      if (trig && window.htmx) htmx.trigger(trig, 'htmx:abort');
+      const container = document.getElementById('search-results-container');
+      if (container) {
+        container.innerHTML =
+          '<div class="empty-state-card" style="padding:0.8rem 1rem;">' +
+          'Search cancelled.</div>';
+      }
+    });
+
+    // ------------------------------------------------------------------
     // Account + Notion panels on /settings — hydrated on page load.
     // (Replaces the old gear-icon modal; /settings is the single surface.)
     // ------------------------------------------------------------------

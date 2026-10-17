@@ -10,9 +10,10 @@ API docs: https://api.semanticscholar.org/api-docs/graph#tag/Paper-Data
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 
 from loguru import logger
@@ -22,6 +23,9 @@ import config as _cfg
 # Rate limiting (S2 free tier: 100 requests/5 minutes)
 _S2_BASE = "https://api.semanticscholar.org/graph/v1"
 _BATCH_LIMIT = 500  # S2 batch endpoint max
+
+_ARXIV_ABS_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/([\d.]+)(?:v\d+)?")
+_DOI_URL_RE = re.compile(r"doi\.org/([^\s?#]+)")
 
 
 def _get_headers() -> dict[str, str]:
@@ -134,6 +138,103 @@ def fetch_top_cited_papers(
 
     papers: list[Any] = []
     for item in data.get("data") or []:
+        ext = item.get("externalIds") or {}
+        arxiv_id = ext.get("ArXiv")
+        doi = ext.get("DOI")
+        if arxiv_id:
+            url = f"https://arxiv.org/abs/{arxiv_id}"
+        elif doi:
+            url = f"https://doi.org/{doi}"
+        elif item.get("url"):
+            url = item["url"]
+        else:
+            continue
+
+        count = item.get("citationCount") or 0
+        if count < min_citations:
+            continue
+
+        try:
+            papers.append(
+                Paper(
+                    id=url,
+                    title=item.get("title") or "Untitled",
+                    url=url,
+                    authors=[
+                        a.get("name", "")
+                        for a in (item.get("authors") or [])
+                        if a.get("name")
+                    ],
+                    text_content=item.get("abstract"),
+                    published_date=item.get("publicationDate")
+                    or (f"{item['year']}-01-01" if item.get("year") else None),
+                    citation_count=count,
+                    source="Semantic Scholar",
+                )
+            )
+        except Exception:
+            continue
+
+    papers.sort(key=lambda p: p.citation_count or 0, reverse=True)
+    return papers
+
+
+def _s2_identifier_from_url(url: str) -> Optional[str]:
+    """Map a paper URL to an S2 API identifier (arXiv / DOI / URL fallback)."""
+    if not url:
+        return None
+    m = _ARXIV_ABS_RE.search(url)
+    if m:
+        return f"arXiv:{m.group(1)}"
+    m = _DOI_URL_RE.search(url)
+    if m:
+        return f"DOI:{m.group(1)}"
+    if "semanticscholar.org" in url:
+        return f"URL:{url}"
+    return None
+
+
+def fetch_paper_references(
+    paper_url: str,
+    *,
+    limit: int = 40,
+    min_citations: int = 300,
+    timeout: int = 10,
+) -> list[Any]:
+    """Top-cited references of a paper — its intellectual ancestors.
+
+    Used by the canonical merge's citation-graph expansion: a seminal hit's
+    own bibliography (SIREN → DeepSDF, Occupancy Networks, NeRF) is the
+    field canon that keyword search misses. Returns Paper objects sorted
+    by citation count desc; empty on failure.
+    """
+    from models.paper import Paper
+
+    ident = _s2_identifier_from_url(paper_url)
+    if ident is None:
+        return []
+
+    params = urllib.parse.urlencode(
+        {
+            "limit": limit,
+            "fields": "title,authors,year,citationCount,externalIds,url,"
+            "abstract,publicationDate",
+        }
+    )
+    req = urllib.request.Request(
+        f"{_S2_BASE}/paper/{urllib.parse.quote(ident, safe='')}/references?{params}",
+        headers=_get_headers(),
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.load(resp)
+    except (URLError, HTTPError, json.JSONDecodeError, TimeoutError) as exc:
+        logger.warning("s2_references_fetch_failed", ident=ident, err=str(exc))
+        return []
+
+    papers: list[Any] = []
+    for edge in data.get("data") or []:
+        item = edge.get("citedPaper") or {}
         ext = item.get("externalIds") or {}
         arxiv_id = ext.get("ArXiv")
         doi = ext.get("DOI")

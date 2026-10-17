@@ -1084,7 +1084,7 @@ class ExaClient:
         )
         return filtered
 
-    _CANONICAL_POOL_LIMIT = 5
+    _CANONICAL_POOL_LIMIT = 8
 
     def _merge_canonical_papers(self, query: str, papers: list[Paper]) -> list[Paper]:
         """Append top-cited S2 papers for *query* that Exa didn't return.
@@ -1135,7 +1135,62 @@ class ExaClient:
                 added=len(additions),
                 titles=[(p.title or "")[:60] for p in additions],
             )
-        return papers + additions
+        merged = papers + additions
+        merged = self._merge_citation_graph_papers(query, canonical, merged)
+        return merged
+
+    _CITATION_GRAPH_LIMIT = 4
+
+    def _merge_citation_graph_papers(
+        self, query: str, canonical: list[Paper], merged: list[Paper]
+    ) -> list[Paper]:
+        """Blend in the anchor paper's own intellectual family.
+
+        Keyword search can't surface papers that never use the query's
+        vocabulary (Sitzmann's other INR work for an INR query), but the
+        top canonical hit's bibliography *is* the field canon (SIREN →
+        DeepSDF, Occupancy Networks, NeRF). Pull top-cited references of
+        the single most-cited canonical paper and merge a few — with a
+        lower score floor than canonical additions (0.55 decaying) so they
+        land mid-list as related canon rather than dominating the results
+        the user actually asked for.
+        """
+        from services.core.exa_utils import url_utils as _url_utils
+        from services.paper.metadata import semantic_scholar as _s2
+
+        if not canonical:
+            return merged
+        anchor = canonical[0]  # top-cited canonical candidate
+        try:
+            refs = _s2.fetch_paper_references(str(anchor.url))
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.debug("citation_graph_expand_failed", err=str(exc))
+            return merged
+
+        known = {str(p.url) for p in merged}
+        graph_additions: list[Paper] = []
+        for ref in refs:
+            if len(graph_additions) >= self._CITATION_GRAPH_LIMIT:
+                break
+            rurl = str(ref.url)
+            if rurl in known:
+                continue
+            if any(_url_utils.url_equivalent(rurl, str(p.url)) for p in merged):
+                continue
+            known.add(rurl)
+            graph_additions.append(ref)
+
+        for i, p in enumerate(graph_additions):
+            p.score = max(p.score or 0.0, 0.55 - 0.05 * i)
+        if graph_additions:
+            logger.info(
+                "citation_graph_expand",
+                query=query,
+                anchor=(anchor.title or "")[:60],
+                added=len(graph_additions),
+                titles=[(p.title or "")[:60] for p in graph_additions],
+            )
+        return merged + graph_additions
 
     # -- Result-pool TTL cache -------------------------------------------------
     _RESULT_POOL_MAX = 128
