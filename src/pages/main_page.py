@@ -555,19 +555,8 @@ def render_search_results(
                         placeholder="Filter by author…",
                         style="font-size:0.85rem;padding:3px 6px;width:14rem;",
                     ),
-                    BUTTON(
-                        I(cls="fa-solid fa-diagram-project"),
-                        " Visualize",
-                        type="button",
-                        id="cluster-viz-btn",
-                        cls="btn-secondary",
-                        title="Cluster papers by topic similarity",
-                        style="font-size:0.8rem;padding:3px 8px;margin-left:8px;",
-                    ),
                     style="display:inline-flex;gap:6px;align-items:center;margin-left:12px;",
                 ),
-                # Cluster visualization container (populated by JS)
-                Div(id="cluster-viz-container", style="display:none;margin:12px 0;"),
                 style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:8px;gap:4px;",
                 id="results-controls",
             )
@@ -875,7 +864,8 @@ def home_page(page_data: SharedPageData) -> Body:
             # Modular JS entry-points
             Script(src=static_url("/static/js/main.js"), type="module"),
             Script(src=static_url("/static/js/library.js"), defer=True),
-            Script(src=static_url("/static/js/cluster-viz.js"), defer=True),
+            # cluster-viz.js lives on /library — the library is where
+            # clustering has enough papers to mean something.
             # ohBlogRender lazy-loads KaTeX — the report stream's done event
             # calls renderKaTeX(#report-content) to typeset math.
             Script(src=static_url("/static/js/blog-view.js"), defer=True),

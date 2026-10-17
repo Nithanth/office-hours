@@ -101,8 +101,11 @@ body.oh-dark input:hover, body.oh-dark textarea:hover, body.oh-dark select:hover
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
 body.oh-dark .text-blue-500 { color: var(--oh-red); }
 
-/* Ensure mobile no-horizontal-scroll */
-html, body { overflow-x: hidden; }
+/* Ensure mobile no-horizontal-scroll.
+   clip (not hidden): any non-visible overflow value on html/body creates a
+   new scroll container, which silently breaks position:sticky on the top
+   bar. clip prevents scrolling without a scroll container. */
+html, body { overflow-x: clip; }
 
 .container { max-width: 100%; box-sizing: border-box; }
 

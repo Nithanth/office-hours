@@ -620,6 +620,7 @@ def _library_shell(content_html: str) -> str:
             lib_subtabs_html("papers") + content_html,
             active="library",
             scripts=f"""<script src="{static_url('/static/js/library.js')}" defer></script>
+  <script src="{static_url('/static/js/cluster-viz.js')}" defer></script>
   <script type="module">
     import "{static_url('/static/js/chat/stream.js')}";
     import "{static_url('/static/js/chat/ui.js')}";
@@ -757,12 +758,26 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             '<a href="/">Search papers</a></div>'
         )
 
+    # Clustering only makes sense with real mass — a handful of papers
+    # produces the same two meaningless blobs as a single search did.
+    viz_btn = ""
+    if len(papers) >= 4:
+        viz_btn = (
+            '<button id="cluster-viz-btn" class="oh-tip" type="button" '
+            'data-scope="library" '
+            'data-tip="Scatter of your saved papers, grouped by topic similarity'
+            ' — dot size is citation count; click a point to jump to the paper">'
+            '<i class="fa-solid fa-diagram-project"></i> Visualize</button>'
+        )
+
     content = f"""<div class="lib-header">
       <h1>My saved papers</h1>
       {sync_btn}
+      {viz_btn}
     </div>
     {notion_card}
     <div class="lib-tabs">{"".join(tabs)}</div>
+    <div id="cluster-viz-container" style="display:none;margin:12px 0;"></div>
     <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
     {items}
     <script>

@@ -24,11 +24,18 @@ router = APIRouter(prefix="/api", tags=["cluster"])
 
 @limiter.limit("10/5minute")
 @router.post("/cluster")
-async def cluster_papers_endpoint(request: Request) -> JSONResponse:
+async def cluster_papers_endpoint(
+    request: Request,
+    scope: str = "search",
+) -> JSONResponse:
     """Compute paper clusters for the current session's search results.
 
     Returns 2D coordinates (t-SNE) and cluster assignments for each paper,
     plus auto-generated cluster labels.
+
+    ``scope=library`` clusters the caller's saved papers instead of the
+    search pool — a single query's results rarely have meaningful
+    sub-structure, the library does once it has some mass.
     """
     session_id = await get_session_id(request)
     exa_client = get_exa_client()
@@ -40,24 +47,39 @@ async def cluster_papers_endpoint(request: Request) -> JSONResponse:
         )
 
     client = cast(ExaClient, exa_client)
-    cached_search = client.get_cached_search(session_id)
 
-    if cached_search is None:
-        return JSONResponse(
-            {"ok": False, "error": "No search results to cluster. Run a search first."},
-            status_code=404,
-        )
+    if scope == "library":
+        paper_dicts = await _library_paper_dicts(request, client)
+        if paper_dicts is None:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Save at least 4 papers to visualize your library.",
+                },
+                status_code=400,
+            )
+    else:
+        cached_search = client.get_cached_search(session_id)
 
-    # Get all papers currently in the cache pool
-    display_papers = cached_search.get_display_papers()
-    if not display_papers or len(display_papers) < 2:
-        return JSONResponse(
-            {"ok": False, "error": "Need at least 2 papers to cluster."},
-            status_code=400,
-        )
+        if cached_search is None:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "No search results to cluster. Run a search first.",
+                },
+                status_code=404,
+            )
 
-    # Batch-fetch highlights for richer embeddings (best-effort)
-    paper_dicts = await _prepare_paper_dicts(client, display_papers)
+        # Get all papers currently in the cache pool
+        display_papers = cached_search.get_display_papers()
+        if not display_papers or len(display_papers) < 2:
+            return JSONResponse(
+                {"ok": False, "error": "Need at least 2 papers to cluster."},
+                status_code=400,
+            )
+
+        # Batch-fetch highlights for richer embeddings (best-effort)
+        paper_dicts = await _prepare_paper_dicts(client, display_papers)
 
     # Run clustering in thread pool (CPU-bound: embedding + t-SNE + k-means)
     try:
@@ -78,6 +100,56 @@ async def cluster_papers_endpoint(request: Request) -> JSONResponse:
             "clusters": result.clusters,
         }
     )
+
+
+async def _library_paper_dicts(
+    request: Request,
+    client: ExaClient,
+) -> list[dict[str, Any]] | None:
+    """Build cluster input dicts from the caller's saved papers.
+
+    Returns None when there are fewer than 4 saved papers — below that the
+    scatter is degenerate anyway.
+    """
+    from services.core.model_prefs import prefs_owner_id
+    from services.persistence.database import session_scope
+    from services.persistence.repositories import list_saved_papers
+
+    owner_id = prefs_owner_id(request)
+    if not owner_id:
+        return None
+
+    saved: list[Any] = []
+    async for session in session_scope():
+        saved = await list_saved_papers(session, owner_id=owner_id)
+
+    if len(saved) < 4:
+        return None
+
+    urls = [p.url for p in saved if p.url]
+    highlights_map: dict[str, str] = {}
+    if urls:
+        try:
+            highlights_map = await asyncio.to_thread(
+                _batch_fetch_highlights, client, urls
+            )
+        except Exception as exc:
+            logger.warning("cluster_highlights_fetch_failed", err=str(exc))
+
+    dicts: list[dict[str, Any]] = []
+    for p in saved:
+        authors = p.authors.get("list") if isinstance(p.authors, dict) else None
+        dicts.append(
+            {
+                "id": p.paper_id or "",
+                "title": p.title or "",
+                "authors": authors or [],
+                "year": "",
+                "highlights": highlights_map.get(p.url or "", ""),
+                "citation_count": None,
+            }
+        )
+    return dicts
 
 
 async def _prepare_paper_dicts(

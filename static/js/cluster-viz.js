@@ -32,9 +32,16 @@
     });
   }
 
-  /** Fetch cluster data from backend */
+  /** Fetch cluster data from backend.
+      scope comes from the button's data-scope: "library" clusters the
+      caller's saved papers; anything else clusters the search pool. */
   async function fetchClusters() {
-    const res = await fetch("/api/cluster", { method: "POST" });
+    const scope =
+      document.getElementById("cluster-viz-btn")?.dataset.scope || "search";
+    const res = await fetch(
+      "/api/cluster?scope=" + encodeURIComponent(scope),
+      { method: "POST" }
+    );
     const data = await res.json();
     if (!data.ok) {
       throw new Error(data.error || "Clustering failed");
