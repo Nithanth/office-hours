@@ -395,3 +395,4 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 .oh-search-options>summary::before{content:"▸";transition:transform .12s;}
 .oh-search-options[open]>summary::before{transform:rotate(90deg);}
 .oh-search-options>summary::-webkit-details-marker{display:none;}
+.oh-opt-select{font-size:0.8rem;padding:2px 6px;background:var(--container-bg);color:var(--fg);border:1px solid var(--container-border,#aaa);border-radius:4px;}

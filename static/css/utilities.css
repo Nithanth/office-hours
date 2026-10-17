@@ -87,8 +87,8 @@ body.oh-dark a, body.oh-dark a:visited { color:#8ab4f8; }
 nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
-body.oh-dark button { background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352; }
-body.oh-dark button:hover:not(:disabled) { background:#2b3546; }
+body.oh-dark button { background:#2b3546; color:var(--fg,#dbe4f0); border:1px solid #41506b; }
+body.oh-dark button:hover:not(:disabled) { background:#36435c; }
 
 /* Inputs / text areas to match dark grey */
 body.oh-dark input, body.oh-dark textarea, body.oh-dark select {
@@ -201,7 +201,8 @@ html, body { overflow-x: clip; }
   padding: 6px 14px;
   border: 1px solid var(--container-border, #888);
   border-radius: 6px;
-  background: transparent;
+  /* lift off the card/page background — buttons shouldn't blend in */
+  background: #fff;
   color: var(--fg, #222);
   cursor: pointer;
   text-decoration: none;
@@ -213,13 +214,13 @@ html, body { overflow-x: clip; }
 }
 body.oh-dark .btn-secondary,
 body.oh-dark .oh-search-btn {
-  background: #232b38;
+  background: #2b3546;
   color: var(--fg, #eee);
-  border-color: #3a4352;
+  border-color: #41506b;
 }
 body.oh-dark .btn-secondary:hover:not(:disabled),
 body.oh-dark .oh-search-btn:hover:not(:disabled) {
-  background: #2b3546;
+  background: #36435c;
   border-color: var(--accent);
   color: var(--accent);
 }

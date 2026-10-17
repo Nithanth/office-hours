@@ -879,70 +879,9 @@ def home_page(page_data: SharedPageData) -> Body:
             # No inline init - handled in settings.js
         ),
         # Comma added above to separate Head component from next Body child
-        # Report controls live in the (sticky) top bar — one place for all
-        # three; the search-options collapsible only keeps real search
-        # filters (date + sources).
-        top_bar(
-            "",
-            Span(
-                Select(
-                    Option(
-                        "Audience",
-                        value="",
-                        disabled=True,
-                        selected=True,
-                    ),
-                    Option("Technical (PhD)", value="technical"),
-                    Option("Semi-Technical", value="semi_technical"),
-                    Option("Non-Technical", value="non_technical"),
-                    id="aud-select",
-                    name="audience",
-                ),
-                cls="oh-tip oh-tip-below",
-                data_tip="Who the report is written for",
-            ),
-            Span(
-                Select(
-                    Option("Model", value="", disabled=True, selected=True),
-                    *[
-                        Option(cfg["display_name"], value=key)
-                        for key, cfg in config.config.AVAILABLE_MODELS.items()
-                    ],
-                    id="model-select",
-                    name="model_key",
-                ),
-                cls="oh-tip oh-tip-below",
-                data_tip="Effort tier — which model each tier runs is pinned in Settings",
-            ),
-            Span(
-                Select(
-                    Option("Detail", value="", disabled=True),
-                    Option("S (Concise)", value="S"),
-                    Option("M (Standard)", value="M", selected=True),
-                    Option("L (Detailed)", value="L"),
-                    id="size-select",
-                    name="summary_size",
-                ),
-                cls="oh-tip oh-tip-below",
-                data_tip="Report depth — S concise, L detailed",
-            ),
-            Label(
-                INPUT(
-                    type="checkbox",
-                    name="deep_search",
-                    id="deep-search-toggle",
-                    value="1",
-                    style="margin:0;",
-                ),
-                Span(
-                    " Deep",
-                    style="font-size:0.7rem;",
-                ),
-                cls="oh-tip oh-tip-below",
-                data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
-                style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;user-select:none;",
-            ),
-        ),
+        # Pure nav bar — search/report controls live in the "Search options"
+        # collapsible inside the search form, next to the thing they configure.
+        top_bar(""),
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
@@ -1016,6 +955,72 @@ def home_page(page_data: SharedPageData) -> Body:
                                     ),
                                     style="position:relative;display:inline-block;",
                                 ),
+                            ),
+                            # Report controls — what the report is written for,
+                            # which effort tier, how much detail, and whether to
+                            # run the slower/broader deep search.
+                            Div(
+                                Span("Audience ", cls="filter-label"),
+                                Select(
+                                    Option(
+                                        "Any",
+                                        value="",
+                                        selected=True,
+                                    ),
+                                    Option("Technical (PhD)", value="technical"),
+                                    Option("Semi-Technical", value="semi_technical"),
+                                    Option("Non-Technical", value="non_technical"),
+                                    id="aud-select",
+                                    name="audience",
+                                    cls="oh-opt-select",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Who the report is written for",
+                            ),
+                            Div(
+                                Span("Model ", cls="filter-label"),
+                                Select(
+                                    Option(
+                                        "Default",
+                                        value="",
+                                        selected=True,
+                                    ),
+                                    *[
+                                        Option(cfg["display_name"], value=key)
+                                        for key, cfg in config.config.AVAILABLE_MODELS.items()
+                                    ],
+                                    id="model-select",
+                                    name="model_key",
+                                    cls="oh-opt-select",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Effort tier — which model each tier runs is pinned in Settings",
+                            ),
+                            Div(
+                                Span("Detail ", cls="filter-label"),
+                                Select(
+                                    Option("S (Concise)", value="S"),
+                                    Option("M (Standard)", value="M", selected=True),
+                                    Option("L (Detailed)", value="L"),
+                                    id="size-select",
+                                    name="summary_size",
+                                    cls="oh-opt-select",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Report depth — S concise, L detailed",
+                            ),
+                            Label(
+                                Span("Deep ", cls="filter-label"),
+                                INPUT(
+                                    type="checkbox",
+                                    name="deep_search",
+                                    id="deep-search-toggle",
+                                    value="1",
+                                    style="margin:0;",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
+                                style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;",
                             ),
                             cls="search-form-filters",
                         ),
