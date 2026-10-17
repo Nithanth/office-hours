@@ -93,7 +93,7 @@ async def get_home(
                     home_stats,
                 )
 
-                async with session_scope() as session:
+                async for session in session_scope():
                     page_data.recent_topics = await list_topics(
                         session, owner_id=owner, limit=6
                     )
@@ -137,7 +137,7 @@ async def home_for_you(request: Request) -> HTMLResponse:
 
     papers_html: list[str] = []
     authors_html: list[str] = []
-    async with session_scope() as session:
+    async for session in session_scope():
         saved = await list_saved_papers(session, owner_id=owner)
         saved_ids = await list_saved_paper_ids(session, owner_id=owner)
 
