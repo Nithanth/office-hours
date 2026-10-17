@@ -10,15 +10,18 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
 
+from api.deps import get_exa_client
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
 from services.persistence.models import SavedPaper
 from services.persistence.repositories import (
+    feed_new_counts,
     get_notion_integration,
     get_report,
     get_saved_paper,
     get_topic,
+    home_stats,
     list_paper_chat_messages,
     list_saved_paper_ids,
     list_saved_papers,
@@ -55,6 +58,99 @@ def _no_owner() -> JSONResponse:
         {"ok": False, "detail": "Could not determine your session."},
         status_code=400,
     )
+
+
+# In-process TTL cache for the for-you row — recommendation calls (Exa
+# find_similar) shouldn't fire on every library render.
+_foryou_cache: dict[str, tuple[float, str]] = {}
+
+
+@router.get("/api/library/for-you", response_class=HTMLResponse)
+async def library_for_you(request: Request) -> HTMLResponse:
+    """Lazy-loaded 'for you' recommendations: similar papers to recent saves
+    + authors that recur across the library. Rendered as chips."""
+    import time
+
+    owner = _owner_id(request)
+    empty = HTMLResponse("<span class='oh-foryou-empty'></span>")
+    if not owner or not database_available():
+        return empty
+
+    cached = _foryou_cache.get(owner)
+    if cached and time.monotonic() - cached[0] < 3600:
+        return HTMLResponse(cached[1])
+
+    try:
+        async for session in session_scope():
+            saved = await list_saved_papers(session, owner_id=owner)
+            saved_ids = await list_saved_paper_ids(session, owner_id=owner)
+
+        # Authors: rank by how many saved papers carry them — recurring
+        # names are the people whose work keeps resonating.
+        counts: dict[str, int] = {}
+        for p in saved:
+            names = (p.authors or {}).get("list") or []
+            for n in names:
+                n = n.strip()
+                if n:
+                    counts[n] = counts.get(n, 0) + 1
+        authors_html: list[str] = []
+        for name, n in sorted(counts.items(), key=lambda kv: -kv[1])[:3]:
+            if n < 2:
+                continue  # one-off authors aren't a signal
+            esc_name = html.escape(name)
+            authors_html.append(
+                f'<a class="oh-foryou-chip" href="/?search_query={esc_name}"'
+                f' title="Author on {n} of your saved papers — click to search">'
+                f"{esc_name} ×{n}</a>"
+            )
+
+        # Papers: Exa find_similar seeded by the 2 most recent saves w/ URLs.
+        papers_html: list[str] = []
+        exa = get_exa_client()
+        if exa is not None:
+            for seed in [p for p in saved if p.url][:2]:
+                try:
+                    sims = await asyncio.to_thread(exa.find_similar_papers, seed.url, 5)
+                except Exception:
+                    continue
+                for pap in sims:
+                    pap_url = str(pap.url) if pap.url else ""
+                    pap_id = str(pap.id) if pap.id else ""
+                    if not pap_url or pap_url in saved_ids or pap_id in saved_ids:
+                        continue
+                    title = (str(pap.title) if pap.title else pap_url).strip()
+                    if not title:
+                        continue
+                    papers_html.append(
+                        '<a class="oh-foryou-chip oh-foryou-paper"'
+                        f' href="{html.escape(pap_url)}" target="_blank" '
+                        'rel="noopener" title="Similar to one of your saves">'
+                        f"{html.escape(title[:90])}</a>"
+                    )
+                    if len(papers_html) >= 4:
+                        break
+                if len(papers_html) >= 4:
+                    break
+
+        body = ""
+        if authors_html:
+            body += '<span class="oh-foryou-label">Authors to watch</span> ' + " ".join(
+                authors_html
+            )
+        if papers_html:
+            body += (
+                ' <span class="oh-foryou-label">Papers you may like</span> '
+                + " ".join(papers_html)
+            )
+        markup = f'<div class="oh-foryou-inner">{body}</div>' if body else ""
+    except Exception:
+        # Recommendations are best-effort: fail silent, never paint an error.
+        logger.warning("library_for_you_failed", owner=owner)
+        return empty
+
+    _foryou_cache[owner] = (time.monotonic(), markup)
+    return HTMLResponse(markup)
 
 
 # ---------------------------------------------------------------------------
@@ -714,8 +810,16 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     signed_in = bool(get_auth_user_id(request))
     notion_connected = False
     notion_needs_destination = False
+    stats: dict[str, int] = {}
+    recent_topics: list = []
+    new_counts: dict[str, int] = {}
     async for session in session_scope():
         papers = await list_saved_papers(session, owner_id=owner_id, status=status)
+        stats = await home_stats(session, owner_id=owner_id)
+        recent_topics = await list_topics(session, owner_id=owner_id, limit=1)
+        new_counts = await feed_new_counts(
+            session, topic_ids=[t.id for t in recent_topics]
+        )
         if signed_in:
             integration = await get_notion_integration(
                 session, user_id=str(get_auth_user_id(request))
@@ -792,12 +896,48 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             '<i class="fa-solid fa-diagram-project"></i> Visualize</button>'
         )
 
+    # "Your research" surface — only when the owner has data to surface.
+    surface_card = ""
+    if stats.get("saved") or recent_topics:
+        bits = []
+        if stats.get("saved"):
+            bits.append(f"{stats['saved']} saved")
+        if stats.get("done"):
+            bits.append(f"{stats['done']} read")
+        if stats.get("to_read"):
+            bits.append(f"{stats['to_read']} to read")
+        if stats.get("topics"):
+            bits.append(f"{stats['topics']} topics")
+        if stats.get("reports"):
+            bits.append(f"{stats['reports']} reports")
+        cont = ""
+        if recent_topics:
+            top = recent_topics[0]
+            n = new_counts.get(top.id, 0)
+            badge = (
+                f'<span class="oh-surface-badge"> +{n} this week</span>' if n else ""
+            )
+            cont = (
+                '<div class="oh-surface-continue">'
+                '<span class="oh-surface-cont-label">Continue: </span>'
+                f'<a class="oh-surface-cont-link" href="/topics/{top.id}">'
+                f"{html.escape(top.title)}</a>{badge}</div>"
+            )
+        surface_card = f"""<div class="oh-surface">
+  <div class="oh-surface-title">Your research</div>
+  <div class="oh-surface-stats">{" · ".join(bits)}</div>
+  {cont}
+  <div id="oh-for-you" class="oh-surface-foryou"
+    hx-get="/api/library/for-you" hx-trigger="load" hx-swap="innerHTML"></div>
+</div>"""
+
     content = f"""<div class="lib-header">
       <h1>My saved papers</h1>
       {sync_btn}
       {viz_btn}
     </div>
     {notion_card}
+    {surface_card}
     <div class="lib-tabs">{"".join(tabs)}</div>
     <div id="cluster-viz-container" style="display:none;margin:12px 0;"></div>
     <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
