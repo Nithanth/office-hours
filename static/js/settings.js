@@ -595,7 +595,6 @@
           if (data.authenticated) {
             const name = data.user.name || data.user.email || 'Account';
             authEl.innerHTML =
-              '<a href="/reports" title="My Reports"><i class="fa-solid fa-folder-open"></i></a>' +
               '<span class="top-auth-user" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
           } else {
             authEl.innerHTML = '<a href="/auth/google/login" title="Sign in">Sign in</a>';
