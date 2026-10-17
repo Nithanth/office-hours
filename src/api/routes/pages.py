@@ -135,66 +135,73 @@ async def home_for_you(request: Request) -> HTMLResponse:
         list_saved_papers,
     )
 
-    papers_html: list[str] = []
-    authors_html: list[str] = []
-    async for session in session_scope():
-        saved = await list_saved_papers(session, owner_id=owner)
-        saved_ids = await list_saved_paper_ids(session, owner_id=owner)
+    try:
+        async for session in session_scope():
+            saved = await list_saved_papers(session, owner_id=owner)
+            saved_ids = await list_saved_paper_ids(session, owner_id=owner)
 
-    # Authors: rank by how many saved papers carry them — recurring names
-    # are the people whose work keeps resonating.
-    counts: dict[str, int] = {}
-    for p in saved:
-        names = (p.authors or {}).get("list") or []
-        for n in names:
-            n = n.strip()
-            if n:
-                counts[n] = counts.get(n, 0) + 1
-    top_authors = sorted(counts.items(), key=lambda kv: -kv[1])[:3]
-    for name, n in top_authors:
-        if n < 2:
-            continue  # one-off authors aren't a signal
-        authors_html.append(
-            f'<a class="oh-foryou-chip" href="/?search_query={_esc(name)}"'
-            f' title="Author on {n} of your saved papers — click to search">'
-            f"{_esc(name)} ×{n}</a>"
-        )
+        # Authors: rank by how many saved papers carry them — recurring
+        # names are the people whose work keeps resonating.
+        counts: dict[str, int] = {}
+        for p in saved:
+            names = (p.authors or {}).get("list") or []
+            for n in names:
+                n = n.strip()
+                if n:
+                    counts[n] = counts.get(n, 0) + 1
+        authors_html: list[str] = []
+        for name, n in sorted(counts.items(), key=lambda kv: -kv[1])[:3]:
+            if n < 2:
+                continue  # one-off authors aren't a signal
+            authors_html.append(
+                f'<a class="oh-foryou-chip" href="/?search_query={_esc(name)}"'
+                f' title="Author on {n} of your saved papers — click to search">'
+                f"{_esc(name)} ×{n}</a>"
+            )
 
-    # Papers: Exa find_similar seeded by the 2 most recent saves with URLs.
-    exa = get_exa_client()
-    if exa is not None:
-        for seed in [p for p in saved if p.url][:2]:
-            try:
-                sims = await asyncio.to_thread(exa.find_similar_papers, seed.url, 5)
-            except Exception:
-                continue
-            for pap in sims:
-                key = pap.url or pap.paper_id
-                if not key or key in saved_ids or pap.paper_id in saved_ids:
+        # Papers: Exa find_similar seeded by the 2 most recent saves w/ URLs.
+        papers_html: list[str] = []
+        exa = get_exa_client()
+        if exa is not None:
+            for seed in [p for p in saved if p.url][:2]:
+                try:
+                    sims = await asyncio.to_thread(exa.find_similar_papers, seed.url, 5)
+                except Exception:
                     continue
-                title = (pap.title or pap.url or "").strip()
-                if not title:
-                    continue
-                papers_html.append(
-                    f'<a class="oh-foryou-chip oh-foryou-paper" href="{_esc(pap.url)}"'
-                    f' target="_blank" rel="noopener" title="Similar to one of your saves">'
-                    f"{_esc(title[:90])}</a>"
-                )
+                for pap in sims:
+                    key = pap.url or pap.id
+                    if not key or key in saved_ids or pap.id in saved_ids:
+                        continue
+                    title = (pap.title or pap.url or "").strip()
+                    if not title:
+                        continue
+                    papers_html.append(
+                        '<a class="oh-foryou-chip oh-foryou-paper"'
+                        f' href="{_esc(pap.url)}" target="_blank" rel="noopener"'
+                        ' title="Similar to one of your saves">'
+                        f"{_esc(title[:90])}</a>"
+                    )
+                    if len(papers_html) >= 4:
+                        break
                 if len(papers_html) >= 4:
                     break
-            if len(papers_html) >= 4:
-                break
 
-    body = ""
-    if authors_html:
-        body += '<span class="oh-foryou-label">Authors to watch</span> ' + " ".join(
-            authors_html
-        )
-    if papers_html:
-        body += ' <span class="oh-foryou-label">Papers you may like</span> ' + " ".join(
-            papers_html
-        )
-    html = f'<div class="oh-foryou-inner">{body}</div>' if body else ""
+        body = ""
+        if authors_html:
+            body += '<span class="oh-foryou-label">Authors to watch</span> ' + " ".join(
+                authors_html
+            )
+        if papers_html:
+            body += (
+                ' <span class="oh-foryou-label">Papers you may like</span> '
+                + " ".join(papers_html)
+            )
+        html = f'<div class="oh-foryou-inner">{body}</div>' if body else ""
+    except Exception:
+        # Recommendations are best-effort: fail silent, never paint an error.
+        logger.warning("home_for_you_failed", owner=owner)
+        return empty
+
     _foryou_cache[owner] = (time.monotonic(), {"html": html})
     return HTMLResponse(html)
 
