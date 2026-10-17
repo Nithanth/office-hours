@@ -12,6 +12,12 @@
   align-items: center;
   gap: 6px;
   border-bottom: 2px solid #888;
+  /* pinned to the viewport top + stacking context so its tooltips and
+     dropdowns paint above page content */
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-wrap: wrap;
 }
 
 .top-bar a { color: #000; text-decoration: none; }
@@ -33,7 +39,7 @@
   border: 1px solid #888;
   border-radius: 4px;
   text-decoration: none;
-  color: #000;
+  color: var(--oh-icon, #2563eb);
   margin-right: 4px;
   white-space: nowrap;
 }
@@ -112,7 +118,7 @@
   padding: 4px 8px;
   border: none;
   background: transparent;
-  color: var(--oh-accent, #0d6e63);
+  color: var(--oh-icon, #2563eb);
   font-size: 1rem;
   height: auto;
   cursor: pointer;
@@ -133,7 +139,7 @@ body.oh-dark .top-bar-brand { color: var(--oh-accent); }
 
 body.oh-dark .top-bar-link {
   background: transparent;
-  color: var(--fg-dark);
+  color: var(--oh-icon, #60a5fa);
   border: 1px solid #555;
 }
 body.oh-dark .top-bar-link.active {
@@ -158,7 +164,7 @@ body.oh-dark .top-bar button.oh-theme-toggle,
 body.oh-dark .top-bar button.oh-assistant-btn {
   background: transparent;
   border: none;
-  color: var(--oh-accent, #35c9b3);
+  color: var(--oh-icon, #60a5fa);
 }
 body.oh-dark .top-bar select.placeholder {
   color: #666 !important;

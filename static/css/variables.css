@@ -3,6 +3,8 @@
   /* brand & layout */
   --oh-red: #b45309;
   --oh-accent: #0d6e63;
+  /* icon blue — matches the brand/link blue the whole UI already uses */
+  --oh-icon: #2563eb;
   --page-padding: 0.5rem;
 
   /* light theme colours — warm paper, teal accent (retro-2000s scheme) */
@@ -37,5 +39,6 @@ body.oh-dark {
   /* override pinned border */
   --main-paper-border: #35c9b3;
   --oh-accent: #35c9b3;
+  --oh-icon: #60a5fa;
   --accent: var(--oh-accent);
 }
