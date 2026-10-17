@@ -669,7 +669,7 @@ def _paper_item(paper: SavedPaper) -> str:
     <span class="lib-status-chip">{status_label}</span></h2>
   <div class="lib-meta">{authors_str}</div>
   <div class="lib-actions">
-    <button hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
+    <button class="btn-secondary" hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
     {open_link}{report_link}
     {_status_options(paper.status, paper.paper_id)}
     <button class="lib-remove-btn" data-paper-id="{pid_attr}">Remove</button>
@@ -712,10 +712,10 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
 
     if notion_connected:
         sync_btn = (
-            '<button id="lib-notion-sync-btn" class="oh-tip" type="button" '
+            '<button id="lib-notion-sync-btn" class="btn-secondary oh-tip" type="button" '
             'data-tip="Re-push every saved paper to your Notion databases — sync already runs automatically when you save papers or change a status; use this only if Notion drifted">'
             "Re-sync library</button>"
-            '<button id="lib-notion-answer-btn" class="oh-tip" type="button" '
+            '<button id="lib-notion-answer-btn" class="btn-secondary oh-tip" type="button" '
             'data-tip="Reads unanswered comments on your synced Notion paper pages, then posts the assistant&apos;s replies back into those comment threads in Notion">'
             "Answer Notion comments</button>"
         )
@@ -726,7 +726,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
   <strong>Notion connected</strong> — one last step: pick where your library lives.
   <div class="lib-notion-pick">
     <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
-    <button id="lib-notion-set-dest" type="button">Set up sync</button>
+    <button id="lib-notion-set-dest" type="button" class="btn-secondary">Set up sync</button>
   </div>
   <div class="lib-notion-hint">Office Hours creates two linked databases — Papers ↔ Topics — under the page you pick.</div>
 </div>"""

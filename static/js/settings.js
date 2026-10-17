@@ -536,7 +536,7 @@
                   '<div><strong>' + escapeHtml(name) + '</strong></div>' +
                   '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
                   '<a href="/reports">My Reports</a>' +
-                  '<button type="button" id="logout-btn">Log out</button>' +
+                  '<button type="button" id="logout-btn" class="btn-secondary">Log out</button>' +
                   '</div>';
                 document.getElementById('logout-btn')?.addEventListener('click', () => {
                   fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
@@ -566,10 +566,10 @@
                   '</div>' +
                   (data.oauth_connected
                     ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
-                      '<button type="button" id="notion-refresh-destinations">' +
+                      '<button type="button" id="notion-refresh-destinations" class="btn-secondary">' +
                       (data.target_type === 'none' ? 'Pick where to sync…' : 'Change sync location…') +
                       '</button>' +
-                      '<button type="button" id="notion-disconnect">Disconnect</button>' +
+                      '<button type="button" id="notion-disconnect" class="btn-secondary">Disconnect</button>' +
                       '</div><div id="notion-destinations" style="margin-top:8px;"></div>'
                     : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
                 if (data.oauth_connected) wireNotionControls(statusEl);

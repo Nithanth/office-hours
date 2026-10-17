@@ -2,7 +2,8 @@
 :root {
   /* brand & layout */
   --oh-red: #b45309;
-  --oh-accent: #0d6e63;
+  /* accent = the same brand/link blue the icons use — no more teal */
+  --oh-accent: #2563eb;
   /* icon blue — matches the brand/link blue the whole UI already uses */
   --oh-icon: #2563eb;
   --page-padding: 0.5rem;
@@ -21,10 +22,11 @@
   --main-paper-border: var(--oh-accent);
 
   /* dark theme overrides */
-  --bg-dark: #1c1a14;
-  --fg-dark: #e8e0cf;
-  --container-bg-dark: var(--bg-dark);
-  --container-border-dark: #453f30;
+  /* dark theme — cool blue-grey palette (was warm sepia + amber accents) */
+  --bg-dark: #141920;
+  --fg-dark: #dbe4f0;
+  --container-bg-dark: #1c2330;
+  --container-border-dark: #37404f;
   --container-shadow-dark: rgba(0, 0, 0, 0.6);
 }
 
@@ -35,10 +37,10 @@ body.oh-dark {
   --container-bg: var(--container-bg-dark);
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
-  --fg-muted: #9b927e;
+  --fg-muted: #93a0b4;
   /* override pinned border */
-  --main-paper-border: #35c9b3;
-  --oh-accent: #35c9b3;
+  --main-paper-border: #60a5fa;
+  --oh-accent: #60a5fa;
   --oh-icon: #60a5fa;
   --accent: var(--oh-accent);
 }

@@ -143,9 +143,9 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
         <option value="txt">Plain Text</option>
         <option value="docx">Word (.docx)</option>
       </select>
-      <button id="report-notes-btn" type="button">Export Notes</button>
-      <button id="report-notion-btn" type="button">Export to Notion</button>
-      <button hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
+      <button id="report-notes-btn" type="button" class="btn-secondary">Export Notes</button>
+      <button id="report-notion-btn" type="button" class="btn-secondary">Export to Notion</button>
+      <button class="btn-secondary" hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
               hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
     </div>
     <div id="report-content" data-report-id="{escaped_id}"

@@ -81,25 +81,25 @@ body.oh-dark .ask-assistant-btn:hover {
 
 /* --- Link colour normalisation ----------------------------------------- */
 a, a:visited { color:#2563eb; }
-body.oh-dark a, body.oh-dark a:visited { color:var(--oh-red); }
+body.oh-dark a, body.oh-dark a:visited { color:#8ab4f8; }
 
 /* Preserve white nav links */
 nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
-body.oh-dark button { background:#333; color:var(--oh-red); border:1px solid #555; }
+body.oh-dark button { background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352; }
 body.oh-dark button:hover:not(:disabled) { background:#444; }
 
 /* Inputs / text areas to match dark grey */
 body.oh-dark input, body.oh-dark textarea, body.oh-dark select {
-  background:#2a2a2a; color:var(--oh-red); border:1px solid #555;
+  background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352;
 }
 body.oh-dark input:hover, body.oh-dark textarea:hover, body.oh-dark select:hover {
   background:#333;
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
-body.oh-dark .text-blue-500 { color: var(--oh-red); }
+body.oh-dark .text-blue-500 { color: #8ab4f8; }
 
 /* Ensure mobile no-horizontal-scroll.
    clip (not hidden): any non-visible overflow value on html/body creates a
