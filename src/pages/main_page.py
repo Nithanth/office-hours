@@ -39,7 +39,7 @@ from pydantic import BaseModel
 
 import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
-from pages.shell import top_bar
+from pages.shell import THEME_INLINE_SCRIPT, top_bar
 from services.chat.chat_components import ChatBubble, CitationCard
 from utils.static_assets import static_url
 
@@ -840,6 +840,9 @@ def home_page(page_data: SharedPageData) -> Body:
     return Body(
         Head(
             Title(page_data.title),
+            # Apply saved theme before first paint — prevents a light flash on
+            # every navigation in dark mode (class lives on <html>).
+            Script(THEME_INLINE_SCRIPT),
             Script(src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js"),
             # HTMX SSE extension for Server-Sent Events support
             Script(src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"),
@@ -1128,6 +1131,8 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
     return Body(
         Head(
             Title(page_data.title),
+            # Apply saved theme before first paint (class lives on <html>)
+            Script(THEME_INLINE_SCRIPT),
             Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
             Link(rel="stylesheet", href=static_url("/static/css/base.css")),
             Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),

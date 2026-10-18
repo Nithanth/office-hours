@@ -1,16 +1,16 @@
 /* flatpickr-dark.css – overrides for date picker in dark mode */
 @import url("variables.css");
 
-body.oh-dark .flatpickr-calendar { background:var(--bg-dark); border:1px solid var(--container-border-dark); }
-body.oh-dark .flatpickr-months .flatpickr-month,
-body.oh-dark .flatpickr-weekdays,
-body.oh-dark .flatpickr-days { background:var(--bg-dark); }
-body.oh-dark .flatpickr-day { color:var(--fg); }
-body.oh-dark .flatpickr-day:hover { background:#232b38; }
-body.oh-dark .flatpickr-day.selected,
-body.oh-dark .flatpickr-day.startRange,
-body.oh-dark .flatpickr-day.endRange { background:var(--oh-accent); color:#fff; }
-body.oh-dark .flatpickr-months .flatpickr-current-month,
-body.oh-dark .flatpickr-months .flatpickr-prev-month,
-body.oh-dark .flatpickr-months .flatpickr-next-month { color:var(--oh-accent); }
-body.oh-dark .flatpickr-weekday { color:var(--fg-muted); }
+html.oh-dark .flatpickr-calendar { background:var(--bg-dark); border:1px solid var(--container-border-dark); }
+html.oh-dark .flatpickr-months .flatpickr-month,
+html.oh-dark .flatpickr-weekdays,
+html.oh-dark .flatpickr-days { background:var(--bg-dark); }
+html.oh-dark .flatpickr-day { color:var(--fg); }
+html.oh-dark .flatpickr-day:hover { background:#232b38; }
+html.oh-dark .flatpickr-day.selected,
+html.oh-dark .flatpickr-day.startRange,
+html.oh-dark .flatpickr-day.endRange { background:var(--oh-accent); color:#fff; }
+html.oh-dark .flatpickr-months .flatpickr-current-month,
+html.oh-dark .flatpickr-months .flatpickr-prev-month,
+html.oh-dark .flatpickr-months .flatpickr-next-month { color:var(--oh-accent); }
+html.oh-dark .flatpickr-weekday { color:var(--fg-muted); }

@@ -31,7 +31,7 @@
 }
 
 /* Apply dark tokens when .oh-dark is on <body> */
-body.oh-dark {
+html.oh-dark {
   --bg: var(--bg-dark);
   --fg: var(--fg-dark);
   --container-bg: var(--container-bg-dark);

@@ -140,8 +140,8 @@
       s.textContent = `
         .oh-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:6px;z-index:9999;font-size:.9rem;font-family:Arial,sans-serif;border:1px solid transparent;opacity:0;transition:opacity .25s ease;}
         .oh-toast.show{opacity:1;}
-        body:not(.oh-dark) .oh-toast{background:#ffffff;color:#000;border-color:#000}
-        body.oh-dark .oh-toast{background:#333;color:#ef4444;border-color:#666}
+        html:not(.oh-dark) .oh-toast{background:#ffffff;color:#000;border-color:#000}
+        html.oh-dark .oh-toast{background:#333;color:#ef4444;border-color:#666}
       `;
       document.head.appendChild(s);
     })();
@@ -292,26 +292,21 @@
     }
 
     const updateThemeBtnText = () => {
-      const isDark = document.body.classList.contains('oh-dark');
+      const isDark = document.documentElement.classList.contains("oh-dark");
       themeBtn.innerHTML = isDark
         ? '<i class="fa-solid fa-sun"></i>'
         : '<i class="fa-solid fa-moon"></i>';
     };
 
     const applyTheme = theme => {
-      document.body.classList.toggle('oh-dark', theme === 'dark');
+      document.documentElement.classList.toggle("oh-dark", theme === 'dark');
       updateThemeBtnText();
     };
 
     const savedTheme = LS.getItem('theme');
-
-    // Force default to light on first load even if legacy value persisted
-    if (savedTheme === 'dark') {
-      // Comment out next line if you want to retain dark across sessions
-      LS.removeItem('theme');
-    }
-
-    applyTheme('light');
+    // Restore the user's saved theme — the inline <head> script already
+    // applied it pre-paint; this syncs the button icon + class.
+    applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
 
     // ------------------------------------------------------------------
     // Summary size persistence (S/M/L)
@@ -371,7 +366,7 @@
     });
 
     themeBtn.addEventListener('click', () => {
-      const newTheme = document.body.classList.contains('oh-dark') ? 'light' : 'dark';
+      const newTheme = document.documentElement.classList.contains("oh-dark") ? 'light' : 'dark';
       LS.setItem('theme', newTheme);
       applyTheme(newTheme);
     });
