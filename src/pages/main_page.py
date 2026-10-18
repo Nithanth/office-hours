@@ -154,7 +154,6 @@ def _render_paper_item(
     paper: Paper,
     is_main_paper: bool = False,
     wildcard: bool = False,
-    max_score: float | None = None,
 ) -> LI:
     """Helper function to render a single paper item for the search results list."""
     formatted_date = "Unknown date"
@@ -260,26 +259,18 @@ def _render_paper_item(
     )
 
     # --------------------------------------------------
-    # Relevance badge
+    # Qualitative signal chip — replaces the old numeric relevance badge
+    # (a composite score reads as false precision; rank position already
+    # conveys relevance). Only flag what's genuinely notable: high-citation
+    # papers — including the canon layer the merge blends in.
     # --------------------------------------------------
-    relevance_span = None
-    if paper.relevance_score is not None:
-        rs = paper.relevance_score
-        # Colour relative to the result set's top score: the composite is a
-        # weighted blend that rarely exceeds ~0.65, so absolute thresholds
-        # left every mid-pack paper in red. Top-of-list reads green.
-        rel = rs / max_score if max_score else rs
-        if rel >= 0.75:
-            badge_color = "var(--relevance-high, #22c55e)"
-        elif rel >= 0.55:
-            badge_color = "var(--relevance-mid, #eab308)"
-        else:
-            badge_color = "var(--relevance-low, #ef4444)"
-        relevance_span = Span(
-            f"{rs:.2f}",
-            cls="relevance-badge",
-            title=f"Relevance: {rs:.2f}",
-            style=f"font-size:0.75em; font-weight:600; color:{badge_color}; border:1px solid {badge_color}; border-radius:4px; padding:1px 5px; margin-left:6px; vertical-align:middle;",
+    signal_span = None
+    if paper.citation_count is not None and paper.citation_count >= 1000:
+        signal_span = Span(
+            "Highly cited",
+            cls="signal-badge",
+            title=f"{paper.citation_count:,} citations (Semantic Scholar)",
+            style="font-size:0.75em; font-weight:600; color:var(--oh-accent, #2563eb); border:1px solid var(--oh-accent, #2563eb); border-radius:4px; padding:1px 5px; margin-left:6px; vertical-align:middle;",
         )
 
     # ISO date for client-side sorting; lowercase authors for filtering
@@ -443,7 +434,7 @@ def _render_paper_item(
                 href=paper.url if paper.url else "#",
                 target="_blank",
             ),
-            relevance_span,
+            signal_span,
             enrich_span,
             actions_row,
             Div(
@@ -504,16 +495,11 @@ def render_search_results(
 
     # Unified list display for both query and URL searches
     if papers_list:
-        _max_rs = max(
-            (p.relevance_score for p in papers_list if p.relevance_score),
-            default=None,
-        )
         list_items = [
             _render_paper_item(
                 p,
                 is_main_paper=(is_url_search and i == 0),
                 wildcard=(i == len(papers_list) - 1),
-                max_score=_max_rs,
             )
             for i, p in enumerate(papers_list)
         ]

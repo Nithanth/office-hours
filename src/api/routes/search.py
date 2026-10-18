@@ -457,27 +457,21 @@ def _paper_li_html(
             f"name='selected_papers_json' value='{paper_json_escaped}'>"
         )
 
-    # Relevance badge
-    relevance_html = ""
-    if pap.relevance_score is not None:
-        rs = pap.relevance_score
-        if rs >= 0.75:
-            badge_color = "var(--relevance-high, #22c55e)"
-        elif rs >= 0.50:
-            badge_color = "var(--relevance-mid, #eab308)"
-        else:
-            badge_color = "var(--relevance-low, #ef4444)"
-        relevance_html = (
-            f"<span class='relevance-badge' title='Relevance: {rs:.2f}' "
-            f"style='font-size:0.75em;font-weight:600;color:{badge_color};border:1px solid {badge_color};"
-            f"border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;'>{rs:.2f}</span>"
+    # Qualitative chip instead of the old numeric score (rank position is
+    # the relevance signal; a composite decimal read as false precision).
+    signal_html = ""
+    if pap.citation_count is not None and pap.citation_count >= 1000:
+        signal_html = (
+            f"<span class='signal-badge' title='{pap.citation_count:,} citations (Semantic Scholar)' "
+            f"style='font-size:0.75em;font-weight:600;color:var(--oh-accent, #2563eb);border:1px solid var(--oh-accent, #2563eb);"
+            f"border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;'>Highly cited</span>"
         )
 
     return (
         f"<li id='{html.escape(li_id)}' style='margin-bottom:1em;padding:0.5em;border:{border};position:relative;'>"
         f"<div>"
         f"{selection_input_html}"
-        f"<a href='{html.escape(url_str)}' target='_blank'>{html.escape(title_str)}</a>{relevance_html}<br>"
+        f"<a href='{html.escape(url_str)}' target='_blank'>{html.escape(title_str)}</a>{signal_html}<br>"
         f"<em>{authors_display}</em><br>"
         f"Published: {html.escape(formatted_date)}"
         f"</div></li>"
