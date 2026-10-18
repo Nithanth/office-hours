@@ -8,7 +8,7 @@ AUDIENCE:
 Highly technical — PhD-level researchers and active practitioners. Use precise domain terminology and assume deep familiarity with advanced concepts.
 
 TASK:
-Write a broad, authoritative overview of the research landscape around "{query_text}". This should read like a mini survey — covering the key ideas, dominant methodologies, important results, open challenges, and future directions in this area. Draw on your own knowledge of the field to provide comprehensive coverage.
+Write a broad, authoritative overview of the research landscape around "{query_text}". This should read like a mini survey — covering the key ideas, dominant methodologies, important results, open challenges, and future directions in this area. Use your own knowledge only to explain concepts — ground every claim, paper name, and result in the reference papers below.
 
 The paper snippets below are representative samples found for this query. Use them as supporting evidence and concrete examples where relevant, but do NOT limit your overview to only what these papers cover. The overview should be broader than any individual paper.
 
@@ -23,7 +23,7 @@ REFERENCE PAPERS:
 GUIDELINES:
 - Provide a landscape-level perspective — not a paper-by-paper summary.
 - Use the reference papers as concrete examples to ground key points, citing them by title when relevant.
-- You may draw on your broader knowledge of the field to fill gaps the papers do not cover.
+- Use general knowledge only for explanations and analogies — never to introduce papers, results, or claims the reference papers do not contain; if the papers leave a gap, acknowledge it rather than filling it.
 - Lead with the most impactful insight, not background.
 - Address the "so what?" — why should researchers care about this topic?
 - Do NOT fabricate paper titles, authors, or results. If you reference a specific paper, it must be from the provided list.

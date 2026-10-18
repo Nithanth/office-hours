@@ -50,12 +50,14 @@ async def _build_topic_prompt(
     max_history: int,
     user_id: str | None,
 ) -> PromptBundle:
-    """Prompt for a topic-level chat: retrieval unioned over a report's papers.
+    """Prompt for a topic-level chat: retrieval unioned over the paper set.
 
-    *topic_key* is ``"topic:{report_id}"`` — the report's papers supply the
-    retrieval set and its text becomes a summary excerpt.
+    *topic_key* is ``"topic:{id}"`` where *id* is either a real topic id
+    (topic-page chats — retrieval spans the topic's living paper set) or a
+    report id (report-card chats — retrieval spans the report's papers and
+    its text becomes a summary excerpt).
     """
-    report_id = topic_key.split(":", 1)[1]
+    key_id = topic_key.split(":", 1)[1]
     turns = chat_state.get_conversation(topic_key)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
 
@@ -70,26 +72,63 @@ async def _build_topic_prompt(
             )
 
             if database_available():
-                # Eager-load papers: the SSE generator has no greenlet context,
-                # so lazy-loading report.papers raises MissingGreenlet (and
-                # post-session access raises DetachedInstanceError).
-                from sqlalchemy import select
-                from sqlalchemy.orm import selectinload
+                # The key suffix is ambiguous: topic-page chats carry a real
+                # topic id ("topic:{topic_id}") while report-card chats carry
+                # a report id. Resolve a Topic first — its living paper set is
+                # the correct retrieval scope (including feed additions).
+                from services.persistence.repositories import (
+                    get_topic,
+                    list_topic_papers,
+                    list_topic_reports,
+                )
 
-                from services.persistence.models import Report
-
+                resolved = False
                 async for db_session in session_scope():
-                    report = await db_session.scalar(
-                        select(Report)
-                        .where(Report.id == report_id, Report.user_id == user_id)
-                        .options(selectinload(Report.papers))
+                    topic = await get_topic(
+                        db_session, owner_id=user_id, topic_id=key_id
                     )
-                    if report:
-                        title = report.title or "this topic"
-                        report_excerpt = (report.report_text or "")[:4000]
-                        pid_to_title = {
-                            p.paper_id: (p.title or p.paper_id) for p in report.papers
-                        }
+                    if topic is None:
+                        continue
+                    title = topic.title or "this topic"
+                    topic_papers = await list_topic_papers(
+                        db_session, topic_id=topic.id
+                    )
+                    pid_to_title = {
+                        p.paper_id: (p.title or p.paper_id) for p in topic_papers
+                    }
+                    latest_reports = await list_topic_reports(
+                        db_session, topic_id=topic.id, limit=1
+                    )
+                    if latest_reports:
+                        report_excerpt = (latest_reports[0].report_text or "")[:4000]
+                    resolved = True
+
+                if not resolved:
+                    # Eager-load papers: the SSE generator has no greenlet
+                    # context, so lazy-loading report.papers raises
+                    # MissingGreenlet (and post-session access raises
+                    # DetachedInstanceError).
+                    from sqlalchemy import select
+                    from sqlalchemy.orm import selectinload
+
+                    from services.persistence.models import Report
+
+                    async for db_session in session_scope():
+                        report = await db_session.scalar(
+                            select(Report)
+                            .where(
+                                Report.id == key_id,
+                                Report.user_id == user_id,
+                            )
+                            .options(selectinload(Report.papers))
+                        )
+                        if report:
+                            title = report.title or "this topic"
+                            report_excerpt = (report.report_text or "")[:4000]
+                            pid_to_title = {
+                                p.paper_id: (p.title or p.paper_id)
+                                for p in report.papers
+                            }
         except Exception as exc:  # noqa: BLE001
             logger.warning("topic_report_load_failed", error=str(exc))
 

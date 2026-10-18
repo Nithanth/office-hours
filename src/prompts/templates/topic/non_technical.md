@@ -8,7 +8,7 @@ AUDIENCE:
 Non-technical — journalists, executives, and general readers. Use plain language, everyday analogies, and no jargon. Focus on the big-picture significance and real-world impact.
 
 TASK:
-Write a broad, accessible overview of the research landscape around "{query_text}". Explain the fundamental ideas, why they matter, and their potential real-world impact in simple terms. Draw on your own knowledge to provide comprehensive coverage.
+Write a broad, accessible overview of the research landscape around "{query_text}". Explain the fundamental ideas, why they matter, and their potential real-world impact in simple terms. Use your own knowledge only to explain concepts — ground every claim, paper name, and result in the reference papers below.
 
 The paper snippets below are representative samples found for this query. Use them as supporting evidence and concrete examples where relevant, but do NOT limit your overview to only what these papers cover. The overview should be broader than any individual paper.
 
@@ -23,7 +23,7 @@ REFERENCE PAPERS:
 GUIDELINES:
 - Provide a landscape-level perspective — not a paper-by-paper summary.
 - Use the reference papers as concrete examples to ground key points, citing them by title when relevant.
-- You may draw on your broader knowledge of the field to fill gaps the papers do not cover.
+- Use general knowledge only for explanations and analogies — never to introduce papers, results, or claims the reference papers do not contain; if the papers leave a gap, acknowledge it rather than filling it.
 - Lead with the most interesting or surprising insight.
 - Address the "so what?" — why should a non-specialist care about this topic?
 - Use everyday analogies and concrete examples to make ideas intuitive.
