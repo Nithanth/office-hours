@@ -36,6 +36,32 @@ FEED_LOOKBACK_DAYS = int(os.getenv("FEED_LOOKBACK_DAYS", "30"))
 FEED_PER_TOPIC_LIMIT = int(os.getenv("FEED_PER_TOPIC_LIMIT", "8"))
 # Floor between manual "check now" clicks and any provider call.
 MANUAL_MIN_INTERVAL_S = int(os.getenv("FEED_MANUAL_MIN_INTERVAL_S", "60"))
+# Cap on papers text-ingested per sweep — a feed add also makes the paper
+# retrievable by topic chat, so we index it in the background.
+FEED_INGEST_LIMIT = int(os.getenv("FEED_INGEST_LIMIT", "6"))
+
+
+async def _ingest_feed_papers(papers: list[Paper]) -> None:
+    """Index feed-added papers so topic chat retrieves them right away —
+    unindexed papers are invisible to RAG until opened in the viewer.
+    Fire-and-forget; every failure is a debug log."""
+    try:
+        from services.paper import vector_store as _vs
+        from services.paper.text_extractor import TextExtractor
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("feed_ingest_unavailable", err=str(exc))
+        return
+
+    ext = TextExtractor.instance()
+    for paper in papers[:FEED_INGEST_LIMIT]:
+        try:
+            pid = str(paper.id) if paper.id else ""
+            if not pid or _vs.index_exists(pid):
+                continue
+            await ext.ensure_cached(str(paper.url or paper.id), paper_id=pid)
+            logger.debug("feed_ingested", paper_id=pid)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("feed_ingest_failed", paper_id=str(paper.id), err=str(exc))
 
 
 def _exa_client() -> Any:
@@ -180,6 +206,7 @@ async def feed_topic(
     topic.last_feed_check = now
     if added:
         topic.updated_at = now
+        asyncio.create_task(_ingest_feed_papers(papers))
     await session.commit()
     return int(added)
 
@@ -204,6 +231,8 @@ async def feed_facet_once(topic: Topic, *, kind: str, query: str) -> int:
             session, topic_id=topic.id, papers=papers, source="feed"
         )
         await session.commit()
+        if added:
+            asyncio.create_task(_ingest_feed_papers(papers))
         return int(added)
     return 0
 

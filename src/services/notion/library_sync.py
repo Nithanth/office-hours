@@ -95,7 +95,11 @@ def _topic_row_properties(topic: dict) -> dict:
 def _topic_body_markdown(topic: dict) -> str:
     """Page body for a mirrored topic — blog first (the shareable take),
     then notes (the running synthesis)."""
-    parts = [f"_Workspace mirror — {topic['kind']} topic._", ""]
+    base = _app_base_url()
+    head = f"_Workspace mirror — {topic['kind']} topic._"
+    if base:
+        head += f" **Open in Office Hours:** {base}/topics/{topic['id']}"
+    parts = [head, ""]
     parts.append("## Blog")
     parts.append(topic.get("blog_markdown") or "_No blog generated yet._")
     parts.append("")
@@ -220,6 +224,13 @@ async def provision_databases(
     return papers_db, topics_db
 
 
+def _app_base_url() -> str:
+    """Public app origin for backlinks written into Notion pages."""
+    import config as _cfg
+
+    return (getattr(_cfg.config, "AUTH_REDIRECT_BASE_URL", "") or "").rstrip("/")
+
+
 def _paper_intro_markdown(paper: dict, tldr: str | None) -> str:
     """Body markdown for a paper's Notion page — a TLDR when one can be
     generated, plus the pointer back to the source and a hint that the
@@ -231,6 +242,9 @@ def _paper_intro_markdown(paper: dict, tldr: str | None) -> str:
     lines = ["## About this paper", "", body, ""]
     if paper["url"]:
         lines.append(f"**Source:** {paper['url']}")
+    base = _app_base_url()
+    if base:
+        lines.append(f"**Open in Office Hours:** {base}/library")
     return "\n".join(lines)
 
 
@@ -319,8 +333,15 @@ async def sync_library(
             # actual research explainer in Notion, not just a row. Only
             # writes when the page is empty so re-syncs never duplicate.
             if report.get("content"):
+                base = _app_base_url()
+                body_content = report["content"]
+                if base:
+                    body_content = (
+                        f"_Synced from Office Hours — open the live report:"
+                        f" {base}/reports/{report_id}_\n\n" + body_content
+                    )
                 await exporter.ensure_page_content(
-                    stats["topic_page_ids"][report_id], report["content"]
+                    stats["topic_page_ids"][report_id], body_content
                 )
         except Exception as exc:
             stats["failed"] += 1
@@ -534,7 +555,11 @@ async def answer_comments_for_paper(
             # [n] chunk citations dangle in Notion — there's no Sources
             # footer to resolve them, so drop the markers entirely.
             answer = re.sub(r"\s*\[\d+\]", "", answer)
-            await exporter.reply_to_discussion(discussion_id, answer)
+            # Attribute the reply — a comment thread with several humans
+            # shouldn't read like one of them answered.
+            await exporter.reply_to_discussion(
+                discussion_id, f"**Office Hours:** {answer}"
+            )
             answered += 1
         except Exception as exc:
             logger.warning(

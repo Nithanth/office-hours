@@ -48,7 +48,8 @@ DEFAULT_SYSTEM_PROMPT: str = _load_template("system/default.md")
 DIRECT_QUERY_USER_PREFIX: str = (
     "You are answering a direct research question for a user. "
     "Provide the best possible answer grounded in the provided source passages if they are relevant. "
-    "If the passages are not relevant you may rely on your own knowledge. "
+    "If the passages are not relevant, answer from your own knowledge but "
+    "explicitly note that the provided sources did not cover it. "
     "Answer in no more than 250 words (≈ one to two short paragraphs)."
 )
 

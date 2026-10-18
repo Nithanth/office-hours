@@ -495,11 +495,44 @@
     // current request; the indicator's Cancel button aborts it.
     // ------------------------------------------------------------------
     let ohActiveTrigger = null;
+
+    // Staged progress text — searches run several seconds; rotating phases
+    // make it feel alive instead of a dead spinner. Illustrative, not real
+    // pipeline telemetry; it just cycles and parks on the last stage.
+    const OH_SEARCH_STAGES = [
+      'Searching the PaperVerse…',
+      'Fetching papers…',
+      'Enriching citations…',
+      'Ranking results…',
+    ];
+    let ohStageTimer = null;
+    function ohStopStages() {
+      if (ohStageTimer) { clearInterval(ohStageTimer); ohStageTimer = null; }
+    }
+    function ohStartStages() {
+      ohStopStages();
+      const el = document.getElementById('oh-loading-text');
+      if (!el) return;
+      let i = 0;
+      el.textContent = OH_SEARCH_STAGES[0];
+      ohStageTimer = setInterval(() => {
+        if (i < OH_SEARCH_STAGES.length - 1) {
+          i += 1;
+          const cur = document.getElementById('oh-loading-text');
+          if (cur) cur.textContent = OH_SEARCH_STAGES[i];
+        }
+      }, 2500);
+    }
+
     document.body.addEventListener('htmx:beforeRequest', e => {
       ohActiveTrigger = e.detail?.elt || null;
+      const ind = e.detail?.elt?.getAttribute?.('hx-indicator')
+        || e.detail?.elt?.closest?.('[hx-indicator]')?.getAttribute?.('hx-indicator');
+      if (ind === '#loading-indicator') ohStartStages();
     });
     document.body.addEventListener('htmx:afterRequest', () => {
       ohActiveTrigger = null;
+      ohStopStages();
     });
     document.addEventListener('click', e => {
       const btn = e.target.closest('#oh-cancel-search');
@@ -507,6 +540,7 @@
       e.preventDefault();
       const trig = ohActiveTrigger;
       ohActiveTrigger = null;
+      ohStopStages();
       if (trig && window.htmx) htmx.trigger(trig, 'htmx:abort');
       const container = document.getElementById('search-results-container');
       if (container) {
