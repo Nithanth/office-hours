@@ -54,6 +54,7 @@ class SharedPageData(BaseModel):
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
     recent_topics: Optional[list] = None  # Topic rows for the home strip
+    topic_new_counts: Optional[dict] = None  # topic_id -> feed-added papers this week
 
 
 # --- UI Components ---
@@ -773,6 +774,14 @@ def home_page(page_data: SharedPageData) -> Body:
                 *[
                     A(
                         t.title or t.seed_query or "Untitled",
+                        (
+                            Span(
+                                f" +{(page_data.topic_new_counts or {})[t.id]}",
+                                cls="oh-topic-badge",
+                            )
+                            if (page_data.topic_new_counts or {}).get(t.id)
+                            else ""
+                        ),
                         href=f"/topics/{t.id}",
                         cls="oh-topic-pill",
                     )

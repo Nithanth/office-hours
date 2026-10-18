@@ -92,6 +92,12 @@ async def get_home(
                     page_data.recent_topics = await list_topics(
                         session, owner_id=owner, limit=6
                     )
+                    from services.persistence.repositories import feed_new_counts
+
+                    page_data.topic_new_counts = await feed_new_counts(
+                        session,
+                        topic_ids=[t.id for t in page_data.recent_topics],
+                    )
         except Exception as exc:  # noqa: BLE001 - strip is best-effort
             logger.warning("home_topics_strip_failed", error=str(exc))
 
