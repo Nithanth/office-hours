@@ -20,7 +20,7 @@ button:disabled {
   margin: 1em 0;
   font-weight: 600;
 }
-body.oh-dark .error-banner {
+html.oh-dark .error-banner {
   background: #4b1c1c;
   color: var(--oh-red);
   border-color: #7f1d1d;
@@ -40,12 +40,12 @@ body.oh-dark .error-banner {
 .ask-assistant-btn:hover {
   background: #1e40af;
 }
-body.oh-dark .ask-assistant-btn {
+html.oh-dark .ask-assistant-btn {
   background: #2563eb;
   color: #fff;
   border: 1px solid #1e40af;
 }
-body.oh-dark .ask-assistant-btn:hover {
+html.oh-dark .ask-assistant-btn:hover {
   background: #1e40af;
   color: #fff;
 }
@@ -81,25 +81,25 @@ body.oh-dark .ask-assistant-btn:hover {
 
 /* --- Link colour normalisation ----------------------------------------- */
 a, a:visited { color:#2563eb; }
-body.oh-dark a, body.oh-dark a:visited { color:#8ab4f8; }
+html.oh-dark a, html.oh-dark a:visited { color:#8ab4f8; }
 
 /* Preserve white nav links */
 nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
-body.oh-dark button { background:#2b3546; color:var(--fg,#dbe4f0); border:1px solid #41506b; }
-body.oh-dark button:hover:not(:disabled) { background:#36435c; }
+html.oh-dark button { background:#2b3546; color:var(--fg,#dbe4f0); border:1px solid #41506b; }
+html.oh-dark button:hover:not(:disabled) { background:#36435c; }
 
 /* Inputs / text areas to match dark grey */
-body.oh-dark input, body.oh-dark textarea, body.oh-dark select {
+html.oh-dark input, html.oh-dark textarea, html.oh-dark select {
   background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352;
 }
-body.oh-dark input:hover, body.oh-dark textarea:hover, body.oh-dark select:hover {
+html.oh-dark input:hover, html.oh-dark textarea:hover, html.oh-dark select:hover {
   background:#2b3546;
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
-body.oh-dark .text-blue-500 { color: #8ab4f8; }
+html.oh-dark .text-blue-500 { color: #8ab4f8; }
 
 /* Ensure mobile no-horizontal-scroll.
    clip (not hidden): any non-visible overflow value on html/body creates a
@@ -212,14 +212,14 @@ html, body { overflow-x: clip; }
   border-color: var(--accent, #4a9eff);
   color: var(--accent, #4a9eff);
 }
-body.oh-dark .btn-secondary,
-body.oh-dark .oh-search-btn {
+html.oh-dark .btn-secondary,
+html.oh-dark .oh-search-btn {
   background: #2b3546;
   color: var(--fg, #eee);
   border-color: #41506b;
 }
-body.oh-dark .btn-secondary:hover:not(:disabled),
-body.oh-dark .oh-search-btn:hover:not(:disabled) {
+html.oh-dark .btn-secondary:hover:not(:disabled),
+html.oh-dark .oh-search-btn:hover:not(:disabled) {
   background: #36435c;
   border-color: var(--accent);
   color: var(--accent);

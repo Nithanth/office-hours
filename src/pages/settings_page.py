@@ -20,7 +20,7 @@ from fasthtml.common import (
 )
 
 import config as _cfg
-from pages.shell import top_bar
+from pages.shell import THEME_INLINE_SCRIPT, top_bar
 from utils.static_assets import static_url
 
 _TIER_DESCRIPTIONS = {
@@ -143,6 +143,8 @@ def settings_page(
     return Body(
         Head(
             Title("Settings — Office Hours"),
+            # Apply saved theme before first paint (class lives on <html>)
+            Script(THEME_INLINE_SCRIPT),
             Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
             Link(rel="stylesheet", href=static_url("/static/css/base.css")),
             Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),

@@ -1,6 +1,12 @@
 /* base.css – layout, typography, header/footer */
 @import url("variables.css");
 
+html {
+  /* Reserve the scrollbar gutter always — the sticky top bar shifts ~15px
+     sideways every navigation between short and long pages otherwise. */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: Arial, Helvetica, sans-serif;
   margin: 0;
@@ -24,7 +30,7 @@ body {
 }
 
 /* Force darker border in dark mode if variables are not cascading */
-body.oh-dark .container {
+html.oh-dark .container {
   border-color: var(--container-border-dark, #444);
 }
 
@@ -61,7 +67,7 @@ footer {
   color:#007bff; /* light mode: blue */
 }
 
-body.oh-dark .pinned-label{
+html.oh-dark .pinned-label{
   color:var(--oh-accent); /* dark mode: same blue */
 }
 

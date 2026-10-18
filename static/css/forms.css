@@ -5,14 +5,14 @@
 input, select, textarea, button { font-family: Arial, sans-serif !important; }
 
 /* Number input spinner recolour */
-body.oh-dark input[type="number"] {
+html.oh-dark input[type="number"] {
   background:var(--container-bg) !important; color:var(--fg); border:1px solid var(--container-border);
 }
-body.oh-dark input[type="number"]::-webkit-inner-spin-button,
-body.oh-dark input[type="number"]::-webkit-outer-spin-button {
+html.oh-dark input[type="number"]::-webkit-inner-spin-button,
+html.oh-dark input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: inner-spin-button !important;
 }
-body.oh-dark input[type="number"]:hover { background:#232b38 !important; }
+html.oh-dark input[type="number"]:hover { background:#232b38 !important; }
 
 /* Ask-LLM strip backgrounds */
 #ask-assistant-form, .ask-llm-subtitle, #ask-result-container { background:transparent !important; }
@@ -25,24 +25,24 @@ form[hx-post='/chat'] { display:block; }
 .stop-gen-btn-global { padding:6px 10px; background:transparent; color:var(--oh-red); border:1px solid var(--oh-red); border-radius:4px; cursor:pointer; display:none; }
 
 /* Office Hours spinner */
-body.oh-dark .oh-spinner { border-color:var(--container-border); border-top-color:var(--oh-accent); }
+html.oh-dark .oh-spinner { border-color:var(--container-border); border-top-color:var(--oh-accent); }
 
 /* Transparent backgrounds for various containers (dark & light) */
-body.oh-dark form,
-body.oh-dark #paper-search-form,
-body.oh-dark #results-and-report-form,
-body.oh-dark #ask-assistant-form,
-body.oh-dark .ask-llm-subtitle,
-body.oh-dark #ask-result-container,
-body.oh-dark #search-results-container,
-body.oh-dark #report-config-area,
-body.oh-dark #report-display-area { background:transparent !important; }
+html.oh-dark form,
+html.oh-dark #paper-search-form,
+html.oh-dark #results-and-report-form,
+html.oh-dark #ask-assistant-form,
+html.oh-dark .ask-llm-subtitle,
+html.oh-dark #ask-result-container,
+html.oh-dark #search-results-container,
+html.oh-dark #report-config-area,
+html.oh-dark #report-display-area { background:transparent !important; }
 
 #paper-search-form, #results-and-report-form, #ask-assistant-form { background:transparent !important; box-shadow:none !important; }
 
 /* Checkbox accent in dark mode */
 input.paper-select-checkbox { vertical-align: middle; margin-top:0.1em; width:13px; height:13px; }
-body.oh-dark input.paper-select-checkbox { accent-color:var(--oh-accent); }
+html.oh-dark input.paper-select-checkbox { accent-color:var(--oh-accent); }
 
 /* ------------------------------------------------------------------ */
 /* Choices.js compact styling – make multi-select resemble native select */
@@ -72,27 +72,27 @@ body.oh-dark input.paper-select-checkbox { accent-color:var(--oh-accent); }
 }
 
 /* Dark-mode tweaks */
-body.oh-dark .choices__inner {
+html.oh-dark .choices__inner {
   background: var(--container-bg);
   border-color: var(--container-border);
   color: var(--fg);
 }
-body.oh-dark .choices__list--dropdown {
+html.oh-dark .choices__list--dropdown {
   background: var(--container-bg);
   border-color: var(--container-border);
 }
 
 /* Sources dropdown dark-mode */
-body.oh-dark #sources-dropdown-btn {
+html.oh-dark #sources-dropdown-btn {
   background: var(--container-bg);
   color: var(--fg);
   border-color: var(--container-border);
 }
-body.oh-dark #sources-dropdown-menu {
+html.oh-dark #sources-dropdown-menu {
   background: var(--container-bg);
   border-color: var(--container-border);
   color: var(--fg);
 }
-body.oh-dark #sources-dropdown-menu label:hover {
+html.oh-dark #sources-dropdown-menu label:hover {
   background: #232b38;
 }

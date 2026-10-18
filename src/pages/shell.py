@@ -75,8 +75,17 @@ def lib_subtabs_html(active: str) -> str:
 _HTMX = "https://unpkg.com/htmx.org@1.9.12"
 _HTMX_SSE = "https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"
 
+# Applies the saved theme before first paint so dark mode never flashes
+# light on navigation — settings.js re-syncs the class after load.
+THEME_INLINE_SCRIPT = (
+    "(function(){try{if(localStorage.getItem('theme')==='dark')"
+    "{document.documentElement.classList.add('oh-dark')}}catch(e){}})();"
+)
+
 _HEAD_LINKS = (
-    f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
+    f"<script>{THEME_INLINE_SCRIPT}</script>"
+    + "\n"
+    + f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/variables.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/top-bar.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/utilities.css")}">\n'
