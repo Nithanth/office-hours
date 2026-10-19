@@ -766,27 +766,6 @@ def home_page(page_data: SharedPageData) -> Body:
                 "if(f){f.requestSubmit();}else{i.focus();}"
                 "});"
             ),
-            # Typewriter placeholder — cycles real example queries with a
-            # block cursor. Dies on its own once .empty-state is swapped out.
-            Script(
-                "(function(){"
-                "var i=document.getElementById('search_query');if(!i)return;"
-                "if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;"
-                "var qs=['implicit neural representations','papers by Yann LeCun','arxiv.org/abs/1706.03762','state space models'];"
-                "var qi=0,pos=0,del=false;"
-                "var tick=function(){"
-                "var el=document.getElementById('search_query');"
-                "if(!el||!document.querySelector('.empty-state'))return;"
-                "var q=qs[qi];pos+=del?-1:1;"
-                "el.setAttribute('placeholder','try: '+q.slice(0,pos)+' \\u258a');"
-                "var d=del?28:55;"
-                "if(!del&&pos>=q.length){del=true;d=1800;}"
-                "if(del&&pos<=0){del=false;qi=(qi+1)%qs.length;d=500;}"
-                "setTimeout(tick,d);"
-                "};"
-                "setTimeout(tick,700);"
-                "})();"
-            ),
             cls="empty-state",
         )
 
@@ -826,6 +805,9 @@ def home_page(page_data: SharedPageData) -> Body:
             # Modular JS entry-points
             Script(src=static_url("/static/js/main.js"), type="module"),
             Script(src=static_url("/static/js/library.js"), defer=True),
+            # Typewriter placeholder for the hero field — separate file because
+            # fasthtml's Script() escapes &&/</>/& in inline bodies.
+            Script(src=static_url("/static/js/hero-typewriter.js"), defer=True),
             # cluster-viz.js lives on /library — the library is where
             # clustering has enough papers to mean something.
             # ohBlogRender lazy-loads KaTeX — the report stream's done event
