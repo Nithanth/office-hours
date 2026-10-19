@@ -52,7 +52,7 @@ html.oh-dark .pager-btn:hover:not(:disabled) {
   max-width: 2000px;
   width: 75%;
   min-height: calc(100vh - 12rem);
-  margin: 2rem auto 0.5rem;
+  margin: 1.1rem auto 0.5rem;
   padding: 1.5rem 2rem 1.5rem;
   border: 1px solid var(--container-border);
   background: var(--container-bg);

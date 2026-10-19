@@ -184,7 +184,7 @@ html, body { overflow-x: clip; }
   width: 100%;
   box-sizing: border-box;
   max-width: 900px;
-  margin: 2rem auto;
+  margin: 1.1rem auto 2rem;
   padding: 0 1rem;
 }
 
@@ -301,7 +301,7 @@ html.oh-dark .oh-search-btn:hover:not(:disabled) {
   width: 100%;
   box-sizing: border-box;
   max-width: 1000px;
-  margin: 2rem auto;
+  margin: 1.1rem auto 2rem;
   padding: 0 1rem;
 }
 
@@ -312,7 +312,7 @@ html.oh-dark .oh-search-btn:hover:not(:disabled) {
 /* legacy alias — the three Library sub-tab pages all use .page-wrap now */
 .lib-wrap {
   max-width: 900px;
-  margin: 2rem auto;
+  margin: 1.1rem auto 2rem;
   padding: 0 1rem;
 }
 
