@@ -41,6 +41,14 @@ class Paper(BaseModel):
         description="Number of citations from Semantic Scholar (None if unknown).",
     )
 
+    # Set during pipeline enrichment: True when the URL points at an
+    # open-access copy (arXiv, ACL Anthology, OpenReview, Unpaywall OA…),
+    # False when only a paywalled publisher page was found. None = unknown.
+    is_open_access: Optional[bool] = Field(
+        default=None,
+        description="Whether the paper link resolves to an open-access copy.",
+    )
+
     # Path to cached full-text file (filled by TextExtractor when available)
     full_text_path: Optional[str] = Field(
         default=None,

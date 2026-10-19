@@ -364,6 +364,18 @@ def _render_paper_item(
         },
     )
 
+    # Open-access state — only flagged when the pipeline couldn't find a
+    # readable copy (arXiv map + Unpaywall both missed). Honest expectation:
+    # this card links to a publisher page and full text may not extract.
+    oa_span = None
+    if paper.is_open_access is False:
+        oa_span = Span(
+            "publisher page only",
+            cls="citation-badge oa-closed-badge",
+            title="No open copy found — link goes to the publisher page and full text may not be readable",
+            style="font-size:0.75em; color:var(--fg-muted, #888); margin-left:8px; vertical-align:middle; font-style:italic;",
+        )
+
     # Citation count badge (from Semantic Scholar)
     citation_span = None
     if paper.citation_count is not None and paper.citation_count > 0:
@@ -409,6 +421,7 @@ def _render_paper_item(
             Div(
                 Span(f"Published: {formatted_date}"),
                 citation_span,
+                oa_span,
                 selection_label,
                 cls="paper-meta",
             ),
