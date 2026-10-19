@@ -197,33 +197,132 @@ html.oh-dark .domain-pill:has(input:checked) {
   flex-direction: column;
 }
 
+/* Marker for the pre-search state — carries only the chip script. The
+   hero itself lives in .oh-hero-block above the form so the whole
+   masthead (title + field + chips) reads as one centered unit. */
 .empty-state {
   flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 0.9rem;
-  padding: 2rem 1rem;
-  color: var(--fg, #bbb);
-  font-family: var(--oh-font-mono, "Lucida Console", "Courier New", monospace);
-  font-size: 0.8rem;
-  letter-spacing: 1px;
 }
 
-/* First-run hero — title / explainer / example-query chips */
+/* ================================================================
+   Hero search — the search IS the hero (pre-search only)
+   ================================================================ */
+.oh-hero-block {
+  display: none;
+}
+/* Vertically center the whole masthead while the hero is showing —
+   the results form's flex:1 would otherwise pin it to the top. */
+.search-card:has(.empty-state) > div:first-child {
+  justify-content: center;
+}
+.search-card:has(.empty-state) #results-and-report-form {
+  flex: 0 0 auto;
+}
+.search-card:has(.empty-state) .oh-hero-block {
+  display: block;
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+.search-card:has(.empty-state) #paper-search-form {
+  max-width: 46rem;
+  margin: 0 auto;
+  width: 100%;
+  text-align: center;
+}
+.search-card:has(.empty-state) .oh-topics-strip {
+  justify-content: center;
+  border-top: none;
+}
 .oh-hero-title {
-  font-size: 1.35rem;
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 1.9rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--fg);
 }
 .oh-hero-sub {
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   color: var(--fg-muted, #888);
   max-width: 34rem;
+  margin: 0.6rem auto 0;
   line-height: 1.6;
-  letter-spacing: 0.2px;
+}
+
+/* Pill search field — input + primary action in one bordered unit */
+.oh-search-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--container-border, #888);
+  border-radius: 999px;
+  background: var(--container-bg);
+  padding: 4px 4px 4px 18px;
+  transition: border-color var(--oh-speed, 140ms) var(--oh-ease, ease),
+    box-shadow var(--oh-speed, 140ms) var(--oh-ease, ease);
+}
+.oh-search-field:focus-within {
+  border-color: var(--oh-accent);
+  box-shadow: 0 0 0 3px var(--oh-accent-soft, rgba(37, 99, 235, 0.12));
+}
+.oh-search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none !important;
+  background: transparent;
+  padding: 10px 0;
+  font-size: 0.95rem;
+  color: var(--fg);
+  outline: none;
+}
+.oh-search-field input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.oh-search-go {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  background: var(--oh-accent);
+  color: #fff;
+  font-family: var(--oh-font-sans, inherit);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--oh-speed, 140ms) var(--oh-ease, ease);
+}
+.oh-search-go:hover {
+  background: var(--oh-accent-hover);
+}
+html.oh-dark .oh-search-go {
+  color: #0f1720;
+}
+
+/* Ghost secondary action — quiet text button, not a peer CTA */
+.oh-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  font-family: var(--oh-font-sans, inherit);
+  font-size: 0.82rem;
+  color: var(--fg-muted, #888);
+  cursor: pointer;
+  border-radius: var(--oh-radius-sm, 6px);
+}
+.oh-ghost-btn:hover {
+  color: var(--oh-accent);
+  background: var(--oh-accent-soft, rgba(37, 99, 235, 0.08));
+}
+
+/* "Try" example chips — only relevant before the first search */
+.search-card:not(:has(.empty-state)) .oh-hero-chips {
+  display: none;
 }
 .oh-hero-chips {
   display: flex;
@@ -231,25 +330,36 @@ html.oh-dark .domain-pill:has(input:checked) {
   gap: 8px;
   align-items: center;
   justify-content: center;
+  margin-top: 0.9rem;
 }
 .oh-hero-try {
-  font-size: 0.78rem;
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-muted, #888);
 }
 .oh-hero-chip {
-  font-family: inherit;
-  font-size: 0.78rem;
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.72rem;
   letter-spacing: 0.2px;
   padding: 5px 14px;
   border: 1px solid var(--container-border, #888);
   border-radius: 999px;
-  background: var(--container-bg);
-  color: var(--fg);
+  background: transparent;
+  color: var(--fg-muted, #888);
   cursor: pointer;
+  transition: border-color var(--oh-speed, 140ms) var(--oh-ease, ease),
+    color var(--oh-speed, 140ms) var(--oh-ease, ease);
 }
 .oh-hero-chip:hover {
   border-color: var(--oh-accent);
   color: var(--oh-accent);
+}
+
+/* Post-search: masthead compacts to a bar */
+.search-card:not(:has(.empty-state)) .oh-search-field {
+  max-width: 40rem;
 }
 
 /* Equal-size search action buttons */
@@ -326,6 +436,16 @@ html.oh-dark .search-card textarea:focus {
     padding: 0.75rem;
     margin: 0.5rem auto;
     min-height: auto;
+  }
+
+  .oh-search-field {
+    padding-left: 12px;
+  }
+  .oh-search-go {
+    padding: 10px 14px;
+  }
+  .oh-hero-title {
+    font-size: 1.4rem;
   }
 
   .search-card li[data-paper-id] {

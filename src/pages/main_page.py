@@ -755,36 +755,8 @@ def home_page(page_data: SharedPageData) -> Body:
             is_url_search=False,  # Assume not a URL search on initial load
             papers_list=page_data.search_results,
         )
-    else:  # No search performed yet — first-run onboarding panel
-        example_queries = [
-            "implicit neural representations",
-            "papers by Yann LeCun",
-            "https://arxiv.org/abs/1706.03762",
-        ]
+    else:  # No search performed yet — empty-state marks pre-search for :has()
         results_display_content = Div(
-            Div(
-                "A workbench for research questions.",
-                cls="oh-hero-title",
-            ),
-            Div(
-                "Search a topic, a paper link, or an author — Office Hours builds "
-                "a living topic page around it: the paper set, streamed reports, "
-                "notes, a blog, and a chat that knows all of them.",
-                cls="oh-hero-sub",
-            ),
-            Div(
-                Span("Try", cls="oh-hero-try"),
-                *[
-                    BUTTON(
-                        q,
-                        type="button",
-                        cls="oh-hero-chip",
-                        data_q=q,
-                    )
-                    for q in example_queries
-                ],
-                cls="oh-hero-chips",
-            ),
             Script(
                 "document.addEventListener('click',function(ev){"
                 "var b=ev.target.closest('.oh-hero-chip');if(!b)return;"
@@ -848,19 +820,61 @@ def home_page(page_data: SharedPageData) -> Body:
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
-                P(
-                    I("Enter a research topic, query, paper link, or author name:"),
-                    style="margin-bottom:0.5rem;",
+                # Hero — visible only pre-search; collapses via
+                # .search-card:has(.empty-state) once results land.
+                Div(
+                    Div(
+                        "A workbench for research questions.",
+                        cls="oh-hero-title",
+                    ),
+                    Div(
+                        "Search a topic, a paper link, or an author — Office Hours builds "
+                        "a living topic page around it: the paper set, streamed reports, "
+                        "notes, a blog, and a chat that knows all of them.",
+                        cls="oh-hero-sub",
+                    ),
+                    cls="oh-hero-block",
                 ),
                 FORM(  # Search Form
-                    INPUT(
-                        type="search",
-                        id="search_query",
-                        name="search_query",
-                        required=True,
-                        placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
-                        value=page_data.current_query or "",
-                        style="width:100%;max-width:44rem;padding:6px 10px;font-size:0.95rem;",
+                    Div(
+                        INPUT(
+                            type="search",
+                            id="search_query",
+                            name="search_query",
+                            required=True,
+                            placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
+                            value=page_data.current_query or "",
+                        ),
+                        BUTTON(
+                            I(cls="fa-solid fa-magnifying-glass"),
+                            " Search",
+                            type="submit",
+                            name="mode",
+                            value="auto",
+                            id="search-papers-btn",
+                            cls="oh-search-go",
+                            onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
+                        ),
+                        cls="oh-search-field",
+                    ),
+                    # "Try" example-query chips — first-run affordance that
+                    # collapses with the hero once results land.
+                    Div(
+                        Span("Try", cls="oh-hero-try"),
+                        *[
+                            BUTTON(
+                                q,
+                                type="button",
+                                cls="oh-hero-chip",
+                                data_q=q,
+                            )
+                            for q in [
+                                "implicit neural representations",
+                                "papers by Yann LeCun",
+                                "https://arxiv.org/abs/1706.03762",
+                            ]
+                        ],
+                        cls="oh-hero-chips",
                     ),
                     # Filters row — date + sources dropdown (collapsible)
                     Details(
@@ -996,42 +1010,30 @@ def home_page(page_data: SharedPageData) -> Body:
                         ),
                         cls="oh-search-options",
                     ),
-                    # Action buttons
-                    Div(
-                        BUTTON(
-                            I(cls="fa-solid fa-magnifying-glass"),
-                            " Search Papers",
-                            type="submit",
-                            name="mode",
-                            value="auto",
-                            id="search-papers-btn",
-                            cls="oh-search-btn",
-                            onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
+                    # Secondary action — author search is a ghost link, not a
+                    # peer button: Search is the product's primary verb.
+                    BUTTON(
+                        I(cls="fa-solid fa-user-graduate"),
+                        " Search by Author",
+                        type="button",
+                        id="search-author-btn",
+                        cls="oh-ghost-btn",
+                        title="Search for a researcher by name (Semantic Scholar)",
+                        hx_post="/author/search",
+                        hx_include="#paper-search-form",
+                        hx_target="#search-results-container",
+                        hx_swap="innerHTML",
+                        **{"hx-indicator": "#loading-indicator"},
+                        onclick=(
+                            "var q=document.getElementById('search_query').value;"
+                            "if(!q.trim()){"
+                            "document.getElementById('search-results-container').innerHTML="
+                            "\"<div class='error-banner'>Please enter an author name.</div>\";"
+                            "event.stopImmediatePropagation();"
+                            "}else{"
+                            "document.getElementById('oh-loading-text').textContent='Searching authors...';"
+                            "}"
                         ),
-                        BUTTON(
-                            I(cls="fa-solid fa-user-graduate"),
-                            " Search by Author",
-                            type="button",
-                            id="search-author-btn",
-                            cls="oh-search-btn",
-                            title="Search for a researcher by name (Semantic Scholar)",
-                            hx_post="/author/search",
-                            hx_include="#paper-search-form",
-                            hx_target="#search-results-container",
-                            hx_swap="innerHTML",
-                            **{"hx-indicator": "#loading-indicator"},
-                            onclick=(
-                                "var q=document.getElementById('search_query').value;"
-                                "if(!q.trim()){"
-                                "document.getElementById('search-results-container').innerHTML="
-                                "\"<div class='error-banner'>Please enter an author name.</div>\";"
-                                "event.stopImmediatePropagation();"
-                                "}else{"
-                                "document.getElementById('oh-loading-text').textContent='Searching authors...';"
-                                "}"
-                            ),
-                        ),
-                        style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;",
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",
