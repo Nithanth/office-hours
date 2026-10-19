@@ -217,25 +217,21 @@ async def generate_report_incremental(  # noqa: PLR0913
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
     from services.core.model_prefs import prefs_owner_id
+    from services.limits import check_daily_limit
     from services.persistence.database import database_available, session_scope
 
     # Owner key: auth user_id when signed in, else "sess:{id}" — anonymous
-    # visitors own (and are rate-limited on) their reports too.
+    # visitors own (and are rate-limited on) their reports too. A BYOK
+    # OpenRouter key lifts the cap; BETA_EXEMPT_USER_IDS bypass it.
     user_id = prefs_owner_id(request)
-    if user_id and database_available():
-        from services.persistence.repositories import daily_usage_count
-
-        async for session in session_scope():
-            used = await daily_usage_count(
-                session, user_id=user_id, event_type="report_generated"
-            )
-        if used >= config.BETA_DAILY_REPORT_LIMIT:
-            return HTMLResponse(
-                "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
-                "Daily report limit reached. Please try again tomorrow."
-                "</div>",
-                status_code=429,
-            )
+    limit_msg = await check_daily_limit(request, "report_generated")
+    if limit_msg:
+        return HTMLResponse(
+            "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+            f"{limit_msg}"
+            "</div>",
+            status_code=429,
+        )
 
     # Metrics: count incoming requests
     if _METRICS_ENABLED and REPORT_REQ is not None:

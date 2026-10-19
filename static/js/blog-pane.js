@@ -275,7 +275,10 @@
 
     try {
       const resp = await fetch("/generate-blog", { method: "POST", body: fd });
-      if (!resp.ok) throw new Error(`Server responded ${resp.status}`);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `Server responded ${resp.status}`);
+      }
       const data = await resp.json();
       const md = await pollToken(data.token, signal);
       if (md == null || signal.cancelled) return;

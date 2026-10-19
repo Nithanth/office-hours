@@ -129,22 +129,18 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             },
         )
 
-    if user_id and database_available():
-        from services.persistence.repositories import daily_usage_count
+    from services.limits import check_daily_limit
 
-        async for db_session in session_scope():
-            used = await daily_usage_count(
-                db_session, user_id=user_id, event_type="search"
-            )
-        if used >= settings.BETA_DAILY_SEARCH_LIMIT:
-            return HTMLResponse(
-                "<div class='error-banner'>Daily search limit reached. Please try again tomorrow.</div>",
-                status_code=429,
-                headers={
-                    "HX-Retarget": "#search-results-container",
-                    "HX-Reswap": "innerHTML",
-                },
-            )
+    limit_msg = await check_daily_limit(request, "search")
+    if limit_msg:
+        return HTMLResponse(
+            f"<div class='error-banner'>{limit_msg}</div>",
+            status_code=429,
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
+        )
 
     # Normalise display count ----------------------------------------------------
     if num_results is None:

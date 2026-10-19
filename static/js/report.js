@@ -333,8 +333,11 @@ function handleNotesClick(ev) {
     if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
 
     fetch("/generate-report-notes", { method: "POST", body: fd })
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server responded ${r.status}`);
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.detail || `Server responded ${r.status}`);
+        }
         return r.blob();
       })
       .then((blob) => {
@@ -348,7 +351,7 @@ function handleNotesClick(ev) {
       .catch((err) => {
         console.error("[oh] notes download failed", err);
         // eslint-disable-next-line no-alert
-        alert("Failed to generate notes. Please try again.");
+        alert(err.message || "Failed to generate notes. Please try again.");
       })
       .finally(() => {
         btn.disabled = false;
@@ -470,8 +473,11 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
   }
 
   fetch(endpoint, { method: "POST", body: fd })
-    .then((r) => {
-      if (!r.ok) throw new Error(`Server responded ${r.status}`);
+    .then(async (r) => {
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.detail || `Server responded ${r.status}`);
+      }
       return r.json();
     })
     .then((data) => {
@@ -485,7 +491,7 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
       console.error("[oh] blog generation failed", err);
       if (blogWindow) blogWindow.close();
       // eslint-disable-next-line no-alert
-      alert("Failed to generate blog post. Please try again.");
+      alert(err.message || "Failed to generate blog post. Please try again.");
     })
     .finally(() => {
       if (btn) {

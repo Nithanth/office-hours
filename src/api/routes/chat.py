@@ -99,6 +99,17 @@ async def chat_post(
     if not clean_msg:
         return Response(status_code=204)
 
+    # Daily chat budget (BYOK lifts it; BETA_EXEMPT_USER_IDS bypasses).
+    # 200 + an assistant bubble so HTMX renders the notice in the chat log.
+    from services.limits import check_daily_limit, record_event
+
+    limit_msg = await check_daily_limit(request, "chat_message")
+    if limit_msg:
+        return HTMLResponse(
+            f'<div class="assistant-message">{html.escape(limit_msg)}</div>'
+        )
+    await record_event(request, "chat_message")
+
     # Topic chats scope in-memory state per topic ("topic:{topic_id}"),
     # falling back to the report key for legacy report-linked topic chats;
     # persistence keeps the bare "topic" paper_id + topic_id thread key.
@@ -415,14 +426,21 @@ async def chat_stream(
                     print("Stream cancelled by client.")
                     completed_successfully = False
                     break
-                except Exception:  # noqa: BLE001
+                except Exception as stream_err:  # noqa: BLE001
                     # Capture full traceback for debugging
                     log.exception(
                         "chat_stream_exception",
                         session_id=session_id,
                         paper_id=paper_id,
                     )
-                    error_message = html.escape("Sorry, an error occurred.")
+                    from services.limits import friendly_error_message
+
+                    error_message = html.escape(
+                        friendly_error_message(
+                            stream_err,
+                            "Something went wrong on our side. Try again in a minute.",
+                        )
+                    )
                     yield "event: error\n"
                     yield f"data: {error_message}\n\n"
                     log.error("chat_stream_error_event", session_id=session_id)
