@@ -200,3 +200,56 @@ class TestUrlCanonicalization:
         enrich_papers_with_citations(papers)
         assert len(papers) == 1
         assert "arxiv.org" in str(papers[0].url)
+
+
+class TestUnpaywallRescue:
+    """Closed papers get one Unpaywall lookup before being marked closed."""
+
+    def _make_paper(self, url: str, pid: str | None = None) -> Paper:
+        return Paper(id=pid or url, title="Test", url=url)
+
+    @patch("services.paper.metadata.unpaywall.resolve_open_access_url")
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_paper_meta")
+    def test_closed_doi_rescued(self, mock_batch, mock_upw):
+        """No arXiv version but Unpaywall finds a repository copy."""
+        acm = "https://dl.acm.org/doi/10.1145/closed"
+        mock_batch.return_value = {
+            "DOI:10.1145/closed": _meta(
+                citations=3, arxiv_id=None, doi="10.1145/closed"
+            )
+        }
+        mock_upw.return_value = "https://repo.example.edu/paper.pdf"
+        papers = [self._make_paper(acm)]
+        enrich_papers_with_citations(papers)
+        assert str(papers[0].url) == "https://repo.example.edu/paper.pdf"
+        assert papers[0].is_open_access is True
+
+    @patch("services.paper.metadata.unpaywall.resolve_open_access_url")
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_paper_meta")
+    def test_truly_closed_marked_false(self, mock_batch, mock_upw):
+        """arXiv + Unpaywall both miss → is_open_access=False (badge shows)."""
+        acm = "https://dl.acm.org/doi/10.1145/closed"
+        mock_batch.return_value = {
+            "DOI:10.1145/closed": _meta(
+                citations=3, arxiv_id=None, doi="10.1145/closed"
+            )
+        }
+        mock_upw.return_value = None
+        papers = [self._make_paper(acm)]
+        enrich_papers_with_citations(papers)
+        assert str(papers[0].url) == acm
+        assert papers[0].is_open_access is False
+
+    @patch("services.paper.metadata.semantic_scholar.batch_fetch_paper_meta")
+    def test_open_access_flagged_true_no_upw_call(self, mock_batch):
+        """Already-OA papers are flagged without an Unpaywall roundtrip."""
+        mock_batch.return_value = {
+            "ARXIV:2106.09685": _meta(citations=100, arxiv_id="2106.09685")
+        }
+        papers = [self._make_paper("https://arxiv.org/abs/2106.09685")]
+        with patch(
+            "services.paper.metadata.unpaywall.resolve_open_access_url"
+        ) as mock_upw:
+            enrich_papers_with_citations(papers)
+            mock_upw.assert_not_called()
+        assert papers[0].is_open_access is True

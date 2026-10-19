@@ -415,6 +415,71 @@ def enrich_papers_with_citations(
                         "paper_url_canonicalized", from_url=old_url, to_url=new_url
                     )
 
+    # Open-access flagging + Unpaywall rescue ---------------------------
+    # Every paper gets its is_open_access flag; ones still on closed hosts
+    # get a Unpaywall lookup for a legit open copy (repository, PMC, OA
+    # publisher mirror) before being marked closed.
+    closed: list[Any] = []
+    for paper in papers:
+        if not paper.url:
+            continue
+        if _is_open_access_url(str(paper.url)):
+            paper.is_open_access = True
+        else:
+            closed.append(paper)
+
+    unpaywalled = 0
+    if closed:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        from services.paper.metadata.unpaywall import resolve_open_access_url
+
+        def _doi_for(paper: Any) -> str | None:
+            # Prefer the DOI S2 resolved for this paper (exact record),
+            # fall back to one embedded in the URL itself.
+            for s2_id, m in meta.items():
+                doi = m.get("doi")
+                if paper in id_map.get(s2_id, []) and isinstance(doi, str):
+                    return doi
+            result = _url_utils.extract_doi(str(paper.url))
+            return result if isinstance(result, str) else None
+
+        def _resolve(paper: Any) -> str | None:
+            doi = _doi_for(paper)
+            return (
+                resolve_open_access_url(doi, timeout=min(timeout, 6)) if doi else None
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            fut_map = {pool.submit(_resolve, p): p for p in closed}
+            for fut in as_completed(fut_map):
+                paper = fut_map[fut]
+                try:
+                    oa_url = fut.result()
+                except Exception as exc:  # noqa: BLE001 – best-effort
+                    logger.debug(
+                        "unpaywall_resolve_failed",
+                        url=str(paper.url),
+                        err=str(exc),
+                    )
+                    oa_url = None
+                if oa_url:
+                    old_url = str(paper.url)
+                    paper.url = HttpUrl(oa_url)
+                    if str(paper.id) == old_url:
+                        paper.id = oa_url
+                    paper.is_open_access = True
+                    unpaywalled += 1
+                    canonicalized += 1
+                    logger.debug(
+                        "paper_url_unpaywalled", from_url=old_url, to_url=oa_url
+                    )
+                else:
+                    paper.is_open_access = False
+
+    if unpaywalled:
+        logger.info("unpaywall_rescued", count=unpaywalled, closed=len(closed))
+
     # Re-dedup: canonicalization can collapse an ACM entry and its arXiv
     # twin that slipped through the earlier URL-based dedup. Keep the first
     # occurrence of each normalized key.
