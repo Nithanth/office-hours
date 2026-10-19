@@ -272,6 +272,7 @@ html.oh-dark .domain-pill:has(input:checked) {
   padding: 10px 0;
   font-size: 0.95rem;
   color: var(--fg);
+  caret-color: var(--oh-accent);
   outline: none;
 }
 .oh-search-field input:focus {
