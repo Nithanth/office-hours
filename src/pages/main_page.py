@@ -833,9 +833,9 @@ def home_page(page_data: SharedPageData) -> Body:
                         cls="oh-hero-title",
                     ),
                     Div(
-                        "Search a topic, a paper link, or an author — Office Hours builds "
-                        "a living topic page around it: the paper set, streamed reports, "
-                        "notes, a blog, and a chat that knows all of them.",
+                        "Search a topic, a paper link, or an author. Office Hours turns it "
+                        "into a topic page: the papers, streamed reports, notes, a blog, "
+                        "and a chat that knows them all.",
                         cls="oh-hero-sub",
                     ),
                     cls="oh-hero-block",
@@ -975,7 +975,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                     cls="oh-opt-select",
                                 ),
                                 cls="oh-tip oh-tip-below",
-                                data_tip="Effort tier — which model each tier runs is pinned in Settings",
+                                data_tip="Which model runs at each tier. Pinned in Settings.",
                             ),
                             Div(
                                 A(
@@ -995,7 +995,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                     cls="oh-opt-select",
                                 ),
                                 cls="oh-tip oh-tip-below",
-                                data_tip="Report depth — S concise, L detailed",
+                                data_tip="Report depth. S is concise, L is detailed.",
                             ),
                             Label(
                                 Span("Deep ", cls="filter-label"),
@@ -1007,7 +1007,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                     style="margin:0;",
                                 ),
                                 cls="oh-tip oh-tip-below",
-                                data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
+                                data_tip="Slower but broader. Exa splits the query and runs more retrieval rounds.",
                                 style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;",
                             ),
                             cls="search-form-filters",
@@ -1171,7 +1171,7 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
                     cls="welcome-features",
                 ),
                 P(
-                    "Private beta — sign in with the Google account you "
+                    "Private beta. Sign in with the Google account you "
                     "shared with Nithu.",
                     cls="welcome-fineprint",
                 ),

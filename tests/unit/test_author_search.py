@@ -518,7 +518,7 @@ class TestRenderAuthorList:
         html = _render_author_list(authors, "test")
         assert "Author One" in html
         assert "Author Two" in html
-        assert "Found 2 author(s)" in html
+        assert 'Found 2 authors for "test"' in html
 
 
 # ---------------------------------------------------------------------------

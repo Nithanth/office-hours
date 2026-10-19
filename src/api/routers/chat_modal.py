@@ -934,7 +934,7 @@ async def text_pane(
     if text is None:
         return HTMLResponse(
             "<div class='paper-text-pane'><div class='paper-text-empty'>"
-            "Full text isn't available for this paper — the PDF or Source "
+            "Full text isn't available for this paper. The PDF or Source "
             "tab may still work.</div></div>"
         )
     body = html.escape(text[:_TEXT_PANE_CAP])

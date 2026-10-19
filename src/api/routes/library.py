@@ -101,7 +101,7 @@ async def library_for_you(request: Request) -> HTMLResponse:
             esc_name = html.escape(name)
             authors_html.append(
                 f'<a class="oh-foryou-chip" href="/?search_query={esc_name}"'
-                f' title="Author on {n} of your saved papers — click to search">'
+                f' title="On {n} of your saved papers. Click to search.">'
                 f"{esc_name} ×{n}</a>"
             )
 
@@ -842,30 +842,30 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             '<button id="lib-notion-sync-btn" class="btn-secondary oh-tip" type="button" '
             'data-tip="One shot: re-push every saved paper + topic to Notion and reply to '
             "unanswered comments on your synced pages. Sync already runs automatically "
-            'when you save or change status — use this only if Notion drifted">'
+            'when you save or change status. Use this only if Notion drifted">'
             "Sync now</button>"
         )
         notion_card = ""
     elif notion_needs_destination:
         sync_btn = ""
         notion_card = """<div class="lib-notion-card">
-  <strong>Notion connected</strong> — one last step: pick where your library lives.
+  <strong>Notion connected.</strong> One last step: pick where your library lives.
   <div class="lib-notion-pick">
     <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
     <button id="lib-notion-set-dest" type="button" class="btn-secondary">Set up sync</button>
   </div>
-  <div class="lib-notion-hint">Office Hours creates two linked databases — Papers ↔ Topics — under the page you pick.</div>
+  <div class="lib-notion-hint">Office Hours creates two linked databases, Papers ↔ Topics, under the page you pick.</div>
 </div>"""
     elif signed_in:
         sync_btn = ""
         notion_card = """<div class="lib-notion-card">
-  <strong>Mirror your library in Notion</strong> — papers, topics and reading status sync automatically; questions in page comments get answered by the agent.
+  <strong>Mirror your library in Notion</strong>. Papers, topics and reading status sync automatically, and the agent answers questions left in page comments.
   <div class="lib-notion-pick"><a class="lib-notion-connect" href="/integrations/notion/connect?next=/library">Connect Notion</a></div>
 </div>"""
     else:
         sync_btn = ""
         notion_card = """<div class="lib-notion-card">
-  <strong>Mirror your library in Notion</strong> — sign in to connect your workspace.
+  <strong>Mirror your library in Notion</strong>. Sign in to connect your workspace.
 </div>"""
 
     if papers:
@@ -873,14 +873,14 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     elif status:
         items = (
             '<div class="empty-state-card"><strong>Nothing here yet.</strong>'
-            "<p>No papers with this status — pick another tab above, or add "
+            "<p>No papers with this status. Pick another tab above, or add "
             "papers from a search.</p></div>"
         )
     else:
         items = (
             '<div class="empty-state-card"><strong>Your library is empty.</strong>'
             "<p>Save papers from search results with the bookmark icon and "
-            "they'll land here — anonymous sessions keep a library too.</p>"
+            "they'll land here. Anonymous sessions keep a library too.</p>"
             '<a href="/">Search papers</a></div>'
         )
 
@@ -892,7 +892,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             '<button id="cluster-viz-btn" class="oh-tip" type="button" '
             'data-scope="library" '
             'data-tip="Scatter of your saved papers, grouped by topic similarity'
-            ' — dot size is citation count; click a point to jump to the paper">'
+            '. Dot size is citation count. Click a point to jump to the paper.">'
             '<i class="fa-solid fa-diagram-project"></i> Visualize</button>'
         )
 
@@ -959,7 +959,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
             destSel.innerHTML = dests.length
               ? dests.map(d => `<option value="${{d.id}}" data-type="${{d.type}}">${{d.type === "page" ? "📄" : "🗃"}} ${{d.title}}</option>`).join("")
-              : '<option value="">No shared pages — re-connect and share a page</option>';
+              : '<option value="">No shared pages. Re-connect and share a page</option>';
           }});
         }}
         const setDest = document.getElementById("lib-notion-set-dest");
@@ -974,7 +974,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             }}).then(res => {{
               if (res.ok) {{
                 const statusEl = document.getElementById("lib-sync-status");
-                statusEl.textContent = "All set — papers now sync to Notion automatically.";
+                statusEl.textContent = "All set. Papers now sync to Notion automatically.";
                 document.querySelector(".lib-notion-card").remove();
               }} else {{
                 setDest.disabled = false;

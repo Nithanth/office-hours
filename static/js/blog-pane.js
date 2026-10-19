@@ -169,7 +169,7 @@
       '<div class="blog-pane-cta">' +
       '<div class="blog-pane-cta-icon" aria-hidden="true"><i class="fa-solid fa-pen-nib"></i></div>' +
       "<h2>Read this report as a blog</h2>" +
-      "<p>A clean explainer with diagrams, math, and visuals — generated once, saved with the report.</p>" +
+      "<p>A clean explainer with diagrams, math, and visuals. Generated once, saved with the report.</p>" +
       '<button type="button" class="btn-secondary" id="blog-pane-generate">Generate blog view</button>' +
       "</div>";
     const btn = articleEl.querySelector("#blog-pane-generate");

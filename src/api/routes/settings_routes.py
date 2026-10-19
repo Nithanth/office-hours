@@ -42,7 +42,7 @@ async def save_model_prefs(request: Request) -> Response:
     if not owner_id:
         return _render(
             request,
-            error="Could not determine your session — please reload and try again.",
+            error="Could not determine your session. Reload and try again.",
         )
 
     form = await request.form()
@@ -76,9 +76,7 @@ async def save_model_prefs(request: Request) -> Response:
                 await upsert_model_pins(session, owner_id=owner_id, pins=pins)
         except Exception as exc:  # noqa: BLE001
             logger.error("settings_save_pins_failed", error=str(exc))
-            return _render(
-                request, error="Couldn't save preferences — please try again."
-            )
+            return _render(request, error="Couldn't save preferences. Try again.")
         model_prefs.invalidate_prefs_cache(owner_id)
     else:
         # No DB configured: keep pins in the request-context cache so they
@@ -114,7 +112,7 @@ async def _tier_fit_error(tier: str, model_id: str) -> str | None:
     lo, hi = band
     if not (lo <= price <= hi):
         return (
-            f"{tier}: '{model_id}' costs ${price:.2f}/MTok — outside the "
+            f"{tier}: '{model_id}' costs ${price:.2f}/MTok, outside the "
             f"{tier.capitalize()} tier's range"
         )
     return None
@@ -145,7 +143,7 @@ async def save_openrouter_key(
     if not owner_id:
         return _render(
             request,
-            error="Could not determine your session — please reload and try again.",
+            error="Could not determine your session. Reload and try again.",
         )
     if not database.database_available():
         return _render(

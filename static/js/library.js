@@ -16,7 +16,7 @@
           : "fa-regular fa-bookmark";
       }
       btn.style.opacity = saved ? "1" : "0.6";
-      btn.title = saved ? "Saved to library — click to remove" : "Save to library";
+      btn.title = saved ? "Saved to library. Click to remove." : "Save to library";
     });
   }
 

@@ -68,8 +68,8 @@ def _render_author_list(
         return (
             "<div style='padding:24px;text-align:center;border:1px dashed var(--oh-border,#444);"
             "border-radius:8px;margin-top:12px;'>"
-            "<p style='opacity:0.7;'>Author search is temporarily unavailable — "
-            "Semantic Scholar is rate limiting requests. "
+            "<p style='opacity:0.7;'>Author search is temporarily unavailable. "
+            "Semantic Scholar is rate-limiting requests. "
             f'Try "{html.escape(query)}" again in a minute.</p></div>'
         )
     if not authors:
@@ -84,7 +84,7 @@ def _render_author_list(
     return (
         f"<div id='author-results'>"
         f"<p style='margin-bottom:8px;font-size:0.9rem;opacity:0.7;'>"
-        f'Found {len(authors)} author(s) for "{html.escape(query)}" — click to explore</p>'
+        f'Found {len(authors)} authors for "{html.escape(query)}". Click a card to see their work.</p>'
         f"<div id='author-loading' class='htmx-indicator' style='text-align:center;padding:12px;'>"
         f"<span class='spinner'></span> Loading author profile…</div>"
         f"{cards}"
