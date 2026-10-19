@@ -65,17 +65,42 @@ def batch_fetch_citations(
         return {}
 
     results: dict[str, int] = {}
-
-    # Process in batches of 500 (S2 limit)
-    for i in range(0, len(paper_ids), _BATCH_LIMIT):
-        batch = paper_ids[i : i + _BATCH_LIMIT]
-        batch_results = _fetch_batch(batch, timeout=timeout)
-        results.update(batch_results)
-
+    meta = batch_fetch_paper_meta(paper_ids, timeout=timeout)
+    for pid, m in meta.items():
+        if m.get("citations") is not None:
+            results[pid] = int(m["citations"])
     return results
 
 
-def _fetch_batch(ids: list[str], timeout: int = 10) -> dict[str, int]:
+def batch_fetch_paper_meta(
+    paper_ids: list[str],
+    *,
+    timeout: int = 10,
+) -> dict[str, dict[str, Any]]:
+    """Batch-fetch citation counts + externalIds (arXiv/DOI) for papers.
+
+    Same response and ID scheme as ``batch_fetch_citations``, but keeps the
+    ``externalIds`` payload — the arXiv mapping lets the pipeline rewrite
+    paywalled publisher links (dl.acm.org etc.) to the open-access arXiv
+    version so the viewer and text extractor always have a readable stream.
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping of input paper_id → {"citations": int|None, "arxiv_id":
+        str|None, "doi": str|None}. Papers not found are omitted.
+    """
+    if not paper_ids:
+        return {}
+
+    results: dict[str, dict[str, Any]] = {}
+    for i in range(0, len(paper_ids), _BATCH_LIMIT):
+        batch = paper_ids[i : i + _BATCH_LIMIT]
+        results.update(_fetch_batch(batch, timeout=timeout))
+    return results
+
+
+def _fetch_batch(ids: list[str], timeout: int = 10) -> dict[str, dict[str, Any]]:
     """Single batch API call."""
     url = f"{_S2_BASE}/paper/batch?fields=citationCount,externalIds"
     payload = json.dumps({"ids": ids}).encode()
@@ -91,13 +116,16 @@ def _fetch_batch(ids: list[str], timeout: int = 10) -> dict[str, int]:
         logger.warning("s2_batch_citation_fetch_failed", n_ids=len(ids), err=str(exc))
         return {}
 
-    results: dict[str, int] = {}
+    results: dict[str, dict[str, Any]] = {}
     for i, item in enumerate(data or []):
-        if item is None:
+        if item is None or i >= len(ids):
             continue
-        citation_count = item.get("citationCount")
-        if citation_count is not None and i < len(ids):
-            results[ids[i]] = int(citation_count)
+        ext = item.get("externalIds") or {}
+        results[ids[i]] = {
+            "citations": item.get("citationCount"),
+            "arxiv_id": ext.get("ArXiv"),
+            "doi": ext.get("DOI"),
+        }
 
     logger.debug("s2_citations_fetched", requested=len(ids), found=len(results))
     return results
@@ -276,6 +304,33 @@ def fetch_paper_references(
     return papers
 
 
+# Hosts that reliably serve the paper itself (open access). When S2 says a
+# result also lives on arXiv, we only rewrite the URL when the current host
+# is NOT in this set — an ACL Anthology or OpenReview link is already a good
+# readable stream.
+_OPEN_ACCESS_HOSTS = (
+    "arxiv.org",
+    "ar5iv.org",
+    "aclanthology.org",
+    "openreview.net",
+    "biorxiv.org",
+    "medrxiv.org",
+    "proceedings.mlr.press",
+    "jmlr.org",
+    "papers.nips.cc",
+    "neurips.cc",
+    "usenix.org",
+    "ojs.aaai.org",
+)
+
+
+def _is_open_access_url(url_str: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = urlparse(url_str).netloc.lower()
+    return any(host == h or host.endswith(f".{h}") for h in _OPEN_ACCESS_HOSTS)
+
+
 def enrich_papers_with_citations(
     papers: list[Any],
     *,
@@ -284,7 +339,16 @@ def enrich_papers_with_citations(
     """Enrich a list of Paper objects with citation counts (in-place).
 
     Attempts to resolve each paper via arXiv ID first, then DOI, then URL.
+
+    Also canonicalizes URLs: when S2's externalIds show an arXiv version for
+    a result whose link points at a non-open-access host (dl.acm.org, IEEE,
+    Elsevier…), the paper's URL is rewritten to ``arxiv.org/abs/<id>`` so the
+    display link, the viewer's ar5iv/PDF path, and the text extractor's arXiv
+    layer all hit the reliably-readable stream instead of a paywall. Papers
+    already on an open-access host keep their URL.
     """
+    from pydantic import HttpUrl
+
     from services.core.exa_utils import url_utils as _url_utils
 
     # Build ID list for S2 batch API
@@ -292,12 +356,18 @@ def enrich_papers_with_citations(
     for paper in papers:
         url_str = str(paper.url) if paper.url else ""
 
-        # Try arXiv ID first (most reliable)
-        arxiv_id = _url_utils.extract_arxiv_id(url_str)
-        if arxiv_id:
-            s2_id = f"ARXIV:{arxiv_id}"
-            id_map.setdefault(s2_id, []).append(paper)
-            continue
+        # Try arXiv ID first (most reliable) — but only when the URL is
+        # actually on an arXiv host. extract_arxiv_id's loose \d{4}.\d{4,5}
+        # pattern false-positives inside DOIs (10.1145/3447548.3467171
+        # contains "7548.34671"), which would resolve ACM links to a bogus
+        # ARXIV id and silently lose their citation/externalIds mapping.
+        url_lc = url_str.lower()
+        if "arxiv.org" in url_lc or "ar5iv.org" in url_lc:
+            arxiv_id = _url_utils.extract_arxiv_id(url_str)
+            if arxiv_id:
+                s2_id = f"ARXIV:{arxiv_id}"
+                id_map.setdefault(s2_id, []).append(paper)
+                continue
 
         # Try DOI
         doi = (
@@ -318,22 +388,61 @@ def enrich_papers_with_citations(
     if not id_map:
         return
 
-    # Batch fetch
-    citations = batch_fetch_citations(list(id_map.keys()), timeout=timeout)
+    # Batch fetch (citations + externalIds in one response)
+    meta = batch_fetch_paper_meta(list(id_map.keys()), timeout=timeout)
 
     # Apply results
     enriched = 0
-    for s2_id, count in citations.items():
+    canonicalized = 0
+    for s2_id, m in meta.items():
         for paper in id_map.get(s2_id, []):
-            paper.citation_count = count
-            enriched += 1
+            if m.get("citations") is not None:
+                paper.citation_count = m["citations"]
+                enriched += 1
+            # Rewrite paywalled/publisher links to the arXiv version S2 maps
+            # this paper to — the arXiv abs page always loads and the text
+            # extractor/viewer both have a guaranteed readable stream there.
+            arxiv_id = m.get("arxiv_id")
+            if arxiv_id and paper.url:
+                old_url = str(paper.url)
+                if not _is_open_access_url(old_url):
+                    new_url = f"https://arxiv.org/abs/{arxiv_id}"
+                    paper.url = HttpUrl(new_url)
+                    if str(paper.id) == old_url:
+                        paper.id = new_url
+                    canonicalized += 1
+                    logger.debug(
+                        "paper_url_canonicalized", from_url=old_url, to_url=new_url
+                    )
 
-    if citations or not id_map:
+    # Re-dedup: canonicalization can collapse an ACM entry and its arXiv
+    # twin that slipped through the earlier URL-based dedup. Keep the first
+    # occurrence of each normalized key.
+    if canonicalized:
+        seen: set[str] = set()
+        deduped: list[Any] = []
+        for paper in papers:
+            key = (
+                _url_utils.extract_arxiv_id(str(paper.url))
+                or _url_utils.extract_doi(str(paper.url))
+                or str(paper.url)
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(paper)
+        if len(deduped) < len(papers):
+            removed = len(papers) - len(deduped)
+            papers[:] = deduped
+            logger.info("s2_canonical_dedup", removed=removed)
+
+    if meta or not id_map:
         logger.info(
             "s2_citation_enrichment",
             total_papers=len(papers),
-            resolved=len(citations),
+            resolved=len(meta),
             enriched=enriched,
+            canonicalized=canonicalized,
         )
     else:
         # Zero resolved = silent citation-blind ranking (batch failure,
