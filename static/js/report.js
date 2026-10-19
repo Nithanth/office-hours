@@ -410,10 +410,10 @@ function buildBlogPopupShell(theme) {
   );
 }
 
-// Top-level click router for `#report-blog-btn`. Opens the customization
-// modal; the actual blog launch happens inside the modal's submit handler so
-// `window.open()` runs synchronously from a real user gesture (otherwise
-// browsers block the popup).
+// Top-level click router for `#report-blog-btn`. One click generates the
+// blog with server defaults — options only live behind Revise on the blog
+// view. Launched directly from the user gesture so `window.open()` isn't
+// popup-blocked.
 function handleBlogClick(ev) {
   const btn = ev.target.closest("#report-blog-btn");
   if (!btn) return;
@@ -421,32 +421,10 @@ function handleBlogClick(ev) {
   const reportEl = document.getElementById("report-content");
   if (!reportEl) return;
   if (btn.disabled) return;
-  openBlogCustomizeModal({
-    onSubmit: (opts) => {
-      launchBlogGeneration({ btn, reportEl, opts });
-    },
-  });
+  launchBlogGeneration({ btn, reportEl, opts: {} });
 }
 
 document.addEventListener("click", handleBlogClick);
-
-// ---------------------------------------------------------------------------
-// Blog customization modal
-// ---------------------------------------------------------------------------
-// The modal itself is defined in `static/js/blog-modal.js` so it can be shared
-// with the blog-view page (which uses it for the Revise button). This module
-// just delegates to `window.ohBlog.openCustomizeModal`.
-
-function openBlogCustomizeModal(opts) {
-  if (window.ohBlog && window.ohBlog.openCustomizeModal) {
-    return window.ohBlog.openCustomizeModal(opts);
-  }
-  console.error("[oh] blog-modal.js not loaded — falling back to defaults");
-  if (opts && typeof opts.onSubmit === "function") {
-    opts.onSubmit({ audience: "technical", length: "medium", tone: "distill", extra: "" });
-  }
-}
-
 
 // ---------------------------------------------------------------------------
 // Launch a blog generation — opens the popup synchronously and posts the form.
