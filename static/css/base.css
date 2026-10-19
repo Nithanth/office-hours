@@ -8,7 +8,7 @@ html {
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--oh-font-sans, Arial, Helvetica, sans-serif);
   margin: 0;
   padding: 0 var(--page-padding);
   background: var(--bg);
@@ -25,7 +25,9 @@ body {
   padding: 40px 60px;
   background: var(--container-bg);
   border: 1px solid var(--container-border);
-  box-shadow: 4px 4px 10px var(--container-shadow);
+  border-radius: var(--oh-radius-lg);
+  /* soft ambient lift — the old 4px 4px offset read as an OS panel */
+  box-shadow: 0 8px 28px var(--container-shadow);
   flex: 1 0 auto;
 }
 
@@ -55,7 +57,7 @@ footer {
   border-top: 1px solid var(--container-border);
   text-align: center;
   font-size: 0.8rem;
-  color: #666;
+  color: var(--fg-muted, #666);
   width: 100%;
   flex-shrink: 0;
 }
@@ -64,11 +66,56 @@ footer {
   position:absolute;
   top:6px;   /* tweak to taste */
   right:6px;
-  color:#007bff; /* light mode: blue */
+  color:var(--oh-accent);
 }
 
 html.oh-dark .pinned-label{
-  color:var(--oh-accent); /* dark mode: same blue */
+  color:var(--oh-accent);
+}
+
+/* ------------------------------------------------------------------
+   Motion — one easing/speed across the app. A mount fade for cards and
+   rows (also fires on htmx swaps, which is the desired effect), plus a
+   unified transition for every interactive element.
+   ------------------------------------------------------------------ */
+@keyframes oh-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.paper-row,
+.topic-card,
+.lib-item,
+.lib-notion-card,
+.empty-state-card,
+.oh-surface,
+.report-card {
+  animation: oh-fade-up var(--oh-speed) var(--oh-ease) both;
+}
+
+a, button, .btn-secondary, .oh-search-btn,
+.top-bar-link, .oh-related-chip, .oh-topic-pill, .oh-foryou-chip,
+input, select, textarea, summary {
+  transition:
+    color var(--oh-speed) var(--oh-ease),
+    background-color var(--oh-speed) var(--oh-ease),
+    border-color var(--oh-speed) var(--oh-ease),
+    box-shadow var(--oh-speed) var(--oh-ease),
+    transform var(--oh-speed) var(--oh-ease),
+    opacity var(--oh-speed) var(--oh-ease);
+}
+
+/* subtle press/hover lift on card-like rows */
+.paper-row:hover, .topic-card:hover, .lib-item:hover {
+  border-color: var(--oh-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* dark-mode tweaks handled via CSS vars above */

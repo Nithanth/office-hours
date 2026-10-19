@@ -2,7 +2,7 @@
 @import url("variables.css");
 
 /* Unified font for widgets */
-input, select, textarea, button { font-family: Arial, sans-serif !important; }
+input, select, textarea, button { font-family: var(--oh-font-sans, Arial, sans-serif) !important; }
 
 /* Number input spinner recolour */
 html.oh-dark input[type="number"] {
@@ -20,8 +20,8 @@ html.oh-dark input[type="number"]:hover { background:#232b38 !important; }
 /* Chat form layout and controls */
 form[hx-post='/chat'] { display:block; }
 
-.send-btn { padding:6px 10px; background:#2563eb; color:#fff; border:1px solid #000; border-radius:4px; cursor:pointer; }
-.send-btn:hover { background:#1e40af; }
+.send-btn { padding:6px 10px; background:var(--oh-accent); color:#fff; border:1px solid var(--oh-accent-hover); border-radius:var(--oh-radius-sm,4px); cursor:pointer; }
+.send-btn:hover { background:var(--oh-accent-hover); }
 .stop-gen-btn-global { padding:6px 10px; background:transparent; color:var(--oh-red); border:1px solid var(--oh-red); border-radius:4px; cursor:pointer; display:none; }
 
 /* Office Hours spinner */

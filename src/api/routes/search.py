@@ -21,7 +21,7 @@ from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
 from services.report.report_generator import ReportGenerator
 from services.tasks import task_queue
-from utils.date_utils import parse_user_date
+from utils.date_utils import human_date, parse_user_date
 from utils.rate_limit import limiter
 from utils.search_utils import clean_query
 
@@ -422,14 +422,14 @@ def _paper_li_html(
     if pap.authors:
         authors_display = f"Author(s): {html.escape(', '.join(pap.authors[:5]))}"
 
-    formatted_date = (
-        pap.published_date.strftime("%B %d, %Y")
-        if isinstance(pap.published_date, datetime)
-        else "Unknown date"
-    )
+    formatted_date = human_date(pap.published_date) or "Unknown date"
 
     li_id = "wild-card-item" if wildcard else f"paper-{pap.id}"
-    border = "2px solid var(--main-paper-border)" if is_main else "1px solid #ccc"
+    border = (
+        "2px solid var(--main-paper-border)"
+        if is_main
+        else "1px solid var(--container-border, #ccc)"
+    )
 
     # pydantic's HttpUrl objects need casting to str before escaping
     url_str = str(pap.url) if pap.url else "#"
@@ -463,8 +463,7 @@ def _paper_li_html(
     if pap.citation_count is not None and pap.citation_count >= 1000:
         signal_html = (
             f"<span class='signal-badge' title='{pap.citation_count:,} citations (Semantic Scholar)' "
-            f"style='font-size:0.75em;font-weight:600;color:var(--oh-accent, #2563eb);border:1px solid var(--oh-accent, #2563eb);"
-            f"border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;'>Highly cited</span>"
+            f"style='margin-left:6px;'>Highly cited</span>"
         )
 
     return (

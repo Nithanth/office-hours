@@ -1,47 +1,69 @@
-/* variables.css – theme tokens for Office Hours */
+/* variables.css – theme tokens for Office Hours.
+   Locked scheme: one blue accent family shared by both themes.
+   Light = warm "paper", dark = cool "ink blue". */
+
 :root {
-  /* brand & layout — --oh-red is semantic danger (stop/remove/error) */
+  /* semantic colours — danger only (remove/stop/error), never decoration */
   --oh-red: #dc2626;
-  /* accent = the same brand/link blue the icons use — no more teal */
+  --oh-success: #15803d;
+
+  /* accent family — the brand/link blue the icons use */
   --oh-accent: #2563eb;
-  /* icon blue — matches the brand/link blue the whole UI already uses */
+  --oh-accent-hover: #1d4ed8;
+  --oh-accent-soft: #e0eaff; /* selection tints, info chips */
   --oh-icon: #2563eb;
+  --oh-elevated: #ffffff; /* hover surfaces in light ≈ paper white */
   --page-padding: 0.5rem;
+
+  /* type — mono is the brand voice: logo, hero, section labels, chips.
+     Everything else is the sans. */
+  --oh-font-sans: Arial, Helvetica, sans-serif;
+  --oh-font-mono: "Lucida Console", "Courier New", monospace;
+
+  /* shape + motion — one radius scale, one easing, one speed */
+  --oh-radius-sm: 6px;
+  --oh-radius: 8px;
+  --oh-radius-lg: 12px;
+  --oh-ease: cubic-bezier(0.33, 1, 0.68, 1); /* easeOutCubic */
+  --oh-speed: 140ms;
 
   /* light theme colours — warm paper, blue accent */
   --bg: #f7f4ec;
   --fg: #26221a;
   --container-bg: #fffdf7;
-  --container-border: #b8b0a0;
-  --container-shadow: rgba(38, 34, 26, 0.2);
-  /* muted text + accent links — pages used to var(...,#fallback) these
-     everywhere because the tokens were never defined */
+  --bg-card: #fffdf7;
+  --container-border: #d9d3c5;
+  --container-shadow: rgba(38, 34, 26, 0.1);
   --fg-muted: #6e675a;
   --accent: var(--oh-accent);
   /* main paper border (pinned) */
   --main-paper-border: var(--oh-accent);
 
   /* dark theme overrides */
-  /* dark theme — cool blue-grey palette (was warm sepia + amber accents) */
   --bg-dark: #141920;
   --fg-dark: #dbe4f0;
   --container-bg-dark: #1c2330;
   --container-border-dark: #37404f;
-  --container-shadow-dark: rgba(0, 0, 0, 0.6);
+  --container-shadow-dark: rgba(0, 0, 0, 0.45);
 }
 
-/* Apply dark tokens when .oh-dark is on <body> */
+/* Apply dark tokens when .oh-dark is on <html> */
 html.oh-dark {
   --bg: var(--bg-dark);
   --fg: var(--fg-dark);
   --container-bg: var(--container-bg-dark);
+  --bg-card: var(--container-bg-dark);
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
   --fg-muted: #93a0b4;
   --oh-red: #f87171;
+  --oh-success: #4ade80;
+  --oh-accent: #60a5fa;
+  --oh-accent-hover: #93c5fd;
+  --oh-accent-soft: #1e3a5f;
+  --oh-icon: #60a5fa;
+  --oh-elevated: #2b3546; /* buttons/chips one step above the surface */
+  --accent: var(--oh-accent);
   /* override pinned border */
   --main-paper-border: #60a5fa;
-  --oh-accent: #60a5fa;
-  --oh-icon: #60a5fa;
-  --accent: var(--oh-accent);
 }

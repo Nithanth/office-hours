@@ -17,6 +17,7 @@ from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
 from services.persistence.models import Report, Topic, TopicPaper
 from services.topics.keys import canonical_key_for, detect_topic_kind
+from utils.date_utils import human_date
 
 
 def _display_report_title(report: Report) -> str:
@@ -48,17 +49,15 @@ def _shell(title: str, body: str) -> str:
             active="library",
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
-    .topic-card{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
+    .topic-card{border:1px solid var(--container-border);border-radius:var(--oh-radius,8px);padding:1rem;margin:0.75rem 0;
       background:var(--container-bg);transition:border-color 0.15s;}
-    .topic-card:hover{border-color:#888;}
     .topic-card h2{font-size:1.05rem;margin:0 0 0.3rem;}
     .topic-card h2 a{text-decoration:none;color:var(--fg);}
     .topic-card h2 a:hover{text-decoration:underline;}
     .topic-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}
-    .topic-kind{display:inline-block;font-size:0.7rem;padding:0.1rem 0.45rem;
-      border:1px solid #555;border-radius:999px;margin-right:0.4rem;text-transform:uppercase;}
+    .topic-kind{margin-right:0.4rem;}
     .paper-row{display:flex;justify-content:space-between;gap:0.75rem;
-      border:1px solid #444;border-radius:8px;padding:0.75rem;margin:0.5rem 0;
+      border:1px solid var(--container-border);border-radius:var(--oh-radius,8px);padding:0.75rem;margin:0.5rem 0;
       background:var(--container-bg);}
     /* long unbreakable titles (URLs/ids) must not push the action buttons
        offscreen — constrain the text column and keep buttons on-row */
@@ -72,7 +71,7 @@ def _shell(title: str, body: str) -> str:
     .topic-section{margin-top:1.5rem;}
     .topic-section h3{font-size:0.95rem;margin-bottom:0.5rem;}
     .topic-section .blog-article{max-height:480px;overflow-y:auto;
-      border:1px solid #444;border-radius:8px;padding:1rem;}
+      border:1px solid var(--container-border);border-radius:var(--oh-radius,8px);padding:1rem;}
   </style>""",
             scripts="""<script src="/static/js/report.js?v=2" defer></script>
   <script src="/static/js/main.js?v=2" type="module"></script>
@@ -103,10 +102,14 @@ def _share_link_html(request: Request, topic: Topic) -> str:
 
 
 def _fmt_authors(authors: object) -> str:
+    """Byline text — strips Exa-scraped chrome ('View Profile', institutions)
+    via the same cleaner the search cards use."""
+    from pages.main_page import _clean_author_list
+
     if isinstance(authors, dict):
         authors = authors.get("items") or []
     if isinstance(authors, list):
-        return ", ".join(_esc(a) for a in authors[:4] if a)
+        return ", ".join(_esc(a) for a in _clean_author_list(authors)[:4] if a)
     return _esc(authors)
 
 
@@ -168,7 +171,11 @@ def _paper_rows_html(
             if p.source == "feed"
             else ""
         )
-        meta_bits = [b for b in (_fmt_authors(p.authors), _esc(p.published_date)) if b]
+        meta_bits = [
+            b
+            for b in (_fmt_authors(p.authors), _esc(human_date(p.published_date)))
+            if b
+        ]
         meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
         actions = ""
         if not readonly:
