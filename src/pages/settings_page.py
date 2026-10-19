@@ -166,24 +166,6 @@ def settings_page(
                 "Model preferences are saved to your account (or this browser session if you're not signed in).",
                 style="opacity:0.7;margin:0 0 20px 0;font-size:0.9rem;",
             ),
-            Div(
-                "Account",
-                style="font-weight:600;margin:0 0 8px 0;",
-            ),
-            Div(
-                Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
-                id="settings-account",
-            ),
-            Div(style="margin:20px 0;border-top:1px solid var(--border,#444);"),
-            Div(
-                "Notion integration",
-                style="font-weight:600;margin:0 0 8px 0;",
-            ),
-            Div(
-                Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
-                id="settings-notion",
-            ),
-            Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
             flash if flash else "",
             Form(
                 Div(
@@ -219,7 +201,8 @@ def settings_page(
                 Button(
                     "Save key",
                     type="submit",
-                    style="margin-left:8px;padding:8px 14px;background:var(--accent,#4a9eff);color:#fff;border:none;border-radius:4px;cursor:pointer;",
+                    cls="btn-secondary",
+                    style="margin-left:8px;",
                 ),
                 method="post",
                 action="/settings/openrouter-key",
@@ -236,6 +219,24 @@ def settings_page(
                 )
                 if openrouter_key
                 else ""
+            ),
+            Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
+            Div(
+                "Notion integration",
+                style="font-weight:600;margin:0 0 8px 0;",
+            ),
+            Div(
+                Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
+                id="settings-notion",
+            ),
+            Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
+            Div(
+                "Account",
+                style="font-weight:600;margin:0 0 8px 0;",
+            ),
+            Div(
+                Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
+                id="settings-account",
             ),
             style="max-width:900px;margin:2rem auto;padding:0 1rem 60px 1rem;",
         ),

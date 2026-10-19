@@ -148,12 +148,7 @@ const actionsObserver = new MutationObserver(() => {
     const blogBtn = el.querySelector("#report-blog-btn");
     if (blogBtn) {
       blogBtn.removeAttribute("disabled");
-      blogBtn.title = "Generate Blog Post (opens customization)";
-    }
-    const notionBtn = el.querySelector("#report-notion-btn");
-    if (notionBtn) {
-      notionBtn.removeAttribute("disabled");
-      notionBtn.title = "Export to Notion";
+      blogBtn.title = "Generate Blog Post";
     }
     const topicBtn = el.querySelector("#report-topic-chat-btn");
     if (topicBtn) {
@@ -531,74 +526,8 @@ window.ohBlog.buildPopupShell = buildBlogPopupShell;
 // reach ES modules).
 window.ohBlog.getCleanReportText = getCleanReportText;
 
-// ---------------------------------------------------------------------------
-// Notion export – POST report text, open Notion page in new tab
-// ---------------------------------------------------------------------------
-function handleNotionClick(ev) {
-  const btn = ev.target.closest("#report-notion-btn");
-  if (!btn) return;
-
-  const reportEl = document.getElementById("report-content");
-  if (!reportEl) return;
-
-  btn.disabled = true;
-  const origHtml = btn.innerHTML;
-  btn.innerHTML =
-    '<span class="oh-spinner small" style="vertical-align:middle;"></span> Exporting…';
-
-  // Open window synchronously so browsers don't block it as a popup.
-  const notionWindow = window.open("about:blank", "_blank");
-
-  const cleaned = getCleanReportText(reportEl);
-  const fd = new FormData();
-  fd.append("report_text", cleaned);
-
-  // Pull title from the first heading in the report, if any.
-  const firstH = reportEl.querySelector("h1, h2, h3");
-  fd.append("title", firstH ? firstH.textContent.trim() : "Office Hours Report");
-  if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
-
-  // Include audience and model so Notion gets structured properties.
-  const audSel = document.getElementById("aud-select");
-  const modelSel = document.getElementById("model-select");
-  if (audSel && audSel.value) fd.append("audience", audSel.value);
-  if (modelSel && modelSel.value) fd.append("model", modelSel.value);
-
-  fetch("/export-notion", { method: "POST", body: fd })
-    .then(async (r) => {
-      const contentType = r.headers.get("content-type") || "";
-      const payload = contentType.includes("application/json")
-        ? await r.json()
-        : { detail: await r.text() };
-
-      if (!r.ok) {
-        throw new Error(payload.detail || `Server responded ${r.status}`);
-      }
-      return payload;
-    })
-    .then((data) => {
-      if (data.url && notionWindow) {
-        notionWindow.location.href = data.url;
-        if (typeof window.showToast === "function") {
-          window.showToast("Exported to Notion!");
-        }
-      } else if (data.url) {
-        window.open(data.url, "_blank");
-      }
-    })
-    .catch((err) => {
-      console.error("[oh] notion export failed", err);
-      if (notionWindow) notionWindow.close();
-      // eslint-disable-next-line no-alert
-      alert(err.message || "Failed to export to Notion. Check your NOTION_API_KEY in .env.");
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = origHtml;
-    });
-}
-
-document.addEventListener("click", handleNotionClick);
+// (Notion export button removed — library auto-sync mirrors reports to
+// Notion when connected; the one-off export was a stale pre-sync path.)
 
 (function () {
   // simple toast fallback if settings.js not loaded

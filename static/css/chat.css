@@ -12,21 +12,22 @@
 
 .user-message,
 .assistant-message {
-  padding: 0.4rem 0.6rem;
-  border-radius: 4px;
-  margin: 0.35rem 0;
-  font-size: 1rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 12px;
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
   color: var(--fg);
-  line-height: 1.45;
+  line-height: 1.6;
 }
 
 .user-message {
-  /* slightly darker gray so bubbles stand out in light mode */
-  background: #e5e7eb; /* tailwind gray-200 */
+  /* soft accent tint — the user's side of the conversation in brand colour */
+  background: var(--oh-accent-soft, #e0eaff);
   margin-left: auto;
+  border-bottom-right-radius: 4px;  /* tail toward the sender */
   white-space: pre-wrap;
-  max-width: 70%;            /* wrap after ~70% of modal width */
-  word-break: break-word;    /* break very long tokens */
+  max-width: 75%;
+  word-break: break-word;
 }
 
 .assistant-message { background: transparent; margin-right:auto; white-space: normal; }
@@ -83,7 +84,6 @@ html.oh-dark .assistant-message li::marker {
 .assistant-message.interrupted::after { content:""; }
 
 html.oh-dark .assistant-message { color: var(--fg); }
-html.oh-dark .user-message { background:#232b38; }
 html.oh-dark .user-message,
 html.oh-dark .user-message * { color: var(--fg) !important; }
 
@@ -97,17 +97,13 @@ html.oh-dark .citation-card {
 
 /* Restore-toast banner (appears when transcript restored) */
 .restore-toast {
-  background-color: #fef3c7; /* amber-100 */
-  border: 1px solid #fde68a;
-  color: #a16207;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  margin-bottom: 0.75rem;
-}
-html.oh-dark .restore-toast {
-  background-color: #232b38;
-  border-color: var(--container-border);
+  background-color: var(--oh-accent-soft, #e0eaff);
+  border: 1px solid var(--container-border);
   color: var(--fg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
 }
 
 /* Dark form controls within chat modals */
@@ -157,25 +153,21 @@ h2.chat-modal-title {
 
 /* Target any modal that contains a .chat-log-container */
 .modal-content:has(.chat-log-container) {
-  width: 700px;
-  max-width: 90vw;
-  height: 70vh;
-  max-height: 70vh;
+  width: 740px;
+  max-width: 92vw;
+  height: 76vh;
+  max-height: 76vh;
   display: flex;
   flex-direction: column;
-  padding: 0.75rem 1rem;
+  padding: 1rem 1.25rem;
 }
 
 /* Allow chat log to fill remaining space */
 .modal-content:has(.chat-log-container) .chat-log-container {
   flex: 1 1 auto;
   max-height: none;
-  border-top: 1px solid #eee;
-  border-bottom: 1px solid #eee;
-  padding: 0.5rem 0;
-}
-html.oh-dark .modal-content:has(.chat-log-container) .chat-log-container {
-  border-color: var(--container-border);
+  border-top: 1px solid var(--container-border, #eee);
+  padding: 0.75rem 0.25rem;
 }
 
 .modal-content:has(.chat-log-container) form {
@@ -210,13 +202,21 @@ html.oh-dark .chat-empty-hint { color: var(--fg-muted); }
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-size: 0.85rem;
+  border: 1px solid var(--container-border, #ccc);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
   resize: vertical;
   min-height: 2.5rem;
   max-height: 8rem;
   font-family: inherit;
+  background: var(--container-bg, #fff);
+  color: var(--fg, #222);
+}
+.chat-input-row .chat-textarea:focus {
+  outline: none;
+  border-color: var(--oh-accent, #2563eb);
+  box-shadow: 0 0 0 2px var(--oh-accent-soft, #e0eaff);
 }
 .chat-form-controls {
   display: flex;
@@ -247,7 +247,7 @@ html.oh-dark .sources-toggle { color: var(--fg-muted); }
 /* --- Normal chat modal tweaks -------------------------------- */
 .modal-content:not(.pdf-viewer) .user-message,
 .modal-content:not(.pdf-viewer) .assistant-message {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 /* ---- Message-level copy button (assistant bubbles) ---- */
@@ -285,6 +285,6 @@ html.oh-dark .sources-toggle { color: var(--fg-muted); }
 /* ChatGPT-style action row on assistant bubbles */
 .msg-actions{display:flex;gap:4px;margin-top:6px;opacity:0;transition:opacity .15s;}
 .assistant-message:hover .msg-actions{opacity:1;}
-.msg-act-btn{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid var(--container-border,#ccc);border-radius:10px;background:var(--container-bg,#fff);color:var(--fg,#444);font-size:0.72rem;cursor:pointer;}
-.msg-act-btn:hover{background:var(--hover-bg,#eee);}
+.msg-act-btn{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--container-border,#ccc);border-radius:20px;background:var(--container-bg,#fff);color:var(--fg-muted,#555);font-size:0.72rem;cursor:pointer;transition:background .12s ease,border-color .12s ease;}
+.msg-act-btn:hover{background:var(--oh-accent-soft,#e0eaff);border-color:var(--oh-accent,#2563eb);color:var(--fg,#222);}
 .msg-act-btn i{font-size:0.7rem;}

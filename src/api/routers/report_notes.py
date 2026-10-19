@@ -1246,11 +1246,8 @@ async def blog_view(
         <span>Writing blog…</span>
       </span>
       <button id="blog-theme-toggle" class="blog-nav-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-      <button id="blog-revise-btn" class="blog-nav-btn" title="Revise this blog (audience / length / tone / feedback)" disabled>Revise</button>
-      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown (available once blog finishes)" disabled>Copy MD</button>
-      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md (available once blog finishes)" disabled>Download MD</button>
-      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as self-contained HTML (available once blog finishes)" disabled>Save HTML</button>
-      <button id="blog-save-pdf-btn" class="blog-nav-btn" title="Save as PDF (available once blog finishes)" disabled>Save PDF</button>
+      <button id="blog-revise-btn" class="blog-nav-btn" title="Regenerate with different options" disabled>Revise</button>
+      <button id="blog-save-html-btn" class="blog-nav-btn" title="Download a self-contained HTML page" disabled>Export HTML</button>
     </div>
   </nav>
 
