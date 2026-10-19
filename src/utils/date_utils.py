@@ -1,6 +1,7 @@
-"""Date parsing helpers for user-supplied input."""
+"""Date helpers — user-input parsing and one display format ("Nov 6, 2024")."""
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime
 
 from loguru import logger
 
@@ -26,3 +27,44 @@ def parse_user_date(date_str: str | None) -> datetime | None:
 
     logger.debug("unrecognized date format", value=cleaned)
     return None
+
+
+_MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+]
+
+_ISO_PREFIX = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})")
+
+
+def human_date(value: object) -> str:
+    """Format a datetime/date/ISO-ish string as 'Nov 6, 2024'.
+
+    Accepts datetime/date objects and strings starting with an ISO date
+    prefix ('YYYY-MM-DD', 'YYYY-MM-DD HH:MM:SS+00:00', 'YYYY-MM-DDTHH:MM:SSZ').
+    Returns '' for missing or unparseable input so callers can omit it.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        d = value.date()
+        return f"{_MONTHS[d.month - 1]} {d.day}, {d.year}"
+    if isinstance(value, date):
+        return f"{_MONTHS[value.month - 1]} {value.day}, {value.year}"
+    m = _ISO_PREFIX.match(str(value).strip())
+    if not m:
+        return ""
+    year, month, day = (int(p) for p in m.groups())
+    if not 1 <= month <= 12 or not 1 <= day <= 31:
+        return ""
+    return f"{_MONTHS[month - 1]} {day}, {year}"

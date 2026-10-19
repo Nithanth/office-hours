@@ -41,6 +41,7 @@ import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
 from pages.shell import THEME_INLINE_SCRIPT, top_bar
 from services.chat.chat_components import ChatBubble, CitationCard
+from utils.date_utils import human_date
 from utils.static_assets import static_url
 
 
@@ -156,43 +157,7 @@ def _render_paper_item(
     wildcard: bool = False,
 ) -> LI:
     """Helper function to render a single paper item for the search results list."""
-    formatted_date = "Unknown date"
-    if paper.published_date:
-        try:
-            # Normalise to string first for parsing convenience
-            date_iso = (
-                paper.published_date.isoformat()
-                if isinstance(paper.published_date, datetime)
-                else str(paper.published_date)
-            )
-            date_parts = date_iso.split("-")
-            if len(date_parts) >= 3:
-                year, month, day_part = date_parts[0], date_parts[1], date_parts[2]
-                day = day_part.split("T")[0]  # Remove any time component
-                months = [
-                    "January",
-                    "February",
-                    "March",
-                    "April",
-                    "May",
-                    "June",
-                    "July",
-                    "August",
-                    "September",
-                    "October",
-                    "November",
-                    "December",
-                ]
-                month_idx = int(month) - 1
-                if 0 <= month_idx < len(months):
-                    formatted_date = f"{months[month_idx]} {int(day)}, {year}"
-                else:
-                    formatted_date = date_iso
-            else:
-                formatted_date = date_iso
-        except Exception as exc:
-            logger.debug("date_format_failed", paper_id=paper.id, err=str(exc))
-            formatted_date = str(paper.published_date)
+    formatted_date = human_date(paper.published_date) or "Unknown date"
 
     paper_json_str = paper.model_dump_json()
 
@@ -270,7 +235,7 @@ def _render_paper_item(
             "Highly cited",
             cls="signal-badge",
             title=f"{paper.citation_count:,} citations (Semantic Scholar)",
-            style="font-size:0.75em; font-weight:600; color:var(--oh-accent, #2563eb); border:1px solid var(--oh-accent, #2563eb); border-radius:4px; padding:1px 5px; margin-left:6px; vertical-align:middle;",
+            style="margin-left:6px;",
         )
 
     # ISO date for client-side sorting; lowercase authors for filtering

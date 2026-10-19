@@ -151,7 +151,7 @@ h2.chat-modal-title {
   font-size: 0.95rem;
   font-weight: 600;
   margin: 0;
-  font-family: "Lucida Console", "Courier New", monospace;
+  font-family: var(--oh-font-mono, "Lucida Console", "Courier New", monospace);
   letter-spacing: 0.5px;
 }
 
@@ -191,7 +191,7 @@ html.oh-dark .modal-content:has(.chat-log-container) .chat-log-container {
   height: 100%;
   text-align: center;
   color: #ccc;
-  font-family: "Lucida Console", "Courier New", monospace;
+  font-family: var(--oh-font-mono, "Lucida Console", "Courier New", monospace);
   font-size: 0.75rem;
   letter-spacing: 0.5px;
 }

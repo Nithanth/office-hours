@@ -2,16 +2,17 @@
 @import url("variables.css");
 
 .top-bar {
-  background: #c0c0c0; /* Windows 95 gray */
-  color: #000;
-  font-family: "Lucida Console", "Courier New", monospace;
+  /* paper surface — the retro lives in the ASCII logo + mono, not the chrome */
+  background: var(--container-bg);
+  color: var(--fg);
+  font-family: var(--oh-font-mono, "Lucida Console", "Courier New", monospace);
   font-size: 0.9rem;
   padding: 3px 10px;
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   gap: 6px;
-  border-bottom: 2px solid #888;
+  border-bottom: 1px solid var(--container-border);
   /* pinned to the viewport top + stacking context so its tooltips and
      dropdowns paint above page content */
   position: sticky;
@@ -20,9 +21,9 @@
   flex-wrap: wrap;
 }
 
-/* Bare anchors (brand) stay near-black; .top-bar-link gets its own colour
-   below — it must out-specify this rule so nav icons render --oh-icon. */
-.top-bar a { color: #000; text-decoration: none; }
+/* Bare anchors take ink; .top-bar-link gets its own colour below — it must
+   out-specify this rule so nav icons render --oh-icon. */
+.top-bar a { color: var(--fg); text-decoration: none; }
 .top-bar a.top-bar-link { color: var(--oh-icon, #2563eb); }
 
 .top-bar-brand {
@@ -30,6 +31,7 @@
   font-weight: 700;
   margin-right: 0.75rem;
   white-space: nowrap;
+  color: var(--oh-accent);
 }
 
 /* Nav links — same pill on every page; .active marks the current one. */
@@ -143,9 +145,9 @@ html.oh-dark .top-bar-link.active {
 
 /* --- Dark mode --- */
 html.oh-dark .top-bar {
-  background: var(--bg-dark);
+  background: var(--container-bg-dark);
   color: var(--fg-dark);
-  border-bottom-color: var(--container-border);
+  border-bottom-color: var(--container-border-dark);
 }
 html.oh-dark .top-bar a { color: var(--fg-dark); }
 html.oh-dark .top-bar a.top-bar-link { color: var(--oh-icon, #60a5fa); }
