@@ -362,6 +362,56 @@ html.oh-dark .oh-search-go {
   max-width: 40rem;
 }
 
+/* Serif-italic accent — one word in the hero, the designer flourish.
+   Instrument Serif only loads italic 400, so keep this italic-only. */
+.oh-hero-em {
+  font-family: var(--oh-font-serif, Georgia, serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-size: 1.06em; /* serif reads smaller at the same px */
+}
+
+/* Staggered mount — hero pieces arrive in sequence, ~70ms apart. */
+.search-card:has(.empty-state) .oh-hero-block,
+.search-card:has(.empty-state) .oh-search-field,
+.search-card:has(.empty-state) .oh-hero-chips,
+.search-card:has(.empty-state) .oh-search-options,
+.search-card:has(.empty-state) .oh-topics-strip {
+  animation: oh-fade-up 0.45s var(--oh-ease, ease) both;
+}
+.search-card:has(.empty-state) .oh-search-field   { animation-delay: 90ms; }
+.search-card:has(.empty-state) .oh-hero-chips     { animation-delay: 160ms; }
+.search-card:has(.empty-state) .oh-search-options { animation-delay: 220ms; }
+.search-card:has(.empty-state) .oh-topics-strip   { animation-delay: 280ms; }
+
+/* Working state — while htmx is mid-request the Search button becomes
+   a mono "thinking" with a blinking block cursor, not a spinner. */
+#paper-search-form.htmx-request .oh-search-go {
+  font-size: 0;
+  gap: 0;
+  pointer-events: none;
+  background: var(--oh-accent-hover);
+}
+#paper-search-form.htmx-request .oh-search-go i {
+  display: none;
+}
+#paper-search-form.htmx-request .oh-search-go::before {
+  content: "thinking";
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.78rem;
+}
+#paper-search-form.htmx-request .oh-search-go::after {
+  content: "\258a"; /* ▊ */
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.78rem;
+  margin-left: 5px;
+  animation: oh-caret-blink 1s steps(1) infinite;
+}
+@keyframes oh-caret-blink {
+  50% { opacity: 0; }
+}
+
 /* Equal-size search action buttons */
 .oh-search-btn {
   display: inline-flex;

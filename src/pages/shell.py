@@ -87,7 +87,7 @@ _HEAD_LINKS = (
     + "\n"
     + '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
     '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-    '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">\n'
+    '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Instrument+Serif:ital@1&display=swap">\n'
     + f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/variables.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/top-bar.css")}">\n'

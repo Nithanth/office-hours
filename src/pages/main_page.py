@@ -766,6 +766,27 @@ def home_page(page_data: SharedPageData) -> Body:
                 "if(f){f.requestSubmit();}else{i.focus();}"
                 "});"
             ),
+            # Typewriter placeholder — cycles real example queries with a
+            # block cursor. Dies on its own once .empty-state is swapped out.
+            Script(
+                "(function(){"
+                "var i=document.getElementById('search_query');if(!i)return;"
+                "if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;"
+                "var qs=['implicit neural representations','papers by Yann LeCun','arxiv.org/abs/1706.03762','state space models'];"
+                "var qi=0,pos=0,del=false;"
+                "var tick=function(){"
+                "var el=document.getElementById('search_query');"
+                "if(!el||!document.querySelector('.empty-state'))return;"
+                "var q=qs[qi];pos+=del?-1:1;"
+                "el.setAttribute('placeholder','try: '+q.slice(0,pos)+' \\u258a');"
+                "var d=del?28:55;"
+                "if(!del&&pos>=q.length){del=true;d=1800;}"
+                "if(del&&pos<=0){del=false;qi=(qi+1)%qs.length;d=500;}"
+                "setTimeout(tick,d);"
+                "};"
+                "setTimeout(tick,700);"
+                "})();"
+            ),
             cls="empty-state",
         )
 
@@ -824,7 +845,9 @@ def home_page(page_data: SharedPageData) -> Body:
                 # .search-card:has(.empty-state) once results land.
                 Div(
                     Div(
-                        "A workbench for research questions.",
+                        "A workbench for ",
+                        Span("research", cls="oh-hero-em"),
+                        " questions.",
                         cls="oh-hero-title",
                     ),
                     Div(
@@ -841,7 +864,6 @@ def home_page(page_data: SharedPageData) -> Body:
                             type="search",
                             id="search_query",
                             name="search_query",
-                            required=True,
                             placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
                             value=page_data.current_query or "",
                         ),
@@ -1028,7 +1050,7 @@ def home_page(page_data: SharedPageData) -> Body:
                             "var q=document.getElementById('search_query').value;"
                             "if(!q.trim()){"
                             "document.getElementById('search-results-container').innerHTML="
-                            "\"<div class='error-banner'>Please enter an author name.</div>\";"
+                            "\"<div class='error-banner'>enter an author name first &#x25B2;</div>\";"
                             "event.stopImmediatePropagation();"
                             "}else{"
                             "document.getElementById('oh-loading-text').textContent='Searching authors...';"
@@ -1039,8 +1061,19 @@ def home_page(page_data: SharedPageData) -> Body:
                     hx_target="#search-results-container",
                     hx_swap="innerHTML",
                     hx_push_url="false",
+                    novalidate=True,  # kill the browser's yellow-bubble validation;
+                    # the onsubmit below shows our own mono error instead
                     **{"hx-trigger": "submit", "hx-indicator": "#loading-indicator"},
-                    onsubmit="['report-display-area','report-config-area','ask-result-container'].forEach(function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});",
+                    onsubmit=(
+                        "var q=document.getElementById('search_query').value;"
+                        "if(!q.trim()){"
+                        "document.getElementById('search-results-container').innerHTML="
+                        "\"<div class='error-banner'>type a question first &#x25B2;</div>\";"
+                        "event.stopImmediatePropagation();return false;"
+                        "}"
+                        "['report-display-area','report-config-area','ask-result-container'].forEach("
+                        "function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});"
+                    ),
                     id="paper-search-form",
                     style="background:inherit;padding:0.5rem 0;",
                 ),
