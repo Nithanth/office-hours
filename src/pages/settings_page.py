@@ -24,7 +24,7 @@ from pages.shell import THEME_INLINE_SCRIPT, top_bar
 from utils.static_assets import static_url
 
 _TIER_DESCRIPTIONS = {
-    "fast": "Quick lookups, summaries, glossary terms — cheapest models.",
+    "fast": "Quick lookups, summaries, glossary terms. Cheapest models.",
     "standard": "Default. Chat, explainers, and most reports.",
     "deep": "Hardest reasoning: multi-paper synthesis and research reports.",
 }
@@ -37,7 +37,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
 
     options = [
         Option(
-            f"Default — {_label_for(default_id)}",
+            f"Default: {_label_for(default_id)}",
             value="",
             selected=(not pinned_id),
         )
@@ -56,7 +56,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
         # user sees it (server validation rejects it on save, forcing a fix).
         options.append(
             Option(
-                f"{_label_for(pinned_id)} (current — off-tier)",
+                f"{_label_for(pinned_id)} (current, off-tier)",
                 value=pinned_id,
                 selected=True,
             )
@@ -125,7 +125,7 @@ def settings_page(
     key_status = (
         f"A personal OpenRouter key is saved ({_masked(openrouter_key)}). It overrides the shared server key for all your requests."
         if openrouter_key
-        else "Using the shared server OpenRouter key. Add your own to unlock more models and your own usage limits."
+        else "Using the shared server OpenRouter key. Add your own to pick more models and use your own limits."
     )
 
     flash = None
@@ -142,7 +142,7 @@ def settings_page(
 
     return Body(
         Head(
-            Title("Settings — Office Hours"),
+            Title("Settings · Office Hours"),
             # Apply saved theme before first paint (class lives on <html>)
             Script(THEME_INLINE_SCRIPT),
             Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),

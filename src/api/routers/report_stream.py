@@ -387,8 +387,8 @@ async def report_stream(
             yield _format_sse_event(
                 "report-block",
                 "<div class='alert-error' style='color:#d9534f;'>"
-                "Report already generated or this link expired — "
-                "refresh the page to see the saved report.</div>",
+                "Report already generated or this link expired. "
+                "Refresh the page to see the saved report.</div>",
             )
             yield _format_sse_event("done")
 

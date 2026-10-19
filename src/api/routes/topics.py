@@ -94,7 +94,7 @@ def _share_link_html(request: Request, topic: Topic) -> str:
     url = _share_url(request, topic.share_token or "")
     return (
         f'🔗 <a href="{_esc(url)}" target="_blank" rel="noopener">{_esc(url)}</a>'
-        " — anyone with this link can view (read-only)."
+        ". Anyone with this link can view it (read-only)."
         ' <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"'
         f' hx-post="/topics/{_esc(topic.id)}/unshare" hx-target="#share-status"'
         ' hx-swap="innerHTML">Unshare</button>'
@@ -132,7 +132,7 @@ async def topics_page(request: Request) -> HTMLResponse:
     if not topics:
         items = (
             '<div class="empty-state-card"><strong>No topics yet.</strong>'
-            "<p>Run a search and generate a report — your topics land here.</p>"
+            "<p>Run a search and generate a report. Your topics land here.</p>"
             '<a href="/">New search</a></div>'
         )
     else:
@@ -362,7 +362,7 @@ async def add_facet(
 
     status = (
         f"<div class='topic-meta' style='margin-top:6px;'>"
-        f"{'Added — ' + str(added) + ' papers pulled in.' if created else 'Already tracking that query.'}</div>"
+        f"{'Added ' + str(added) + ' papers.' if created else 'Already tracking that query.'}</div>"
     )
     return HTMLResponse(_facets_section(topic, facets) + status)
 
@@ -455,20 +455,20 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         "topic-blog",
         "Blog",
         topic.blog_markdown,
-        "No blog yet — generate one from a report.",
+        "No blog yet. Generate one from a report.",
     )
     notes_html = _md_section(
         "topic-notes",
         "Notes",
         topic.notes_markdown,
-        "No notes yet — generate study notes from a report.",
+        "No notes yet. Generate study notes from a report.",
     )
 
     report_rows = []
     for r in reports:
         report_rows.append(
             f"<div class='topic-meta'>&#8226; <a href='/reports/{_esc(r.id)}'>"
-            f"{_esc(_display_report_title(r))}</a> — {r.created_at.strftime('%b %d, %Y')}</div>"
+            f"{_esc(_display_report_title(r))}</a> · {r.created_at.strftime('%b %d, %Y')}</div>"
         )
     reports_html = (
         "".join(report_rows) or "<div class='topic-meta'>No reports yet.</div>"
@@ -494,7 +494,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 {facets_html}
 {related_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Report versions</h2>
-<div class="topic-meta" style="margin-bottom:8px;">Each update snapshots the topic's papers at that moment — older versions are kept.</div>
+<div class="topic-meta" style="margin-bottom:8px;">Each update snapshots the topic's papers at that moment. Older versions are kept.</div>
 {reports_html}
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers (<span id="papers-count">{len(papers)}</span>)
   <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
@@ -653,7 +653,7 @@ async def topic_feed_now(topic_id: str, request: Request) -> HTMLResponse:
             < topic_feed.MANUAL_MIN_INTERVAL_S
         ):
             return HTMLResponse(
-                "Checked just now — the feed polls this topic automatically."
+                "Checked just now. The feed polls this topic automatically."
             )
         added = await topic_feed.feed_topic(session, topic)
         papers = await list_topic_papers(session, topic_id=topic.id)
@@ -661,7 +661,7 @@ async def topic_feed_now(topic_id: str, request: Request) -> HTMLResponse:
     status = (
         f"<b>{added}</b> new paper{'s' if added != 1 else ''} added."
         if added
-        else "Checked — nothing new yet."
+        else "Checked. Nothing new yet."
     )
     oob = (
         f'<div id="topic-papers" hx-swap-oob="true">'
@@ -770,7 +770,7 @@ async def share_page(token: str) -> HTMLResponse:
         "share-notes", "Notes", topic.notes_markdown, "No notes yet."
     )
     body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
-<div class="topic-meta">Shared workspace — read-only.
+<div class="topic-meta">Shared workspace. Read-only.
   <a href="/">Make your own with Office Hours →</a></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>
 <div id="topic-papers">{papers_html}</div>

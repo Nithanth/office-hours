@@ -27,14 +27,14 @@ NAV_LINKS: list[tuple[str, str, str, str, str]] = [
         "/library",
         "library",
         "fa-solid fa-book",
-        "Library — saved papers, topics & reports",
+        "Saved papers, topics & reports",
     ),
     (
         "Settings",
         "/settings",
         "settings",
         "fa-solid fa-gear",
-        "Settings — models, Notion & account",
+        "Models, Notion & account",
     ),
 ]
 
@@ -42,16 +42,16 @@ NAV_LINKS: list[tuple[str, str, str, str, str]] = [
 # strip rendered at the top of each of the three pages.
 # (label, href, key, tooltip)
 LIB_SUBTABS: list[tuple[str, str, str, str]] = [
-    ("Papers", "/library", "papers", "Papers — your saved reading list"),
-    ("Topics", "/topics", "topics", "Topics — research projects you're running"),
-    ("Reports", "/reports", "reports", "Reports — generated research write-ups"),
+    ("Papers", "/library", "papers", "Your saved reading list"),
+    ("Topics", "/topics", "topics", "Research projects you're running"),
+    ("Reports", "/reports", "reports", "Generated research write-ups"),
 ]
 
 
 def lib_subtabs_html(active: str) -> str:
     """Sub-tab strip for the Library hub pages, with a one-line role note."""
     desc = {
-        "papers": "Your saved reading list — papers you bookmarked to read.",
+        "papers": "Papers you bookmarked to read.",
         "topics": "Research projects that keep collecting papers over time.",
         "reports": "Write-ups snapshotted from a topic's paper set.",
     }
@@ -87,7 +87,7 @@ _HEAD_LINKS = (
     + "\n"
     + '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
     '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-    '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">\n'
+    '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Instrument+Serif:ital@1&display=swap">\n'
     + f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/variables.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/top-bar.css")}">\n'
@@ -123,7 +123,7 @@ def top_bar_html(active: str = "", extra_html: str = "") -> str:
     {extra_html}
     {nav_links_html(active)}
     <button class="oh-assistant-btn oh-tip oh-tip-below" type="button" aria-label="Research Assistant"
-      data-tip="Assistant — ask questions across your papers & reports"
+      data-tip="Ask questions across your papers & reports"
       hx-get="/chat-modal?paper_id=global&title=Research%20Assistant"
       hx-target="#modal-container" hx-swap="innerHTML"><i class="fa-solid fa-comment-dots"></i></button>
     <span id="oh-auth-status" class="top-auth-status"></span>
@@ -199,7 +199,7 @@ def top_bar(active: str = "", *extra_controls: Any) -> Div:
             cls="oh-assistant-btn oh-tip oh-tip-below",
             type="button",
             aria_label="Research Assistant",
-            data_tip="Assistant — ask questions across your papers & reports",
+            data_tip="Ask questions across your papers & reports",
             hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
             hx_target="#modal-container",
             hx_swap="innerHTML",

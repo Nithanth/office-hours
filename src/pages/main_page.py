@@ -755,36 +755,8 @@ def home_page(page_data: SharedPageData) -> Body:
             is_url_search=False,  # Assume not a URL search on initial load
             papers_list=page_data.search_results,
         )
-    else:  # No search performed yet — first-run onboarding panel
-        example_queries = [
-            "implicit neural representations",
-            "papers by Yann LeCun",
-            "https://arxiv.org/abs/1706.03762",
-        ]
+    else:  # No search performed yet — empty-state marks pre-search for :has()
         results_display_content = Div(
-            Div(
-                "A workbench for research questions.",
-                cls="oh-hero-title",
-            ),
-            Div(
-                "Search a topic, a paper link, or an author — Office Hours builds "
-                "a living topic page around it: the paper set, streamed reports, "
-                "notes, a blog, and a chat that knows all of them.",
-                cls="oh-hero-sub",
-            ),
-            Div(
-                Span("Try", cls="oh-hero-try"),
-                *[
-                    BUTTON(
-                        q,
-                        type="button",
-                        cls="oh-hero-chip",
-                        data_q=q,
-                    )
-                    for q in example_queries
-                ],
-                cls="oh-hero-chips",
-            ),
             Script(
                 "document.addEventListener('click',function(ev){"
                 "var b=ev.target.closest('.oh-hero-chip');if(!b)return;"
@@ -833,6 +805,9 @@ def home_page(page_data: SharedPageData) -> Body:
             # Modular JS entry-points
             Script(src=static_url("/static/js/main.js"), type="module"),
             Script(src=static_url("/static/js/library.js"), defer=True),
+            # Typewriter placeholder for the hero field — separate file because
+            # fasthtml's Script() escapes &&/</>/& in inline bodies.
+            Script(src=static_url("/static/js/hero-typewriter.js"), defer=True),
             # cluster-viz.js lives on /library — the library is where
             # clustering has enough papers to mean something.
             # ohBlogRender lazy-loads KaTeX — the report stream's done event
@@ -848,19 +823,62 @@ def home_page(page_data: SharedPageData) -> Body:
         Div(id="status-banner"),  # Placeholder for busy/alert banners
         Div(
             Div(
-                P(
-                    I("Enter a research topic, query, paper link, or author name:"),
-                    style="margin-bottom:0.5rem;",
+                # Hero — visible only pre-search; collapses via
+                # .search-card:has(.empty-state) once results land.
+                Div(
+                    Div(
+                        "A workbench for ",
+                        Span("research", cls="oh-hero-em"),
+                        " questions.",
+                        cls="oh-hero-title",
+                    ),
+                    Div(
+                        "Search a topic, a paper link, or an author. Office Hours turns it "
+                        "into a topic page: the papers, streamed reports, notes, a blog, "
+                        "and a chat that knows them all.",
+                        cls="oh-hero-sub",
+                    ),
+                    cls="oh-hero-block",
                 ),
                 FORM(  # Search Form
-                    INPUT(
-                        type="search",
-                        id="search_query",
-                        name="search_query",
-                        required=True,
-                        placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
-                        value=page_data.current_query or "",
-                        style="width:100%;max-width:44rem;padding:6px 10px;font-size:0.95rem;",
+                    Div(
+                        INPUT(
+                            type="search",
+                            id="search_query",
+                            name="search_query",
+                            placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
+                            value=page_data.current_query or "",
+                        ),
+                        BUTTON(
+                            I(cls="fa-solid fa-magnifying-glass"),
+                            " Search",
+                            type="submit",
+                            name="mode",
+                            value="auto",
+                            id="search-papers-btn",
+                            cls="oh-search-go",
+                            onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
+                        ),
+                        cls="oh-search-field",
+                    ),
+                    # "Try" example-query chips — first-run affordance that
+                    # collapses with the hero once results land.
+                    Div(
+                        Span("Try", cls="oh-hero-try"),
+                        *[
+                            BUTTON(
+                                q,
+                                type="button",
+                                cls="oh-hero-chip",
+                                data_q=q,
+                            )
+                            for q in [
+                                "implicit neural representations",
+                                "papers by Yann LeCun",
+                                "https://arxiv.org/abs/1706.03762",
+                            ]
+                        ],
+                        cls="oh-hero-chips",
                     ),
                     # Filters row — date + sources dropdown (collapsible)
                     Details(
@@ -957,7 +975,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                     cls="oh-opt-select",
                                 ),
                                 cls="oh-tip oh-tip-below",
-                                data_tip="Effort tier — which model each tier runs is pinned in Settings",
+                                data_tip="Which model runs at each tier. Pinned in Settings.",
                             ),
                             Div(
                                 A(
@@ -977,7 +995,7 @@ def home_page(page_data: SharedPageData) -> Body:
                                     cls="oh-opt-select",
                                 ),
                                 cls="oh-tip oh-tip-below",
-                                data_tip="Report depth — S concise, L detailed",
+                                data_tip="Report depth. S is concise, L is detailed.",
                             ),
                             Label(
                                 Span("Deep ", cls="filter-label"),
@@ -989,56 +1007,55 @@ def home_page(page_data: SharedPageData) -> Body:
                                     style="margin:0;",
                                 ),
                                 cls="oh-tip oh-tip-below",
-                                data_tip="Slower but broader results — Exa decomposes the query and does more retrieval rounds",
+                                data_tip="Slower but broader. Exa splits the query and runs more retrieval rounds.",
                                 style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;",
                             ),
                             cls="search-form-filters",
                         ),
                         cls="oh-search-options",
                     ),
-                    # Action buttons
-                    Div(
-                        BUTTON(
-                            I(cls="fa-solid fa-magnifying-glass"),
-                            " Search Papers",
-                            type="submit",
-                            name="mode",
-                            value="auto",
-                            id="search-papers-btn",
-                            cls="oh-search-btn",
-                            onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
+                    # Secondary action — author search is a ghost link, not a
+                    # peer button: Search is the product's primary verb.
+                    BUTTON(
+                        I(cls="fa-solid fa-user-graduate"),
+                        " Search by Author",
+                        type="button",
+                        id="search-author-btn",
+                        cls="oh-ghost-btn",
+                        title="Search for a researcher by name (Semantic Scholar)",
+                        hx_post="/author/search",
+                        hx_include="#paper-search-form",
+                        hx_target="#search-results-container",
+                        hx_swap="innerHTML",
+                        **{"hx-indicator": "#loading-indicator"},
+                        onclick=(
+                            "var q=document.getElementById('search_query').value;"
+                            "if(!q.trim()){"
+                            "document.getElementById('search-results-container').innerHTML="
+                            "\"<div class='error-banner'>enter an author name first &#x25B2;</div>\";"
+                            "event.stopImmediatePropagation();"
+                            "}else{"
+                            "document.getElementById('oh-loading-text').textContent='Searching authors...';"
+                            "}"
                         ),
-                        BUTTON(
-                            I(cls="fa-solid fa-user-graduate"),
-                            " Search by Author",
-                            type="button",
-                            id="search-author-btn",
-                            cls="oh-search-btn",
-                            title="Search for a researcher by name (Semantic Scholar)",
-                            hx_post="/author/search",
-                            hx_include="#paper-search-form",
-                            hx_target="#search-results-container",
-                            hx_swap="innerHTML",
-                            **{"hx-indicator": "#loading-indicator"},
-                            onclick=(
-                                "var q=document.getElementById('search_query').value;"
-                                "if(!q.trim()){"
-                                "document.getElementById('search-results-container').innerHTML="
-                                "\"<div class='error-banner'>Please enter an author name.</div>\";"
-                                "event.stopImmediatePropagation();"
-                                "}else{"
-                                "document.getElementById('oh-loading-text').textContent='Searching authors...';"
-                                "}"
-                            ),
-                        ),
-                        style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;",
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",
                     hx_swap="innerHTML",
                     hx_push_url="false",
+                    novalidate=True,  # kill the browser's yellow-bubble validation;
+                    # the onsubmit below shows our own mono error instead
                     **{"hx-trigger": "submit", "hx-indicator": "#loading-indicator"},
-                    onsubmit="['report-display-area','report-config-area','ask-result-container'].forEach(function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});",
+                    onsubmit=(
+                        "var q=document.getElementById('search_query').value;"
+                        "if(!q.trim()){"
+                        "document.getElementById('search-results-container').innerHTML="
+                        "\"<div class='error-banner'>type a question first &#x25B2;</div>\";"
+                        "event.stopImmediatePropagation();return false;"
+                        "}"
+                        "['report-display-area','report-config-area','ask-result-container'].forEach("
+                        "function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});"
+                    ),
                     id="paper-search-form",
                     style="background:inherit;padding:0.5rem 0;",
                 ),
@@ -1154,7 +1171,7 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
                     cls="welcome-features",
                 ),
                 P(
-                    "Private beta — sign in with the Google account you "
+                    "Private beta. Sign in with the Google account you "
                     "shared with Nithu.",
                     cls="welcome-fineprint",
                 ),

@@ -20,6 +20,7 @@
      Google Fonts in page_shell's head links. */
   --oh-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --oh-font-mono: "JetBrains Mono", "Lucida Console", "Courier New", ui-monospace, monospace;
+  --oh-font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
 
   /* shape + motion — one radius scale, one easing, one speed */
   --oh-radius-sm: 6px;

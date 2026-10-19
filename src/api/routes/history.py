@@ -80,7 +80,7 @@ async def report_history(request: Request) -> HTMLResponse:
         return HTMLResponse(
             _history_shell(
                 '<div class="empty-state-card"><strong>No saved reports yet.</strong>'
-                "<p>Run a search and generate a report — your snapshots land here.</p>"
+                "<p>Run a search and generate a report. Your snapshots land here.</p>"
                 '<a href="/">New search</a></div>'
             )
         )

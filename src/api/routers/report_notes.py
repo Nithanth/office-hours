@@ -1214,7 +1214,7 @@ async def blog_view(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Blog — Office Hours</title>
+  <title>Blog · Office Hours</title>
   <!-- Apply the app's saved theme BEFORE first paint to avoid a light/dark flash. -->
   <script>
     (function () {{

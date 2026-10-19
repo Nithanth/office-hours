@@ -93,6 +93,16 @@ html.oh-dark .pinned-label{
   animation: oh-fade-up var(--oh-speed) var(--oh-ease) both;
 }
 
+/* Result rows cascade in one at a time — the page arrives, it doesn't
+   just pop. Delays capped at 8 rows; later rows share the last delay. */
+.paper-row:nth-child(2)  { animation-delay: 40ms; }
+.paper-row:nth-child(3)  { animation-delay: 80ms; }
+.paper-row:nth-child(4)  { animation-delay: 120ms; }
+.paper-row:nth-child(5)  { animation-delay: 160ms; }
+.paper-row:nth-child(6)  { animation-delay: 200ms; }
+.paper-row:nth-child(7)  { animation-delay: 240ms; }
+.paper-row:nth-child(n+8) { animation-delay: 280ms; }
+
 a, button, .btn-secondary, .oh-search-btn,
 .top-bar-link, .oh-related-chip, .oh-topic-pill, .oh-foryou-chip,
 input, select, textarea, summary {
@@ -110,12 +120,43 @@ input, select, textarea, summary {
   border-color: var(--oh-accent);
 }
 
+/* One focus ring for the whole app — keyboard users deserve to see
+   where they are; mouse users never trigger :focus-visible. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--oh-accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ------------------------------------------------------------------
+   Paper grain — faint fractal noise so the canvas reads as paper, not
+   a flat template background. Fixed overlay, pointer-events none; sits
+   over everything (including modals) so the texture is cohesive.
+   ------------------------------------------------------------------ */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+html.oh-dark body::after {
+  opacity: 0.07;
+  filter: invert(1);
 }
 
 /* dark-mode tweaks handled via CSS vars above */

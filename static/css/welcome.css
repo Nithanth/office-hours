@@ -14,7 +14,7 @@
   /* Soft radial wash so the card has somewhere to sit. Uses theme vars so
    * it inverts cleanly in dark mode. */
   background:
-    radial-gradient(circle at top, rgba(239, 68, 68, 0.06), transparent 60%),
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.07), transparent 60%),
     var(--bg);
 }
 

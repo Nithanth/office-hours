@@ -96,7 +96,7 @@ def _topic_body_markdown(topic: dict) -> str:
     """Page body for a mirrored topic — blog first (the shareable take),
     then notes (the running synthesis)."""
     base = _app_base_url()
-    head = f"_Workspace mirror — {topic['kind']} topic._"
+    head = f"_Workspace mirror: {topic['kind']} topic._"
     if base:
         head += f" **Open in Office Hours:** {base}/topics/{topic['id']}"
     parts = [head, ""]
@@ -199,8 +199,8 @@ async def provision_databases(
         anchor_page = parent_page_id
     if not anchor_page:
         raise NotionExportError(
-            "Pick a Notion page or database as the destination first — "
-            "the library sync creates its databases there."
+            "Pick a Notion page or database as the destination first. "
+            "The library sync creates its databases there."
         )
 
     if not papers_db:
@@ -337,7 +337,7 @@ async def sync_library(
                 body_content = report["content"]
                 if base:
                     body_content = (
-                        f"_Synced from Office Hours — open the live report:"
+                        f"_Synced from Office Hours. Open the live report:"
                         f" {base}/reports/{report_id}_\n\n" + body_content
                     )
                 await exporter.ensure_page_content(
@@ -480,7 +480,7 @@ async def answer_question(*, paper_id: str, question: str, user_id: str) -> str:
     service = get_llm_service()
     if service is None:
         raise NotionExportError(
-            "The assistant isn't running in this process — answer comments from the running app."
+            "The assistant isn't running in this process. Answer comments from the running app."
         )
 
     # Ingest the paper on demand — a saved paper may never have been opened,

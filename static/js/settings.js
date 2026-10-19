@@ -701,8 +701,8 @@
             }
             destEl.innerHTML =
               '<div style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:6px;">' +
-              'Office Hours creates two databases — <em>Office Hours Papers</em> and ' +
-              '<em>Office Hours Topics</em> — under whichever page or database you pick:' +
+              'Office Hours creates two databases, <em>Office Hours Papers</em> and ' +
+              '<em>Office Hours Topics</em>, under whichever page or database you pick:' +
               '</div>' +
               data.destinations.map(dest =>
                 '<button type="button" class="notion-destination" data-id="' + escapeHtml(dest.id) +

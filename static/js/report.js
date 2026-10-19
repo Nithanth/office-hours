@@ -381,7 +381,7 @@ function buildBlogPopupShell(theme) {
   const accent = isDark ? "#818cf8" : "#6366f1";
   return (
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
-    '<title>Composing your blog… — Office Hours</title>' +
+    '<title>Composing your blog… · Office Hours</title>' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<style>' +
     '*{box-sizing:border-box;margin:0;padding:0}' +
