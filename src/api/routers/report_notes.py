@@ -74,6 +74,13 @@ async def generate_report_notes(
         logger.warning("report_notes: empty report text provided")
         raise HTTPException(status_code=400, detail="Report text required")
 
+    from services.limits import check_daily_limit, record_event
+
+    limit_msg = await check_daily_limit(request, "notes_generation")
+    if limit_msg:
+        raise HTTPException(status_code=429, detail=limit_msg)
+    await record_event(request, "notes_generation", output_format=output_format)
+
     session_id = await get_session_id(request)
     chat_state = get_chat_state(session_id)
 
@@ -112,7 +119,14 @@ async def generate_report_notes(
         )
     except RuntimeError as err:
         logger.error("notes_generation_error", error=str(err))
-        raise HTTPException(status_code=500, detail=str(err)) from err
+        from services.limits import friendly_error_message
+
+        raise HTTPException(
+            status_code=500,
+            detail=friendly_error_message(
+                err, "Couldn't generate notes right now. Try again in a minute."
+            ),
+        ) from err
 
     # Persist markdown notes on the parent topic (workspace scope) when the
     # report resolves to one. Best-effort: download still succeeds if the
@@ -901,6 +915,13 @@ async def generate_blog(
     if not report_text.strip():
         raise HTTPException(status_code=400, detail="Report text required")
 
+    from services.limits import check_daily_limit, record_event
+
+    limit_msg = await check_daily_limit(request, "blog_generation")
+    if limit_msg:
+        raise HTTPException(status_code=429, detail=limit_msg)
+    await record_event(request, "blog_generation")
+
     session_id = await get_session_id(request)
     chat_state = get_chat_state(session_id)
     chat_digest_raw = _gather_chat_digest(chat_state, char_cap=8000)
@@ -993,6 +1014,13 @@ async def regenerate_blog(
     """
 
     logger.info("blog_regenerate: request received")
+
+    from services.limits import check_daily_limit, record_event
+
+    limit_msg = await check_daily_limit(request, "blog_generation")
+    if limit_msg:
+        raise HTTPException(status_code=429, detail=limit_msg)
+    await record_event(request, "blog_generation", revise=True)
 
     _purge_expired_blogs()
 
@@ -1246,11 +1274,8 @@ async def blog_view(
         <span>Writing blog…</span>
       </span>
       <button id="blog-theme-toggle" class="blog-nav-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-      <button id="blog-revise-btn" class="blog-nav-btn" title="Revise this blog (audience / length / tone / feedback)" disabled>Revise</button>
-      <button id="blog-copy-btn" class="blog-nav-btn" title="Copy markdown (available once blog finishes)" disabled>Copy MD</button>
-      <button id="blog-download-btn" class="blog-nav-btn" title="Download .md (available once blog finishes)" disabled>Download MD</button>
-      <button id="blog-save-html-btn" class="blog-nav-btn" title="Save as self-contained HTML (available once blog finishes)" disabled>Save HTML</button>
-      <button id="blog-save-pdf-btn" class="blog-nav-btn" title="Save as PDF (available once blog finishes)" disabled>Save PDF</button>
+      <button id="blog-revise-btn" class="blog-nav-btn" title="Regenerate with different options" disabled>Revise</button>
+      <button id="blog-save-html-btn" class="blog-nav-btn" title="Download a self-contained HTML page" disabled>Export HTML</button>
     </div>
   </nav>
 

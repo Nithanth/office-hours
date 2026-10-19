@@ -159,7 +159,7 @@
     const p = articleEl.querySelector(".blog-error p");
     if (p) p.textContent = String(message || "Something went wrong.");
     const retry = articleEl.querySelector("#blog-pane-retry");
-    if (retry) retry.addEventListener("click", openGenerateModal);
+    if (retry) retry.addEventListener("click", generateDefault);
   }
 
   function showEmptyCta() {
@@ -173,7 +173,7 @@
       '<button type="button" class="btn-secondary" id="blog-pane-generate">Generate blog view</button>' +
       "</div>";
     const btn = articleEl.querySelector("#blog-pane-generate");
-    if (btn) btn.addEventListener("click", openGenerateModal);
+    if (btn) btn.addEventListener("click", generateDefault);
   }
 
   // ------------------------------------------------------------------
@@ -234,6 +234,13 @@
   // ------------------------------------------------------------------
   // Generate + revise flows
   // ------------------------------------------------------------------
+  // One click to generate: server defaults (report's audience, medium
+  // length, distill tone). Options only appear on Revise, where
+  // changing the output is the intent.
+  function generateDefault() {
+    launchGeneration({});
+  }
+
   function openCustomizeModal(opts) {
     if (window.ohBlog && window.ohBlog.openCustomizeModal) {
       return window.ohBlog.openCustomizeModal(opts);
@@ -241,12 +248,6 @@
     if (opts && typeof opts.onSubmit === "function") {
       opts.onSubmit({ audience: "technical", length: "medium", tone: "distill", extra: "" });
     }
-  }
-
-  function openGenerateModal() {
-    openCustomizeModal({
-      onSubmit: (opts) => launchGeneration(opts),
-    });
   }
 
   async function launchGeneration(opts) {
@@ -274,7 +275,10 @@
 
     try {
       const resp = await fetch("/generate-blog", { method: "POST", body: fd });
-      if (!resp.ok) throw new Error(`Server responded ${resp.status}`);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `Server responded ${resp.status}`);
+      }
       const data = await resp.json();
       const md = await pollToken(data.token, signal);
       if (md == null || signal.cancelled) return;

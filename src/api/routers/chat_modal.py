@@ -705,6 +705,7 @@ async def viewer_modal(
             audience_type=audience_type,
             model_key=model_key,
             report_id=report_id,
+            topic_id=None,
         )
 
     if not url:
@@ -718,6 +719,7 @@ async def viewer_modal(
             audience_type=None,
             model_key=None,
             report_id=report_id,
+            topic_id=None,
         )
 
     # --- Canonicalise arXiv/Ar5iv URLs so missing .pdf suffixes or ar5iv stubs still render ---

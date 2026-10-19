@@ -497,26 +497,6 @@ function isBlogStillLoading() {
 }
 
 function initActions(rawMd) {
-  document.getElementById("blog-copy-btn")?.addEventListener("click", () => {
-    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
-    navigator.clipboard.writeText(rawMd).then(() => showToast("Copied to clipboard"));
-  });
-
-  document.getElementById("blog-download-btn")?.addEventListener("click", () => {
-    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
-    const blob = new Blob([rawMd], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement("a"), {
-      href: url,
-      download: "research_blog.md",
-    });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showToast("Downloaded");
-  });
-
   document.getElementById("blog-save-html-btn")?.addEventListener("click", async (ev) => {
     if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
     const btn = ev.currentTarget;
@@ -546,18 +526,6 @@ function initActions(rawMd) {
     }
   });
 
-  document.getElementById("blog-save-pdf-btn")?.addEventListener("click", () => {
-    if (isBlogStillLoading()) { showToast("Blog is still being written"); return; }
-    // Use the browser's native print → "Save as PDF". A `@media print` block
-    // in blog.css hides the nav/buttons and forces light theme for ink.
-    document.body.classList.add("blog-printing");
-    // Defer to next frame so the class is applied before the print dialog opens.
-    requestAnimationFrame(() => {
-      window.print();
-      // Clean up shortly after dialog returns.
-      setTimeout(() => document.body.classList.remove("blog-printing"), 1000);
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------

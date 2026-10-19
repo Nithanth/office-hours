@@ -57,7 +57,9 @@ def lib_subtabs_html(active: str) -> str:
     }
     parts = []
     for label, href, key, tip in LIB_SUBTABS:
-        cls = "lib-subtab oh-tip" + (" active" if key == active else "")
+        # oh-tip-below: the strip sits right under the sticky top bar, so an
+        # above-tooltip renders behind it. Tip goes under the tab instead.
+        cls = "lib-subtab oh-tip oh-tip-below" + (" active" if key == active else "")
         parts.append(
             f'<a href="{href}" class="{cls}" data-tip="{html.escape(tip, quote=True)}">'
             f"{html.escape(label)}</a>"

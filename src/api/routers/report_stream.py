@@ -217,25 +217,21 @@ async def generate_report_incremental(  # noqa: PLR0913
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
     from services.core.model_prefs import prefs_owner_id
+    from services.limits import check_daily_limit
     from services.persistence.database import database_available, session_scope
 
     # Owner key: auth user_id when signed in, else "sess:{id}" — anonymous
-    # visitors own (and are rate-limited on) their reports too.
+    # visitors own (and are rate-limited on) their reports too. A BYOK
+    # OpenRouter key lifts the cap; BETA_EXEMPT_USER_IDS bypass it.
     user_id = prefs_owner_id(request)
-    if user_id and database_available():
-        from services.persistence.repositories import daily_usage_count
-
-        async for session in session_scope():
-            used = await daily_usage_count(
-                session, user_id=user_id, event_type="report_generated"
-            )
-        if used >= config.BETA_DAILY_REPORT_LIMIT:
-            return HTMLResponse(
-                "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
-                "Daily report limit reached. Please try again tomorrow."
-                "</div>",
-                status_code=429,
-            )
+    limit_msg = await check_daily_limit(request, "report_generated")
+    if limit_msg:
+        return HTMLResponse(
+            "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+            f"{limit_msg}"
+            "</div>",
+            status_code=429,
+        )
 
     # Metrics: count incoming requests
     if _METRICS_ENABLED and REPORT_REQ is not None:
@@ -331,8 +327,7 @@ def _report_skeleton_html(token: str) -> str:
     sse_url = f"/report/stream?token={token}"
     return f"""
     <div id=\"report-content\" class=\"mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50\">\n      <!-- View toggle revealed once the report is persisted (report.js unhides it on report-saved) -->\n      <div id=\"report-view-toggle\" class=\"oh-view-toggle hidden\">\n        <button type=\"button\" data-view=\"report\" class=\"active\"><i class=\"fa-regular fa-file-lines\"></i>&nbsp;Report</button>\n        <button type=\"button\" data-view=\"blog\"><i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog</button>\n      </div>\n      <div id=\"report-progress\"><div class='oh-spinner small' style='display:inline-block;vertical-align:middle;'></div> <span id='report-progress-text'>Writing report…</span></div>\n      <div id=\"report-blocks\"></div>\n      <!-- Action buttons hidden until report finished -->\n      <div id=\"report-actions\" class=\"hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2\">\n        <button id=\"report-notes-btn\" class=\"btn-secondary\" title=\"Generate study notes\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-wand-magic-sparkles\"></i>&nbsp;Notes
-        </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post (opens customization)\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
-        </button>\n        <button id=\"report-notion-btn\" class=\"btn-secondary\" title=\"Export to Notion\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-arrow-up-right-from-square\"></i>&nbsp;Notion
+        </button>\n        <button id=\"report-blog-btn\" class=\"btn-secondary\" title=\"Generate blog post\" type=\"button\" disabled>\n          <i class=\"fa-solid fa-pen-nib\"></i>&nbsp;Blog
         </button>\n        <button id=\"report-topic-chat-btn\" class=\"btn-secondary ask-assistant-btn\" title=\"Chat across all papers in this topic\" type=\"button\" disabled\n          hx-get=\"/viewer/topic?title=Ask%20about%20this%20topic\" hx-target=\"#modal-container\" hx-swap=\"innerHTML\">\n          <i class=\"fa-solid fa-comments\"></i>&nbsp;Topic chat
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>

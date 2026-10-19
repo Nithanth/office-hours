@@ -101,6 +101,16 @@ class Config(BaseSettings):
     REQUIRE_LOGIN: bool = False
     BETA_DAILY_REPORT_LIMIT: int = 20
     BETA_DAILY_SEARCH_LIMIT: int = 100
+    # Anonymous-session (sess:{id}) limits — signing in upgrades to the
+    # signed-in caps above; a BYOK OpenRouter key lifts LLM-backed caps.
+    BETA_DAILY_REPORT_LIMIT_ANON: int = 5
+    BETA_DAILY_SEARCH_LIMIT_ANON: int = 20
+    BETA_DAILY_CHAT_LIMIT: int = 100
+    BETA_DAILY_CHAT_LIMIT_ANON: int = 30
+    BETA_DAILY_GENERATION_LIMIT: int = 20
+    BETA_DAILY_GENERATION_LIMIT_ANON: int = 5
+    # Comma-separated owner ids that bypass all beta limits (demo/admin).
+    BETA_EXEMPT_USER_IDS: str = ""
 
     # ------------------------------------------------------------------
     # Cache directories

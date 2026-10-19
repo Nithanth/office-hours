@@ -148,12 +148,7 @@ const actionsObserver = new MutationObserver(() => {
     const blogBtn = el.querySelector("#report-blog-btn");
     if (blogBtn) {
       blogBtn.removeAttribute("disabled");
-      blogBtn.title = "Generate Blog Post (opens customization)";
-    }
-    const notionBtn = el.querySelector("#report-notion-btn");
-    if (notionBtn) {
-      notionBtn.removeAttribute("disabled");
-      notionBtn.title = "Export to Notion";
+      blogBtn.title = "Generate Blog Post";
     }
     const topicBtn = el.querySelector("#report-topic-chat-btn");
     if (topicBtn) {
@@ -338,8 +333,11 @@ function handleNotesClick(ev) {
     if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
 
     fetch("/generate-report-notes", { method: "POST", body: fd })
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server responded ${r.status}`);
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.detail || `Server responded ${r.status}`);
+        }
         return r.blob();
       })
       .then((blob) => {
@@ -353,7 +351,7 @@ function handleNotesClick(ev) {
       .catch((err) => {
         console.error("[oh] notes download failed", err);
         // eslint-disable-next-line no-alert
-        alert("Failed to generate notes. Please try again.");
+        alert(err.message || "Failed to generate notes. Please try again.");
       })
       .finally(() => {
         btn.disabled = false;
@@ -415,10 +413,10 @@ function buildBlogPopupShell(theme) {
   );
 }
 
-// Top-level click router for `#report-blog-btn`. Opens the customization
-// modal; the actual blog launch happens inside the modal's submit handler so
-// `window.open()` runs synchronously from a real user gesture (otherwise
-// browsers block the popup).
+// Top-level click router for `#report-blog-btn`. One click generates the
+// blog with server defaults — options only live behind Revise on the blog
+// view. Launched directly from the user gesture so `window.open()` isn't
+// popup-blocked.
 function handleBlogClick(ev) {
   const btn = ev.target.closest("#report-blog-btn");
   if (!btn) return;
@@ -426,32 +424,10 @@ function handleBlogClick(ev) {
   const reportEl = document.getElementById("report-content");
   if (!reportEl) return;
   if (btn.disabled) return;
-  openBlogCustomizeModal({
-    onSubmit: (opts) => {
-      launchBlogGeneration({ btn, reportEl, opts });
-    },
-  });
+  launchBlogGeneration({ btn, reportEl, opts: {} });
 }
 
 document.addEventListener("click", handleBlogClick);
-
-// ---------------------------------------------------------------------------
-// Blog customization modal
-// ---------------------------------------------------------------------------
-// The modal itself is defined in `static/js/blog-modal.js` so it can be shared
-// with the blog-view page (which uses it for the Revise button). This module
-// just delegates to `window.ohBlog.openCustomizeModal`.
-
-function openBlogCustomizeModal(opts) {
-  if (window.ohBlog && window.ohBlog.openCustomizeModal) {
-    return window.ohBlog.openCustomizeModal(opts);
-  }
-  console.error("[oh] blog-modal.js not loaded — falling back to defaults");
-  if (opts && typeof opts.onSubmit === "function") {
-    opts.onSubmit({ audience: "technical", length: "medium", tone: "distill", extra: "" });
-  }
-}
-
 
 // ---------------------------------------------------------------------------
 // Launch a blog generation — opens the popup synchronously and posts the form.
@@ -497,8 +473,11 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
   }
 
   fetch(endpoint, { method: "POST", body: fd })
-    .then((r) => {
-      if (!r.ok) throw new Error(`Server responded ${r.status}`);
+    .then(async (r) => {
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.detail || `Server responded ${r.status}`);
+      }
       return r.json();
     })
     .then((data) => {
@@ -512,7 +491,7 @@ function launchBlogGeneration({ btn, reportEl, opts, endpoint = "/generate-blog"
       console.error("[oh] blog generation failed", err);
       if (blogWindow) blogWindow.close();
       // eslint-disable-next-line no-alert
-      alert("Failed to generate blog post. Please try again.");
+      alert(err.message || "Failed to generate blog post. Please try again.");
     })
     .finally(() => {
       if (btn) {
@@ -531,74 +510,8 @@ window.ohBlog.buildPopupShell = buildBlogPopupShell;
 // reach ES modules).
 window.ohBlog.getCleanReportText = getCleanReportText;
 
-// ---------------------------------------------------------------------------
-// Notion export – POST report text, open Notion page in new tab
-// ---------------------------------------------------------------------------
-function handleNotionClick(ev) {
-  const btn = ev.target.closest("#report-notion-btn");
-  if (!btn) return;
-
-  const reportEl = document.getElementById("report-content");
-  if (!reportEl) return;
-
-  btn.disabled = true;
-  const origHtml = btn.innerHTML;
-  btn.innerHTML =
-    '<span class="oh-spinner small" style="vertical-align:middle;"></span> Exporting…';
-
-  // Open window synchronously so browsers don't block it as a popup.
-  const notionWindow = window.open("about:blank", "_blank");
-
-  const cleaned = getCleanReportText(reportEl);
-  const fd = new FormData();
-  fd.append("report_text", cleaned);
-
-  // Pull title from the first heading in the report, if any.
-  const firstH = reportEl.querySelector("h1, h2, h3");
-  fd.append("title", firstH ? firstH.textContent.trim() : "Office Hours Report");
-  if (reportEl.dataset.reportId) fd.append("report_id", reportEl.dataset.reportId);
-
-  // Include audience and model so Notion gets structured properties.
-  const audSel = document.getElementById("aud-select");
-  const modelSel = document.getElementById("model-select");
-  if (audSel && audSel.value) fd.append("audience", audSel.value);
-  if (modelSel && modelSel.value) fd.append("model", modelSel.value);
-
-  fetch("/export-notion", { method: "POST", body: fd })
-    .then(async (r) => {
-      const contentType = r.headers.get("content-type") || "";
-      const payload = contentType.includes("application/json")
-        ? await r.json()
-        : { detail: await r.text() };
-
-      if (!r.ok) {
-        throw new Error(payload.detail || `Server responded ${r.status}`);
-      }
-      return payload;
-    })
-    .then((data) => {
-      if (data.url && notionWindow) {
-        notionWindow.location.href = data.url;
-        if (typeof window.showToast === "function") {
-          window.showToast("Exported to Notion!");
-        }
-      } else if (data.url) {
-        window.open(data.url, "_blank");
-      }
-    })
-    .catch((err) => {
-      console.error("[oh] notion export failed", err);
-      if (notionWindow) notionWindow.close();
-      // eslint-disable-next-line no-alert
-      alert(err.message || "Failed to export to Notion. Check your NOTION_API_KEY in .env.");
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = origHtml;
-    });
-}
-
-document.addEventListener("click", handleNotionClick);
+// (Notion export button removed — library auto-sync mirrors reports to
+// Notion when connected; the one-off export was a stale pre-sync path.)
 
 (function () {
   // simple toast fallback if settings.js not loaded

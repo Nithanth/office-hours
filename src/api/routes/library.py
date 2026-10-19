@@ -465,7 +465,7 @@ async def library_notion_sync(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "ok": False,
-                "detail": "Connect Notion first (Settings → Notion, or a report's Export to Notion).",
+                "detail": "Connect Notion first (Settings → Notion).",
             },
             status_code=400,
         )
