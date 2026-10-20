@@ -105,7 +105,7 @@ async def author_search(
 
     if not query:
         return HTMLResponse(
-            "<div class='error-banner'>Please enter an author name.</div>",
+            "<div class='oh-toast'>Please enter an author name.</div>",
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -131,7 +131,7 @@ async def author_search(
     except Exception as exc:
         logger.exception("author_search_failed", error=str(exc))
         return HTMLResponse(
-            "<div class='error-banner'>Author search failed. Please try again.</div>",
+            "<div class='oh-toast'>Author search failed. Please try again.</div>",
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -171,7 +171,7 @@ async def author_profile_view(
     except Exception as exc:
         logger.exception("author_profile_failed", error=str(exc))
         return HTMLResponse(
-            "<div class='error-banner'>Could not load author profile.</div>",
+            "<div class='oh-toast'>Could not load author profile.</div>",
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -180,7 +180,7 @@ async def author_profile_view(
 
     if profile is None:
         return HTMLResponse(
-            f"<div class='error-banner'>Author \"{html.escape(author_name)}\" not found.</div>",
+            f"<div class='oh-toast'>Author \"{html.escape(author_name)}\" not found.</div>",
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -274,7 +274,7 @@ async def generate_research_profile(
 
     if llm_service is None or not llm_service._initialized:
         return HTMLResponse(
-            "<div class='error-banner'>LLM service not available.</div>",
+            "<div class='oh-toast'>LLM service not available.</div>",
             status_code=503,
         )
 
@@ -287,12 +287,10 @@ async def generate_research_profile(
         )
     except Exception as exc:
         logger.exception("research_profile_fetch_failed", error=str(exc))
-        return HTMLResponse(
-            "<div class='error-banner'>Could not fetch author data.</div>"
-        )
+        return HTMLResponse("<div class='oh-toast'>Could not fetch author data.</div>")
 
     if profile is None:
-        return HTMLResponse("<div class='error-banner'>Author not found.</div>")
+        return HTMLResponse("<div class='oh-toast'>Author not found.</div>")
 
     # Build papers summary for the prompt
     papers_lines: list[str] = []
@@ -327,7 +325,7 @@ async def generate_research_profile(
     except Exception as exc:
         logger.exception("research_profile_generation_failed", error=str(exc))
         return HTMLResponse(
-            "<div class='error-banner'>Could not generate research profile. Try again.</div>"
+            "<div class='oh-toast'>Could not generate research profile. Try again.</div>"
         )
 
     # Render markdown to HTML

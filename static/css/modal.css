@@ -135,7 +135,7 @@ html.oh-dark .modal-close-btn { color: var(--fg-muted); }
 
 .paper-text-body {
   white-space: pre-wrap;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--oh-font-serif, Georgia, 'Times New Roman', serif);
   font-size: 0.85rem;
   line-height: 1.6;
   color: var(--fg, #222);

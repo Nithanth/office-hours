@@ -422,7 +422,7 @@ async def report_stream(
     if not papers_list:
         logger.error("report_stream_no_valid_papers", token=token)
         return HTMLResponse(
-            "<p class='error-banner' style='padding:12px;'>No valid papers could be loaded. "
+            "<p class='oh-toast' style='padding:12px;'>No valid papers could be loaded. "
             "Please go back and try again.</p>",
             status_code=422,
         )

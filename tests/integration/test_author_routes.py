@@ -134,7 +134,7 @@ class TestAuthorProfileRoute:
             data={"author_id": "123", "author_name": "Test"},
         )
         assert resp.status_code == 200
-        assert "error" in resp.text.lower()
+        assert "oh-toast" in resp.text.lower()
 
     @patch("api.routes.author.get_author_profile")
     def test_profile_has_author_stats(self, mock_profile, client: TestClient):
@@ -208,5 +208,5 @@ class TestResearchProfileRoute:
             "/author/research-profile",
             data={"author_id": "1234567", "author_name": "Test"},
         )
+        assert "oh-toast" in resp.text.lower()
         assert resp.status_code == 200
-        assert "error" in resp.text.lower()
