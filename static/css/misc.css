@@ -75,51 +75,74 @@ html.oh-dark .search-card::after {
   display: none;
 }
 
-/* Ambient light behind the card — a slow, soft halo in palette blues.
-   Light shifting in a room, not a gradient demo: negative z keeps it
-   strictly behind the card's paper surface. */
+/* Museum marble — a real stone slab drifts slowly behind the home
+   card (home page only: the :has scopes it away from every other
+   page). Oversized + slow pan so veins visibly glide. */
+body:has(.search-card) {
+  background-image: url("/static/img/marble-light.jpg");
+  background-size: 135%;
+  background-position: 0% 0%;
+  background-attachment: fixed;
+  animation: oh-marble-pan 70s ease-in-out infinite alternate;
+}
+html.oh-dark body:has(.search-card) {
+  background-image: url("/static/img/marble-dark.jpg");
+}
+@keyframes oh-marble-pan {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 100%;
+  }
+}
+
+/* Ambient light behind the card — a soft halo in palette blues,
+   layered over the marble. Negative z keeps it strictly behind the
+   card's paper surface. */
 .search-card::before {
   content: "";
   position: absolute;
-  inset: -14% -20%;
+  inset: -16% -22%;
   z-index: -1;
   pointer-events: none;
   background:
     radial-gradient(
-      42% 46% at 30% 28%,
-      var(--oh-accent-soft, rgba(37, 99, 235, 0.12)) 0%,
+      46% 50% at 30% 28%,
+      rgba(37, 99, 235, 0.22) 0%,
       transparent 70%
     ),
     radial-gradient(
-      34% 40% at 74% 72%,
-      rgba(217, 211, 197, 0.45) 0%,
+      38% 44% at 74% 72%,
+      rgba(217, 211, 197, 0.55) 0%,
       transparent 70%
     );
-  filter: blur(28px);
-  animation: oh-ambient 46s ease-in-out infinite alternate;
+  filter: blur(30px);
+  animation: oh-ambient 32s ease-in-out infinite alternate;
 }
 html.oh-dark .search-card::before {
   background:
     radial-gradient(
-      42% 46% at 30% 28%,
-      rgba(96, 165, 250, 0.09) 0%,
+      46% 50% at 30% 28%,
+      rgba(96, 165, 250, 0.17) 0%,
       transparent 70%
     ),
     radial-gradient(
-      34% 40% at 74% 72%,
-      rgba(96, 165, 250, 0.06) 0%,
+      38% 44% at 74% 72%,
+      rgba(96, 165, 250, 0.12) 0%,
       transparent 70%
     );
 }
 @keyframes oh-ambient {
   from {
-    transform: translate3d(-3%, -2%, 0) scale(1);
+    transform: translate3d(-4%, -3%, 0) scale(1);
   }
   to {
-    transform: translate3d(3%, 2%, 0) scale(1.07);
+    transform: translate3d(4%, 3%, 0) scale(1.09);
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  body:has(.search-card),
   .search-card::before {
     animation: none;
   }
