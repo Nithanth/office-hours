@@ -85,15 +85,15 @@ button:disabled {
   transition: background 0.2s;
 }
 .ask-assistant-btn:hover {
-  background: #1e40af;
+  background: var(--oh-accent-hover);
 }
 html.oh-dark .ask-assistant-btn {
-  background: #2563eb;
+  background: var(--oh-accent);
   color: #fff;
-  border: 1px solid #1e40af;
+  border: 1px solid var(--oh-accent-hover);
 }
 html.oh-dark .ask-assistant-btn:hover {
-  background: #1e40af;
+  background: var(--oh-accent-hover);
   color: #fff;
 }
 
@@ -120,15 +120,15 @@ html.oh-dark .ask-assistant-btn:hover {
 .text-sm { font-size: 0.875rem; }
 .text-lg { font-size: 1.125rem; }
 .font-bold { font-weight: 700; }
-.text-blue-500 { color: #2563eb; }
+.text-blue-500 { color: var(--oh-accent); }
 .underline { text-decoration: underline; }
 
 /* Width helpers */
 .w-full { width: 100%; }
 
 /* --- Link colour normalisation ----------------------------------------- */
-a, a:visited { color:#2563eb; }
-html.oh-dark a, html.oh-dark a:visited { color:#8ab4f8; }
+a, a:visited { color: var(--oh-accent); }
+html.oh-dark a, html.oh-dark a:visited { color: var(--oh-accent); }
 
 /* Preserve white nav links */
 nav a, nav a:visited { color:#fff; }
@@ -146,7 +146,7 @@ html.oh-dark input:hover, html.oh-dark textarea:hover, html.oh-dark select:hover
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
-html.oh-dark .text-blue-500 { color: #8ab4f8; }
+html.oh-dark .text-blue-500 { color: var(--oh-accent); }
 
 /* Ensure mobile no-horizontal-scroll.
    clip (not hidden): any non-visible overflow value on html/body creates a
@@ -163,9 +163,9 @@ html, body { overflow-x: clip; }
 
 /* Skeleton loading pulse */
 @keyframes oh-pulse {
-  0% { background-color:#eee; }
-  50% { background-color:#ddd; }
-  100% { background-color:#eee; }
+  0% { background-color: var(--container-bg); }
+  50% { background-color: var(--container-border); }
+  100% { background-color: var(--container-bg); }
 }
 .skeleton {
   animation: oh-pulse 1.2s ease-in-out infinite;
@@ -194,7 +194,7 @@ html, body { overflow-x: clip; }
   text-decoration: underline;
 }
 .pager button:disabled {
-  color: #888;
+  color: var(--fg-muted);
   cursor: default;
 }
 

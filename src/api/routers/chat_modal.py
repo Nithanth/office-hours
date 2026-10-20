@@ -1032,7 +1032,7 @@ async def viewer_page(
     <!-- Minimal chat stack: SSE pool & stream logic -->
     <script src="/static/js/htmx-sse-pool.js"></script>
     <script type="module" src="/static/js/chat/stream.js"></script>
-    <style>html,body{{margin:0;padding:0;font-family:system-ui,sans-serif;}}</style>
+    <style>html,body{{margin:0;padding:0;}}</style>
   </head>
   <body>
     {modal_html}
