@@ -185,15 +185,15 @@ html.oh-dark .search-card #domain-filter-container {
   color: var(--fg);
 }
 .domain-pill:hover {
-  border-color: #888;
+  border-color: var(--oh-accent);
 }
 
 /* Checked state */
 .domain-pill input[type="checkbox"] { display: none; }
 .domain-pill:has(input:checked) {
-  background: #2563eb;
+  background: var(--oh-accent);
   color: #fff;
-  border-color: #2563eb;
+  border-color: var(--oh-accent);
 }
 
 html.oh-dark .domain-pill {
@@ -202,7 +202,7 @@ html.oh-dark .domain-pill {
   color: var(--fg);
 }
 html.oh-dark .domain-pill:hover {
-  border-color: #888;
+  border-color: var(--oh-accent);
 }
 html.oh-dark .domain-pill:has(input:checked) {
   background: var(--oh-accent);
@@ -503,13 +503,13 @@ html.oh-dark .oh-search-go {
   color: var(--fg);
 }
 .filter-label em {
-  color: #999;
+  color: var(--fg-muted);
   font-style: italic;
 }
 
 /* ---------- KaTeX tweaks ---------- */
 html.oh-dark .katex {
-  color: #eee; /* lighten math text in dark theme */
+  color: var(--fg); /* math text follows theme fg */
 }
 
 /* Make all form control borders consistent grey in dark mode */
@@ -518,7 +518,7 @@ html.oh-dark .search-card select,
 html.oh-dark .search-card textarea {
   border: 1px solid var(--container-border);
   background: var(--container-bg);
-  color: #eee;
+  color: var(--fg);
 }
 
 html.oh-dark .search-card input:focus,
@@ -619,11 +619,11 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 .oh-topics-strip{display:flex;align-items:baseline;gap:10px;margin-top:0.9rem;padding-top:0.7rem;border-top:1px dashed var(--container-border,#ccc);flex-wrap:wrap;}
 .oh-topics-strip-label{font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--fg-muted,#888);flex-shrink:0;}
 .oh-topics-strip-pills{display:flex;gap:6px;flex-wrap:wrap;}
-.oh-topic-pill{display:inline-block;padding:3px 12px;font-size:0.78rem;border:1px solid var(--container-border,#999);border-radius:999px;color:var(--fg);text-decoration:none;background:var(--container-bg,#fff);transition:border-color .12s;}
+.oh-topic-pill{display:inline-block;padding:3px 12px;font-size:0.78rem;border:1px solid var(--container-border,#999);border-radius:999px;color:var(--fg);text-decoration:none;background:var(--container-bg,#fff);transition:border-color var(--oh-speed,140ms) var(--oh-ease,ease);}
 .oh-topic-pill:hover{border-color:var(--accent,#888);text-decoration:none;}
 .oh-search-options{margin-top:0.45rem;font-size:0.82rem;}
 .oh-search-options>summary{cursor:pointer;color:var(--fg-muted,#888);font-size:0.8rem;list-style:none;user-select:none;display:inline-flex;align-items:center;gap:4px;}
-.oh-search-options>summary::before{content:"▸";transition:transform .12s;}
+.oh-search-options>summary::before{content:"▸";transition:transform var(--oh-speed,140ms) var(--oh-ease,ease);}
 .oh-search-options[open]>summary::before{transform:rotate(90deg);}
 .oh-search-options>summary::-webkit-details-marker{display:none;}
 .oh-opt-select{font-size:0.8rem;padding:2px 6px;background:var(--container-bg);color:var(--fg);border:1px solid var(--container-border,#aaa);border-radius:4px;}
@@ -639,7 +639,7 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 .oh-surface-badge{display:inline-block;margin-left:6px;padding:1px 8px;font-size:0.72rem;background:var(--oh-accent-soft);color:var(--oh-accent);}
 .oh-foryou-inner{margin-top:6px;font-size:0.8rem;line-height:1.9;}
 .oh-foryou-label{font-size:0.72rem;letter-spacing:0.05em;text-transform:uppercase;color:var(--fg-muted,#888);margin-right:2px;}
-.oh-foryou-chip{display:inline-block;margin:2px 4px 2px 0;padding:2px 10px;border:1px solid var(--container-border,#aaa);border-radius:999px;background:var(--container-bg,#fff);color:var(--fg,#333);text-decoration:none;font-size:0.78rem;transition:border-color .12s;}
+.oh-foryou-chip{display:inline-block;margin:2px 4px 2px 0;padding:2px 10px;border:1px solid var(--container-border,#aaa);border-radius:999px;background:var(--container-bg,#fff);color:var(--fg,#333);text-decoration:none;font-size:0.78rem;transition:border-color var(--oh-speed,140ms) var(--oh-ease,ease);}
 .oh-foryou-chip:hover{border-color:var(--accent,#2563eb);color:var(--accent,#2563eb);}
 
 /* "+N new" badge on home topics-strip pills */
