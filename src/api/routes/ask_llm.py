@@ -1,7 +1,5 @@
 """Minimal `/ask-llm` endpoint - answers a question via the configured LLM."""
 
-import html
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
@@ -9,6 +7,7 @@ from loguru import logger
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
 from services.core import model_prefs
+from services.limits import friendly_error_message
 from services.report.report_generator import ReportGenerator
 from utils.rate_limit import limiter
 
@@ -70,5 +69,11 @@ async def ask_llm(
         return HTMLResponse(answer_html)
     except Exception as exc:
         logger.exception("ask_llm_failed", error=str(exc))
-        err_html = f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>"
+        err_html = (
+            "<div class='oh-toast'>"
+            + friendly_error_message(
+                exc, "Couldn't get an answer right now. Try again in a moment."
+            )
+            + "</div>"
+        )
         return HTMLResponse(err_html, status_code=500)

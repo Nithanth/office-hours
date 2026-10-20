@@ -19,6 +19,7 @@ from pages.main_page import render_search_results
 from services.core import model_prefs
 from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
+from services.limits import friendly_error_message
 from services.report.report_generator import ReportGenerator
 from services.tasks import task_queue
 from utils.date_utils import human_date, parse_user_date
@@ -119,7 +120,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     if not settings.EXA_API_KEY:
         logger.error("search_missing_exa_key")
-        error_html = "<div class='error-banner'>Search service not configured. Contact support.</div>"  # minimal banner; original used render_error_message but keep dependencies slim
+        error_html = "<div class='oh-toast'>Search service not configured. Contact support.</div>"  # minimal banner; original used render_error_message but keep dependencies slim
         return HTMLResponse(
             content=error_html,
             headers={
@@ -134,7 +135,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     limit_msg = await check_daily_limit(request, "search")
     if limit_msg:
         return HTMLResponse(
-            f"<div class='error-banner'>{limit_msg}</div>",
+            f"<div class='oh-toast'>{limit_msg}</div>",
             status_code=429,
             headers={
                 "HX-Retarget": "#search-results-container",
@@ -154,7 +155,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Reject empty or excessively long queries early.
     if not input_query_stripped:
         return HTMLResponse(
-            "<div class='error-banner' style='padding:12px;border-radius:6px;"
+            "<div class='oh-toast' style='padding:12px;border-radius:6px;"
             "background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
             "color:var(--oh-text,#e0e0e0);margin-top:8px;'>"
             "Please enter a search query.</div>",
@@ -266,7 +267,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         except Exception as exc:  # noqa: BLE001 - bubble unexpected errors
             logger.exception("direct_query_failed", error=str(exc))
             return HTMLResponse(
-                f"<div class='error-banner'>Error: {html.escape(str(exc))}</div>",
+                f"<div class='oh-toast'>{html.escape(friendly_error_message(exc, 'Search hit a snag. Try again in a moment.'))}</div>",
                 status_code=500,
             )
         finally:
@@ -291,7 +292,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         if start_published_date and start_published_date.strip():
             parsed_start_date = parse_user_date(start_published_date)
             if not parsed_start_date:
-                error_html = "<div class='error-banner'>Invalid date format. Use YYYY-MM-DD.</div>"
+                error_html = (
+                    "<div class='oh-toast'>Invalid date format. Use YYYY-MM-DD.</div>"
+                )
                 return HTMLResponse(
                     content=error_html,
                     headers={
@@ -393,7 +396,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("search_flow_failed", error=str(exc))
-        error_html = "<div class='error-banner'>Could not retrieve results. Try again later.</div>"
+        error_html = (
+            "<div class='oh-toast'>Could not retrieve results. Try again later.</div>"
+        )
         return HTMLResponse(
             content=error_html,
             headers={

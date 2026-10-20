@@ -23,6 +23,7 @@ from prompts.prompt_builder import (
 from services.core.exa_client import ExaClient
 from services.core.llm_service import LLMService
 from services.core.llm_utils.types import ProviderName
+from services.limits import friendly_error_message
 from utils.html_builder import text_to_html_paragraphs
 
 # ---------------------------------------------------------------------------
@@ -106,7 +107,11 @@ class DirectQueryService:
         # 5) Post-process -----------------------------------------------------------
         if not result["ok"]:
             logger.error("direct_query_failed", error=result["content"])
-            return f"<div class='error-banner'>Error: {html.escape(result['content'])}</div>"
+            msg: str = friendly_error_message(
+                str(result["content"]),
+                "Couldn't get an answer right now. Try again in a moment.",
+            )
+            return f"<div class='oh-toast'>{html.escape(msg)}</div>"
 
         cleaned = self._clean_markdown(result["content"].strip())
         html_body = text_to_html_paragraphs(cleaned)
