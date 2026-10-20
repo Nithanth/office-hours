@@ -206,20 +206,13 @@ html.oh-dark .domain-pill:has(input:checked) {
 
 /* ================================================================
    Hero search — the search IS the hero (pre-search only)
-   Left-composed like a lab notebook: the card chrome drops away and
-   the masthead sits on the paper grain, field labelled like an
-   instrument. Post-search the card + centered bar return unchanged.
+   Left-composed like a lab notebook page: the card stays as the
+   sheet, the masthead aligns to its left edge, and the field is
+   labelled like an instrument. Post-search the centered compact
+   bar returns unchanged.
    ================================================================ */
 .oh-hero-block {
   display: none;
-}
-/* Card chrome disappears pre-search — the hero sits on paper, not in
-   a box. Border/shadow/bg return with results (no .empty-state). */
-.search-card:has(.empty-state),
-html.oh-dark .search-card:has(.empty-state) {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
 }
 /* Vertically center the whole masthead while the hero is showing —
    the results form's flex:1 would otherwise pin it to the top. */
