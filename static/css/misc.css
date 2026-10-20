@@ -75,6 +75,56 @@ html.oh-dark .search-card::after {
   display: none;
 }
 
+/* Ambient light behind the card — a slow, soft halo in palette blues.
+   Light shifting in a room, not a gradient demo: negative z keeps it
+   strictly behind the card's paper surface. */
+.search-card::before {
+  content: "";
+  position: absolute;
+  inset: -14% -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      42% 46% at 30% 28%,
+      var(--oh-accent-soft, rgba(37, 99, 235, 0.12)) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      34% 40% at 74% 72%,
+      rgba(217, 211, 197, 0.45) 0%,
+      transparent 70%
+    );
+  filter: blur(28px);
+  animation: oh-ambient 46s ease-in-out infinite alternate;
+}
+html.oh-dark .search-card::before {
+  background:
+    radial-gradient(
+      42% 46% at 30% 28%,
+      rgba(96, 165, 250, 0.09) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      34% 40% at 74% 72%,
+      rgba(96, 165, 250, 0.06) 0%,
+      transparent 70%
+    );
+}
+@keyframes oh-ambient {
+  from {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.07);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-card::before {
+    animation: none;
+  }
+}
+
 html.oh-dark .search-card {
   box-shadow: 0 4px 16px rgba(0,0,0,0.6);
 }
@@ -206,6 +256,10 @@ html.oh-dark .domain-pill:has(input:checked) {
 
 /* ================================================================
    Hero search — the search IS the hero (pre-search only)
+   Left-composed like a lab notebook page: the card stays as the
+   sheet, the masthead aligns to its left edge, and the field is
+   labelled like an instrument. Post-search the centered compact
+   bar returns unchanged.
    ================================================================ */
 .oh-hero-block {
   display: none;
@@ -220,22 +274,23 @@ html.oh-dark .domain-pill:has(input:checked) {
 }
 .search-card:has(.empty-state) .oh-hero-block {
   display: block;
-  text-align: center;
-  margin-bottom: 1.25rem;
+  text-align: left;
+  margin-bottom: 1.5rem;
+  max-width: 52rem;
 }
 .search-card:has(.empty-state) #paper-search-form {
-  max-width: 46rem;
-  margin: 0 auto;
+  max-width: 52rem;
+  margin: 0;
   width: 100%;
-  text-align: center;
+  text-align: left;
 }
 .search-card:has(.empty-state) .oh-topics-strip {
-  justify-content: center;
+  justify-content: flex-start;
   border-top: none;
 }
 .oh-hero-title {
   font-family: var(--oh-font-mono, monospace);
-  font-size: 1.9rem;
+  font-size: 2.1rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--fg);
@@ -243,9 +298,32 @@ html.oh-dark .domain-pill:has(input:checked) {
 .oh-hero-sub {
   font-size: 0.92rem;
   color: var(--fg-muted, #888);
-  max-width: 34rem;
-  margin: 0.6rem auto 0;
+  max-width: 36rem;
+  margin: 0.6rem 0 0;
   line-height: 1.6;
+}
+
+/* Field label — the lab-notebook detail that turns the bar into an
+   instrument. Pre-search only (hide alongside the hero's collapse). */
+.oh-query-label {
+  display: none;
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-muted, #888);
+  margin: 0 0 6px 4px;
+}
+.search-card:has(.empty-state) .oh-query-label {
+  display: block;
+}
+/* Bigger instrument while it's the whole page */
+.search-card:has(.empty-state) .oh-search-field {
+  padding: 4px 4px 4px 22px;
+}
+.search-card:has(.empty-state) .oh-search-field input {
+  font-size: 1.02rem;
+  padding: 13px 0;
 }
 
 /* Pill search field — input + primary action in one bordered unit */
@@ -332,6 +410,10 @@ html.oh-dark .oh-search-go {
   align-items: center;
   justify-content: center;
   margin-top: 0.9rem;
+}
+.search-card:has(.empty-state) .oh-hero-chips {
+  justify-content: flex-start;
+  margin-left: 4px;
 }
 .oh-hero-try {
   font-family: var(--oh-font-mono, monospace);

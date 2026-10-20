@@ -854,6 +854,7 @@ def home_page(page_data: SharedPageData) -> Body:
                     cls="oh-hero-block",
                 ),
                 FORM(  # Search Form
+                    Div("QUERY ▸", cls="oh-query-label"),
                     Div(
                         INPUT(
                             type="search",
