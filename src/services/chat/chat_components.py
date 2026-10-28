@@ -118,9 +118,13 @@ def ChatModal(
                 Div(
                     Textarea(
                         name="message",
-                        placeholder="Ask anything…"
-                        if is_global
-                        else "Ask about this paper…",
+                        placeholder=(
+                            "Ask anything…"
+                            if is_global
+                            else "Ask about this topic…"
+                            if paper_id == "topic" or paper_id.startswith("topic:")
+                            else "Ask about this paper…"
+                        ),
                         rows="2",
                         cls="chat-textarea",
                     ),

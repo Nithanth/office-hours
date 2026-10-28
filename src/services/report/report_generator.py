@@ -160,6 +160,16 @@ class ReportGenerator:
         if cached is None and cache_key:
             cached = SummaryCache.get_generic(cache_key)
 
+        # Reject poisoned entries: pre-fix versions cached provider error text
+        # ("Unhandled exception…", "Error: …") as if it were a summary.
+        if isinstance(cached, str) and (
+            cached.startswith("Error:")
+            or "Unhandled exception in LLM call" in cached
+            or "API request failed" in cached
+        ):
+            logger.warning("summary_cache_poisoned_entry", content_head=cached[:120])
+            cached = None
+
         if cached is not None:
             # Optional UX: introduce small artificial delay so spinner is visible
             delay = max(0.0, config.CACHED_SUMMARY_DELAY_SECONDS)
@@ -185,6 +195,7 @@ class ReportGenerator:
 
             if not result["ok"]:
                 logger.error("LLM generation failed", error=result["content"])
+                raise RuntimeError(f"LLM generation failed: {result['content']}")
 
             content = cast(str, result["content"])
 
@@ -211,7 +222,7 @@ class ReportGenerator:
                 provider=self.selected_model_provider,
                 model=self.selected_model_api_id,
             )
-            return "Error: LLM generation timed out."
+            raise TimeoutError("LLM generation timed out") from None
 
         dur = time.perf_counter() - start_ts
         logger.info(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -88,7 +89,11 @@ async def report_history(request: Request) -> HTMLResponse:
     items = []
     for report in reports:
         date_str = report.created_at.strftime("%b %d, %Y")
-        preview = html.escape(report.report_text[:200]).rstrip() + "…"
+        # Strip markdown/html scaffolding so previews read as prose.
+        raw = re.sub(r"<[^>]+>", " ", report.report_text or "")
+        raw = re.sub(r"^#{1,6}\s*", "", raw, flags=re.M)
+        raw = re.sub(r"\s+", " ", raw).strip()
+        preview = html.escape(raw[:200]).rstrip() + "…"
         items.append(
             "<article class='history-item'>"
             f"<h2><a href='/reports/{report.id}'>{html.escape(_display_title(report))}</a></h2>"
