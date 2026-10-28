@@ -578,10 +578,13 @@ async def sync_library(
                 # Q&A trail: append chat turns beyond the watermark so
                 # the Notion page mirrors the learning record.
                 msgs = paper.get("chat_messages") or []
-                # A recreated page starts empty — the old watermark belongs
-                # to the deleted row, so the trail re-mirrors from scratch.
+                # A recreated page starts empty, and an adopted row carries
+                # the old connection's body — either way the stored watermark
+                # doesn't describe this page, so the trail re-mirrors from
+                # scratch.
+                fresh_row = created or (adopted is not None and page_id == adopted)
                 watermark = (
-                    int(paper.get("notion_chat_synced") or 0) if not created else 0
+                    0 if fresh_row else int(paper.get("notion_chat_synced") or 0)
                 )
                 new_msgs = msgs[watermark:]
                 if new_msgs:
