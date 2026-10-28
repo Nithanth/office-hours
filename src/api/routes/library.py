@@ -393,12 +393,25 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
     exporter = NotionExporter(token)
     try:
         async with _notion_lock(owner_id):
+            # Re-read the integration inside the lock — a queued sync must
+            # see the database ids a just-finished sibling persisted, not
+            # its stale snapshot, or both would provision duplicate DBs.
+            fresh, fresh_token = await _load_integration(owner_id)
+            if fresh is None or fresh_token != token:
+                return
             papers_db_id, topics_db_id = await provision_databases(
                 exporter,
-                parent_page_id=integration["parent_page_id"],
-                parent_database_id=integration["parent_database_id"],
-                topics_database_id=integration["topics_database_id"],
+                parent_page_id=fresh["parent_page_id"],
+                parent_database_id=fresh["parent_database_id"],
+                topics_database_id=fresh["topics_database_id"],
             )
+            async for session in session_scope():
+                await set_notion_databases(
+                    session,
+                    user_id=owner_id,
+                    parent_database_id=papers_db_id,
+                    topics_database_id=topics_db_id,
+                )
             stats = await sync_library(
                 exporter,
                 papers_db_id=papers_db_id,
@@ -430,15 +443,10 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
         logger.info("notion_single_sync_stale_skip", paper_id=paper_id)
         return
 
-    async for session in session_scope():
-        await set_notion_databases(
-            session,
-            user_id=owner_id,
-            parent_database_id=papers_db_id,
-            topics_database_id=topics_db_id,
-        )
     for report_id, new_page in stats["topic_page_ids"].items():
-        if not reports.get(report_id, {}).get("notion_page_id"):
+        # Persist on ANY change — a recreated/adopted row must replace the
+        # stale stored id, not just fill an empty one.
+        if new_page != reports.get(report_id, {}).get("notion_page_id"):
             async for session in session_scope():
                 await set_report_notion_page(
                     session,
@@ -542,13 +550,19 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
     # concurrent writers could snapshot the same empty ids and duplicate rows.
     await _notion_lock(str(user_id)).acquire()
     try:
+        # Re-read the integration inside the lock — a queued sync must see
+        # the database ids a just-finished sibling persisted, not its stale
+        # snapshot, or both would provision duplicate DBs.
+        fresh, fresh_token = await _load_integration(str(user_id))
+        if fresh is None or fresh_token != token:
+            return None
         # Provision: ensure Papers + Topics databases (auto-created under the
         # anchor page) and the relation between them.
         papers_db_id, topics_db_id = await provision_databases(
             exporter,
-            parent_page_id=integration["parent_page_id"],
-            parent_database_id=integration["parent_database_id"],
-            topics_database_id=integration["topics_database_id"],
+            parent_page_id=fresh["parent_page_id"],
+            parent_database_id=fresh["parent_database_id"],
+            topics_database_id=fresh["topics_database_id"],
         )
         async for session in session_scope():
             await set_notion_databases(
@@ -706,9 +720,11 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
             "errors": (stats["errors"] + ws_stats["errors"])[:5],
         }
 
-    # Persist notion page ids + pulled-back status changes.
+    # Persist notion page ids + pulled-back status changes. Any id change
+    # is written — a recreated/adopted row must replace the stale stored
+    # id, not just fill an empty one.
     for report_id, page_id in stats["topic_page_ids"].items():
-        if not reports.get(report_id, {}).get("notion_page_id"):
+        if page_id != reports.get(report_id, {}).get("notion_page_id"):
             async for session in session_scope():
                 await set_report_notion_page(
                     session,

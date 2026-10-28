@@ -262,6 +262,21 @@ class NotionExporter:
             ) from err
         return str(db["id"])
 
+    async def add_property(
+        self, database_id: str, name: str, prop: dict[str, Any]
+    ) -> None:
+        """Add a single property to a database schema."""
+        try:
+            await self._client.request(
+                path=f"databases/{database_id}",
+                method="PATCH",
+                body={"properties": {name: prop}},
+            )
+        except Exception as err:
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+
     async def add_relation_property(
         self, database_id: str, name: str, target_database_id: str
     ) -> None:
