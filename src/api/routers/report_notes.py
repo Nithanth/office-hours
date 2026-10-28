@@ -159,6 +159,11 @@ async def generate_report_notes(
                             topic_id=_topic_id,
                             markdown=text_content,
                         )
+                        from api.routes.library import (
+                            schedule_notion_workspace_sync,
+                        )
+
+                        schedule_notion_workspace_sync(str(owner))
         except Exception:  # noqa: BLE001 - notes persistence is best-effort
             logger.warning("notes_persist_failed", report_id=report_id)
 
@@ -862,6 +867,11 @@ async def _run_blog_generation(
                                 topic_id=topic_id,
                                 markdown=blog_md,
                             )
+                            from api.routes.library import (
+                                schedule_notion_workspace_sync,
+                            )
+
+                            schedule_notion_workspace_sync(str(entry.user_id))
             except (
                 Exception
             ) as persist_err:  # noqa: BLE001 – persistence is best-effort

@@ -23,6 +23,7 @@ from services.persistence.repositories import (
     get_topic,
     home_stats,
     list_paper_chat_messages,
+    list_reports,
     list_saved_paper_ids,
     list_saved_papers,
     list_topics,
@@ -449,26 +450,31 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
             )
 
 
-@router.post("/api/library/notion-sync")
-async def library_notion_sync(request: Request) -> JSONResponse:
-    user_id = get_auth_user_id(request)
-    if not user_id:
-        return JSONResponse(
-            {"ok": False, "detail": "Sign in to sync your library to Notion."},
-            status_code=401,
+def schedule_notion_workspace_sync(owner_id: str) -> None:
+    """Fire-and-forget full workspace sync — papers, topics, reports, chat
+    mirrors, open comments. Used after report/blog/notes generation so new
+    content lands in Notion without a manual Sync-now press. No-ops for
+    users without a connected integration."""
+    task = asyncio.create_task(run_notion_workspace_sync(owner_id))
+    task.add_done_callback(
+        lambda t: (
+            logger.warning("notion_workspace_sync_failed", error=str(t.exception()))
+            if t.exception()
+            else None
         )
-    if not database_available():
-        return JSONResponse({"ok": False, "detail": "Library not configured"})
+    )
 
+
+async def run_notion_workspace_sync(user_id: str) -> dict | None:
+    """Full workspace Notion sync for one user; returns the stats payload.
+
+    No-ops (returns None) when the DB is unavailable or the user has no
+    connected Notion integration."""
+    if not database_available():
+        return None
     integration, token = await _load_integration(str(user_id))
     if integration is None or not token:
-        return JSONResponse(
-            {
-                "ok": False,
-                "detail": "Connect Notion first (Settings → Notion).",
-            },
-            status_code=400,
-        )
+        return None
 
     from services.notion.library_sync import (
         provision_databases,
@@ -521,23 +527,20 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                         ],
                     }
                 )
+        # Every report the user owns — not just ones linked from a saved
+        # paper — gets a row in the Topics DB. Generation is the moment a
+        # report should exist in Notion, not when it's saved to the library.
         reports: dict = {}
-        for row in paper_rows:
-            report_id = row["report_id"]
-            if report_id and report_id not in reports:
-                async for session in session_scope():
-                    report = await get_report(
-                        session, user_id=str(user_id), report_id=report_id
-                    )
-                    if report:
-                        reports[report_id] = {
-                            "title": report.title,
-                            "original_query": report.original_query,
-                            "created_date": report.created_at.date().isoformat(),
-                            "notion_page_id": report.notion_page_id,
-                            "content": report.report_text,
-                            "topic_id": report.topic_id,
-                        }
+        async for session in session_scope():
+            for report in await list_reports(session, user_id=str(user_id), limit=200):
+                reports[report.id] = {
+                    "title": report.title,
+                    "original_query": report.original_query,
+                    "created_date": report.created_at.date().isoformat(),
+                    "notion_page_id": report.notion_page_id,
+                    "content": report.report_text,
+                    "topic_id": report.topic_id,
+                }
 
         # Workspace topics — mirrored into the same Topics DB, one row per
         # topic with the living blog + notes as the page body.
@@ -652,20 +655,38 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                     notion_body_hash=body_hash,
                 )
 
-    return JSONResponse(
-        {
-            "ok": stats["failed"] == 0 and ws_stats["failed"] == 0,
-            "created": stats["created"],
-            "updated": stats["updated"],
-            "topics_created": stats["topics_created"] + ws_stats["topics_created"],
-            "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
-            "topic_bodies_written": ws_stats["bodies_written"],
-            "status_pulled": len(stats["status_updates"]),
-            "comments_answered": comments_answered,
-            "failed": stats["failed"] + ws_stats["failed"],
-            "errors": (stats["errors"] + ws_stats["errors"])[:5],
-        }
-    )
+    return {
+        "ok": stats["failed"] == 0 and ws_stats["failed"] == 0,
+        "created": stats["created"],
+        "updated": stats["updated"],
+        "topics_created": stats["topics_created"] + ws_stats["topics_created"],
+        "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
+        "topic_bodies_written": ws_stats["bodies_written"],
+        "status_pulled": len(stats["status_updates"]),
+        "comments_answered": comments_answered,
+        "failed": stats["failed"] + ws_stats["failed"],
+        "errors": (stats["errors"] + ws_stats["errors"])[:5],
+    }
+
+
+@router.post("/api/library/notion-sync")
+async def library_notion_sync(request: Request) -> JSONResponse:
+    user_id = get_auth_user_id(request)
+    if not user_id:
+        return JSONResponse(
+            {"ok": False, "detail": "Sign in to sync your library to Notion."},
+            status_code=401,
+        )
+    payload = await run_notion_workspace_sync(str(user_id))
+    if payload is None:
+        return JSONResponse(
+            {
+                "ok": False,
+                "detail": "Connect Notion first (Settings → Notion).",
+            },
+            status_code=400,
+        )
+    return JSONResponse(payload)
 
 
 @router.post("/api/library/notion-answer-comments")
