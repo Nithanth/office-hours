@@ -450,19 +450,41 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
             )
 
 
+_notion_sync_tasks: dict[str, asyncio.Task] = {}
+_notion_sync_dirty: set[str] = set()
+
+
 def schedule_notion_workspace_sync(owner_id: str) -> None:
     """Fire-and-forget full workspace sync — papers, topics, reports, chat
     mirrors, open comments. Used after report/blog/notes generation so new
     content lands in Notion without a manual Sync-now press. No-ops for
-    users without a connected integration."""
-    task = asyncio.create_task(run_notion_workspace_sync(owner_id))
-    task.add_done_callback(
-        lambda t: (
-            logger.warning("notion_workspace_sync_failed", error=str(t.exception()))
-            if t.exception()
-            else None
-        )
+    users without a connected integration.
+
+    Coalesces per owner: only one sync runs at a time so overlapping
+    generations can't both snapshot an empty page id and create duplicate
+    Notion rows. A schedule that lands mid-sync marks the owner dirty and
+    the running loop immediately re-syncs to pick the new content up."""
+    task = _notion_sync_tasks.get(owner_id)
+    if task is not None and not task.done():
+        _notion_sync_dirty.add(owner_id)
+        return
+    _notion_sync_tasks[owner_id] = asyncio.create_task(
+        _run_workspace_sync_until_clean(owner_id)
     )
+
+
+async def _run_workspace_sync_until_clean(owner_id: str) -> None:
+    try:
+        while True:
+            _notion_sync_dirty.discard(owner_id)
+            await run_notion_workspace_sync(owner_id)
+            if owner_id not in _notion_sync_dirty:
+                return
+    except Exception as exc:
+        logger.warning("notion_workspace_sync_failed", error=str(exc))
+    finally:
+        _notion_sync_tasks.pop(owner_id, None)
+        _notion_sync_dirty.discard(owner_id)
 
 
 async def run_notion_workspace_sync(user_id: str) -> dict | None:
@@ -541,6 +563,25 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
                     "content": report.report_text,
                     "topic_id": report.topic_id,
                 }
+        # Saved-paper-linked reports beyond the recent-200 window still get
+        # synced — a saved paper's Topic relation depends on its report row.
+        missing = {row["report_id"] for row in paper_rows if row["report_id"]} - set(
+            reports
+        )
+        for report_id in missing:
+            async for session in session_scope():
+                report = await get_report(
+                    session, user_id=str(user_id), report_id=report_id
+                )
+                if report:
+                    reports[report_id] = {
+                        "title": report.title,
+                        "original_query": report.original_query,
+                        "created_date": report.created_at.date().isoformat(),
+                        "notion_page_id": report.notion_page_id,
+                        "content": report.report_text,
+                        "topic_id": report.topic_id,
+                    }
 
         # Workspace topics — mirrored into the same Topics DB, one row per
         # topic with the living blog + notes as the page body.
@@ -677,6 +718,8 @@ async def library_notion_sync(request: Request) -> JSONResponse:
             {"ok": False, "detail": "Sign in to sync your library to Notion."},
             status_code=401,
         )
+    if not database_available():
+        return JSONResponse({"ok": False, "detail": "Library not configured"})
     payload = await run_notion_workspace_sync(str(user_id))
     if payload is None:
         return JSONResponse(
