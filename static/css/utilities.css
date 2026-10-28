@@ -327,6 +327,24 @@ html.oh-dark .oh-search-btn:hover:not(:disabled) {
   border-color: transparent;
   background: var(--oh-accent-soft);
 }
+.lib-notion-badge {
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  text-decoration: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px dashed var(--container-border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.lib-notion-badge:hover {
+  color: var(--oh-accent);
+  border-color: var(--oh-accent);
+}
 .oh-topic-badge,
 .oh-surface-badge {
   font-family: var(--oh-font-mono, monospace);

@@ -8,8 +8,8 @@ import urllib.parse
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Form, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import config as _cfg
 from services.auth.session import (
@@ -52,9 +52,7 @@ def _basic_auth_header() -> str:
 
 
 @router.get("/integrations/notion/connect")
-async def notion_connect(
-    request: Request, next: str = "/"
-) -> RedirectResponse:  # noqa: A002
+async def notion_connect(request: Request, next: str = "/") -> Response:  # noqa: A002
     if not get_auth_user_id(request):
         # Safety net for direct hits (library link, bookmarks): bounce through
         # Google sign-in and come back here instead of a bare 401 page.
@@ -65,7 +63,16 @@ async def notion_connect(
             "/auth/google/login?next=" + urllib.parse.quote(login_next, safe="/?&=")
         )
     if not _notion_oauth_configured():
-        raise HTTPException(status_code=503, detail="Notion OAuth is not configured.")
+        # Local paths only — `//host` would navigate off-site from our page.
+        safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
+        return HTMLResponse(
+            "<div style='font-family:system-ui,sans-serif;max-width:420px;margin:120px auto;text-align:center;'>"
+            "<h2 style='font-size:1.1rem;'>Notion sync isn't set up yet</h2>"
+            "<p style='color:#666;font-size:0.9rem;'>The Notion integration isn't configured on this deployment.</p>"
+            f"<a href='{urllib.parse.quote(safe_next, safe='/?&=')}' style='color:#2563eb;'>← Back</a>"
+            "</div>",
+            status_code=503,
+        )
 
     state = sign_oauth_state(
         {"nonce": secrets.token_urlsafe(16), "next": next, "provider": "notion"}
@@ -164,18 +171,31 @@ async def notion_destinations(request: Request) -> JSONResponse:
         )
 
     token = notion_access_token(integration)
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            _NOTION_SEARCH_URL,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Notion-Version": _NOTION_VERSION,
-                "Content-Type": "application/json",
-            },
-            json={"page_size": 50},
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                _NOTION_SEARCH_URL,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Notion-Version": _NOTION_VERSION,
+                    "Content-Type": "application/json",
+                },
+                json={"page_size": 50},
+            )
+    except httpx.HTTPError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "destinations": [],
+                "detail": f"Notion unreachable: {type(exc).__name__}",
+            }
         )
-        resp.raise_for_status()
-        payload = resp.json()
+    if resp.status_code != 200:
+        detail = resp.json().get("message", f"HTTP {resp.status_code}")
+        return JSONResponse(
+            {"ok": False, "destinations": [], "detail": f"Notion: {detail}"}
+        )
+    payload = resp.json()
 
     destinations = []
     for item in payload.get("results", []):
