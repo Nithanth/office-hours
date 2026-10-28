@@ -280,7 +280,13 @@ async def _load_integration(
 def _schedule_notion_sync(owner_id: str, paper_id: str) -> None:
     """Fire-and-forget single-paper sync so saves and status changes land
     in Notion without a manual button press. No-ops for users without a
-    connected integration."""
+    connected integration. When a workspace sync is already running we just
+    mark the owner dirty — a parallel single-paper sync could race it into
+    creating duplicate rows."""
+    running = _notion_sync_tasks.get(owner_id)
+    if running is not None and not running.done():
+        _notion_sync_dirty.add(owner_id)
+        return
     task = asyncio.create_task(_sync_paper_to_notion(owner_id, paper_id))
     task.add_done_callback(
         lambda t: (
@@ -312,7 +318,12 @@ async def _archive_notion_page(owner_id: str, notion_page_id: str) -> None:
         return
     exporter = NotionExporter(token)
     try:
-        await exporter.archive_page(notion_page_id)
+        async with _notion_lock(owner_id):
+            await exporter.archive_page(notion_page_id)
+    except Exception as exc:
+        # The row may already be gone — that's the desired end state.
+        if "could not find" not in str(exc).lower():
+            raise
     finally:
         await exporter.close()
 
@@ -381,42 +392,51 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
 
     exporter = NotionExporter(token)
     try:
-        papers_db_id, topics_db_id = await provision_databases(
-            exporter,
-            parent_page_id=integration["parent_page_id"],
-            parent_database_id=integration["parent_database_id"],
-            topics_database_id=integration["topics_database_id"],
-        )
-        async for session in session_scope():
-            await set_notion_databases(
-                session,
-                user_id=owner_id,
-                parent_database_id=papers_db_id,
-                topics_database_id=topics_db_id,
-            )
-        stats = await sync_library(
-            exporter,
-            papers_db_id=papers_db_id,
-            topics_db_id=topics_db_id,
-            papers=[row],
-            reports=reports,
-            owner_id=owner_id,
-            topic_page_by_report_id=topic_page_by_report,
-        )
-        # Answer any open comment threads while we're here — questions
-        # get replies whenever library state changes, no button needed.
-        page_id = stats["paper_page_ids"].get(paper_id)
-        if page_id:
-            await answer_comments_for_paper(
+        async with _notion_lock(owner_id):
+            papers_db_id, topics_db_id = await provision_databases(
                 exporter,
-                notion_page_id=page_id,
-                paper_id=paper_id,
-                user_id=owner_id,
-                bot_id=integration["bot_id"],
+                parent_page_id=integration["parent_page_id"],
+                parent_database_id=integration["parent_database_id"],
+                topics_database_id=integration["topics_database_id"],
             )
+            stats = await sync_library(
+                exporter,
+                papers_db_id=papers_db_id,
+                topics_db_id=topics_db_id,
+                papers=[row],
+                reports=reports,
+                owner_id=owner_id,
+                topic_page_by_report_id=topic_page_by_report,
+            )
+            # Answer any open comment threads while we're here — questions
+            # get replies whenever library state changes, no button needed.
+            page_id = stats["paper_page_ids"].get(paper_id)
+            if page_id:
+                await answer_comments_for_paper(
+                    exporter,
+                    notion_page_id=page_id,
+                    paper_id=paper_id,
+                    user_id=owner_id,
+                    bot_id=integration["bot_id"],
+                )
     finally:
         await exporter.close()
 
+    # Mid-sync disconnect/swap: persisting now would resurrect stale ids —
+    # mirror the workspace sync's identity gate before writing anything.
+    async for session in session_scope():
+        current = await get_notion_integration(session, user_id=owner_id)
+    if current is None or notion_access_token(current) != token:
+        logger.info("notion_single_sync_stale_skip", paper_id=paper_id)
+        return
+
+    async for session in session_scope():
+        await set_notion_databases(
+            session,
+            user_id=owner_id,
+            parent_database_id=papers_db_id,
+            topics_database_id=topics_db_id,
+        )
     for report_id, new_page in stats["topic_page_ids"].items():
         if not reports.get(report_id, {}).get("notion_page_id"):
             async for session in session_scope():
@@ -452,6 +472,18 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
 
 _notion_sync_tasks: dict[str, asyncio.Task] = {}
 _notion_sync_dirty: set[str] = set()
+_notion_locks: dict[str, asyncio.Lock] = {}
+
+
+def _notion_lock(owner_id: str) -> asyncio.Lock:
+    """Per-owner mutex serializing every Notion writer — workspace sync,
+    single-paper sync and archive — so concurrent tasks can't snapshot the
+    same empty notion_page_id and create duplicate rows."""
+    lock = _notion_locks.get(owner_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _notion_locks[owner_id] = lock
+    return lock
 
 
 def schedule_notion_workspace_sync(owner_id: str) -> None:
@@ -506,6 +538,9 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
     from services.notion.notion_exporter import NotionExporter
 
     exporter = NotionExporter(token)
+    # Serialize with single-paper syncs/archives on the same owner —
+    # concurrent writers could snapshot the same empty ids and duplicate rows.
+    await _notion_lock(str(user_id)).acquire()
     try:
         # Provision: ensure Papers + Topics databases (auto-created under the
         # anchor page) and the relation between them.
@@ -646,6 +681,7 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
             except Exception as exc:
                 stats["errors"].append(f"comments {row['paper_id']}: {exc}"[:200])
     finally:
+        _notion_lock(str(user_id)).release()
         await exporter.close()
 
     # If the integration was disconnected or swapped mid-sync, everything we

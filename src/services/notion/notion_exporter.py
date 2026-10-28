@@ -38,17 +38,19 @@ class NotionExporter:
 
         if status == 404 or code == "object_not_found":
             return (
-                f"Notion could not find the configured {target_kind}. "
-                "Verify the ID in .env and share that page/database with your Notion integration."
+                f"Notion could not find the configured {target_kind} — it may "
+                "have been deleted. Pick the destination again from the library page."
             )
         if status == 401 or code == "unauthorized":
             return (
-                "Notion rejected NOTION_API_KEY. Verify the integration token in .env."
+                "Notion rejected the connection — disconnect and reconnect "
+                "Notion from Settings to re-authorize."
             )
         if status == 400 or code == "validation_error":
             return (
-                "Notion rejected the export payload. If exporting to a database, verify its "
-                "properties match the expected schema or use NOTION_PARENT_PAGE_ID instead."
+                "Notion rejected the export payload. If syncing to a database, "
+                "its columns may have been edited — re-pick the destination from "
+                "the library page to provision a fresh one."
             )
         return f"Notion page creation failed: {message}"
 
@@ -186,16 +188,55 @@ class NotionExporter:
 
     async def get_database_parent_page(self, database_id: str) -> str | None:
         """Return the page id that owns *database_id* (databases live in pages)."""
-        try:
-            db = await self._client.databases.retrieve(database_id=database_id)
-        except Exception as err:
-            raise NotionExportError(
-                self._create_error_message(err, "database")
-            ) from err
+        db = await self.get_database(database_id)
         parent = db.get("parent") or {}
         if parent.get("type") == "page_id":
             return str(parent["page_id"])
         return None
+
+    async def get_database(self, database_id: str) -> dict[str, Any]:
+        """Retrieve a database object, raising NotionExportError on failure."""
+        try:
+            db = await self._client.databases.retrieve(database_id=database_id)
+            return dict(db)
+        except Exception as err:
+            raise NotionExportError(
+                self._create_error_message(err, "database")
+            ) from err
+
+    async def database_exists(self, database_id: str) -> bool:
+        """True when the database is still reachable — False once the user
+        deletes it in their workspace."""
+        try:
+            await self._client.databases.retrieve(database_id=database_id)
+            return True
+        except Exception:
+            return False
+
+    async def query_database_rows(
+        self, database_id: str, *, page_size: int = 100
+    ) -> list[dict[str, Any]]:
+        """All rows in a database (id + properties), for adopting rows left
+        behind by a reset or a previous connection instead of duplicating."""
+        rows: list[dict[str, Any]] = []
+        cursor = None
+        try:
+            for _ in range(20):  # 20 * 100 = 2000-row cap
+                body: dict[str, Any] = {"page_size": page_size}
+                if cursor:
+                    body["start_cursor"] = cursor
+                resp = await self._client.request(
+                    path=f"databases/{database_id}/query",
+                    method="POST",
+                    body=body,
+                )
+                rows.extend(resp.get("results") or [])
+                if not resp.get("has_more"):
+                    break
+                cursor = resp.get("next_cursor")
+        except Exception as err:
+            logger.warning("notion_db_query_failed", error=str(err))
+        return rows
 
     async def create_database(
         self, parent_page_id: str, title: str, properties: dict[str, Any]

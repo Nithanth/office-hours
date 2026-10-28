@@ -199,6 +199,10 @@ async def notion_destinations(request: Request) -> JSONResponse:
 
     destinations = []
     for item in payload.get("results", []):
+        # Skip archived/trashed entries — Notion search can still return them
+        # and a pick would land on an unwritable object.
+        if item.get("archived") or item.get("in_trash"):
+            continue
         object_type = item.get("object")
         title = _notion_title(item)
         destinations.append(
@@ -223,16 +227,53 @@ async def notion_destination(
             status_code=400, detail="destination_type must be page or database"
         )
 
+    parent_page_id = destination_id if destination_type == "page" else None
+    if destination_type == "database":
+        # A database pick means "put my databases next to this one", not
+        # "write rows into it" — the user's own schema can't hold our
+        # Status/Topic columns, so we anchor our databases on its parent
+        # page instead.
+        from services.notion.notion_exporter import NotionExporter
+        from services.persistence.repositories import (
+            get_notion_integration,
+            notion_access_token,
+        )
+
+        async for session in session_scope():
+            integration = await get_notion_integration(session, user_id=user_id)
+        token = notion_access_token(integration) if integration else None
+        if not token:
+            raise HTTPException(status_code=404, detail="Connect Notion first")
+        exporter = NotionExporter(token)
+        try:
+            parent_page_id = await exporter.get_database_parent_page(destination_id)
+        except Exception as exc:
+            return JSONResponse(
+                {"ok": False, "detail": f"Notion: {exc}"},
+                status_code=400,
+            )
+        finally:
+            await exporter.close()
+        if not parent_page_id:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "detail": (
+                        "That database sits at your workspace root — pick a "
+                        "page instead so the databases can be created next to it."
+                    ),
+                },
+                status_code=400,
+            )
+
     from services.persistence.repositories import update_notion_destination
 
     async for session in session_scope():
         integration = await update_notion_destination(
             session,
             user_id=user_id,
-            parent_page_id=destination_id if destination_type == "page" else None,
-            parent_database_id=destination_id
-            if destination_type == "database"
-            else None,
+            parent_page_id=parent_page_id,
+            parent_database_id=None,
         )
     if integration is None:
         raise HTTPException(status_code=404, detail="Connect Notion first")
