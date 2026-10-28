@@ -1049,10 +1049,16 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         const destSel = document.getElementById("lib-notion-destination");
         if (destSel) {{
           fetch("/api/notion/destinations").then(r => r.json()).then(res => {{
+            if (!res.ok) {{
+              destSel.innerHTML = `<option value="">${{res.detail || "Couldn't load pages"}}</option>`;
+              return;
+            }}
             const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
             destSel.innerHTML = dests.length
               ? dests.map(d => `<option value="${{d.id}}" data-type="${{d.type}}">${{d.type === "page" ? "📄" : "🗃"}} ${{d.title}}</option>`).join("")
               : '<option value="">No shared pages. Re-connect and share a page</option>';
+          }}).catch(() => {{
+            destSel.innerHTML = '<option value="">Couldn't reach Notion — retry?</option>';
           }});
         }}
         const setDest = document.getElementById("lib-notion-set-dest");

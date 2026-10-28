@@ -171,18 +171,31 @@ async def notion_destinations(request: Request) -> JSONResponse:
         )
 
     token = notion_access_token(integration)
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            _NOTION_SEARCH_URL,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Notion-Version": _NOTION_VERSION,
-                "Content-Type": "application/json",
-            },
-            json={"page_size": 50},
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                _NOTION_SEARCH_URL,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Notion-Version": _NOTION_VERSION,
+                    "Content-Type": "application/json",
+                },
+                json={"page_size": 50},
+            )
+    except httpx.HTTPError as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "destinations": [],
+                "detail": f"Notion unreachable: {type(exc).__name__}",
+            }
         )
-        resp.raise_for_status()
-        payload = resp.json()
+    if resp.status_code != 200:
+        detail = resp.json().get("message", f"HTTP {resp.status_code}")
+        return JSONResponse(
+            {"ok": False, "destinations": [], "detail": f"Notion: {detail}"}
+        )
+    payload = resp.json()
 
     destinations = []
     for item in payload.get("results", []):
