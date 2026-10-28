@@ -925,14 +925,19 @@ async def _answer_notion_comments(user_id: str) -> int:
             fresh, fresh_token = await _load_integration(user_id)
             if fresh is None or fresh_token != token:
                 return 0
-            for paper_id, page_id in pages:
+        bot_id = fresh["bot_id"]
+        for paper_id, page_id in pages:
+            # Lock per page, not for the whole pass: each page's answer is
+            # atomic, but the pacing sleep stays outside the lock so a queued
+            # workspace sync isn't stuck behind ~0.4s × library size.
+            async with _notion_lock(user_id):
                 try:
                     answered += await answer_comments_for_paper(
                         exporter,
                         notion_page_id=str(page_id),
                         paper_id=paper_id,
                         user_id=user_id,
-                        bot_id=fresh["bot_id"],
+                        bot_id=bot_id,
                     )
                 except Exception as exc:  # one page can't stop the sweep
                     logger.warning(
@@ -940,8 +945,8 @@ async def _answer_notion_comments(user_id: str) -> int:
                         paper_id=paper_id,
                         err=str(exc),
                     )
-                # Notion's ~3 req/s budget — the sweep is background work.
-                await asyncio.sleep(0.4)
+            # Notion's ~3 req/s budget — the sweep is background work.
+            await asyncio.sleep(0.4)
     finally:
         set_model_context(prev_ctx)
         await exporter.close()
