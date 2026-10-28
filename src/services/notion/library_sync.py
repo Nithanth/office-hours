@@ -581,8 +581,9 @@ async def sync_library(
                 # A recreated page starts empty, and an adopted row carries
                 # the old connection's body — either way the stored watermark
                 # doesn't describe this page, so the trail re-mirrors from
-                # scratch.
-                fresh_row = created or (adopted is not None and page_id == adopted)
+                # scratch. (The URL index includes the linked page itself, so
+                # `adopted` can't detect adoption — compare page ids instead.)
+                fresh_row = created or page_id != paper["notion_page_id"]
                 watermark = (
                     0 if fresh_row else int(paper.get("notion_chat_synced") or 0)
                 )
