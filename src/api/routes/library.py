@@ -411,6 +411,7 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
                     user_id=owner_id,
                     parent_database_id=papers_db_id,
                     topics_database_id=topics_db_id,
+                    expected_token=token,
                 )
             stats = await sync_library(
                 exporter,
@@ -570,6 +571,7 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
                 user_id=str(user_id),
                 parent_database_id=papers_db_id,
                 topics_database_id=topics_db_id,
+                expected_token=token,
             )
 
         # Snapshot papers + their reports as plain dicts inside sessions
