@@ -8,7 +8,7 @@ import urllib.parse
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import config as _cfg
@@ -52,9 +52,7 @@ def _basic_auth_header() -> str:
 
 
 @router.get("/integrations/notion/connect")
-async def notion_connect(
-    request: Request, next: str = "/"
-) -> RedirectResponse | HTMLResponse:  # noqa: A002
+async def notion_connect(request: Request, next: str = "/") -> Response:  # noqa: A002
     if not get_auth_user_id(request):
         # Safety net for direct hits (library link, bookmarks): bounce through
         # Google sign-in and come back here instead of a bare 401 page.
