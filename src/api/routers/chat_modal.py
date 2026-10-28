@@ -505,13 +505,18 @@ async def chat_panel(
         )
     )
 
+    chat_placeholder = (
+        "Ask about this topic…"
+        if paper_id == "topic" or paper_id.startswith("topic:")
+        else "Ask about this paper…"
+    )
     panel_html = f"""
 <div class=\"chat-panel\" style=\"display:flex;flex-direction:column;height:100%;\">
   <div id=\"{chat_log_id}\" class=\"chat-log-container modal-body\" {('data-chat-pid="' + html.escape(paper_id) + '"') if not no_history else ""} style=\"flex:1 1 auto;overflow-y:auto;\">{history_html}</div>
   <div class=\"oh-snippet-tray\"></div>
   <form hx-post=\"/chat\" hx-target=\"#{chat_log_id}\" hx-swap=\"beforeend\" method=\"POST\" style=\"display:flex;gap:6px;margin-top:6px;\">
     {hidden_inputs}
-    <textarea name=\"message\" rows=\"3\" placeholder=\"Ask about this paper…\" style=\"flex:1;border-radius:4px;padding:5px;\"></textarea>
+    <textarea name=\"message\" rows=\"3\" placeholder=\"{chat_placeholder}\" style=\"flex:1;border-radius:4px;padding:5px;\"></textarea>
     <button type=\"submit\" class=\"send-btn\">→</button>
   </form>
 </div>

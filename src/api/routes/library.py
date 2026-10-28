@@ -843,7 +843,7 @@ def _paper_item(paper: SavedPaper) -> str:
         else ""
     )
     report_link = (
-        f' · <a href="/reports/{html.escape(paper.report_id)}">topic</a>'
+        f' · <a href="/reports/{html.escape(paper.report_id)}">report</a>'
         if paper.report_id
         else ""
     )
@@ -1056,7 +1056,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
           const btn = ev.target.closest(".lib-remove-btn");
           if (btn) {{
             post("/api/library/unsave", {{paper_id: btn.dataset.paperId}})
-              .then(() => btn.closest(".lib-item").remove());
+              .then(() => location.reload());
             return;
           }}
           const sync = ev.target.closest("#lib-notion-sync-btn");

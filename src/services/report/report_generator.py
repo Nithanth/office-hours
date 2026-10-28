@@ -185,6 +185,7 @@ class ReportGenerator:
 
             if not result["ok"]:
                 logger.error("LLM generation failed", error=result["content"])
+                raise RuntimeError(f"LLM generation failed: {result['content']}")
 
             content = cast(str, result["content"])
 
@@ -211,7 +212,7 @@ class ReportGenerator:
                 provider=self.selected_model_provider,
                 model=self.selected_model_api_id,
             )
-            return "Error: LLM generation timed out."
+            raise TimeoutError("LLM generation timed out") from None
 
         dur = time.perf_counter() - start_ts
         logger.info(

@@ -701,6 +701,19 @@ async def report_stream(
         if failed_titles:
             yield _format_sse_event("failures", json.dumps(failed_titles))
 
+        # Nothing generated beyond the heading — surface an error card and
+        # don't persist a report full of failures.
+        if len(persisted_blocks) <= 1:
+            yield _format_sse_event(
+                "report-block",
+                "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+                "Report generation failed — the model provider returned an error "
+                "for every section. Check your provider key or try another model."
+                "</div>",
+            )
+            yield _format_sse_event("done", "")
+            return
+
         # Finalise - persist report to database
         if user_id:
             try:
