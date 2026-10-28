@@ -63,11 +63,13 @@ async def notion_connect(request: Request, next: str = "/") -> Response:  # noqa
             "/auth/google/login?next=" + urllib.parse.quote(login_next, safe="/?&=")
         )
     if not _notion_oauth_configured():
+        # Local paths only — `//host` would navigate off-site from our page.
+        safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
         return HTMLResponse(
             "<div style='font-family:system-ui,sans-serif;max-width:420px;margin:120px auto;text-align:center;'>"
             "<h2 style='font-size:1.1rem;'>Notion sync isn't set up yet</h2>"
             "<p style='color:#666;font-size:0.9rem;'>The Notion integration isn't configured on this deployment.</p>"
-            f"<a href='{urllib.parse.quote(next, safe='/?&=')}' style='color:#2563eb;'>← Back</a>"
+            f"<a href='{urllib.parse.quote(safe_next, safe='/?&=')}' style='color:#2563eb;'>← Back</a>"
             "</div>",
             status_code=503,
         )

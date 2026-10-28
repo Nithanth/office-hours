@@ -414,6 +414,25 @@ async def delete_notion_integration(session: AsyncSession, *, user_id: str) -> N
             UserIntegration.provider == "notion",
         )
     )
+    # Drop the page ids pointing at the old workspace — rows re-provision
+    # fresh pages if the user reconnects (same or different workspace).
+    await session.execute(
+        update(SavedPaper)
+        .where(SavedPaper.owner_id == user_id)
+        .values(
+            notion_page_id=None,
+            notion_synced_status=None,
+            notion_chat_synced=0,
+        )
+    )
+    await session.execute(
+        update(Report).where(Report.user_id == user_id).values(notion_page_id=None)
+    )
+    await session.execute(
+        update(Topic)
+        .where(Topic.owner_id == user_id)
+        .values(notion_page_id=None, notion_body_hash=None)
+    )
     await session.commit()
 
 
