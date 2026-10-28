@@ -24,6 +24,16 @@ def _display_title(report: Report) -> str:
     )
 
 
+def _model_label(report: Report) -> str:
+    """User-facing model name — tier display names, not registry keys."""
+    import config as _cfg
+
+    key = _cfg.config.resolve_model_key(report.model_key)
+    if key and key in _cfg.config.AVAILABLE_MODELS:
+        return str(_cfg.config.AVAILABLE_MODELS[key]["display_name"])
+    return report.model_key or ""
+
+
 router = APIRouter(tags=["history"])
 
 
@@ -52,13 +62,14 @@ def _history_shell(items_html: str) -> str:
     {items_html}""",
             active="library",
             head_extra="""<style>
-    .history-item{border:1px solid #444;border-radius:8px;padding:1rem;margin:0.75rem 0;
+    .history-item{border:1px solid var(--container-border,#444);border-radius:8px;padding:1rem;margin:0.75rem 0;
       background:var(--container-bg);transition:border-color 0.15s;}
-    .history-item:hover{border-color:#888;}
+    .history-item:hover{border-color:var(--fg-muted,#888);}
     .history-item h2{font-size:1.05rem;margin:0 0 0.3rem;}
     .history-item h2 a{text-decoration:none;color:var(--fg);}
     .history-item h2 a:hover{text-decoration:underline;}
     .history-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-top:0.25rem;}
+    .history-meta a{color:var(--fg-muted,#888);}
     .history-preview{font-size:0.88rem;color:var(--fg-muted,#aaa);margin-top:0.4rem;line-height:1.4;}
   </style>""",
             wrap_class="page-wrap",
@@ -72,10 +83,13 @@ async def report_history(request: Request) -> HTMLResponse:
     if not database_available():
         raise HTTPException(status_code=503, detail="Report history is not configured.")
 
-    from services.persistence.repositories import list_reports
+    from services.persistence.repositories import list_reports, list_topics
 
     async for session in session_scope():
         reports = await list_reports(session, user_id=user_id)
+        topics_by_id = {
+            t.id: t.title for t in await list_topics(session, owner_id=user_id)
+        }
 
     if not reports:
         return HTMLResponse(
@@ -94,11 +108,18 @@ async def report_history(request: Request) -> HTMLResponse:
         raw = re.sub(r"^#{1,6}\s*", "", raw, flags=re.M)
         raw = re.sub(r"\s+", " ", raw).strip()
         preview = html.escape(raw[:200]).rstrip() + "…"
+        topic_bit = ""
+        if report.topic_id and report.topic_id in topics_by_id:
+            topic_bit = (
+                f' · in <a href="/topics/{html.escape(report.topic_id)}">'
+                f"{html.escape(topics_by_id[report.topic_id])}</a>"
+            )
         items.append(
             "<article class='history-item'>"
             f"<h2><a href='/reports/{report.id}'>{html.escape(_display_title(report))}</a></h2>"
             f"<div class='history-meta'>{date_str} · "
-            f"{html.escape(report.audience_type)} · {html.escape(report.model_key)}</div>"
+            f"{html.escape(report.audience_type)} · {html.escape(_model_label(report))}"
+            f"{topic_bit}</div>"
             f"<div class='history-preview'>{preview}</div>"
             "</article>"
         )
@@ -161,11 +182,11 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
     .report-actions{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;
-      padding:0.75rem 0;border-bottom:1px solid #444;margin-bottom:1rem;}
+      padding:0.75rem 0;border-bottom:1px solid var(--container-border,#444);margin-bottom:1rem;}
     .report-actions button,.report-actions select{
       font-size:0.8rem;padding:4px 10px;border-radius:4px;cursor:pointer;
-      border:1px solid #555;background:var(--container-bg,#1a1a1a);color:var(--fg);}
-    .report-actions button:hover{background:#333;}
+      border:1px solid var(--container-border,#555);background:var(--container-bg);color:var(--fg);}
+    .report-actions button:hover{background:var(--oh-accent-soft,#333);}
     .report-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.5rem;}
   </style>""",
             scripts="""<script src="/static/js/report.js" defer></script>
