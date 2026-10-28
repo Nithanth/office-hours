@@ -648,6 +648,28 @@ async def run_notion_workspace_sync(user_id: str) -> dict | None:
     finally:
         await exporter.close()
 
+    # If the integration was disconnected or swapped mid-sync, everything we
+    # just created lives in the old workspace — writing its page ids back
+    # would resurrect stale state for the next connection. Skip persisting.
+    async for session in session_scope():
+        current_integration = await get_notion_integration(
+            session, user_id=str(user_id)
+        )
+    if current_integration is None or notion_access_token(current_integration) != token:
+        stats["errors"].append("integration changed during sync; not persisted")
+        return {
+            "ok": False,
+            "created": stats["created"],
+            "updated": stats["updated"],
+            "topics_created": stats["topics_created"] + ws_stats["topics_created"],
+            "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
+            "topic_bodies_written": ws_stats["bodies_written"],
+            "status_pulled": 0,
+            "comments_answered": comments_answered,
+            "failed": stats["failed"] + ws_stats["failed"],
+            "errors": (stats["errors"] + ws_stats["errors"])[:5],
+        }
+
     # Persist notion page ids + pulled-back status changes.
     for report_id, page_id in stats["topic_page_ids"].items():
         if not reports.get(report_id, {}).get("notion_page_id"):
