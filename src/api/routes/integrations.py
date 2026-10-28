@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import config as _cfg
 from services.auth.session import (
@@ -54,7 +54,7 @@ def _basic_auth_header() -> str:
 @router.get("/integrations/notion/connect")
 async def notion_connect(
     request: Request, next: str = "/"
-) -> RedirectResponse:  # noqa: A002
+) -> RedirectResponse | HTMLResponse:  # noqa: A002
     if not get_auth_user_id(request):
         # Safety net for direct hits (library link, bookmarks): bounce through
         # Google sign-in and come back here instead of a bare 401 page.
@@ -65,7 +65,14 @@ async def notion_connect(
             "/auth/google/login?next=" + urllib.parse.quote(login_next, safe="/?&=")
         )
     if not _notion_oauth_configured():
-        raise HTTPException(status_code=503, detail="Notion OAuth is not configured.")
+        return HTMLResponse(
+            "<div style='font-family:system-ui,sans-serif;max-width:420px;margin:120px auto;text-align:center;'>"
+            "<h2 style='font-size:1.1rem;'>Notion sync isn't set up yet</h2>"
+            "<p style='color:#666;font-size:0.9rem;'>The Notion integration isn't configured on this deployment.</p>"
+            f"<a href='{urllib.parse.quote(next, safe='/?&=')}' style='color:#2563eb;'>← Back</a>"
+            "</div>",
+            status_code=503,
+        )
 
     state = sign_oauth_state(
         {"nonce": secrets.token_urlsafe(16), "next": next, "provider": "notion"}

@@ -615,7 +615,7 @@
                   '<div style="padding:10px 12px;border:1px solid var(--container-border,#888);border-radius:6px;background:var(--container-bg,#f8f8f8);">' +
                   '<div style="font-weight:600;margin-bottom:4px;">Sign in to connect Notion</div>' +
                   '<div style="font-size:0.85rem;color:var(--fg-muted,#888);margin-bottom:8px;">' +
-                  'Syncing reports and topics to your own Notion workspace needs an account.' +
+                  'Syncing your library to your own Notion workspace needs an account.' +
                   '</div>' +
                   '<a class="btn-secondary" href="/auth/google/login?next=' +
                   encodeURIComponent(window.location.pathname) +
@@ -623,7 +623,7 @@
                   '</div>';
               } else {
                 let detail = data.oauth_connected === false
-                  ? '<div>Connect your own Notion workspace for private beta exports.</div>'
+                  ? '<div>Connect your own Notion workspace — papers, topics and reading status sync automatically.</div>'
                   : '';
                 if (!data.has_api_key) detail += '<div>✗ No Notion connection configured</div>';
                 if (!data.has_parent && data.has_api_key) detail += '<div>✗ No database or page selected</div>';
