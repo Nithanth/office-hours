@@ -18,7 +18,6 @@ from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
 from services.persistence.models import SavedPaper
 from services.persistence.repositories import (
-    feed_new_counts,
     get_notion_integration,
     get_report,
     get_saved_paper,
@@ -1071,66 +1070,23 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     if status and status not in SavedPaper.READING_STATUSES:
         status = None
 
-    signed_in = bool(get_auth_user_id(request))
-    notion_connected = False
-    notion_needs_destination = False
-    stats: dict[str, int] = {}
-    recent_topics: list = []
-    new_counts: dict[str, int] = {}
     async for session in session_scope():
         papers = await list_saved_papers(session, owner_id=owner_id, status=status)
         stats = await home_stats(session, owner_id=owner_id)
-        recent_topics = await list_topics(session, owner_id=owner_id, limit=1)
-        new_counts = await feed_new_counts(
-            session, topic_ids=[t.id for t in recent_topics]
-        )
-        if signed_in:
-            integration = await get_notion_integration(
-                session, user_id=str(get_auth_user_id(request))
-            )
-            if integration:
-                notion_connected = bool(
-                    integration.parent_page_id or integration.parent_database_id
-                )
-                notion_needs_destination = not notion_connected
 
-    tabs = [
-        '<a href="/library"' + (' class="active"' if not status else "") + ">All</a>"
+    # Reading-status filter as a compact dropdown — the four old filter
+    # tabs were nav weight for a feature few touch.
+    opts = [
+        '<option value=""' + ("" if status else " selected") + ">All papers</option>"
     ]
     for value, label in _STATUS_LABELS.items():
-        active = ' class="active"' if status == value else ""
-        tabs.append(f'<a href="/library?status={value}"{active}>{label}</a>')
-
-    if notion_connected:
-        sync_btn = (
-            '<button id="lib-notion-sync-btn" class="btn-secondary oh-tip" type="button" '
-            'data-tip="One shot: re-push every saved paper + topic to Notion and reply to '
-            "unanswered comments on your synced pages. Sync already runs automatically "
-            'when you save or change status. Use this only if Notion drifted">'
-            "Sync now</button>"
-        )
-        notion_card = ""
-    elif notion_needs_destination:
-        sync_btn = ""
-        notion_card = """<div class="lib-notion-card">
-  <strong>Notion connected.</strong> One last step: pick where your library lives.
-  <div class="lib-notion-pick">
-    <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
-    <button id="lib-notion-set-dest" type="button" class="btn-secondary">Set up sync</button>
-  </div>
-  <div class="lib-notion-hint">Office Hours creates two linked databases, Papers ↔ Topics, under the page you pick.</div>
-</div>"""
-    elif signed_in:
-        sync_btn = ""
-        notion_card = """<div class="lib-notion-card">
-  <strong>Mirror your library in Notion</strong>. Papers, topics and reading status sync automatically, and the agent answers questions left in page comments.
-  <div class="lib-notion-pick"><a class="lib-notion-connect" href="/integrations/notion/connect?next=/library">Connect Notion</a></div>
-</div>"""
-    else:
-        sync_btn = ""
-        notion_card = """<div class="lib-notion-card">
-  <strong>Mirror your library in Notion</strong>. Sign in to connect your workspace.
-</div>"""
+        sel = " selected" if status == value else ""
+        opts.append(f'<option value="{value}"{sel}>{label}</option>')
+    filter_select = (
+        '<select class="lib-filter-select" aria-label="Filter by status">'
+        + "".join(opts)
+        + "</select>"
+    )
 
     if papers:
         items = "".join(_paper_item(p) for p in papers)
@@ -1160,51 +1116,24 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             '<i class="fa-solid fa-diagram-project"></i> Visualize</button>'
         )
 
-    # "Your research" surface — only when the owner has data to surface.
-    surface_card = ""
-    if stats.get("saved") or recent_topics:
-        bits = []
-        if stats.get("saved"):
-            bits.append(f"{stats['saved']} saved")
+    # One muted context line — saved/read counts, nothing else. The hub
+    # chrome (Notion, continue-card, stats) lives on the Topics landing.
+    context_line = ""
+    if stats.get("saved"):
+        bits = [f"{stats['saved']} saved"]
         if stats.get("done"):
             bits.append(f"{stats['done']} read")
         if stats.get("to_read"):
             bits.append(f"{stats['to_read']} to read")
-        if stats.get("topics"):
-            bits.append(f"{stats['topics']} topics")
-        if stats.get("reports"):
-            bits.append(f"{stats['reports']} reports")
-        cont = ""
-        if recent_topics:
-            top = recent_topics[0]
-            n = new_counts.get(top.id, 0)
-            badge = (
-                f'<span class="oh-surface-badge"> +{n} this week</span>' if n else ""
-            )
-            cont = (
-                '<div class="oh-surface-continue">'
-                '<span class="oh-surface-cont-label">Continue: </span>'
-                f'<a class="oh-surface-cont-link" href="/topics/{top.id}">'
-                f"{html.escape(top.title)}</a>{badge}</div>"
-            )
-        surface_card = f"""<div class="oh-surface">
-  <div class="oh-surface-title">Your research</div>
-  <div class="oh-surface-stats">{" · ".join(bits)}</div>
-  {cont}
-  <div id="oh-for-you" class="oh-surface-foryou"
-    hx-get="/api/library/for-you" hx-trigger="load" hx-swap="innerHTML"></div>
-</div>"""
+        context_line = f'<div class="subtab-desc">{" · ".join(bits)}</div>'
 
     content = f"""<div class="lib-header">
       <h1>My saved papers</h1>
-      {sync_btn}
+      {filter_select}
       {viz_btn}
     </div>
-    {notion_card}
-    {surface_card}
-    <div class="lib-tabs">{"".join(tabs)}</div>
+    {context_line}
     <div id="cluster-viz-container" style="display:none;margin:12px 0;"></div>
-    <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
     {items}
     <script>
       (function() {{
@@ -1216,46 +1145,14 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
           }});
           return r.json();
         }}
-        // Notion destination picker — only present when connected with no anchor.
-        const destSel = document.getElementById("lib-notion-destination");
-        if (destSel) {{
-          fetch("/api/notion/destinations").then(r => r.json()).then(res => {{
-            if (!res.ok) {{
-              const opt = document.createElement("option");
-              opt.value = "";
-              opt.textContent = res.detail || "Couldn't load pages";
-              destSel.replaceChildren(opt);
-              return;
-            }}
-            const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
-            destSel.innerHTML = dests.length
-              ? dests.map(d => `<option value="${{d.id}}" data-type="${{d.type}}">${{d.type === "page" ? "📄" : "🗃"}} ${{d.title}}</option>`).join("")
-              : '<option value="">No shared pages. Re-connect and share a page</option>';
-          }}).catch(() => {{
-            destSel.innerHTML = '<option value="">Couldn't reach Notion — retry?</option>';
-          }});
-        }}
-        const setDest = document.getElementById("lib-notion-set-dest");
-        if (setDest) {{
-          setDest.addEventListener("click", function() {{
-            const opt = destSel.options[destSel.selectedIndex];
-            if (!opt || !opt.value) return;
-            setDest.disabled = true;
-            post("/api/notion/destination", {{
-              destination_id: opt.value,
-              destination_type: opt.dataset.type,
-            }}).then(res => {{
-              if (res.ok) {{
-                const statusEl = document.getElementById("lib-sync-status");
-                statusEl.textContent = "All set. Papers now sync to Notion automatically.";
-                document.querySelector(".lib-notion-card").remove();
-              }} else {{
-                setDest.disabled = false;
-              }}
-            }});
-          }});
-        }}
         document.addEventListener("change", function(ev) {{
+          const filter = ev.target.closest(".lib-filter-select");
+          if (filter) {{
+            location.href = filter.value
+              ? "/library?status=" + encodeURIComponent(filter.value)
+              : "/library";
+            return;
+          }}
           const sel = ev.target.closest(".lib-status-select");
           if (!sel) return;
           post("/api/library/status", {{paper_id: sel.dataset.paperId, status: sel.value}})
@@ -1267,22 +1164,6 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             post("/api/library/unsave", {{paper_id: btn.dataset.paperId}})
               .then(() => location.reload());
             return;
-          }}
-          const sync = ev.target.closest("#lib-notion-sync-btn");
-          if (sync) {{
-            sync.disabled = true;
-            const statusEl = document.getElementById("lib-sync-status");
-            statusEl.textContent = "Syncing to Notion…";
-            fetch("/api/library/notion-sync", {{method: "POST"}})
-              .then(r => r.json())
-              .then(res => {{
-                sync.disabled = false;
-                statusEl.textContent = res.ok
-                  ? `Synced: ${{res.created}} papers + ${{res.topics_created}} topics added, ${{res.updated + res.topics_updated}} updated.` +
-                    (res.status_pulled ? ` ${{res.status_pulled}} status pulled from Notion.` : "") +
-                    (res.comments_answered ? ` ${{res.comments_answered}} comment thread(s) answered.` : "")
-                  : (res.detail || `Sync failed (${{res.failed || "?"}} errors)`);
-              }});
           }}
         }});
       }})();

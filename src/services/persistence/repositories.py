@@ -1006,6 +1006,37 @@ async def list_topic_reports(
     return list(result.scalars().all())
 
 
+async def topic_card_stats(
+    session: AsyncSession, *, owner_id: str
+) -> dict[str, dict[str, Any]]:
+    """Per-topic card data for the topics index: live paper count plus the
+    latest report's id and date — two grouped queries instead of N+1."""
+    paper_rows = await session.execute(
+        select(TopicPaper.topic_id, func.count())
+        .join(Topic, Topic.id == TopicPaper.topic_id)
+        .where(Topic.owner_id == owner_id, TopicPaper.removed_at.is_(None))
+        .group_by(TopicPaper.topic_id)
+    )
+    out: dict[str, dict[str, Any]] = {
+        str(tid): {"papers": n, "report_id": None, "report_at": None}
+        for tid, n in paper_rows.all()
+    }
+    report_rows = await session.execute(
+        select(Report.topic_id, Report.id, Report.created_at)
+        .join(Topic, Topic.id == Report.topic_id)
+        .where(Topic.owner_id == owner_id)
+        .order_by(Report.created_at.desc())
+    )
+    for tid, rid, created in report_rows.all():
+        slot = out.setdefault(
+            str(tid), {"papers": 0, "report_id": None, "report_at": None}
+        )
+        if slot["report_id"] is None:
+            slot["report_id"] = rid
+            slot["report_at"] = created
+    return out
+
+
 async def remove_topic_paper(
     session: AsyncSession, *, topic_id: str, paper_id: str
 ) -> bool:

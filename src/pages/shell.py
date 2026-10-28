@@ -24,10 +24,10 @@ from utils.static_assets import static_url
 NAV_LINKS: list[tuple[str, str, str, str, str]] = [
     (
         "Library",
-        "/library",
+        "/topics",
         "library",
         "fa-solid fa-book",
-        "Saved papers, topics & reports",
+        "Topics, saved papers & reports",
     ),
     (
         "Settings",
@@ -38,12 +38,13 @@ NAV_LINKS: list[tuple[str, str, str, str, str]] = [
     ),
 ]
 
-# Sub-tabs inside the Library hub — Papers | Topics | Reports share one
-# strip rendered at the top of each of the three pages.
+# Sub-tabs inside the Library hub — Topics | Papers | Reports share one
+# strip rendered at the top of each of the three pages. Topics leads:
+# the topic is the product's unit, papers are its contents.
 # (label, href, key, tooltip)
 LIB_SUBTABS: list[tuple[str, str, str, str]] = [
-    ("Papers", "/library", "papers", "Your saved reading list"),
     ("Topics", "/topics", "topics", "Research projects you're running"),
+    ("Papers", "/library", "papers", "Your saved reading list"),
     ("Reports", "/reports", "reports", "Generated research write-ups"),
 ]
 

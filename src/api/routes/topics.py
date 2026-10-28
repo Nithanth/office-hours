@@ -120,14 +120,84 @@ def _fmt_authors(authors: object) -> str:
 
 @router.get("/topics", response_class=HTMLResponse)
 async def topics_page(request: Request) -> HTMLResponse:
-    """Topics index — every subject/paper/author you follow."""
+    """Library landing — topics are the product unit, so this is home base."""
     owner = _owner_id(request)
     if not database_available():
         raise HTTPException(status_code=503, detail="Database unavailable")
-    from services.persistence.repositories import list_topics
+    from services.auth.session import get_auth_user_id
+    from services.persistence.repositories import (
+        feed_new_counts,
+        get_notion_integration,
+        home_stats,
+        list_topics,
+        topic_card_stats,
+    )
 
+    signed_in = bool(get_auth_user_id(request))
+    notion_connected = False
+    notion_needs_destination = False
     async for session in session_scope():
         topics = await list_topics(session, owner_id=owner)
+        stats = await home_stats(session, owner_id=owner)
+        new_counts = await feed_new_counts(session, topic_ids=[t.id for t in topics])
+        card_stats = await topic_card_stats(session, owner_id=owner)
+        if signed_in:
+            integration = await get_notion_integration(
+                session, user_id=str(get_auth_user_id(request))
+            )
+            if integration:
+                notion_connected = bool(
+                    integration.parent_page_id or integration.parent_database_id
+                )
+                notion_needs_destination = not notion_connected
+
+    if notion_connected:
+        sync_btn = (
+            '<button id="lib-notion-sync-btn" class="btn-secondary oh-tip" type="button" '
+            'data-tip="One shot: re-push every saved paper + topic to Notion and reply to '
+            "unanswered comments on your synced pages. Sync already runs automatically "
+            'when you save or change status. Use this only if Notion drifted">'
+            "Sync now</button>"
+        )
+        notion_ui = ""
+    elif notion_needs_destination:
+        sync_btn = ""
+        notion_ui = """<div class="lib-notion-card">
+  <strong>Notion connected.</strong> One last step: pick where your library lives.
+  <div class="lib-notion-pick">
+    <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
+    <button id="lib-notion-set-dest" type="button" class="btn-secondary">Set up sync</button>
+  </div>
+  <div class="lib-notion-hint">Office Hours creates two linked databases, Papers ↔ Topics, under the page you pick.</div>
+</div>"""
+    elif signed_in:
+        sync_btn = ""
+        notion_ui = """<div class="lib-notion-card lib-notion-banner">
+  Mirror your library in Notion — papers, topics and reading status sync automatically.
+  <a class="lib-notion-connect" href="/integrations/notion/connect?next=/topics">Connect Notion</a>
+</div>"""
+    else:
+        sync_btn = ""
+        notion_ui = ""
+
+    # One muted line of context — stats + where to pick up, no card.
+    context_line = ""
+    if topics:
+        bits = []
+        if stats.get("topics"):
+            bits.append(f"{stats['topics']} topics")
+        if stats.get("reports"):
+            bits.append(f"{stats['reports']} reports")
+        if stats.get("saved"):
+            bits.append(f"{stats['saved']} saved papers")
+        top = topics[0]
+        n = new_counts.get(top.id, 0)
+        badge = f" (+{n} new)" if n else ""
+        cont = (
+            f' — pick up: <a href="/topics/{_esc(top.id)}">'
+            f"{_esc(top.title)}</a>{badge}"
+        )
+        context_line = f'<div class="subtab-desc">{" · ".join(bits)}{cont}</div>'
 
     if not topics:
         items = (
@@ -138,18 +208,118 @@ async def topics_page(request: Request) -> HTMLResponse:
     else:
         rows = []
         for t in topics:
+            cs = card_stats.get(t.id, {})
+            n = new_counts.get(t.id, 0)
+            new_badge = f' <span class="oh-surface-badge">+{n} new</span>' if n else ""
+            notion_badge = ""
+            if t.notion_page_id:
+                notion_url = "https://www.notion.so/" + t.notion_page_id.replace(
+                    "-", ""
+                )
+                notion_badge = (
+                    f' <a class="lib-notion-badge" href="{notion_url}" '
+                    'target="_blank" title="Synced to Notion — open the page">'
+                    "↗ Notion</a>"
+                )
+            report_bit = ""
+            if cs.get("report_id"):
+                report_bit = (
+                    f' · <a href="/reports/{_esc(cs["report_id"])}">'
+                    f"latest report</a>"
+                )
+            meta = (
+                f'<span class="topic-kind">{_esc(t.kind)}</span>'
+                f"{cs.get('papers', 0)} papers{report_bit}"
+                f" · updated {human_date(t.updated_at)}"
+            )
             rows.append(
                 f"""<div class="topic-card">
-  <h2><a href="/topics/{_esc(t.id)}">{_esc(t.title)}</a></h2>
-  <div class="topic-meta"><span class="topic-kind">{_esc(t.kind)}</span>
-    started {t.created_at.strftime("%b %d, %Y")}</div>
+  <h2><a href="/topics/{_esc(t.id)}">{_esc(t.title)}</a>{new_badge}{notion_badge}</h2>
+  <div class="topic-meta">{meta}</div>
 </div>"""
             )
         items = "".join(rows)
+
+    script = ""
+    if notion_needs_destination or notion_connected:
+        script = """<script>
+  (function() {
+    async function post(url, data) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: new URLSearchParams(data).toString(),
+      });
+      return r.json();
+    }
+    const destSel = document.getElementById("lib-notion-destination");
+    if (destSel) {
+      fetch("/api/notion/destinations").then(r => r.json()).then(res => {
+        if (!res.ok) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = res.detail || "Couldn't load pages";
+          destSel.replaceChildren(opt);
+          return;
+        }
+        const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
+        destSel.innerHTML = dests.length
+          ? dests.map(d => `<option value="${d.id}" data-type="${d.type}">${d.type === "page" ? "📄" : "🗃"} ${d.title}</option>`).join("")
+          : '<option value="">No shared pages. Re-connect and share a page</option>';
+      }).catch(() => {
+        destSel.innerHTML = '<option value="">Couldn\'t reach Notion — retry?</option>';
+      });
+    }
+    const setDest = document.getElementById("lib-notion-set-dest");
+    if (setDest) {
+      setDest.addEventListener("click", function() {
+        const opt = destSel.options[destSel.selectedIndex];
+        if (!opt || !opt.value) return;
+        setDest.disabled = true;
+        post("/api/notion/destination", {
+          destination_id: opt.value,
+          destination_type: opt.dataset.type,
+        }).then(res => {
+          if (res.ok) {
+            document.getElementById("lib-sync-status").textContent =
+              "All set. Papers now sync to Notion automatically.";
+            document.querySelector(".lib-notion-card").remove();
+          } else {
+            setDest.disabled = false;
+          }
+        });
+      });
+    }
+    document.addEventListener("click", function(ev) {
+      const sync = ev.target.closest("#lib-notion-sync-btn");
+      if (sync) {
+        sync.disabled = true;
+        const statusEl = document.getElementById("lib-sync-status");
+        statusEl.textContent = "Syncing to Notion…";
+        fetch("/api/library/notion-sync", {method: "POST"})
+          .then(r => r.json())
+          .then(res => {
+            sync.disabled = false;
+            statusEl.textContent = res.ok
+              ? `Synced: ${res.created} papers + ${res.topics_created} topics added, ${res.updated + res.topics_updated} updated.` +
+                (res.status_pulled ? ` ${res.status_pulled} status pulled from Notion.` : "") +
+                (res.comments_answered ? ` ${res.comments_answered} comment thread(s) answered.` : "")
+              : (res.detail || `Sync failed (${res.failed || "?"} errors)`);
+          });
+      }
+    });
+  })();
+</script>"""
+
     return HTMLResponse(
         _shell(
             "Topics",
-            f'<div class="lib-header"><h1>My topics</h1></div>{items}',
+            f"""<div class="lib-header"><h1>My topics</h1>{sync_btn}</div>
+    {notion_ui}
+    {context_line}
+    <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
+    {items}
+    {script}""",
         )
     )
 
