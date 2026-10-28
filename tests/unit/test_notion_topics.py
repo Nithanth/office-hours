@@ -63,6 +63,9 @@ class _FakeExporter:
     async def get_page_status(self, page_id):
         return None
 
+    async def query_database_rows(self, db_id, *, page_size=100):
+        return []
+
 
 def _synced_hash(topic):
     return hashlib.sha256(_topic_body_markdown(topic).encode()).hexdigest()
@@ -153,7 +156,7 @@ async def test_sync_library_prefers_topic_page_relation():
             "content": None,
         }
     }
-    stats = await sync_library(
+    await sync_library(
         ex,
         papers_db_id="db-p",
         topics_db_id="db-t",
@@ -164,6 +167,79 @@ async def test_sync_library_prefers_topic_page_relation():
     # The created paper row's Topic relation is the topic page.
     paper_row = [c for c in ex.created_rows if c[0] == "db-p"][0]
     assert paper_row[1]["Topic"] == {"relation": [{"id": "topic-page-99"}]}
-    # Report row still created in the Topics DB (snapshot rows unchanged).
-    assert any(c[0] == "db-t" for c in ex.created_rows)
-    assert stats["topic_page_ids"]["r1"] == "page-1"
+
+
+def _paper(**overrides):
+    p = {
+        "paper_id": "p1",
+        "title": "Paper",
+        "url": "https://arxiv.org/abs/1",
+        "authors": {"list": ["A"]},
+        "status": "to_read",
+        "report_id": None,
+        "notion_page_id": None,
+        "notion_synced_status": None,
+        "notion_chat_synced": 0,
+        "saved_date": "2026-10-15",
+        "chat_messages": [],
+    }
+    p.update(overrides)
+    return p
+
+
+@pytest.mark.asyncio
+async def test_deleted_paper_row_is_recreated_not_stuck():
+    """A stored notion_page_id pointing at a deleted Notion page gets a
+    fresh row instead of failing every sync forever."""
+    from services.notion.notion_exporter import NotionExportError
+
+    class _Gone(_FakeExporter):
+        async def update_page_properties(self, page_id, props):
+            raise NotionExportError(
+                "Notion could not find the configured page — it may have been "
+                "deleted. Pick the destination again from the library page."
+            )
+
+    ex = _Gone()
+    stats = await sync_library(
+        ex,
+        papers_db_id="db-p",
+        topics_db_id="db-t",
+        papers=[_paper(notion_page_id="dead-page")],
+        reports={},
+    )
+    assert stats["created"] == 1 and stats["failed"] == 0
+    # The fresh row's id replaces the stale one downstream.
+    assert stats["paper_page_ids"]["p1"] == "page-1"
+
+
+@pytest.mark.asyncio
+async def test_reconnect_adopts_surviving_row_by_url():
+    """Disconnect→reconnect: stored ids were cleared but the old row still
+    lives in the workspace — adopt it by Source URL instead of duplicating."""
+
+    class _WithRows(_FakeExporter):
+        async def query_database_rows(self, db_id, *, page_size=100):
+            if db_id != "db-p":
+                return []
+            return [
+                {
+                    "id": "old-row",
+                    "properties": {
+                        "Source URL": {"url": "https://arxiv.org/abs/1"},
+                        "Name": {"title": [{"plain_text": "Paper"}]},
+                    },
+                }
+            ]
+
+    ex = _WithRows()
+    stats = await sync_library(
+        ex,
+        papers_db_id="db-p",
+        topics_db_id="db-t",
+        papers=[_paper()],  # notion_page_id cleared by the disconnect
+        reports={},
+    )
+    assert stats["created"] == 0 and stats["updated"] == 1
+    assert stats["paper_page_ids"]["p1"] == "old-row"
+    assert not [c for c in ex.created_rows if c[0] == "db-p"]

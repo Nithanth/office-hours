@@ -16,7 +16,7 @@ import pathlib as _pathlib
 import sys
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Optional
 
 # Silence the lance Rust crate's tracing output before any imports.
@@ -74,6 +74,7 @@ llm_service_instance: Optional[LLMService] = None
 exa_client_instance: Optional[ExaClient] = None
 _gc_task: Optional[asyncio.Task[None]] = None
 _feed_task: Optional[asyncio.Task[None]] = None
+_notion_task: Optional[asyncio.Task[None]] = None
 
 KEEP_ALIVE_SEC = config.config.CHAT_KEEPALIVE_SEC
 
@@ -144,12 +145,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if purged:
                     logger.debug("taskqueue_gc", purged=purged)
 
-        global _gc_task, _feed_task
+        global _gc_task, _feed_task, _notion_task
         _gc_task = asyncio.create_task(_chatstate_gc_loop())
         if database_available():
+            from api.routes.library import notion_comment_loop
             from services.topics.feed import feed_loop
 
             _feed_task = asyncio.create_task(feed_loop())
+            _notion_task = asyncio.create_task(notion_comment_loop())
         yield
     except ValueError as ve:
         logger.critical("startup configuration error", err=str(ve))
@@ -165,10 +168,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Application shutdown: Closing LLM Service...")
             await llm_service_instance.close_all_providers()
             logger.info("LLM Service closed.")
-            if _gc_task:
-                _gc_task.cancel()
-            if _feed_task:
-                _feed_task.cancel()
+            for task in (_gc_task, _feed_task, _notion_task):
+                if task:
+                    task.cancel()
+            for task in (_gc_task, _feed_task, _notion_task):
+                if task:
+                    with suppress(asyncio.CancelledError):
+                        await task
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
         await close_database()

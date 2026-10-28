@@ -26,6 +26,21 @@ from services.notion.notion_exporter import NotionExporter, NotionExportError
 _STATUS_LABELS = {"to_read": "To read", "reading": "Reading", "done": "Done"}
 _LABEL_TO_STATUS = {v: k for k, v in _STATUS_LABELS.items()}
 
+
+def _is_not_found(exc: Exception) -> bool:
+    """True when the Notion object we're pointing at no longer exists —
+    user deleted or archived the page/database in their workspace."""
+    status = getattr(exc, "status", None)
+    code = getattr(exc, "code", None)
+    msg = str(exc).lower()
+    return (
+        status == 404
+        or code == "object_not_found"
+        or "could not find" in msg
+        or "object_not_found" in msg
+    )
+
+
 _PAPERS_SCHEMA: dict[str, Any] = {
     "Name": {"title": {}},
     "Source URL": {"url": {}},
@@ -49,6 +64,9 @@ _TOPICS_SCHEMA: dict[str, Any] = {
     "Name": {"title": {}},
     "Query": {"rich_text": {}},
     "Created": {"date": {}},
+    # Stable record id ("report:…" / "topic:…") — the adoption key that lets
+    # a reconnected sync reclaim its rows without relying on ambiguous titles.
+    "Office Hours ID": {"rich_text": {}},
 }
 
 
@@ -89,6 +107,11 @@ def _topic_row_properties(topic: dict) -> dict:
         props["Query"] = {
             "rich_text": [{"type": "text", "text": {"content": seed[:2000]}}]
         }
+    props["Office Hours ID"] = {
+        "rich_text": [
+            {"type": "text", "text": {"content": f"topic:{topic['id']}"[:200]}}
+        ]
+    }
     return props
 
 
@@ -132,18 +155,24 @@ async def sync_topics(
         "failed": 0,
         "errors": [],
     }
+    _, by_title, by_oh_id = await _existing_row_index(exporter, topics_db_id)
+    claimed = {t["notion_page_id"] for t in topics if t.get("notion_page_id")}
     for topic in topics:
         tid = topic["id"]
         try:
             props = _topic_row_properties(topic)
-            page_id = topic.get("notion_page_id")
+            page_id, created = await _upsert_row(
+                exporter,
+                topics_db_id,
+                props,
+                page_id=topic.get("notion_page_id"),
+                adopted_id=by_oh_id.get(f"topic:{tid}")
+                or by_title.get((topic.get("title") or "")[:200]),
+                claimed=claimed,
+            )
+            stats["topics_created" if created else "topics_updated"] += 1
             if page_id:
-                await exporter.update_page_properties(page_id, props)
-                stats["topics_updated"] += 1
-            else:
-                page_id = await exporter.create_database_row(topics_db_id, props)
-                stats["topics_created"] += 1
-            stats["topic_page_ids"][tid] = page_id
+                stats["topic_page_ids"][tid] = page_id
 
             body = _topic_body_markdown(topic)
             body_hash = hashlib.sha256(body.encode()).hexdigest()
@@ -162,13 +191,18 @@ async def sync_topics(
     return stats
 
 
-def _topic_properties(report: dict) -> dict:
+def _topic_properties(report: dict, record_id: str) -> dict:
     """Row properties for a report snapshot dict (see the route)."""
     props: dict = {
         "Name": {
             "title": [{"type": "text", "text": {"content": report["title"][:200]}}]
         },
         "Created": {"date": {"start": report["created_date"]}},
+        "Office Hours ID": {
+            "rich_text": [
+                {"type": "text", "text": {"content": f"report:{record_id}"[:200]}}
+            ]
+        },
     }
     if report["original_query"]:
         props["Query"] = {
@@ -190,38 +224,159 @@ async def provision_databases(
 
     Anchor rules: if a papers database is already configured it stays the
     anchor (Topics is created as a sibling under the same parent page). A
-    configured page gets both databases created under it.
+    configured page gets both databases created under it. Configured ids
+    that point at objects the user deleted are dropped and re-provisioned.
     """
+    anchor_page = parent_page_id
     papers_db = parent_database_id
+    papers_schema: dict[str, Any] = {}
     if papers_db:
-        anchor_page = await exporter.get_database_parent_page(papers_db)
-    else:
-        anchor_page = parent_page_id
-    if not anchor_page:
-        raise NotionExportError(
-            "Pick a Notion page or database as the destination first. "
-            "The library sync creates its databases there."
-        )
+        try:
+            db = await exporter.get_database(papers_db)
+        except NotionExportError as exc:
+            if not _is_not_found(exc):
+                raise
+            # The Papers DB was deleted in Notion — recreate it under the
+            # anchor page instead of failing every sync forever.
+            logger.info("notion_papers_db_missing_reprovision")
+            papers_db = None
+        else:
+            papers_schema = db.get("properties") or {}
+            parent = db.get("parent") or {}
+            if parent.get("type") == "page_id":
+                anchor_page = str(parent["page_id"])
+            if "Source URL" not in papers_schema:
+                # A foreign database (user's own, or a stale pick) can't hold
+                # our columns — anchor fresh Office Hours DBs on its parent
+                # page instead of writing rejected rows into it.
+                logger.info("notion_foreign_db_destination_reanchor")
+                papers_db = None
 
     if not papers_db:
+        if not anchor_page:
+            raise NotionExportError(
+                "Pick a Notion page or database as the destination first. "
+                "The library sync creates its databases there."
+            )
         papers_db = await exporter.create_database(
             anchor_page, "Office Hours Papers", _PAPERS_SCHEMA
         )
 
     topics_db = topics_database_id
+    topics_schema: dict[str, Any] = {}
+    if topics_db:
+        try:
+            topics_schema = (await exporter.get_database(topics_db)).get(
+                "properties"
+            ) or {}
+        except NotionExportError as exc:
+            if not _is_not_found(exc):
+                raise
+            logger.info("notion_topics_db_missing_reprovision")
+            topics_db = None
     if not topics_db:
+        if not anchor_page:
+            raise NotionExportError(
+                "Pick a Notion page as the destination first. "
+                "The library sync creates its databases there."
+            )
         topics_db = await exporter.create_database(
             anchor_page, "Office Hours Topics", _TOPICS_SCHEMA
         )
-    # Wire the relation once both exist — if the property already exists
-    # Notion rejects the update, which we tolerate as already-provisioned.
+    elif "Office Hours ID" not in topics_schema:
+        # Backfill the adoption key on databases created before it existed.
+        try:
+            await exporter.add_property(topics_db, "Office Hours ID", {"rich_text": {}})
+        except NotionExportError as exc:
+            logger.warning("notion_ohid_backfill_failed", error=str(exc))
+
+    # Wire the relation only when missing — re-adding an existing property
+    # makes Notion reject the PATCH and spam the logs on every sync.
     assert papers_db is not None and topics_db is not None
-    try:
-        await exporter.add_relation_property(papers_db, "Topic", topics_db)
-    except NotionExportError as exc:
-        logger.warning("notion_relation_skip", error=str(exc))
+    if "Topic" not in papers_schema:
+        try:
+            await exporter.add_relation_property(papers_db, "Topic", topics_db)
+        except NotionExportError as exc:
+            logger.warning("notion_relation_skip", error=str(exc))
 
     return papers_db, topics_db
+
+
+async def _upsert_row(
+    exporter: NotionExporter,
+    database_id: str,
+    props: dict[str, Any],
+    *,
+    page_id: str | None,
+    adopted_id: str | None = None,
+    claimed: set[str] | None = None,
+) -> tuple[str | None, bool]:
+    """Update *page_id*'s row, or create one — adopting a surviving row when
+    the stored id is stale. Returns (page_id, created).
+
+    Adopting matters after disconnect→reconnect: the disconnect clears our
+    stored ids but the old rows still live in the user's workspace, so
+    matching by Office Hours ID / Source URL / unique Name prevents a
+    duplicate row per record. ``claimed`` reserves adopted rows so two
+    same-titled records can never attach to the same page.
+    """
+    if page_id:
+        try:
+            await exporter.update_page_properties(page_id, props)
+            return page_id, False
+        except Exception as exc:
+            if not _is_not_found(exc):
+                raise
+            logger.info("notion_row_missing_recreate", page_id=page_id)
+    if adopted_id and (claimed is None or adopted_id not in claimed):
+        try:
+            await exporter.update_page_properties(adopted_id, props)
+        except Exception as exc:
+            if not _is_not_found(exc):
+                raise
+        else:
+            if claimed is not None:
+                claimed.add(adopted_id)
+            return adopted_id, False
+    return await exporter.create_database_row(database_id, props), True
+
+
+async def _existing_row_index(
+    exporter: NotionExporter, database_id: str
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Match keys → row page id for every live row in the database.
+
+    Returns ``(by_url, by_title, by_oh_id)`` built from the Source URL, Name
+    and Office Hours ID columns — used to adopt rows left behind by a reset
+    or a previous connection instead of duplicating them. Titles shared by
+    several rows are dropped as ambiguous; Office Hours ID is the stable
+    key. Best-effort: an empty index just means rows get created fresh.
+    """
+    by_url: dict[str, str] = {}
+    by_oh_id: dict[str, str] = {}
+    title_rows: dict[str, str] = {}
+    dup_titles: set[str] = set()
+    for row in await exporter.query_database_rows(database_id):
+        rid = row.get("id")
+        if not rid:
+            continue
+        props = row.get("properties") or {}
+        url = (props.get("Source URL") or {}).get("url")
+        if url:
+            by_url[str(url)] = str(rid)
+        oh_parts = (props.get("Office Hours ID") or {}).get("rich_text") or []
+        oh_id = "".join(p.get("plain_text", "") for p in oh_parts).strip()
+        if oh_id:
+            by_oh_id[oh_id] = str(rid)
+        title_parts = (props.get("Name") or {}).get("title") or []
+        title = "".join(p.get("plain_text", "") for p in title_parts).strip()
+        if title:
+            if title in title_rows or title in dup_titles:
+                dup_titles.add(title)
+                title_rows.pop(title, None)
+            else:
+                title_rows[title] = str(rid)
+    return by_url, title_rows, by_oh_id
 
 
 def _app_base_url() -> str:
@@ -317,17 +472,27 @@ async def sync_library(
         "errors": [],
     }
 
+    _, topics_by_title, topics_by_ohid = await _existing_row_index(
+        exporter, topics_db_id
+    )
+    topic_claimed = {
+        r["notion_page_id"] for r in reports.values() if r.get("notion_page_id")
+    }
     # Topics first — papers need their page ids for the relation.
     for report_id, report in reports.items():
         try:
-            props = _topic_properties(report)
-            if report["notion_page_id"]:
-                await exporter.update_page_properties(report["notion_page_id"], props)
-                stats["topics_updated"] += 1
-                stats["topic_page_ids"][report_id] = report["notion_page_id"]
-            else:
-                page_id = await exporter.create_database_row(topics_db_id, props)
-                stats["topics_created"] += 1
+            props = _topic_properties(report, report_id)
+            page_id, created = await _upsert_row(
+                exporter,
+                topics_db_id,
+                props,
+                page_id=report["notion_page_id"],
+                adopted_id=topics_by_ohid.get(f"report:{report_id}")
+                or topics_by_title.get((report["title"] or "")[:200]),
+                claimed=topic_claimed,
+            )
+            stats["topics_created" if created else "topics_updated"] += 1
+            if page_id:
                 stats["topic_page_ids"][report_id] = page_id
             # Fill the topic page body with the report — it becomes the
             # actual research explainer in Notion, not just a row. Only
@@ -340,13 +505,14 @@ async def sync_library(
                         f"_Synced from Office Hours. Open the live report:"
                         f" {base}/reports/{report_id}_\n\n" + body_content
                     )
-                await exporter.ensure_page_content(
-                    stats["topic_page_ids"][report_id], body_content
-                )
+                if page_id:
+                    await exporter.ensure_page_content(page_id, body_content)
         except Exception as exc:
             stats["failed"] += 1
             stats["errors"].append(f"topic {report_id}: {exc}"[:200])
 
+    papers_by_url, _, _ = await _existing_row_index(exporter, papers_db_id)
+    paper_claimed = {p["notion_page_id"] for p in papers if p["notion_page_id"]}
     for paper in papers:
         try:
             # Three-way Status check BEFORE the upsert, against the last
@@ -373,17 +539,21 @@ async def sync_library(
                 if not topic_page:
                     topic_page = stats["topic_page_ids"].get(paper["report_id"])
             props = _paper_properties(paper, topic_page)
-            if paper["notion_page_id"]:
-                await exporter.update_page_properties(paper["notion_page_id"], props)
-                stats["updated"] += 1
-                stats["paper_page_ids"][paper["paper_id"]] = paper["notion_page_id"]
+            # URL is the only safe adoption key for papers — titles collide
+            # too easily across different papers to trust.
+            adopted = papers_by_url.get(paper["url"]) if paper.get("url") else None
+            page_id, created = await _upsert_row(
+                exporter,
+                papers_db_id,
+                props,
+                page_id=paper["notion_page_id"],
+                adopted_id=adopted,
+                claimed=paper_claimed,
+            )
+            if page_id:
+                stats["paper_page_ids"][paper["paper_id"]] = page_id
                 stats["synced_status"][paper["paper_id"]] = paper["status"]
-            else:
-                page_id = await exporter.create_database_row(papers_db_id, props)
-                if page_id:
-                    stats["paper_page_ids"][paper["paper_id"]] = page_id
-                    stats["synced_status"][paper["paper_id"]] = paper["status"]
-                stats["created"] += 1
+            stats["created" if created else "updated"] += 1
 
             page_id = stats["paper_page_ids"].get(paper["paper_id"])
             if page_id:
@@ -408,7 +578,15 @@ async def sync_library(
                 # Q&A trail: append chat turns beyond the watermark so
                 # the Notion page mirrors the learning record.
                 msgs = paper.get("chat_messages") or []
-                watermark = int(paper.get("notion_chat_synced") or 0)
+                # A recreated page starts empty, and an adopted row carries
+                # the old connection's body — either way the stored watermark
+                # doesn't describe this page, so the trail re-mirrors from
+                # scratch. (The URL index includes the linked page itself, so
+                # `adopted` can't detect adoption — compare page ids instead.)
+                fresh_row = created or page_id != paper["notion_page_id"]
+                watermark = (
+                    0 if fresh_row else int(paper.get("notion_chat_synced") or 0)
+                )
                 new_msgs = msgs[watermark:]
                 if new_msgs:
                     try:

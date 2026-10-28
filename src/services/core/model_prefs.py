@@ -103,6 +103,15 @@ def invalidate_prefs_cache(owner_id: str) -> None:
     _prefs_cache.pop(owner_id, None)
 
 
+async def load_model_context_for_owner(owner_id: str) -> ModelContext:
+    """Set the contextvar outside a request — background sweeps/tasks get
+    the owner's pinned models and BYOK key just like their requests do."""
+    ctx = await _load_prefs(owner_id)
+    ctx.owner_id = owner_id
+    set_model_context(ctx)
+    return ctx
+
+
 async def _load_prefs(owner_id: str) -> ModelContext:
     from services.persistence import database
     from services.persistence.repositories import (

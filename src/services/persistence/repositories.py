@@ -364,6 +364,16 @@ def notion_access_token(integration: UserIntegration) -> str:
     return str(decrypt_secret(integration.access_token_encrypted))
 
 
+async def list_notion_integrations(
+    session: AsyncSession,
+) -> list[UserIntegration]:
+    """Every Notion connection — the comment sweep scans these."""
+    result = await session.execute(
+        select(UserIntegration).where(UserIntegration.provider == "notion")
+    )
+    return list(result.scalars().all())
+
+
 async def update_notion_destination(
     session: AsyncSession,
     *,
@@ -388,9 +398,20 @@ async def set_notion_databases(
     user_id: str,
     parent_database_id: str | None,
     topics_database_id: str | None,
+    expected_token: str | None = None,
 ) -> None:
+    """Persist provisioned Notion database ids on the user's integration.
+
+    ``expected_token`` guards the write against a disconnect+reconnect that
+    lands mid-sync: when given, the row is only written if the integration's
+    stored token still matches the one the sync provisioned under.
+    """
     integration = await get_notion_integration(session, user_id=user_id)
     if integration is not None:
+        if expected_token is not None and (
+            notion_access_token(integration) != expected_token
+        ):
+            return
         if parent_database_id:
             integration.parent_database_id = parent_database_id
         integration.topics_database_id = topics_database_id
