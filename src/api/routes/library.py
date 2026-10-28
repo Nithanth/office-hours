@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import html
+import os
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
+from sqlalchemy import select
 
 from api.deps import get_exa_client
 from services.auth.session import get_auth_user_id
@@ -22,6 +24,7 @@ from services.persistence.repositories import (
     get_saved_paper,
     get_topic,
     home_stats,
+    list_notion_integrations,
     list_paper_chat_messages,
     list_reports,
     list_saved_paper_ids,
@@ -868,6 +871,95 @@ async def library_notion_answer_comments(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 # Library page
 # ---------------------------------------------------------------------------
+
+
+NOTION_COMMENT_SWEEP_S = int(os.getenv("NOTION_COMMENT_SWEEP_S", "600"))
+NOTION_COMMENT_SWEEP_STARTUP_S = int(os.getenv("NOTION_COMMENT_SWEEP_STARTUP_S", "60"))
+
+
+async def _answer_notion_comments(user_id: str) -> int:
+    """One user's pass: reply to unanswered comments on their synced pages.
+
+    Holds the per-owner lock like a real sync so a concurrent workspace sync
+    can't interleave page writes; re-checks the token inside it.
+    """
+    from services.notion.library_sync import answer_comments_for_paper
+    from services.notion.notion_exporter import NotionExporter
+
+    integration, token = await _load_integration(user_id)
+    if integration is None or not token:
+        return 0
+    async for session in session_scope():
+        rows = await session.execute(
+            select(SavedPaper.paper_id, SavedPaper.notion_page_id).where(
+                SavedPaper.owner_id == user_id,
+                SavedPaper.notion_page_id.is_not(None),
+            )
+        )
+        pages = [(r[0], r[1]) for r in rows.all()]
+    if not pages:
+        return 0
+    exporter = NotionExporter(token)
+    answered = 0
+    try:
+        async with _notion_lock(user_id):
+            fresh, fresh_token = await _load_integration(user_id)
+            if fresh is None or fresh_token != token:
+                return 0
+            for paper_id, page_id in pages:
+                try:
+                    answered += await answer_comments_for_paper(
+                        exporter,
+                        notion_page_id=str(page_id),
+                        paper_id=paper_id,
+                        user_id=user_id,
+                        bot_id=fresh["bot_id"],
+                    )
+                except Exception as exc:  # one page can't stop the sweep
+                    logger.warning(
+                        "notion_comment_sweep_page_failed",
+                        paper_id=paper_id,
+                        err=str(exc),
+                    )
+                # Notion's ~3 req/s budget — the sweep is background work.
+                await asyncio.sleep(0.4)
+    finally:
+        await exporter.close()
+    return answered
+
+
+async def notion_comment_sweep() -> int:
+    """One pass over every connected user. Returns threads answered."""
+    if not database_available():
+        return 0
+    async for session in session_scope():
+        integrations = await list_notion_integrations(session)
+    user_ids = [
+        str(i.user_id) for i in integrations if i.parent_page_id or i.parent_database_id
+    ]
+    answered = 0
+    for user_id in user_ids:
+        try:
+            answered += await _answer_notion_comments(user_id)
+        except Exception as exc:  # noqa: BLE001 - one user can't stop it
+            logger.warning(
+                "notion_comment_sweep_user_failed", user_id=user_id, err=str(exc)
+            )
+    return answered
+
+
+async def notion_comment_loop() -> None:
+    """Background comment poll — started from the app lifespan alongside the
+    feed loop, so comments on synced pages get answers without a sync click."""
+    await asyncio.sleep(NOTION_COMMENT_SWEEP_STARTUP_S)
+    while True:
+        try:
+            answered = await notion_comment_sweep()
+            if answered:
+                logger.info("notion_comment_sweep", answered=answered)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notion_comment_sweep_failed", err=str(exc))
+        await asyncio.sleep(NOTION_COMMENT_SWEEP_S)
 
 
 def _library_shell(content_html: str) -> str:

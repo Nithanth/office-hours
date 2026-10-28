@@ -364,6 +364,16 @@ def notion_access_token(integration: UserIntegration) -> str:
     return str(decrypt_secret(integration.access_token_encrypted))
 
 
+async def list_notion_integrations(
+    session: AsyncSession,
+) -> list[UserIntegration]:
+    """Every Notion connection — the comment sweep scans these."""
+    result = await session.execute(
+        select(UserIntegration).where(UserIntegration.provider == "notion")
+    )
+    return list(result.scalars().all())
+
+
 async def update_notion_destination(
     session: AsyncSession,
     *,

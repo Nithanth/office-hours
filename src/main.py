@@ -74,6 +74,7 @@ llm_service_instance: Optional[LLMService] = None
 exa_client_instance: Optional[ExaClient] = None
 _gc_task: Optional[asyncio.Task[None]] = None
 _feed_task: Optional[asyncio.Task[None]] = None
+_notion_task: Optional[asyncio.Task[None]] = None
 
 KEEP_ALIVE_SEC = config.config.CHAT_KEEPALIVE_SEC
 
@@ -144,12 +145,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if purged:
                     logger.debug("taskqueue_gc", purged=purged)
 
-        global _gc_task, _feed_task
+        global _gc_task, _feed_task, _notion_task
         _gc_task = asyncio.create_task(_chatstate_gc_loop())
         if database_available():
+            from api.routes.library import notion_comment_loop
             from services.topics.feed import feed_loop
 
             _feed_task = asyncio.create_task(feed_loop())
+            _notion_task = asyncio.create_task(notion_comment_loop())
         yield
     except ValueError as ve:
         logger.critical("startup configuration error", err=str(ve))

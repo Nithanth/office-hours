@@ -28,7 +28,8 @@ router = APIRouter(tags=["integrations"])
 _NOTION_AUTH_URL = "https://api.notion.com/v1/oauth/authorize"
 _NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token"
 _NOTION_SEARCH_URL = "https://api.notion.com/v1/search"
-_NOTION_VERSION = "2026-03-11"
+# Match the exporter's pinned version — the whole app talks to one API.
+_NOTION_VERSION = "2022-06-28"
 
 
 def _notion_redirect_uri() -> str:
