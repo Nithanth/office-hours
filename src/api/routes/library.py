@@ -23,6 +23,7 @@ from services.persistence.repositories import (
     get_topic,
     home_stats,
     list_paper_chat_messages,
+    list_reports,
     list_saved_paper_ids,
     list_saved_papers,
     list_topics,
@@ -449,26 +450,53 @@ async def _sync_paper_to_notion(owner_id: str, paper_id: str) -> None:
             )
 
 
-@router.post("/api/library/notion-sync")
-async def library_notion_sync(request: Request) -> JSONResponse:
-    user_id = get_auth_user_id(request)
-    if not user_id:
-        return JSONResponse(
-            {"ok": False, "detail": "Sign in to sync your library to Notion."},
-            status_code=401,
-        )
-    if not database_available():
-        return JSONResponse({"ok": False, "detail": "Library not configured"})
+_notion_sync_tasks: dict[str, asyncio.Task] = {}
+_notion_sync_dirty: set[str] = set()
 
+
+def schedule_notion_workspace_sync(owner_id: str) -> None:
+    """Fire-and-forget full workspace sync — papers, topics, reports, chat
+    mirrors, open comments. Used after report/blog/notes generation so new
+    content lands in Notion without a manual Sync-now press. No-ops for
+    users without a connected integration.
+
+    Coalesces per owner: only one sync runs at a time so overlapping
+    generations can't both snapshot an empty page id and create duplicate
+    Notion rows. A schedule that lands mid-sync marks the owner dirty and
+    the running loop immediately re-syncs to pick the new content up."""
+    task = _notion_sync_tasks.get(owner_id)
+    if task is not None and not task.done():
+        _notion_sync_dirty.add(owner_id)
+        return
+    _notion_sync_tasks[owner_id] = asyncio.create_task(
+        _run_workspace_sync_until_clean(owner_id)
+    )
+
+
+async def _run_workspace_sync_until_clean(owner_id: str) -> None:
+    try:
+        while True:
+            _notion_sync_dirty.discard(owner_id)
+            await run_notion_workspace_sync(owner_id)
+            if owner_id not in _notion_sync_dirty:
+                return
+    except Exception as exc:
+        logger.warning("notion_workspace_sync_failed", error=str(exc))
+    finally:
+        _notion_sync_tasks.pop(owner_id, None)
+        _notion_sync_dirty.discard(owner_id)
+
+
+async def run_notion_workspace_sync(user_id: str) -> dict | None:
+    """Full workspace Notion sync for one user; returns the stats payload.
+
+    No-ops (returns None) when the DB is unavailable or the user has no
+    connected Notion integration."""
+    if not database_available():
+        return None
     integration, token = await _load_integration(str(user_id))
     if integration is None or not token:
-        return JSONResponse(
-            {
-                "ok": False,
-                "detail": "Connect Notion first (Settings → Notion).",
-            },
-            status_code=400,
-        )
+        return None
 
     from services.notion.library_sync import (
         provision_databases,
@@ -521,23 +549,39 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                         ],
                     }
                 )
+        # Every report the user owns — not just ones linked from a saved
+        # paper — gets a row in the Topics DB. Generation is the moment a
+        # report should exist in Notion, not when it's saved to the library.
         reports: dict = {}
-        for row in paper_rows:
-            report_id = row["report_id"]
-            if report_id and report_id not in reports:
-                async for session in session_scope():
-                    report = await get_report(
-                        session, user_id=str(user_id), report_id=report_id
-                    )
-                    if report:
-                        reports[report_id] = {
-                            "title": report.title,
-                            "original_query": report.original_query,
-                            "created_date": report.created_at.date().isoformat(),
-                            "notion_page_id": report.notion_page_id,
-                            "content": report.report_text,
-                            "topic_id": report.topic_id,
-                        }
+        async for session in session_scope():
+            for report in await list_reports(session, user_id=str(user_id), limit=200):
+                reports[report.id] = {
+                    "title": report.title,
+                    "original_query": report.original_query,
+                    "created_date": report.created_at.date().isoformat(),
+                    "notion_page_id": report.notion_page_id,
+                    "content": report.report_text,
+                    "topic_id": report.topic_id,
+                }
+        # Saved-paper-linked reports beyond the recent-200 window still get
+        # synced — a saved paper's Topic relation depends on its report row.
+        missing = {row["report_id"] for row in paper_rows if row["report_id"]} - set(
+            reports
+        )
+        for report_id in missing:
+            async for session in session_scope():
+                report = await get_report(
+                    session, user_id=str(user_id), report_id=report_id
+                )
+                if report:
+                    reports[report_id] = {
+                        "title": report.title,
+                        "original_query": report.original_query,
+                        "created_date": report.created_at.date().isoformat(),
+                        "notion_page_id": report.notion_page_id,
+                        "content": report.report_text,
+                        "topic_id": report.topic_id,
+                    }
 
         # Workspace topics — mirrored into the same Topics DB, one row per
         # topic with the living blog + notes as the page body.
@@ -652,20 +696,40 @@ async def library_notion_sync(request: Request) -> JSONResponse:
                     notion_body_hash=body_hash,
                 )
 
-    return JSONResponse(
-        {
-            "ok": stats["failed"] == 0 and ws_stats["failed"] == 0,
-            "created": stats["created"],
-            "updated": stats["updated"],
-            "topics_created": stats["topics_created"] + ws_stats["topics_created"],
-            "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
-            "topic_bodies_written": ws_stats["bodies_written"],
-            "status_pulled": len(stats["status_updates"]),
-            "comments_answered": comments_answered,
-            "failed": stats["failed"] + ws_stats["failed"],
-            "errors": (stats["errors"] + ws_stats["errors"])[:5],
-        }
-    )
+    return {
+        "ok": stats["failed"] == 0 and ws_stats["failed"] == 0,
+        "created": stats["created"],
+        "updated": stats["updated"],
+        "topics_created": stats["topics_created"] + ws_stats["topics_created"],
+        "topics_updated": stats["topics_updated"] + ws_stats["topics_updated"],
+        "topic_bodies_written": ws_stats["bodies_written"],
+        "status_pulled": len(stats["status_updates"]),
+        "comments_answered": comments_answered,
+        "failed": stats["failed"] + ws_stats["failed"],
+        "errors": (stats["errors"] + ws_stats["errors"])[:5],
+    }
+
+
+@router.post("/api/library/notion-sync")
+async def library_notion_sync(request: Request) -> JSONResponse:
+    user_id = get_auth_user_id(request)
+    if not user_id:
+        return JSONResponse(
+            {"ok": False, "detail": "Sign in to sync your library to Notion."},
+            status_code=401,
+        )
+    if not database_available():
+        return JSONResponse({"ok": False, "detail": "Library not configured"})
+    payload = await run_notion_workspace_sync(str(user_id))
+    if payload is None:
+        return JSONResponse(
+            {
+                "ok": False,
+                "detail": "Connect Notion first (Settings → Notion).",
+            },
+            status_code=400,
+        )
+    return JSONResponse(payload)
 
 
 @router.post("/api/library/notion-answer-comments")

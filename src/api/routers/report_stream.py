@@ -762,6 +762,14 @@ async def report_stream(
                         logger.info(
                             "report_persisted", report_id=saved.id, user_id=user_id
                         )
+                        try:
+                            from api.routes.library import (
+                                schedule_notion_workspace_sync,
+                            )
+
+                            schedule_notion_workspace_sync(str(user_id))
+                        except Exception:  # noqa: BLE001 - sync is best-effort
+                            pass
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - persistence must not break streaming
