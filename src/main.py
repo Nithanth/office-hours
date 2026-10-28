@@ -16,7 +16,7 @@ import pathlib as _pathlib
 import sys
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Optional
 
 # Silence the lance Rust crate's tracing output before any imports.
@@ -168,10 +168,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Application shutdown: Closing LLM Service...")
             await llm_service_instance.close_all_providers()
             logger.info("LLM Service closed.")
-            if _gc_task:
-                _gc_task.cancel()
-            if _feed_task:
-                _feed_task.cancel()
+            for task in (_gc_task, _feed_task, _notion_task):
+                if task:
+                    task.cancel()
+            for task in (_gc_task, _feed_task, _notion_task):
+                if task:
+                    with suppress(asyncio.CancelledError):
+                        await task
         else:
             logger.info("Application shutdown: LLM Service was not initialized.")
         await close_database()

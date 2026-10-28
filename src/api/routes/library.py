@@ -842,18 +842,27 @@ async def library_notion_answer_comments(request: Request) -> JSONResponse:
     answered = failed = 0
     first_error: str | None = None
     try:
-        for paper_id, notion_page_id in synced:
-            try:
-                answered += await answer_comments_for_paper(
-                    exporter,
-                    notion_page_id=str(notion_page_id),
-                    paper_id=paper_id,
-                    user_id=str(user_id),
-                    bot_id=integration["bot_id"],
+        # Same lock as the sweep + workspace sync — a manual poll racing the
+        # background poll would otherwise answer the same thread twice.
+        async with _notion_lock(str(user_id)):
+            fresh, fresh_token = await _load_integration(str(user_id))
+            if fresh is None or fresh_token != token:
+                return JSONResponse(
+                    {"ok": False, "detail": "Notion reconnected — retry."},
+                    status_code=409,
                 )
-            except NotionExportError as exc:
-                failed += 1
-                first_error = first_error or str(exc)
+            for paper_id, notion_page_id in synced:
+                try:
+                    answered += await answer_comments_for_paper(
+                        exporter,
+                        notion_page_id=str(notion_page_id),
+                        paper_id=paper_id,
+                        user_id=str(user_id),
+                        bot_id=fresh["bot_id"],
+                    )
+                except NotionExportError as exc:
+                    failed += 1
+                    first_error = first_error or str(exc)
     finally:
         await exporter.close()
 
@@ -899,9 +908,19 @@ async def _answer_notion_comments(user_id: str) -> int:
         pages = [(r[0], r[1]) for r in rows.all()]
     if not pages:
         return 0
+    from services.core.model_prefs import (
+        current_model_context,
+        load_model_context_for_owner,
+        set_model_context,
+    )
+
     exporter = NotionExporter(token)
     answered = 0
+    prev_ctx = current_model_context()
     try:
+        # Honor this user's pinned model + BYOK key — the sweep runs outside
+        # a request so the contextvar starts empty without this.
+        await load_model_context_for_owner(user_id)
         async with _notion_lock(user_id):
             fresh, fresh_token = await _load_integration(user_id)
             if fresh is None or fresh_token != token:
@@ -924,6 +943,7 @@ async def _answer_notion_comments(user_id: str) -> int:
                 # Notion's ~3 req/s budget — the sweep is background work.
                 await asyncio.sleep(0.4)
     finally:
+        set_model_context(prev_ctx)
         await exporter.close()
     return answered
 
