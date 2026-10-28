@@ -1050,7 +1050,10 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         if (destSel) {{
           fetch("/api/notion/destinations").then(r => r.json()).then(res => {{
             if (!res.ok) {{
-              destSel.innerHTML = `<option value="">${{res.detail || "Couldn't load pages"}}</option>`;
+              const opt = document.createElement("option");
+              opt.value = "";
+              opt.textContent = res.detail || "Couldn't load pages";
+              destSel.replaceChildren(opt);
               return;
             }}
             const dests = (res.destinations || []).filter(d => d.type === "page" || d.type === "database");
