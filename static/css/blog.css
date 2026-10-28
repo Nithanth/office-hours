@@ -91,7 +91,7 @@ html {
   color: var(--blog-text);
   line-height: 1.8;
   font-size: 18px;
-  transition: background 0.3s ease, color 0.3s ease;
+  transition: background var(--oh-speed,140ms) var(--oh-ease,ease), color var(--oh-speed,140ms) var(--oh-ease,ease);
 }
 
 body.blog-scope {
@@ -147,7 +147,7 @@ body.blog-scope {
   font-family: var(--blog-font);
   color: var(--blog-text-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--oh-speed,140ms) var(--oh-ease,ease);
 }
 
 .blog-nav-btn:hover {
@@ -289,7 +289,7 @@ body:not(.blog-is-loading) .blog-writing-pill {
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
-  transition: text-decoration-thickness 0.15s ease;
+  transition: text-decoration-thickness var(--oh-speed,140ms) var(--oh-ease,ease);
 }
 
 .blog-article a:hover {
@@ -727,7 +727,7 @@ body.blog-printing .blog-footer { display: none !important; }
   font-size: 0.8rem;
   padding: 5px 14px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--oh-speed,140ms) var(--oh-ease,ease), color var(--oh-speed,140ms) var(--oh-ease,ease);
 }
 
 .oh-view-toggle button + button {

@@ -263,7 +263,7 @@ html.oh-dark .sources-toggle { color: var(--fg-muted); }
   color: var(--fg, #ccc);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--oh-speed,140ms) var(--oh-ease,ease);
 }
 .assistant-message:hover .msg-copy-btn {
   opacity: 1;
@@ -283,8 +283,8 @@ html.oh-dark .sources-toggle { color: var(--fg-muted); }
 .oh-snippet-x:hover{opacity:1;}
 
 /* ChatGPT-style action row on assistant bubbles */
-.msg-actions{display:flex;gap:4px;margin-top:6px;opacity:0;transition:opacity .15s;}
+.msg-actions{display:flex;gap:4px;margin-top:6px;opacity:0;transition:opacity var(--oh-speed,140ms) var(--oh-ease,ease);}
 .assistant-message:hover .msg-actions{opacity:1;}
-.msg-act-btn{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--container-border,#ccc);border-radius:20px;background:var(--container-bg,#fff);color:var(--fg-muted,#555);font-size:0.72rem;cursor:pointer;transition:background .12s ease,border-color .12s ease;}
+.msg-act-btn{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--container-border,#ccc);border-radius:20px;background:var(--container-bg,#fff);color:var(--fg-muted,#555);font-size:0.72rem;cursor:pointer;transition:background var(--oh-speed,140ms) var(--oh-ease,ease),border-color var(--oh-speed,140ms) var(--oh-ease,ease);}
 .msg-act-btn:hover{background:var(--oh-accent-soft,#e0eaff);border-color:var(--oh-accent,#2563eb);color:var(--fg,#222);}
 .msg-act-btn i{font-size:0.7rem;}
