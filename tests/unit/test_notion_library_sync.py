@@ -58,13 +58,15 @@ class TestPaperProperties:
 
 class TestTopicProperties:
     def test_basic_row(self):
-        props = _topic_properties(_report())
+        props = _topic_properties(_report(), "r1")
         assert props["Name"]["title"][0]["text"]["content"] == ("Attention mechanisms")
         assert props["Created"]["date"]["start"] == "2026-10-12"
         assert "transformer" in props["Query"]["rich_text"][0]["text"]["content"]
+        oh_id = props["Office Hours ID"]["rich_text"][0]["text"]["content"]
+        assert oh_id == "report:r1"
 
     def test_empty_query_omitted(self):
-        props = _topic_properties(_report(original_query=""))
+        props = _topic_properties(_report(original_query=""), "r1")
         assert "Query" not in props
 
 
