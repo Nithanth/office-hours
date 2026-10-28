@@ -332,7 +332,7 @@ def _report_skeleton_html(token: str) -> str:
         </button>\n        <button id=\"copy-report-btn\" class=\"copy-icon-btn\" title=\"Copy text\" type=\"button\">
           <i class=\"fa-solid fa-copy\"></i>
         </button>\n      </div>\n    </div>\n    <!-- HTMX SSE connector listening for named events -->\n    <div id=\"report-sse-conn\" hx-ext=\"sse\" sse-connect=\"{sse_url}\" hx-sse-reconnect-delay=\"0\" style=\"display:none\">\n      <div sse-swap=\"report-block\" hx-target=\"#report-blocks\" hx-swap=\"beforeend\"></div>\n      <div sse-swap=\"report-progress\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"done\" hx-target=\"#report-progress\" hx-swap=\"outerHTML\"></div>\n      <!-- Action buttons stay; report.js will unhide them on done -->
-      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n      <!-- Registers the report-saved event so htmx dispatches htmx:sseMessage;\n           report.js uses it to append report_id= to the chat buttons. -->\n      <div sse-swap=\"report-saved\" hx-target=\"this\" hx-swap=\"none\"></div>\n    </div>
+      <div sse-swap=\"done\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n      <!-- failed: replaces the spinner inside #report-progress (element stays, so report.js never treats the report as finished) and tears down the connector -->\n      <div sse-swap=\"failed\" hx-target=\"#report-progress\" hx-swap=\"innerHTML\"></div>\n      <div sse-swap=\"failed\" hx-target=\"#report-sse-conn\" hx-swap=\"outerHTML\"></div>\n      <!-- Registers the report-saved event so htmx dispatches htmx:sseMessage;\n           report.js uses it to append report_id= to the chat buttons. -->\n      <div sse-swap=\"report-saved\" hx-target=\"this\" hx-swap=\"none\"></div>\n    </div>
     """
 
 
@@ -701,17 +701,18 @@ async def report_stream(
         if failed_titles:
             yield _format_sse_event("failures", json.dumps(failed_titles))
 
-        # Nothing generated beyond the heading — surface an error card and
-        # don't persist a report full of failures.
+        # Nothing generated beyond the heading — replace the spinner with an
+        # error card via the dedicated 'failed' event (never 'done', which would
+        # reveal report actions + a success toast), and don't persist.
         if len(persisted_blocks) <= 1:
             yield _format_sse_event(
-                "report-block",
-                "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
+                "failed",
+                "<div class='alert-error' style='color:#d9534f;'>"
                 "Report generation failed — the model provider returned an error "
                 "for every section. Check your provider key or try another model."
                 "</div>",
             )
-            yield _format_sse_event("done", "")
+            yield _format_sse_event(f"{_JSON_EVENT}-done", "")
             return
 
         # Finalise - persist report to database
