@@ -662,12 +662,16 @@ body:not(.blog-is-loading) .blog-writing-pill {
    dialog opens, then removed after. The same rules also apply to the native
    browser print/Cmd+P flow via @media print. */
 @media print {
-  /* Force light theme for printed output (ink-on-paper). */
-  html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] .blog-scope {
+  /* Force light theme for printed output (ink-on-paper). Covers both dark
+     contexts: the standalone page's data-theme and the report page's
+     html.oh-dark (which now resolves the dark --blog-* tokens). */
+  html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] .blog-scope,
+  html.oh-dark, html.oh-dark body, html.oh-dark .blog-scope {
     background: #ffffff !important;
     color: #1a1a1a !important;
   }
-  html[data-theme="dark"] {
+  html[data-theme="dark"],
+  html.oh-dark {
     --blog-bg: #ffffff;
     --blog-text: #1a1a1a;
     --blog-text-secondary: #444;
