@@ -743,11 +743,42 @@ class TestFeedAuthorName:
 
 
 class TestTopicKindDisambiguation:
-    def test_bare_name_is_subject_not_author(self):
-        """Unconfirmed bare names must not spawn author feeds."""
+    def test_bare_name_is_subject_without_confirmation(self):
         from services.topics.keys import detect_topic_kind
 
         assert detect_topic_kind("Neural Scaling Laws") == "subject"
         assert detect_topic_kind("Vincent Sitzmann") == "subject"
         assert detect_topic_kind("papers by Yann LeCun") == "author"
         assert detect_topic_kind("attention is all you need") == "subject"
+
+    @patch("services.paper.metadata.author_search.search_authors")
+    def test_confirmed_bare_name_is_author(self, mock_search):
+        from services.topics.keys import detect_topic_kind
+
+        mock_search.return_value = [AuthorResult(author_id="1", name="Yann LeCun")]
+        assert detect_topic_kind("Yann LeCun", confirm_bare_name=True) == "author"
+
+    @patch("services.paper.metadata.author_search.search_authors")
+    def test_unconfirmed_bare_name_stays_subject(self, mock_search):
+        from services.topics.keys import detect_topic_kind
+
+        # No candidate covers every token -> topic, not a person.
+        mock_search.return_value = [AuthorResult(author_id="1", name="Neural Tangents")]
+        assert (
+            detect_topic_kind("Neural Scaling Laws", confirm_bare_name=True)
+            == "subject"
+        )
+
+    @patch("services.paper.metadata.author_search.search_authors")
+    def test_author_service_down_stays_subject(self, mock_search):
+        from services.topics.keys import detect_topic_kind
+
+        mock_search.side_effect = Exception("S2 down")
+        assert detect_topic_kind("Yann LeCun", confirm_bare_name=True) == "subject"
+
+    def test_alias_byline_keeps_paper(self):
+        from services.paper.metadata.author_search import _paper_authors_match
+
+        assert _paper_authors_match(
+            ["Alex Smith"], "Alexander Smith", aliases=["Alex Smith"]
+        )

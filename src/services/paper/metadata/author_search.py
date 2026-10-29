@@ -199,29 +199,38 @@ def all_tokens_match(author: AuthorResult, query: str) -> bool:
     return bool(tokens) and all(t in haystack for t in tokens)
 
 
-def _paper_authors_match(paper_authors: list[str], target_name: str) -> bool:
-    """Keep a paper when one listed author plausibly is ``target_name``.
+def _paper_authors_match(
+    paper_authors: list[str], target_name: str, aliases: list[str] | None = None
+) -> bool:
+    """Keep a paper when one listed author plausibly is the target person.
 
     Requires the surname plus a first-name or first-initial match on the
     same author entry — drops papers merged in from namesakes (e.g. a
     conflated 'Vincent Sitzmann' entity's 'Marion Sitzmann' papers) while
-    keeping initialised bylines like 'V. Sitzmann'.
+    keeping initialised bylines like 'V. Sitzmann'. The profile's aliases
+    count as the same person ('Alex Smith' for 'Alexander Smith').
     """
-    tokens = _name_tokens(target_name)
-    if len(tokens) < 2 or not paper_authors:
+    if not paper_authors:
         return True  # can't disambiguate — keep
-    surname, first = tokens[-1], tokens[0]
-    for name in paper_authors:
-        ntoks = _name_tokens(name)
-        if not ntoks or surname not in ntoks:
+    candidates = [target_name, *(aliases or [])]
+    if all(len(_name_tokens(c)) < 2 for c in candidates):
+        return True  # can't disambiguate — keep
+    for candidate in candidates:
+        tokens = _name_tokens(candidate)
+        if len(tokens) < 2:
             continue
-        given = ntoks[0]
-        if (
-            given == first
-            or (len(given) == 1 and first.startswith(given))
-            or (len(first) == 1 and given.startswith(first))
-        ):
-            return True
+        surname, first = tokens[-1], tokens[0]
+        for name in paper_authors:
+            ntoks = _name_tokens(name)
+            if not ntoks or surname not in ntoks:
+                continue
+            given = ntoks[0]
+            if (
+                given == first
+                or (len(given) == 1 and first.startswith(given))
+                or (len(first) == 1 and given.startswith(first))
+            ):
+                return True
     return False
 
 
@@ -422,7 +431,11 @@ def get_author_profile(
     # every paper had a usable byline and none matched — a fully conflated
     # entity. Show nothing rather than credit other people's work.
     if papers:
-        papers = [p for p in papers if _paper_authors_match(p.authors, author.name)]
+        papers = [
+            p
+            for p in papers
+            if _paper_authors_match(p.authors, author.name, author.aliases)
+        ]
 
     return AuthorProfile(author=author, papers=papers)
 

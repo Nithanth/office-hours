@@ -274,8 +274,11 @@ async def generate_report_incremental(  # noqa: PLR0913
         from services.persistence.repositories import get_or_create_topic
         from services.topics.keys import canonical_key_for, detect_topic_kind
 
-        kind = detect_topic_kind(
-            original_query_for_report, is_url_input=bool(is_url_input)
+        kind = await asyncio.to_thread(
+            detect_topic_kind,
+            original_query_for_report,
+            is_url_input=bool(is_url_input),
+            confirm_bare_name=True,
         )
         ckey = canonical_key_for(original_query_for_report, kind=kind)
         if ckey:
