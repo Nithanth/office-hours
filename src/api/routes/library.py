@@ -1028,7 +1028,6 @@ def _paper_item(paper: SavedPaper) -> str:
         viewer_url += f"&url={quote(paper.url, safe='')}"
     authors = paper.authors.get("list") if isinstance(paper.authors, dict) else None
     authors_str = html.escape(", ".join(authors[:6])) if authors else ""
-    status_label = _STATUS_LABELS.get(paper.status, "To read")
     notion_badge = ""
     if paper.notion_page_id:
         notion_url = "https://www.notion.so/" + paper.notion_page_id.replace("-", "")
@@ -1048,7 +1047,7 @@ def _paper_item(paper: SavedPaper) -> str:
     )
     return f"""<article class="lib-item" data-paper-id="{pid_attr}">
   <h2><a href="{html.escape(paper.url or "#", quote=True)}" target="_blank">{title}</a>
-    <span class="lib-status-chip">{status_label}</span>{notion_badge}</h2>
+    {notion_badge}</h2>
   <div class="lib-meta">{authors_str}</div>
   <div class="lib-actions">
     <button class="btn-secondary" hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>

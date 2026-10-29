@@ -93,8 +93,8 @@ def _share_link_html(request: Request, topic: Topic) -> str:
     """The share-status content: the public URL + unshare control."""
     url = _share_url(request, topic.share_token or "")
     return (
-        f'🔗 <a href="{_esc(url)}" target="_blank" rel="noopener">{_esc(url)}</a>'
-        ". Anyone with this link can view it (read-only)."
+        f'Public link: <a href="{_esc(url)}" target="_blank" rel="noopener">{_esc(url)}</a>'
+        ". Anyone with it can view the topic (read-only)."
         ' <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"'
         f' hx-post="/topics/{_esc(topic.id)}/unshare" hx-target="#share-status"'
         ' hx-swap="innerHTML">Unshare</button>'
@@ -625,13 +625,13 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         "topic-blog",
         "Blog",
         topic.blog_markdown,
-        "No blog yet. Generate one from a report.",
+        "No blog yet — open a report version and use its Blog view.",
     )
     notes_html = _md_section(
         "topic-notes",
         "Notes",
         topic.notes_markdown,
-        "No notes yet. Generate study notes from a report.",
+        "No notes yet — open a report version and export notes; they land here.",
     )
 
     report_rows = []
@@ -645,8 +645,16 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     )
 
     share_status_html = _share_link_html(request, topic) if topic.share_token else ""
+    notion_badge = ""
+    if topic.notion_page_id:
+        notion_url = "https://www.notion.so/" + topic.notion_page_id.replace("-", "")
+        notion_badge = (
+            f' <a class="lib-notion-badge" href="{notion_url}" '
+            'target="_blank" title="Synced to Notion — open the page">'
+            "↗ Notion</a>"
+        )
 
-    body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
+    body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span>{notion_badge}</h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
   <button type="button" class="btn-secondary" title="Write a fresh report version from this topic's current papers"
     hx-post="/topics/{_esc(topic.id)}/report" hx-target="#topic-report-out"
@@ -661,19 +669,19 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <div id="share-status" class="topic-meta">{share_status_html}</div>
 <div id="topic-report-out"></div>
 <div id="modal-container"></div>
-{facets_html}
-{related_html}
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Report versions</h2>
-<div class="topic-meta" style="margin-bottom:8px;">Each update snapshots the topic's papers at that moment. Older versions are kept.</div>
-{reports_html}
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers (<span id="papers-count">{len(papers)}</span>)
+<h2 style="font-size:0.95rem;margin-top:1rem;">Papers (<span id="papers-count">{len(papers)}</span>)
   <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
     hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML" title="Poll the tracked queries for newly published papers">Check for new</button>
 </h2>
 <div id="feed-status" class="topic-meta"></div>
 <div id="topic-papers">{papers_html}</div>
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Report versions</h2>
+<div class="topic-meta" style="margin-bottom:8px;">Each update snapshots the topic's papers at that moment. Older versions are kept.</div>
+{reports_html}
 {blog_html}
-{notes_html}"""
+{notes_html}
+{facets_html}
+{related_html}"""
     return HTMLResponse(_shell(topic.title, body))
 
 
