@@ -199,6 +199,35 @@ def all_tokens_match(author: AuthorResult, query: str) -> bool:
     return bool(tokens) and all(t in haystack for t in tokens)
 
 
+def _consistent_aliases(name: str, aliases: list[str]) -> list[str]:
+    """Aliases that are variants of ``name`` — same surname plus a compatible
+    given name or initial ('Alex Smith' for 'Alexander Smith', 'V. Sitzmann'
+    for 'Vincent Sitzmann'). A conflated entity's aliases can belong to a
+    merged-in namesake ('Franz Sitzmann'), so only consistent ones may
+    vouch for a byline."""
+    keep: list[str] = []
+    for alias in aliases:
+        if _names_match(name, alias) or _names_match(alias, name):
+            keep.append(alias)
+    return keep
+
+
+def _names_match(name: str, candidate: str) -> bool:
+    """True when ``candidate`` could be ``name`` — same surname and a
+    first-name/initial match, or identical tokens."""
+    a, b = _name_tokens(name), _name_tokens(candidate)
+    if len(a) < 2 or len(b) < 2:
+        return a == b
+    if a[-1] != b[-1]:
+        return False
+    fa, fb = a[0], b[0]
+    return (
+        fa == fb
+        or (len(fa) == 1 and fb.startswith(fa))
+        or (len(fb) == 1 and fa.startswith(fb))
+    )
+
+
 def _paper_authors_match(
     paper_authors: list[str], target_name: str, aliases: list[str] | None = None
 ) -> bool:
@@ -434,7 +463,11 @@ def get_author_profile(
         papers = [
             p
             for p in papers
-            if _paper_authors_match(p.authors, author.name, author.aliases)
+            if _paper_authors_match(
+                p.authors,
+                author.name,
+                _consistent_aliases(author.name, author.aliases),
+            )
         ]
 
     return AuthorProfile(author=author, papers=papers)

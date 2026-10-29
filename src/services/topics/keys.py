@@ -52,16 +52,24 @@ _URLISH_RE = re.compile(r"^(?:https?://|www\.|arxiv\.org/|\d{4}\.\d{4,5})", re.I
 
 
 def detect_topic_kind(
-    query: str, *, is_url_input: bool = False, confirm_bare_name: bool = False
+    query: str,
+    *,
+    is_url_input: bool = False,
+    confirm_bare_name: bool = False,
+    subject_forced: bool = False,
 ) -> str:
     """Classify a seed query into a topic kind: subject | paper | author.
 
     Bare person-name queries ("Vincent Sitzmann") only become author topics
     when ``confirm_bare_name`` resolves them against the author search —
     capitalized topics like "Neural Scaling Laws" stay subjects.
+    ``subject_forced`` honors an explicit "search as topic" choice — even a
+    real name stays a subject when the user asked for the topic pipeline.
     """
     if is_url_input or _URLISH_RE.match((query or "").strip()):
         return "paper"
+    if subject_forced:
+        return "subject"
     from api.routes.search import _detect_author_query
 
     detected = _detect_author_query(query)

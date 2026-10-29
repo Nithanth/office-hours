@@ -214,6 +214,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     summary_size: str = Form(...),  # noqa: B008
     selected_model_key: str = Form(...),  # noqa: B008
     is_url_input: bool = Form(False),  # noqa: B008
+    forced_topic: bool = Form(False),  # noqa: B008
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
     from services.core.model_prefs import prefs_owner_id
@@ -279,6 +280,7 @@ async def generate_report_incremental(  # noqa: PLR0913
             original_query_for_report,
             is_url_input=bool(is_url_input),
             confirm_bare_name=True,
+            subject_forced=forced_topic,
         )
         ckey = canonical_key_for(original_query_for_report, kind=kind)
         if ckey:

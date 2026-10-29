@@ -782,3 +782,38 @@ class TestTopicKindDisambiguation:
         assert _paper_authors_match(
             ["Alex Smith"], "Alexander Smith", aliases=["Alex Smith"]
         )
+
+    def test_consistent_aliases_filter(self):
+        from services.paper.metadata.author_search import _consistent_aliases
+
+        aliases = ["V. Sitzmann", "V Sitzmann", "Franz Sitzmann", "Cathel Zitzmann"]
+        kept = _consistent_aliases("Vincent Sitzmann", aliases)
+        assert "Franz Sitzmann" not in kept
+        assert "Cathel Zitzmann" not in kept
+        assert "V. Sitzmann" in kept
+
+    def test_namesake_alias_cannot_vouch_for_byline(self):
+        """An alias belonging to a merged-in person must not pass the filter."""
+        from services.paper.metadata.author_search import (
+            _consistent_aliases,
+            _paper_authors_match,
+        )
+
+        trusted = _consistent_aliases(
+            "Vincent Sitzmann", ["Franz Sitzmann", "V. Sitzmann"]
+        )
+        assert not _paper_authors_match(
+            ["Franz Sitzmann"], "Vincent Sitzmann", aliases=trusted
+        )
+
+    def test_subject_forced_overrides_author(self):
+        """'Search as a topic' keeps even a real name a subject."""
+        from services.topics.keys import detect_topic_kind
+
+        assert (
+            detect_topic_kind("Yann LeCun", confirm_bare_name=True, subject_forced=True)
+            == "subject"
+        )
+        assert (
+            detect_topic_kind("papers by Yann LeCun", subject_forced=True) == "subject"
+        )

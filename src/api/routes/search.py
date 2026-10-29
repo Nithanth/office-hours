@@ -385,6 +385,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             papers_list=exa_results,
             is_url_search=is_url_search,
             original_query=input_query_stripped,
+            forced_topic=mode == "topic",
         )
         if is_url_search:
             results_component = _intent_banner(

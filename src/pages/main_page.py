@@ -444,6 +444,7 @@ def render_search_results(
     original_query: str,
     is_url_search: bool,
     papers_list: Optional[list[Paper]] = None,
+    forced_topic: bool = False,
 ) -> Div:
     """Render search results list, shuffle/reset controls and hidden HTMX fields."""
     # Out-of-band clears so a new search hides any old report UI instantly
@@ -468,6 +469,15 @@ def render_search_results(
             id="is_url_input_source_hidden",
             name="is_url_input_source",
             value="true" if is_url_search else "false",
+        ),
+        # Carries the user's "Search as a topic" choice into report
+        # generation — a bare name that matched an author must not become
+        # an author topic when the user explicitly picked the topic path.
+        INPUT(
+            type="hidden",
+            id="forced_topic_source_hidden",
+            name="forced_topic_source",
+            value="true" if forced_topic else "false",
         ),
     ]
 
