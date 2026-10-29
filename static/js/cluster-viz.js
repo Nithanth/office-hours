@@ -13,6 +13,7 @@
 
   let plotlyLoaded = false;
   let isLoading = false;
+  let lastData = null;
 
   /** Lazy-load Plotly.js from CDN */
   function ensurePlotly() {
@@ -94,20 +95,26 @@
       };
     });
 
-    const isDark =
-      document.body.classList.contains("dark") ||
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    // Theme follows the app's own dark flag (<html class="oh-dark">),
+    // not prefers-color-scheme — they can disagree.
+    const css = getComputedStyle(document.documentElement);
+    const token = (name, fallback) =>
+      css.getPropertyValue(name).trim() || fallback;
+    const isDark = document.documentElement.classList.contains("oh-dark");
+    const plotBg = token("--container-bg", isDark ? "#1e1e1e" : "#fafafa");
+    const titleColor = token("--fg", isDark ? "#ddd" : "#333");
+    const legendColor = token("--fg-muted", isDark ? "#ccc" : "#444");
 
     const layout = {
       title: {
         text: "Paper Clusters",
-        font: { size: 14, color: isDark ? "#ddd" : "#333" },
+        font: { size: 14, color: titleColor },
       },
       showlegend: true,
       legend: {
         orientation: "h",
         y: -0.15,
-        font: { size: 11, color: isDark ? "#ccc" : "#444" },
+        font: { size: 11, color: legendColor },
       },
       xaxis: {
         showgrid: false,
@@ -121,7 +128,7 @@
         showticklabels: false,
         title: "",
       },
-      plot_bgcolor: isDark ? "#1e1e1e" : "#fafafa",
+      plot_bgcolor: plotBg,
       paper_bgcolor: "transparent",
       margin: { t: 40, b: 50, l: 20, r: 20 },
       hovermode: "closest",
@@ -137,6 +144,7 @@
 
     // Explainer caption — without it the scatter reads as decoration.
     // Removed automatically when the chart re-renders or hides.
+    container.querySelector(".cluster-viz-caption")?.remove();
     const caption = document.createElement("div");
     caption.className = "cluster-viz-caption";
     caption.textContent =
@@ -187,6 +195,7 @@
     try {
       await ensurePlotly();
       const data = await fetchClusters();
+      lastData = data;
 
       container.innerHTML = "";
       container.style.display = "block";
@@ -214,5 +223,21 @@
       e.preventDefault();
       toggleClusterViz();
     }
+  });
+
+  // Re-theme the plot when the dark-mode class flips on <html>.
+  new MutationObserver(() => {
+    const container = document.getElementById("cluster-viz-container");
+    if (
+      container &&
+      lastData &&
+      container.style.display !== "none" &&
+      window.Plotly
+    ) {
+      renderChart(container, lastData);
+    }
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
   });
 })();
