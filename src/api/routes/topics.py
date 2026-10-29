@@ -101,6 +101,12 @@ def _share_link_html(request: Request, topic: Topic) -> str:
     )
 
 
+def _kind_label(kind: str | None) -> str:
+    """Human chip for non-default kinds — 'subject' (the common case) gets
+    no chip since a topic is a subject by definition."""
+    return {"author": "Author", "paper": "Paper"}.get(kind or "", "")
+
+
 def _fmt_authors(authors: object) -> str:
     """Byline text — strips Exa-scraped chrome ('View Profile', institutions)
     via the same cleaner the search cards use."""
@@ -227,9 +233,12 @@ async def topics_page(request: Request) -> HTMLResponse:
                     f' · <a href="/reports/{_esc(cs["report_id"])}">'
                     f"latest report</a>"
                 )
+            kind_label = _kind_label(t.kind)
+            kind_chip = (
+                f'<span class="topic-kind">{kind_label}</span>' if kind_label else ""
+            )
             meta = (
-                f'<span class="topic-kind">{_esc(t.kind)}</span>'
-                f"{cs.get('papers', 0)} papers{report_bit}"
+                kind_chip + f"{cs.get('papers', 0)} papers{report_bit}"
                 f" · updated {human_date(t.updated_at)}"
             )
             rows.append(
@@ -350,7 +359,7 @@ def _paper_rows_html(
             else _esc(p.title)
         )
         feed_chip = (
-            ' <span class="topic-kind" title="Added by the topic feed">feed</span>'
+            ' <span class="topic-kind" title="Found automatically by a tracked search">auto-added</span>'
             if p.source == "feed"
             else ""
         )
@@ -426,16 +435,20 @@ def _facets_section(topic: Topic, facets: list[Any]) -> str:
         remove_btn = ""
         if len(facets) > 1:
             remove_btn = (
-                f'<button type="button" class="facet-remove" title="Stop tracking this query" '
+                f'<button type="button" class="facet-remove" title="Stop tracking" '
                 f'hx-post="/topics/{_esc(topic.id)}/facets/{_esc(f.id)}/remove" '
                 'hx-target="#facets-section" hx-swap="outerHTML">&times;</button>'
             )
+        kind_label = _kind_label(f.kind)
+        kind_chip = (
+            f'<span class="facet-kind">{kind_label}</span> ' if kind_label else ""
+        )
         items.append(
             f'<span class="oh-related-chip facet-chip">'
-            f'<span class="facet-kind">{_esc(f.kind)}</span> {_esc(f.query[:80])}{remove_btn}</span>'
+            f"{kind_chip}{_esc(f.query[:80])}{remove_btn}</span>"
         )
     return f"""<div id="facets-section">
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Tracked queries</h2>
+<h2 style="font-size:0.95rem;margin-top:1.5rem;">Tracked searches</h2>
 <div class="topic-meta" style="margin-bottom:8px;">New papers matching any of these automatically join this topic's set.</div>
 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
 {''.join(items)}
@@ -674,14 +687,18 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
             "↗ Notion</a>"
         )
 
-    body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span>{notion_badge}</h1>
+    topic_kind = _kind_label(topic.kind)
+    topic_kind_chip = (
+        f' <span class="topic-kind">{topic_kind}</span>' if topic_kind else ""
+    )
+    body = f"""<h1>{_esc(topic.title)}{topic_kind_chip}{notion_badge}</h1>
 <div class="topic-actions" style="margin:0.75rem 0;">
   <button type="button" class="btn-secondary" title="Write a fresh report version from this topic's current papers"
     hx-post="/topics/{_esc(topic.id)}/report" hx-target="#topic-report-out"
     hx-swap="innerHTML" hx-disabled-elt="this">Update report</button>
   <button type="button" class="btn-secondary"
     hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
-    hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
+    hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
   <button type="button" class="btn-secondary" title="Get a public read-only link to this topic"
     hx-post="/topics/{_esc(topic.id)}/share" hx-target="#share-status"
     hx-swap="innerHTML">Share</button>
@@ -691,7 +708,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 <div id="modal-container"></div>
 <h2 style="font-size:0.95rem;margin-top:1rem;">Papers (<span id="papers-count">{len(papers)}</span>)
   <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
-    hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML" title="Poll the tracked queries for newly published papers">Check for new</button>
+    hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML" title="Poll the tracked searches for newly published papers">Check for new papers</button>
 </h2>
 <div id="feed-status" class="topic-meta"></div>
 <div id="topic-papers">{papers_html}</div>
@@ -973,7 +990,11 @@ async def share_page(token: str) -> HTMLResponse:
     notes_html = _md_section(
         "share-notes", "Notes", topic.notes_markdown, "No notes yet."
     )
-    body = f"""<h1>{_esc(topic.title)} <span class="topic-kind">{_esc(topic.kind)}</span></h1>
+    share_kind = _kind_label(topic.kind)
+    share_kind_chip = (
+        f' <span class="topic-kind">{share_kind}</span>' if share_kind else ""
+    )
+    body = f"""<h1>{_esc(topic.title)}{share_kind_chip}</h1>
 <div class="topic-meta">Shared workspace. Read-only.
   <a href="/">Make your own with Office Hours →</a></div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Papers ({len(papers)})</h2>

@@ -104,9 +104,15 @@ def ChatModal(
             Div(
                 Div(
                     P(
-                        "░ ask a question to get started ░"
-                        if is_global
-                        else "░ ask about this paper ░",
+                        (
+                            "░ ask a question to get started ░"
+                            if is_global
+                            else (
+                                "░ ask about this topic ░"
+                                if paper_id == "topic" or paper_id.startswith("topic:")
+                                else "░ ask about this paper ░"
+                            )
+                        ),
                     ),
                     cls="chat-empty-hint",
                 ),
@@ -121,9 +127,11 @@ def ChatModal(
                         placeholder=(
                             "Ask anything…"
                             if is_global
-                            else "Ask about this topic…"
-                            if paper_id == "topic" or paper_id.startswith("topic:")
-                            else "Ask about this paper…"
+                            else (
+                                "Ask about this topic…"
+                                if paper_id == "topic" or paper_id.startswith("topic:")
+                                else "Ask about this paper…"
+                            )
                         ),
                         rows="2",
                         cls="chat-textarea",

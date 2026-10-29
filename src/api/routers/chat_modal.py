@@ -204,7 +204,11 @@ async def chat_modal(
 
     # Default title if no metadata is found
     if paper_id != "global":
-        modal_title = paper_id
+        modal_title = (
+            "Chat about this topic"
+            if paper_id == "topic" or paper_id.startswith("topic:")
+            else paper_id
+        )
 
     if title:
         modal_title = html.escape(title)

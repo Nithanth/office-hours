@@ -136,8 +136,14 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
 
     async for session in session_scope():
         report = await get_report(session, user_id=user_id, report_id=report_id)
-    if report is None:
-        raise HTTPException(status_code=404, detail="Report not found")
+        if report is None:
+            raise HTTPException(status_code=404, detail="Report not found")
+        topic_title = None
+        if report.topic_id:
+            from services.persistence.repositories import get_topic
+
+            t = await get_topic(session, owner_id=user_id, topic_id=report.topic_id)
+            topic_title = t.title if t is not None else None
 
     report_html = report.report_html.replace(
         "hx-get='/chat-modal?",
@@ -146,7 +152,13 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     escaped_title = html.escape(_display_title(report))
     escaped_id = html.escape(report.id)
     escaped_audience = html.escape(report.audience_type or "technical")
-    escaped_model = html.escape(report.model_key or "")
+    escaped_model = html.escape(_model_label(report))
+    topic_bit = ""
+    if report.topic_id and topic_title:
+        topic_bit = (
+            f' &middot; in <a href="/topics/{html.escape(report.topic_id)}">'
+            f"{html.escape(topic_title)}</a>"
+        )
     from pages.shell import lib_subtabs_html, page_shell
 
     return HTMLResponse(
@@ -157,7 +169,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     <h1 style="font-size:1.3rem;margin:0.5rem 0;">{escaped_title}</h1>
     <div class="report-meta">
       {html.escape(report.created_at.strftime('%b %d, %Y'))} &middot;
-      {escaped_audience} &middot; {escaped_model}
+      {escaped_audience} &middot; {escaped_model}{topic_bit}
     </div>
     <div id="report-view-toggle" class="oh-view-toggle">
       <button type="button" data-view="report" class="active"><i class="fa-regular fa-file-lines"></i> Report</button>
