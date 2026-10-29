@@ -69,6 +69,7 @@ def canonical_key_for(query: str, *, kind: str) -> str:
     if kind == "author":
         from api.routes.search import _detect_author_query
 
-        author = _detect_author_query(query) or query
+        detected = _detect_author_query(query)
+        author = detected[0] if detected else query
         return normalize_topic_key(author)
     return normalize_topic_key(query)

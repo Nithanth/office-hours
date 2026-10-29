@@ -224,7 +224,7 @@ async def author_profile_view(
                 id=sp.paper_id or url,
                 title=sp.title,
                 url=url,
-                authors=[a.name],
+                authors=sp.authors or [a.name],
                 published_date=f"{sp.year}-01-01" if sp.year else None,
                 citation_count=sp.citation_count,
                 source="Semantic Scholar",

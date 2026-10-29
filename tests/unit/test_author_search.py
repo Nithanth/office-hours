@@ -609,3 +609,89 @@ class TestOpenAlexHelpers:
         html = _render_author_list([], "Test", unavailable=True)
         assert "temporarily unavailable" in html
         assert "No authors found" not in html
+
+
+# ---------------------------------------------------------------------------
+# Namesake disambiguation tests
+# ---------------------------------------------------------------------------
+
+
+class TestNamesakeDisambiguation:
+    """S2 conflates namesakes into one entity; matching must require
+    every query token, not just any single one."""
+
+    def test_token_match_score_requires_all_tokens(self):
+        from services.paper.metadata.author_search import _token_match_score
+
+        a = AuthorResult(author_id="1", name="Vincent Sitzmann")
+        assert _token_match_score(a, {"vincent", "sitzmann"}) == 2
+        assert _token_match_score(a, {"vincent"}) == 1
+        assert _token_match_score(a, {"vincent", "zitzmann"}) == 1
+
+    def test_rank_prefers_full_name_match(self):
+        from services.paper.metadata.author_search import rank_author_matches
+
+        wrong = AuthorResult(
+            author_id="1", name="Cathel Zitzmann", citation_count=99999
+        )
+        right = AuthorResult(author_id="2", name="Vincent Sitzmann", citation_count=10)
+        ranked = rank_author_matches([wrong, right], "Vincent Sitzmann")
+        assert ranked[0].name == "Vincent Sitzmann"
+
+    def test_aliases_count_toward_match(self):
+        from services.paper.metadata.author_search import all_tokens_match
+
+        a = AuthorResult(author_id="1", name="V Sitzmann", aliases=["Vincent Sitzmann"])
+        assert all_tokens_match(a, "Vincent Sitzmann") is True
+
+    def test_paper_byline_filter_drops_namesakes(self):
+        from services.paper.metadata.author_search import _paper_authors_match
+
+        target = "Vincent Sitzmann"
+        assert _paper_authors_match(["Vincent Sitzmann", "Thomas Leimkuhler"], target)
+        assert _paper_authors_match(["V. Sitzmann", "Julien Martel"], target)
+        assert not _paper_authors_match(
+            ["Cathel Zitzmann", "Marion Jerome Sitzmann"], target
+        )
+        assert not _paper_authors_match(["F Sitzmann", "Vincent Herrmann"], target)
+        assert not _paper_authors_match(["Franz Sitzmann"], target)
+        # No byline data -> keep the paper rather than empty the list.
+        assert _paper_authors_match([], target)
+
+    def test_profile_filters_conflated_papers(self):
+        """A conflated entity keeps only papers whose bylines match."""
+        from services.paper.metadata.author_search import get_author_profile
+
+        details = {
+            "authorId": "1",
+            "name": "Vincent Sitzmann",
+            "aliases": [],
+            "paperCount": 5,
+            "citationCount": 100,
+            "hIndex": 3,
+        }
+        papers = {
+            "data": [
+                {
+                    "paperId": "p1",
+                    "title": "Scene Representation Networks",
+                    "authors": [
+                        {"name": "Vincent Sitzmann"},
+                        {"name": "Julien Martel"},
+                    ],
+                    "externalIds": {},
+                },
+                {
+                    "paperId": "p2",
+                    "title": "Unrelated namesake paper",
+                    "authors": [{"name": "Franz Sitzmann"}],
+                    "externalIds": {},
+                },
+            ]
+        }
+
+        with patch("services.paper.metadata.author_search._s2_get") as mock_get:
+            mock_get.side_effect = [details, papers]
+            profile = get_author_profile("1")
+        assert profile is not None
+        assert [p.title for p in profile.papers] == ["Scene Representation Networks"]
