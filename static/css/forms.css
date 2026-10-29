@@ -12,7 +12,7 @@ html.oh-dark input[type="number"]::-webkit-inner-spin-button,
 html.oh-dark input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: inner-spin-button !important;
 }
-html.oh-dark input[type="number"]:hover { background:#232b38 !important; }
+html.oh-dark input[type="number"]:hover { background:var(--oh-elevated) !important; }
 
 /* Ask-LLM strip backgrounds */
 #ask-assistant-form, .ask-llm-subtitle, #ask-result-container { background:transparent !important; }
@@ -94,5 +94,5 @@ html.oh-dark #sources-dropdown-menu {
   color: var(--fg);
 }
 html.oh-dark #sources-dropdown-menu label:hover {
-  background: #232b38;
+  background: var(--oh-elevated);
 }

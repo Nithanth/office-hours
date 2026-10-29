@@ -1,6 +1,6 @@
 /* variables.css – theme tokens for Office Hours.
    Locked scheme: one blue accent family shared by both themes.
-   Light = warm "paper", dark = cool "ink blue". */
+   Light = warm "paper", dark = charcoal. */
 
 :root {
   /* semantic colours — danger only (remove/stop/error), never decoration */
@@ -41,12 +41,12 @@
   /* main paper border (pinned) */
   --main-paper-border: var(--oh-accent);
 
-  /* dark theme overrides */
-  --bg-dark: #141920;
-  --fg-dark: #dbe4f0;
-  --container-bg-dark: #1c2330;
-  --container-border-dark: #37404f;
-  --container-shadow-dark: rgba(0, 0, 0, 0.45);
+  /* dark theme overrides — charcoal, neutral grays, blue accent pops */
+  --bg-dark: #161618;
+  --fg-dark: #e5e5e1;
+  --container-bg-dark: #1f1f23;
+  --container-border-dark: #39393f;
+  --container-shadow-dark: rgba(0, 0, 0, 0.55);
 }
 
 /* Apply dark tokens when .oh-dark is on <html> */
@@ -57,14 +57,17 @@ html.oh-dark {
   --bg-card: var(--container-bg-dark);
   --container-border: var(--container-border-dark);
   --container-shadow: var(--container-shadow-dark);
-  --fg-muted: #93a0b4;
+  --fg-muted: #9e9ea4;
   --oh-red: #f87171;
   --oh-success: #4ade80;
   --oh-accent: #60a5fa;
   --oh-accent-hover: #93c5fd;
-  --oh-accent-soft: #1e3a5f;
+  --oh-accent-soft: #28303c; /* desaturated steel — tints, chips */
   --oh-icon: #60a5fa;
-  --oh-elevated: #2b3546; /* buttons/chips one step above the surface */
+  --oh-elevated: #2b2b31; /* buttons/chips one step above the surface */
+  --oh-elevated-hover: #37373e;
+  --oh-border-strong: #46464e; /* control outlines on dark surfaces */
+  --oh-input-bg: #242429;
   --accent: var(--oh-accent);
   /* override pinned border */
   --main-paper-border: #60a5fa;
