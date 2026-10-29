@@ -134,15 +134,15 @@ html.oh-dark a, html.oh-dark a:visited { color: var(--oh-accent); }
 nav a, nav a:visited { color:#fff; }
 
 /* --- Generic button dark-mode palette ---------------------------------- */
-html.oh-dark button { background:#2b3546; color:var(--fg,#dbe4f0); border:1px solid #41506b; }
-html.oh-dark button:hover:not(:disabled) { background:#36435c; }
+html.oh-dark button { background:var(--oh-elevated); color:var(--fg); border:1px solid var(--oh-border-strong); }
+html.oh-dark button:hover:not(:disabled) { background:var(--oh-elevated-hover); }
 
 /* Inputs / text areas to match dark grey */
 html.oh-dark input, html.oh-dark textarea, html.oh-dark select {
-  background:#232b38; color:var(--fg,#dbe4f0); border:1px solid #3a4352;
+  background:var(--oh-input-bg); color:var(--fg); border:1px solid var(--oh-border-strong);
 }
 html.oh-dark input:hover, html.oh-dark textarea:hover, html.oh-dark select:hover {
-  background:#2b3546;
+  background:var(--oh-elevated);
 }
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
@@ -261,13 +261,13 @@ html, body { overflow-x: clip; }
 }
 html.oh-dark .btn-secondary,
 html.oh-dark .oh-search-btn {
-  background: #2b3546;
-  color: var(--fg, #eee);
-  border-color: #41506b;
+  background: var(--oh-elevated);
+  color: var(--fg);
+  border-color: var(--oh-border-strong);
 }
 html.oh-dark .btn-secondary:hover:not(:disabled),
 html.oh-dark .oh-search-btn:hover:not(:disabled) {
-  background: #36435c;
+  background: var(--oh-elevated-hover);
   border-color: var(--accent);
   color: var(--accent);
 }

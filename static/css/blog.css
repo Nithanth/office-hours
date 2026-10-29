@@ -31,15 +31,18 @@
    script BEFORE the first paint, so there's no light-flash. The class is
    driven by the app's localStorage 'theme' key (set by settings.js) so the blog
    page matches whatever theme the user chose in the main app. */
-:root[data-theme="dark"] {
-  --blog-bg: #0f172a;
-  --blog-surface: #1e293b;
-  --blog-text: #e2e8f0;
-  --blog-text-secondary: #94a3b8;
+/* Also under html.oh-dark: the blog pane embedded in the report page lives
+   in the app's .oh-dark context, not data-theme. */
+:root[data-theme="dark"],
+html.oh-dark {
+  --blog-bg: #161618;
+  --blog-surface: #1f1f23;
+  --blog-text: #e5e5e1;
+  --blog-text-secondary: #9e9ea4;
   --blog-accent: #818cf8;
-  --blog-accent-soft: #1e1b4b;
-  --blog-border: #334155;
-  --blog-code-bg: #0f172a;
+  --blog-accent-soft: #26262e;
+  --blog-border: #39393f;
+  --blog-code-bg: #141416;
   --blog-reading-bar: #818cf8;
 }
 
@@ -659,12 +662,16 @@ body:not(.blog-is-loading) .blog-writing-pill {
    dialog opens, then removed after. The same rules also apply to the native
    browser print/Cmd+P flow via @media print. */
 @media print {
-  /* Force light theme for printed output (ink-on-paper). */
-  html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] .blog-scope {
+  /* Force light theme for printed output (ink-on-paper). Covers both dark
+     contexts: the standalone page's data-theme and the report page's
+     html.oh-dark (which now resolves the dark --blog-* tokens). */
+  html[data-theme="dark"], html[data-theme="dark"] body, html[data-theme="dark"] .blog-scope,
+  html.oh-dark, html.oh-dark body, html.oh-dark .blog-scope {
     background: #ffffff !important;
     color: #1a1a1a !important;
   }
-  html[data-theme="dark"] {
+  html[data-theme="dark"],
+  html.oh-dark {
     --blog-bg: #ffffff;
     --blog-text: #1a1a1a;
     --blog-text-secondary: #444;

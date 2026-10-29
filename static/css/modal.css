@@ -13,7 +13,8 @@
   justify-content: center;
   z-index: 1000;
 }
-html.oh-dark .modal {
+html.oh-dark .modal,
+html[data-theme="dark"] .modal {
   background: rgba(0, 0, 0, 0.6);
 }
 
@@ -26,7 +27,8 @@ html.oh-dark .modal {
   width: 90%;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
-html.oh-dark .modal-content {
+html.oh-dark .modal-content,
+html[data-theme="dark"] .modal-content {
   background: var(--container-bg);
   border: 1px solid var(--container-border);
 }
@@ -58,7 +60,8 @@ html.oh-dark .modal-content {
   cursor: pointer;
   line-height: 1;
 }
-html.oh-dark .modal-close-btn { color: var(--fg-muted); }
+html.oh-dark .modal-close-btn,
+html[data-theme="dark"] .modal-close-btn { color: var(--fg-muted); }
 
 /* -------------------- PDF Viewer Layout -------------------- */
 /* grid fills remaining vertical space flexibly so textarea remains visible */
@@ -168,7 +171,7 @@ html.oh-dark .modal-close-btn { color: var(--fg-muted); }
   min-width: 320px;       /* chat shouldn't shrink below 320px */
 }
 html.oh-dark .pdf-viewer .chat-column {
-  background: #1f1f1f;
+  background: var(--container-bg);
 }
 
 .pdf-viewer .chat-column .modal-body,
@@ -278,7 +281,7 @@ html.oh-dark .pdf-viewer .chat-column {
 }
 html.oh-dark .oh-blog-modal .modal-header h2,
 [data-theme="dark"] .oh-blog-modal .modal-header h2 {
-  color: #e6e6e6;
+  color: var(--fg);
 }
 
 #blog-modal-subtitle {
@@ -288,7 +291,7 @@ html.oh-dark .oh-blog-modal .modal-header h2,
 }
 html.oh-dark #blog-modal-subtitle,
 [data-theme="dark"] #blog-modal-subtitle {
-  color: #aaa;
+  color: var(--fg-muted);
 }
 
 .oh-blog-modal-grid {
@@ -310,7 +313,7 @@ html.oh-dark #blog-modal-subtitle,
 }
 html.oh-dark .oh-blog-modal-fs,
 [data-theme="dark"] .oh-blog-modal-fs {
-  border-color: #444;
+  border-color: var(--oh-border-strong);
 }
 
 .oh-blog-modal-fs legend {
@@ -321,7 +324,7 @@ html.oh-dark .oh-blog-modal-fs,
 }
 html.oh-dark .oh-blog-modal-fs legend,
 [data-theme="dark"] .oh-blog-modal-fs legend {
-  color: #e6e6e6;
+  color: var(--fg);
 }
 
 .oh-blog-modal-fs label {
@@ -334,7 +337,7 @@ html.oh-dark .oh-blog-modal-fs legend,
 }
 html.oh-dark .oh-blog-modal-fs label,
 [data-theme="dark"] .oh-blog-modal-fs label {
-  color: #ddd;
+  color: var(--fg);
 }
 
 .oh-blog-modal-fs input[type="radio"] {
@@ -371,9 +374,9 @@ html.oh-dark .oh-blog-modal-fs label,
 }
 html.oh-dark .oh-blog-modal-textarea,
 [data-theme="dark"] .oh-blog-modal-textarea {
-  background: #1f1f1f;
-  color: #e6e6e6;
-  border-color: #444;
+  background: var(--oh-input-bg);
+  color: var(--fg);
+  border-color: var(--oh-border-strong);
 }
 
 .oh-blog-modal-footer {
@@ -386,7 +389,7 @@ html.oh-dark .oh-blog-modal-textarea,
 }
 html.oh-dark .oh-blog-modal-footer,
 [data-theme="dark"] .oh-blog-modal-footer {
-  border-top-color: #3a3a3a;
+  border-top-color: var(--oh-border-strong);
 }
 
 /* Lock background scroll while the modal is open. */

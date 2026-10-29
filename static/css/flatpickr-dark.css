@@ -6,7 +6,7 @@ html.oh-dark .flatpickr-months .flatpickr-month,
 html.oh-dark .flatpickr-weekdays,
 html.oh-dark .flatpickr-days { background:var(--bg-dark); }
 html.oh-dark .flatpickr-day { color:var(--fg); }
-html.oh-dark .flatpickr-day:hover { background:#232b38; }
+html.oh-dark .flatpickr-day:hover { background:var(--oh-elevated); }
 html.oh-dark .flatpickr-day.selected,
 html.oh-dark .flatpickr-day.startRange,
 html.oh-dark .flatpickr-day.endRange { background:var(--oh-accent); color:#fff; }

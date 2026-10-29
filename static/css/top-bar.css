@@ -159,8 +159,8 @@ html.oh-dark .top-bar-link {
 }
 html.oh-dark .top-auth-status a {
   background: transparent;
-  color: var(--fg, #dbe4f0);
-  border: 1px solid #3a4352;
+  color: var(--fg);
+  border: 1px solid var(--oh-border-strong);
 }
 html.oh-dark .top-auth-status a:hover {
   border-color: var(--accent, #60a5fa);
@@ -170,8 +170,8 @@ html.oh-dark .top-auth-status a:hover {
 html.oh-dark .top-bar select,
 html.oh-dark .top-bar button {
   background: transparent;
-  color: var(--fg, #dbe4f0);
-  border: 1px solid #3a4352;
+  color: var(--fg);
+  border: 1px solid var(--oh-border-strong);
 }
 html.oh-dark .top-bar button:hover:not(:disabled) {
   border-color: var(--accent, #60a5fa);
