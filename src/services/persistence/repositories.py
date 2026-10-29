@@ -20,6 +20,8 @@ from services.persistence.models import (
     Report,
     ReportPaper,
     SavedPaper,
+    Topic,
+    TopicPaper,
     UsageEvent,
     User,
     UserIntegration,
@@ -262,7 +264,22 @@ async def append_chat_message(
             topic_id=topic_id,
         )
         session.add(thread)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError:
+            # A concurrent first turn won the scope insert — append to it
+            # rather than dropping this message.
+            await session.rollback()
+            thread = await session.scalar(
+                select(ChatThread).where(
+                    ChatThread.user_id == user_id,
+                    ChatThread.report_id == report_id,
+                    ChatThread.paper_id == paper_id,
+                    ChatThread.topic_id == topic_id,
+                )
+            )
+            if thread is None:
+                raise
     else:
         thread.updated_at = datetime.utcnow()
     message = ChatMessage(thread_id=thread.id, role=role, content=content)
@@ -558,8 +575,11 @@ async def save_paper(
     url: str | None = None,
     authors: dict[str, Any] | None = None,
     report_id: str | None = None,
+    status: str | None = None,
 ) -> SavedPaper:
     """Insert-or-update a saved paper. Re-saving refreshes metadata."""
+    if status is not None and status not in SavedPaper.READING_STATUSES:
+        status = None
     saved = await session.scalar(
         select(SavedPaper).where(
             SavedPaper.owner_id == owner_id, SavedPaper.paper_id == paper_id
@@ -573,6 +593,7 @@ async def save_paper(
             url=url,
             authors=authors or {},
             report_id=report_id,
+            status=status or "to_read",
         )
         session.add(saved)
     else:
@@ -582,6 +603,8 @@ async def save_paper(
             saved.authors = authors
         if report_id:
             saved.report_id = report_id
+        if status:
+            saved.status = status
     try:
         await session.commit()
     except IntegrityError:
@@ -644,6 +667,76 @@ async def set_saved_paper_status(
     await session.commit()
     await session.refresh(saved)
     return saved
+
+
+async def set_paper_status(
+    session: AsyncSession,
+    *,
+    owner_id: str,
+    paper_id: str,
+    status: str,
+) -> SavedPaper | None:
+    """Upsert a paper's reading status — status is a user↔paper fact, not a
+    saved-only feature, so setting it on a topic paper claims the paper into
+    the library (metadata copied from topic_papers or report_papers)."""
+    if status not in SavedPaper.READING_STATUSES:
+        return None
+    saved = await get_saved_paper(session, owner_id=owner_id, paper_id=paper_id)
+    if saved is not None:
+        saved.status = status
+        await session.commit()
+        await session.refresh(saved)
+        return saved
+
+    meta = await session.execute(
+        select(TopicPaper.title, TopicPaper.url, TopicPaper.authors)
+        .join(Topic, TopicPaper.topic_id == Topic.id)
+        .where(
+            Topic.owner_id == owner_id,
+            TopicPaper.paper_id == paper_id,
+        )
+        .limit(1)
+    )
+    row = meta.first()
+    if row is None:
+        meta = await session.execute(
+            select(ReportPaper.title, ReportPaper.url, ReportPaper.authors)
+            .join(Report, ReportPaper.report_id == Report.id)
+            .where(
+                Report.user_id == owner_id,
+                ReportPaper.paper_id == paper_id,
+            )
+            .limit(1)
+        )
+        row = meta.first()
+    if row is None:
+        return None
+    raw_authors = row.authors or {}
+    author_names = raw_authors.get("list") or raw_authors.get("items") or []
+    return await save_paper(
+        session,
+        owner_id=owner_id,
+        paper_id=paper_id,
+        title=row.title,
+        url=row.url,
+        authors={"list": author_names},
+        status=status,
+    )
+
+
+async def list_saved_statuses(
+    session: AsyncSession, *, owner_id: str, paper_ids: list[str]
+) -> dict[str, str]:
+    """paper_id → reading status for the given papers (absent = unsaved)."""
+    if not paper_ids:
+        return {}
+    result = await session.execute(
+        select(SavedPaper.paper_id, SavedPaper.status).where(
+            SavedPaper.owner_id == owner_id,
+            SavedPaper.paper_id.in_(paper_ids),
+        )
+    )
+    return {str(pid): str(status) for pid, status in result.all()}
 
 
 async def set_saved_paper_notion_page(
@@ -717,7 +810,7 @@ async def set_saved_paper_notion_chat_count(
 # Topics
 # ---------------------------------------------------------------------------
 
-from services.persistence.models import Topic, TopicFacet, TopicPaper  # noqa: E402
+from services.persistence.models import TopicFacet  # noqa: E402
 
 
 async def get_or_create_topic(
