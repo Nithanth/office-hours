@@ -13,7 +13,8 @@
   justify-content: center;
   z-index: 1000;
 }
-html.oh-dark .modal {
+html.oh-dark .modal,
+html[data-theme="dark"] .modal {
   background: rgba(0, 0, 0, 0.6);
 }
 
@@ -26,7 +27,8 @@ html.oh-dark .modal {
   width: 90%;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
-html.oh-dark .modal-content {
+html.oh-dark .modal-content,
+html[data-theme="dark"] .modal-content {
   background: var(--container-bg);
   border: 1px solid var(--container-border);
 }
@@ -58,7 +60,8 @@ html.oh-dark .modal-content {
   cursor: pointer;
   line-height: 1;
 }
-html.oh-dark .modal-close-btn { color: var(--fg-muted); }
+html.oh-dark .modal-close-btn,
+html[data-theme="dark"] .modal-close-btn { color: var(--fg-muted); }
 
 /* -------------------- PDF Viewer Layout -------------------- */
 /* grid fills remaining vertical space flexibly so textarea remains visible */

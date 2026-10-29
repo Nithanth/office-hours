@@ -31,7 +31,10 @@
    script BEFORE the first paint, so there's no light-flash. The class is
    driven by the app's localStorage 'theme' key (set by settings.js) so the blog
    page matches whatever theme the user chose in the main app. */
-:root[data-theme="dark"] {
+/* Also under html.oh-dark: the blog pane embedded in the report page lives
+   in the app's .oh-dark context, not data-theme. */
+:root[data-theme="dark"],
+html.oh-dark {
   --blog-bg: #161618;
   --blog-surface: #1f1f23;
   --blog-text: #e5e5e1;

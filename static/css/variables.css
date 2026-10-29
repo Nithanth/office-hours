@@ -49,8 +49,11 @@
   --container-shadow-dark: rgba(0, 0, 0, 0.55);
 }
 
-/* Apply dark tokens when .oh-dark is on <html> */
-html.oh-dark {
+/* Apply dark tokens when .oh-dark is on <html> — and under the standalone
+   blog page's [data-theme="dark"] mechanism, so shared components (modals,
+   form controls) resolve the same dark palette in both contexts. */
+html.oh-dark,
+html[data-theme="dark"] {
   --bg: var(--bg-dark);
   --fg: var(--fg-dark);
   --container-bg: var(--container-bg-dark);
