@@ -609,3 +609,211 @@ class TestOpenAlexHelpers:
         html = _render_author_list([], "Test", unavailable=True)
         assert "temporarily unavailable" in html
         assert "No authors found" not in html
+
+
+# ---------------------------------------------------------------------------
+# Namesake disambiguation tests
+# ---------------------------------------------------------------------------
+
+
+class TestNamesakeDisambiguation:
+    """S2 conflates namesakes into one entity; matching must require
+    every query token, not just any single one."""
+
+    def test_token_match_score_requires_all_tokens(self):
+        from services.paper.metadata.author_search import _token_match_score
+
+        a = AuthorResult(author_id="1", name="Vincent Sitzmann")
+        assert _token_match_score(a, {"vincent", "sitzmann"}) == 2
+        assert _token_match_score(a, {"vincent"}) == 1
+        assert _token_match_score(a, {"vincent", "zitzmann"}) == 1
+
+    def test_rank_prefers_full_name_match(self):
+        from services.paper.metadata.author_search import rank_author_matches
+
+        wrong = AuthorResult(
+            author_id="1", name="Cathel Zitzmann", citation_count=99999
+        )
+        right = AuthorResult(author_id="2", name="Vincent Sitzmann", citation_count=10)
+        ranked = rank_author_matches([wrong, right], "Vincent Sitzmann")
+        assert ranked[0].name == "Vincent Sitzmann"
+
+    def test_aliases_count_toward_match(self):
+        from services.paper.metadata.author_search import all_tokens_match
+
+        a = AuthorResult(author_id="1", name="V Sitzmann", aliases=["Vincent Sitzmann"])
+        assert all_tokens_match(a, "Vincent Sitzmann") is True
+
+    def test_paper_byline_filter_drops_namesakes(self):
+        from services.paper.metadata.author_search import _paper_authors_match
+
+        target = "Vincent Sitzmann"
+        assert _paper_authors_match(["Vincent Sitzmann", "Thomas Leimkuhler"], target)
+        assert _paper_authors_match(["V. Sitzmann", "Julien Martel"], target)
+        assert not _paper_authors_match(
+            ["Cathel Zitzmann", "Marion Jerome Sitzmann"], target
+        )
+        assert not _paper_authors_match(["F Sitzmann", "Vincent Herrmann"], target)
+        assert not _paper_authors_match(["Franz Sitzmann"], target)
+        # No byline data -> keep the paper rather than empty the list.
+        assert _paper_authors_match([], target)
+
+    def test_profile_filters_conflated_papers(self):
+        """A conflated entity keeps only papers whose bylines match."""
+        from services.paper.metadata.author_search import get_author_profile
+
+        details = {
+            "authorId": "1",
+            "name": "Vincent Sitzmann",
+            "aliases": [],
+            "paperCount": 5,
+            "citationCount": 100,
+            "hIndex": 3,
+        }
+        papers = {
+            "data": [
+                {
+                    "paperId": "p1",
+                    "title": "Scene Representation Networks",
+                    "authors": [
+                        {"name": "Vincent Sitzmann"},
+                        {"name": "Julien Martel"},
+                    ],
+                    "externalIds": {},
+                },
+                {
+                    "paperId": "p2",
+                    "title": "Unrelated namesake paper",
+                    "authors": [{"name": "Franz Sitzmann"}],
+                    "externalIds": {},
+                },
+            ]
+        }
+
+        with patch("services.paper.metadata.author_search._s2_get") as mock_get:
+            mock_get.side_effect = [details, papers]
+            profile = get_author_profile("1")
+        assert profile is not None
+        assert [p.title for p in profile.papers] == ["Scene Representation Networks"]
+
+    def test_fully_conflated_profile_shows_no_papers(self):
+        """When every byline mismatches, the profile must not keep them."""
+        from services.paper.metadata.author_search import get_author_profile
+
+        details = {
+            "authorId": "1",
+            "name": "Vincent Sitzmann",
+            "aliases": [],
+            "paperCount": 5,
+            "citationCount": 100,
+            "hIndex": 3,
+        }
+        papers = {
+            "data": [
+                {
+                    "paperId": "p1",
+                    "title": "Franz's paper",
+                    "authors": [{"name": "Franz Sitzmann"}],
+                    "externalIds": {},
+                },
+                {
+                    "paperId": "p2",
+                    "title": "Marion's paper",
+                    "authors": [{"name": "Marion Jerome Sitzmann"}],
+                    "externalIds": {},
+                },
+            ]
+        }
+        with patch("services.paper.metadata.author_search._s2_get") as mock_get:
+            mock_get.side_effect = [details, papers]
+            profile = get_author_profile("1")
+        assert profile is not None
+        assert profile.papers == []
+
+
+class TestFeedAuthorName:
+    def test_returns_name_not_tuple(self):
+        from services.topics.feed import _author_name
+
+        assert _author_name("papers by Yann LeCun") == "Yann LeCun"
+        assert _author_name("Vincent Sitzmann") == "Vincent Sitzmann"
+        assert _author_name("attention is all you need") == (
+            "attention is all you need"
+        )
+
+
+class TestTopicKindDisambiguation:
+    def test_bare_name_is_subject_without_confirmation(self):
+        from services.topics.keys import detect_topic_kind
+
+        assert detect_topic_kind("Neural Scaling Laws") == "subject"
+        assert detect_topic_kind("Vincent Sitzmann") == "subject"
+        assert detect_topic_kind("papers by Yann LeCun") == "author"
+        assert detect_topic_kind("attention is all you need") == "subject"
+
+    @patch("services.paper.metadata.author_search.search_authors")
+    def test_confirmed_bare_name_is_author(self, mock_search):
+        from services.topics.keys import detect_topic_kind
+
+        mock_search.return_value = [AuthorResult(author_id="1", name="Yann LeCun")]
+        assert detect_topic_kind("Yann LeCun", confirm_bare_name=True) == "author"
+
+    @patch("services.paper.metadata.author_search.search_authors")
+    def test_unconfirmed_bare_name_stays_subject(self, mock_search):
+        from services.topics.keys import detect_topic_kind
+
+        # No candidate covers every token -> topic, not a person.
+        mock_search.return_value = [AuthorResult(author_id="1", name="Neural Tangents")]
+        assert (
+            detect_topic_kind("Neural Scaling Laws", confirm_bare_name=True)
+            == "subject"
+        )
+
+    @patch("services.paper.metadata.author_search.search_authors")
+    def test_author_service_down_stays_subject(self, mock_search):
+        from services.topics.keys import detect_topic_kind
+
+        mock_search.side_effect = Exception("S2 down")
+        assert detect_topic_kind("Yann LeCun", confirm_bare_name=True) == "subject"
+
+    def test_alias_byline_keeps_paper(self):
+        from services.paper.metadata.author_search import _paper_authors_match
+
+        assert _paper_authors_match(
+            ["Alex Smith"], "Alexander Smith", aliases=["Alex Smith"]
+        )
+
+    def test_consistent_aliases_filter(self):
+        from services.paper.metadata.author_search import _consistent_aliases
+
+        aliases = ["V. Sitzmann", "V Sitzmann", "Franz Sitzmann", "Cathel Zitzmann"]
+        kept = _consistent_aliases("Vincent Sitzmann", aliases)
+        assert "Franz Sitzmann" not in kept
+        assert "Cathel Zitzmann" not in kept
+        assert "V. Sitzmann" in kept
+
+    def test_namesake_alias_cannot_vouch_for_byline(self):
+        """An alias belonging to a merged-in person must not pass the filter."""
+        from services.paper.metadata.author_search import (
+            _consistent_aliases,
+            _paper_authors_match,
+        )
+
+        trusted = _consistent_aliases(
+            "Vincent Sitzmann", ["Franz Sitzmann", "V. Sitzmann"]
+        )
+        assert not _paper_authors_match(
+            ["Franz Sitzmann"], "Vincent Sitzmann", aliases=trusted
+        )
+
+    def test_subject_forced_overrides_author(self):
+        """'Search as a topic' keeps even a real name a subject."""
+        from services.topics.keys import detect_topic_kind
+
+        assert (
+            detect_topic_kind("Yann LeCun", confirm_bare_name=True, subject_forced=True)
+            == "subject"
+        )
+        assert (
+            detect_topic_kind("papers by Yann LeCun", subject_forced=True) == "subject"
+        )

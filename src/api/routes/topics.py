@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import secrets
@@ -543,7 +544,7 @@ async def add_facet(
     q = query.strip()[:300]
     if not q:
         raise HTTPException(status_code=400, detail="Empty query")
-    kind = detect_topic_kind(q)
+    kind = await asyncio.to_thread(detect_topic_kind, q, confirm_bare_name=True)
     ckey = canonical_key_for(q, kind=kind)
 
     async for session in session_scope():
@@ -765,7 +766,7 @@ async def api_create_topic(request: Request, query: str = Form(...)) -> JSONResp
         raise HTTPException(status_code=503, detail="Database unavailable")
     from services.persistence.repositories import get_or_create_topic
 
-    kind = detect_topic_kind(query)
+    kind = await asyncio.to_thread(detect_topic_kind, query, confirm_bare_name=True)
     ckey = canonical_key_for(query, kind=kind)
     if not ckey:
         raise HTTPException(status_code=400, detail="Empty query")

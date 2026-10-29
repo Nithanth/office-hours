@@ -4,11 +4,23 @@ from api.routes.search import _detect_author_query, _intent_banner
 
 
 def test_detects_author_phrases():
-    assert _detect_author_query("papers by Yann LeCun") == "Yann LeCun"
-    assert _detect_author_query("Papers by Vaswani?") == "Vaswani"
-    assert _detect_author_query("works from Geoffrey Hinton") == "Geoffrey Hinton"
-    assert _detect_author_query("publications of Fei-Fei Li") == "Fei-Fei Li"
-    assert _detect_author_query("research by Jiaya Jia") == "Jiaya Jia"
+    assert _detect_author_query("papers by Yann LeCun") == ("Yann LeCun", True)
+    assert _detect_author_query("Papers by Vaswani?") == ("Vaswani", True)
+    assert _detect_author_query("works from Geoffrey Hinton") == (
+        "Geoffrey Hinton",
+        True,
+    )
+    assert _detect_author_query("publications of Fei-Fei Li") == ("Fei-Fei Li", True)
+    assert _detect_author_query("research by Jiaya Jia") == ("Jiaya Jia", True)
+
+
+def test_detects_bare_names():
+    assert _detect_author_query("Vincent Sitzmann") == ("Vincent Sitzmann", False)
+    assert _detect_author_query("Yann LeCun") == ("Yann LeCun", False)
+    assert _detect_author_query("Laurens van der Maaten") == (
+        "Laurens van der Maaten",
+        False,
+    )
 
 
 def test_no_author_intent():

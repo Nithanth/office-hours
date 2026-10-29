@@ -42,11 +42,29 @@ _AUTHOR_INTENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Bare person-name heuristic: 2-4 capitalized tokens (allowing lowercase
+# particles like "van"/"de"/"der" mid-name). A typo'd name still matches —
+# author search handles fuzziness far better than the topic pipeline, which
+# would split the name and match any first OR last name.
+_NAME_TOKEN = r"[A-Z][a-zA-Z''\u2019.\-]*\.?"
+_NAME_PARTICLE = r"(?:van|von|de|der|den|del|di|da|le|la|bin|ibn|al|el)"
+_BARE_NAME_RE = re.compile(
+    rf"^{_NAME_TOKEN}(?:\s+(?:{_NAME_TOKEN}|{_NAME_PARTICLE})){{1,3}}$",
+    re.UNICODE,
+)
 
-def _detect_author_query(query: str) -> str | None:
-    """Return the author name when the query is an explicit author search."""
+
+def _detect_author_query(query: str) -> tuple[str, bool] | None:
+    """Return (name, explicit) for author searches — explicit means the query
+    used "papers by X" phrasing; bare names are guesses that must be
+    confirmed by an actual name match before routing."""
     m = _AUTHOR_INTENT_RE.match(query.strip())
-    return m.group(1).strip().rstrip("?") if m else None
+    if m:
+        return m.group(1).strip().rstrip("?"), True
+    q = query.strip()
+    if _BARE_NAME_RE.match(q):
+        return q, False
+    return None
 
 
 def _intent_banner(detected: str, original_query: str) -> str:
@@ -190,11 +208,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Semantic Scholar author search; a banner offers a one-click topic retry.
     # ------------------------------------------------------------------
     if mode == "auto":
-        author_name = _detect_author_query(input_query_stripped)
-        if author_name:
+        detected = _detect_author_query(input_query_stripped)
+        if detected:
+            author_name, explicit = detected
             from api.routes.author import _render_author_list
             from services.paper.metadata.author_search import (
                 S2UnavailableError,
+                all_tokens_match,
                 search_authors,
             )
 
@@ -210,19 +230,26 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             except Exception as exc:  # noqa: BLE001 - fall back to topic search
                 logger.warning("author_intent_failed", error=str(exc))
                 authors = []
-            banner = _intent_banner(
-                f"Author search for &ldquo;{html.escape(author_name)}&rdquo;",
-                input_query_stripped,
-            )
-            return HTMLResponse(
-                content=banner
-                + _render_author_list(authors, author_name, unavailable=unavailable),
-                headers={
-                    "HX-Retarget": "#search-results-container",
-                    "HX-Reswap": "innerHTML",
-                    "HX-Push-Url": "/",
-                },
-            )
+            # Bare-name guesses ("Vincent Sitzmann") only stick when a real
+            # person matches every token — otherwise the query is a
+            # coincidentally-capitalized topic ("Neural Scaling Laws") and
+            # falls through to the normal pipeline.
+            if explicit or any(all_tokens_match(a, author_name) for a in authors):
+                banner = _intent_banner(
+                    f"Author search for &ldquo;{html.escape(author_name)}&rdquo;",
+                    input_query_stripped,
+                )
+                return HTMLResponse(
+                    content=banner
+                    + _render_author_list(
+                        authors, author_name, unavailable=unavailable
+                    ),
+                    headers={
+                        "HX-Retarget": "#search-results-container",
+                        "HX-Reswap": "innerHTML",
+                        "HX-Push-Url": "/",
+                    },
+                )
 
     # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)
@@ -358,6 +385,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             papers_list=exa_results,
             is_url_search=is_url_search,
             original_query=input_query_stripped,
+            forced_topic=mode == "topic",
         )
         if is_url_search:
             results_component = _intent_banner(

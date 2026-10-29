@@ -822,11 +822,25 @@ async def get_or_create_topic(
     title: str,
     seed_query: str = "",
 ) -> tuple[Topic, bool]:
-    """Return the topic for (owner, kind, canonical_key), creating it if absent."""
+    """Return the topic for (owner, kind, canonical_key), creating it if absent.
+
+    Falls back to a canonical-key-only match so a transient misclassification
+    (author service down, forced topic mode) can't split one named topic into
+    separate subject/author identities — kind is metadata, the name is the
+    identity.
+    """
     topic = await session.scalar(
         select(Topic).where(
             Topic.owner_id == owner_id,
             Topic.kind == kind,
+            Topic.canonical_key == canonical_key,
+        )
+    )
+    if topic is not None:
+        return topic, False
+    topic = await session.scalar(
+        select(Topic).where(
+            Topic.owner_id == owner_id,
             Topic.canonical_key == canonical_key,
         )
     )

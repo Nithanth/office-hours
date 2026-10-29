@@ -53,6 +53,7 @@ class AuthorPaper(BaseModel):
     url: str | None = None
     abstract: str | None = None
     external_ids: dict[str, Any] = Field(default_factory=dict)
+    authors: list[str] = Field(default_factory=list)
 
 
 class AuthorProfile(BaseModel):
@@ -159,6 +160,110 @@ def _s2_get(
 
 
 # ---------------------------------------------------------------------------
+# Name matching — S2/OpenAlex author entities are fuzzy and sometimes
+# conflated (one profile merging several people who share a surname or
+# given name). Score candidates and papers against the query tokens so
+# near-misses rank below real matches and merged-in papers drop out.
+# ---------------------------------------------------------------------------
+
+
+def _name_tokens(name: str) -> list[str]:
+    return [
+        t
+        for t in (tok.strip(".',\u2019-").lower() for tok in re.split(r"\s+", name))
+        if t
+    ]
+
+
+def _token_match_score(author: AuthorResult, tokens: list[str]) -> int:
+    haystack = " ".join([author.name, *author.aliases]).lower()
+    return sum(1 for t in tokens if t in haystack)
+
+
+def rank_author_matches(authors: list[AuthorResult], query: str) -> list[AuthorResult]:
+    """Sort candidates by query-token coverage, then citation count."""
+    tokens = _name_tokens(query)
+    if not tokens:
+        return authors
+    return sorted(
+        authors,
+        key=lambda a: (_token_match_score(a, tokens), a.citation_count),
+        reverse=True,
+    )
+
+
+def all_tokens_match(author: AuthorResult, query: str) -> bool:
+    """True when every query token appears in the author's name or aliases."""
+    tokens = _name_tokens(query)
+    haystack = " ".join([author.name, *author.aliases]).lower()
+    return bool(tokens) and all(t in haystack for t in tokens)
+
+
+def _consistent_aliases(name: str, aliases: list[str]) -> list[str]:
+    """Aliases that are variants of ``name`` — same surname plus a compatible
+    given name or initial ('Alex Smith' for 'Alexander Smith', 'V. Sitzmann'
+    for 'Vincent Sitzmann'). A conflated entity's aliases can belong to a
+    merged-in namesake ('Franz Sitzmann'), so only consistent ones may
+    vouch for a byline."""
+    keep: list[str] = []
+    for alias in aliases:
+        if _names_match(name, alias) or _names_match(alias, name):
+            keep.append(alias)
+    return keep
+
+
+def _names_match(name: str, candidate: str) -> bool:
+    """True when ``candidate`` could be ``name`` — same surname and a
+    first-name/initial match, or identical tokens."""
+    a, b = _name_tokens(name), _name_tokens(candidate)
+    if len(a) < 2 or len(b) < 2:
+        return a == b
+    if a[-1] != b[-1]:
+        return False
+    fa, fb = a[0], b[0]
+    return (
+        fa == fb
+        or (len(fa) == 1 and fb.startswith(fa))
+        or (len(fb) == 1 and fa.startswith(fb))
+    )
+
+
+def _paper_authors_match(
+    paper_authors: list[str], target_name: str, aliases: list[str] | None = None
+) -> bool:
+    """Keep a paper when one listed author plausibly is the target person.
+
+    Requires the surname plus a first-name or first-initial match on the
+    same author entry — drops papers merged in from namesakes (e.g. a
+    conflated 'Vincent Sitzmann' entity's 'Marion Sitzmann' papers) while
+    keeping initialised bylines like 'V. Sitzmann'. The profile's aliases
+    count as the same person ('Alex Smith' for 'Alexander Smith').
+    """
+    if not paper_authors:
+        return True  # can't disambiguate — keep
+    candidates = [target_name, *(aliases or [])]
+    if all(len(_name_tokens(c)) < 2 for c in candidates):
+        return True  # can't disambiguate — keep
+    for candidate in candidates:
+        tokens = _name_tokens(candidate)
+        if len(tokens) < 2:
+            continue
+        surname, first = tokens[-1], tokens[0]
+        for name in paper_authors:
+            ntoks = _name_tokens(name)
+            if not ntoks or surname not in ntoks:
+                continue
+            given = ntoks[0]
+            if (
+                given == first
+                or (len(given) == 1 and first.startswith(given))
+                or (len(first) == 1 and given.startswith(first))
+            ):
+                return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -214,7 +319,7 @@ def search_authors(
                 query=query,
                 returned=len(oa_results),
             )
-            return oa_results
+            return rank_author_matches(oa_results, query)
         except Exception:
             raise S2UnavailableError(str(exc)) from exc
 
@@ -232,6 +337,7 @@ def search_authors(
             )
         )
 
+    results = rank_author_matches(results, query)
     logger.info(
         "s2_author_search",
         query=query,
@@ -266,7 +372,7 @@ def get_author_papers(
     if _OA_ID_RE.match(author_id):
         return _oa_author_papers(author_id, limit=limit, timeout=timeout)
 
-    fields = "title,year,citationCount,venue,url,abstract,externalIds"
+    fields = "title,year,citationCount,venue,url,abstract,externalIds,authors.name"
     try:
         data = _s2_get(
             f"/author/{urllib.parse.quote(author_id)}/papers",
@@ -290,6 +396,11 @@ def get_author_papers(
                 url=item.get("url"),
                 abstract=item.get("abstract"),
                 external_ids=item.get("externalIds") or {},
+                authors=[
+                    str(a.get("name", ""))
+                    for a in item.get("authors") or []
+                    if a.get("name")
+                ],
             )
         )
 
@@ -344,6 +455,21 @@ def get_author_profile(
         # Degrade to an empty paper list rather than failing the whole profile.
         papers = []
 
+    # Drop papers merged in from conflated namesakes. Bylines that are absent
+    # or name-variant already pass the filter, so an empty result here means
+    # every paper had a usable byline and none matched — a fully conflated
+    # entity. Show nothing rather than credit other people's work.
+    if papers:
+        papers = [
+            p
+            for p in papers
+            if _paper_authors_match(
+                p.authors,
+                author.name,
+                _consistent_aliases(author.name, author.aliases),
+            )
+        ]
+
     return AuthorProfile(author=author, papers=papers)
 
 
@@ -381,6 +507,11 @@ def _oa_author_papers(
                 url=ids.get("openalex") or ids.get("doi"),
                 abstract=_oa_abstract(item.get("abstract_inverted_index")),
                 external_ids=ext,
+                authors=[
+                    str((au.get("author") or {}).get("display_name") or "")
+                    for au in item.get("authorships") or []
+                    if (au.get("author") or {}).get("display_name")
+                ],
             )
         )
     logger.info("openalex_author_papers", author_id=author_id, returned=len(papers))

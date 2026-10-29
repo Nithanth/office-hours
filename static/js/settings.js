@@ -226,6 +226,19 @@
         form.appendChild(cloned);
       }
 
+      // Same carry-forward for the "Search as a topic" override
+      const topicFlagInput = document.getElementById('forced_topic_source_hidden');
+      if (topicFlagInput) {
+        form.querySelectorAll('input[name="forced_topic"]').forEach(el => el.remove());
+
+        const clonedTopic = document.createElement('input');
+        clonedTopic.type = 'hidden';
+        clonedTopic.name = 'forced_topic';
+        clonedTopic.value = topicFlagInput.value;
+        clonedTopic.dataset.ohCopied = '1';
+        form.appendChild(clonedTopic);
+      }
+
       // ------------------------------------------------------------------
       // Client-side validation – block submit & toast missing parts.
       // ------------------------------------------------------------------
