@@ -264,7 +264,22 @@ async def append_chat_message(
             topic_id=topic_id,
         )
         session.add(thread)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError:
+            # A concurrent first turn won the scope insert — append to it
+            # rather than dropping this message.
+            await session.rollback()
+            thread = await session.scalar(
+                select(ChatThread).where(
+                    ChatThread.user_id == user_id,
+                    ChatThread.report_id == report_id,
+                    ChatThread.paper_id == paper_id,
+                    ChatThread.topic_id == topic_id,
+                )
+            )
+            if thread is None:
+                raise
     else:
         thread.updated_at = datetime.utcnow()
     message = ChatMessage(thread_id=thread.id, role=role, content=content)
@@ -696,13 +711,15 @@ async def set_paper_status(
         row = meta.first()
     if row is None:
         return None
+    raw_authors = row.authors or {}
+    author_names = raw_authors.get("list") or raw_authors.get("items") or []
     return await save_paper(
         session,
         owner_id=owner_id,
         paper_id=paper_id,
         title=row.title,
         url=row.url,
-        authors=row.authors or {},
+        authors={"list": author_names},
         status=status,
     )
 

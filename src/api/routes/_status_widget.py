@@ -16,8 +16,12 @@ STATUS_LABELS = {
 }
 
 
-def status_options(current: str, paper_id: str) -> str:
+def status_options(current: str | None, paper_id: str) -> str:
     opts = []
+    if current is None:
+        # Unsaved paper: a disabled placeholder forces a real change event on
+        # the first pick, so "To read" can claim the paper too.
+        opts.append('<option value="" selected disabled>Set status</option>')
     for value, label in STATUS_LABELS.items():
         sel = " selected" if value == current else ""
         opts.append(f'<option value="{value}"{sel}>{label}</option>')

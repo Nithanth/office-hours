@@ -373,9 +373,7 @@ def _paper_rows_html(
                 if p.url
                 else ""
             )
-            status_sel = status_options(
-                (statuses or {}).get(p.paper_id, "to_read"), p.paper_id
-            )
+            status_sel = status_options((statuses or {}).get(p.paper_id), p.paper_id)
             actions = (
                 f'<div style="display:flex;gap:6px;align-items:center;">{status_sel}{viewer_btn}'
                 f'<button type="button" class="copy-icon-btn" title="Remove from topic"'
