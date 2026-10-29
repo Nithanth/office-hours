@@ -695,3 +695,59 @@ class TestNamesakeDisambiguation:
             profile = get_author_profile("1")
         assert profile is not None
         assert [p.title for p in profile.papers] == ["Scene Representation Networks"]
+
+    def test_fully_conflated_profile_shows_no_papers(self):
+        """When every byline mismatches, the profile must not keep them."""
+        from services.paper.metadata.author_search import get_author_profile
+
+        details = {
+            "authorId": "1",
+            "name": "Vincent Sitzmann",
+            "aliases": [],
+            "paperCount": 5,
+            "citationCount": 100,
+            "hIndex": 3,
+        }
+        papers = {
+            "data": [
+                {
+                    "paperId": "p1",
+                    "title": "Franz's paper",
+                    "authors": [{"name": "Franz Sitzmann"}],
+                    "externalIds": {},
+                },
+                {
+                    "paperId": "p2",
+                    "title": "Marion's paper",
+                    "authors": [{"name": "Marion Jerome Sitzmann"}],
+                    "externalIds": {},
+                },
+            ]
+        }
+        with patch("services.paper.metadata.author_search._s2_get") as mock_get:
+            mock_get.side_effect = [details, papers]
+            profile = get_author_profile("1")
+        assert profile is not None
+        assert profile.papers == []
+
+
+class TestFeedAuthorName:
+    def test_returns_name_not_tuple(self):
+        from services.topics.feed import _author_name
+
+        assert _author_name("papers by Yann LeCun") == "Yann LeCun"
+        assert _author_name("Vincent Sitzmann") == "Vincent Sitzmann"
+        assert _author_name("attention is all you need") == (
+            "attention is all you need"
+        )
+
+
+class TestTopicKindDisambiguation:
+    def test_bare_name_is_subject_not_author(self):
+        """Unconfirmed bare names must not spawn author feeds."""
+        from services.topics.keys import detect_topic_kind
+
+        assert detect_topic_kind("Neural Scaling Laws") == "subject"
+        assert detect_topic_kind("Vincent Sitzmann") == "subject"
+        assert detect_topic_kind("papers by Yann LeCun") == "author"
+        assert detect_topic_kind("attention is all you need") == "subject"

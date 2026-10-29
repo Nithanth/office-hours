@@ -74,7 +74,7 @@ def _author_name(seed_query: str, title: str = "") -> str:
     from api.routes.search import _detect_author_query
 
     detected = _detect_author_query(seed_query or "")
-    return str(detected) if detected else (seed_query or title)
+    return detected[0] if detected else (seed_query or title)
 
 
 def _author_paper_to_paper(ap: Any) -> Paper | None:

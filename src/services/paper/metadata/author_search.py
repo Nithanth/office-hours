@@ -417,11 +417,12 @@ def get_author_profile(
         # Degrade to an empty paper list rather than failing the whole profile.
         papers = []
 
-    # Drop papers merged in from conflated namesakes — keep the unfiltered
-    # list if the filter would empty it (e.g. bylines stored under a variant).
-    filtered = [p for p in papers if _paper_authors_match(p.authors, author.name)]
-    if filtered or not papers:
-        papers = filtered
+    # Drop papers merged in from conflated namesakes. Bylines that are absent
+    # or name-variant already pass the filter, so an empty result here means
+    # every paper had a usable byline and none matched — a fully conflated
+    # entity. Show nothing rather than credit other people's work.
+    if papers:
+        papers = [p for p in papers if _paper_authors_match(p.authors, author.name)]
 
     return AuthorProfile(author=author, papers=papers)
 

@@ -57,7 +57,12 @@ def detect_topic_kind(query: str, *, is_url_input: bool = False) -> str:
         return "paper"
     from api.routes.search import _detect_author_query
 
-    if _detect_author_query(query):
+    # Only explicit "papers by X" phrasing auto-classifies as an author topic.
+    # Bare-name guesses ("Vincent Sitzmann") only reach here when the search
+    # already fell through to the topic pipeline — i.e. no author matched —
+    # so labeling them author would point the feed at a nonexistent person.
+    detected = _detect_author_query(query)
+    if detected and detected[1]:
         return "author"
     return "subject"
 
