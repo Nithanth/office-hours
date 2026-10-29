@@ -213,6 +213,7 @@ from api.routes import library as _library_routes
 from api.routes import metadata as _metadata_routes
 from api.routes import pages as _pages_routes
 from api.routes import report as _report_routes
+from api.routes import reproduce as _reproduce_routes
 from api.routes import search as _search_routes
 from api.routes import settings_routes as _settings_routes
 from api.routes import similar as _similar_routes
@@ -238,6 +239,7 @@ for _r in (
     _metadata_routes.router,
     _settings_routes.router,
     _topics_routes.router,
+    _reproduce_routes.router,
 ):
     app.include_router(_r)
 
