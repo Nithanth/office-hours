@@ -1,8 +1,8 @@
 """Paper clustering API endpoint.
 
-Computes 2D t-SNE coordinates and cluster assignments for the current
-session's search results, suitable for rendering as an interactive
-scatter plot.
+Computes 2D UMAP coordinates and HDBSCAN cluster assignments for the
+current session's search results, suitable for rendering as an
+interactive scatter plot.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ async def cluster_papers_endpoint(
 ) -> JSONResponse:
     """Compute paper clusters for the current session's search results.
 
-    Returns 2D coordinates (t-SNE) and cluster assignments for each paper,
+    Returns 2D coordinates (UMAP) and cluster assignments for each paper,
     plus auto-generated cluster labels.
 
     ``scope=library`` clusters the caller's saved papers instead of the
@@ -81,7 +81,7 @@ async def cluster_papers_endpoint(
         # Batch-fetch highlights for richer embeddings (best-effort)
         paper_dicts = await _prepare_paper_dicts(client, display_papers)
 
-    # Run clustering in thread pool (CPU-bound: embedding + t-SNE + k-means)
+    # Run clustering in thread pool (CPU-bound: embedding + UMAP + HDBSCAN)
     try:
         from services.paper.clustering import cluster_papers
 
