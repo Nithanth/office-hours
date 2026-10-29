@@ -383,8 +383,14 @@ def _paper_rows_html(
                 else ""
             )
             status_sel = status_options((statuses or {}).get(p.paper_id), p.paper_id)
+            repro_btn = (
+                f'<button type="button" class="copy-icon-btn" title="Can this be reproduced?"'
+                f' hx-get="/repro-modal?topic_id={_esc(topic.id)}&paper_id={pid_q}"'
+                f' hx-target="#modal-container" hx-swap="innerHTML">'
+                f'<i class="fa-solid fa-flask"></i></button>'
+            )
             actions = (
-                f'<div style="display:flex;gap:6px;align-items:center;">{status_sel}{viewer_btn}'
+                f'<div style="display:flex;gap:6px;align-items:center;">{status_sel}{repro_btn}{viewer_btn}'
                 f'<button type="button" class="copy-icon-btn" title="Remove from topic"'
                 f' hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe="")}/remove"'
                 f' hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>'
