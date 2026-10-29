@@ -32,14 +32,14 @@
    driven by the app's localStorage 'theme' key (set by settings.js) so the blog
    page matches whatever theme the user chose in the main app. */
 :root[data-theme="dark"] {
-  --blog-bg: #0f172a;
-  --blog-surface: #1e293b;
-  --blog-text: #e2e8f0;
-  --blog-text-secondary: #94a3b8;
+  --blog-bg: #161618;
+  --blog-surface: #1f1f23;
+  --blog-text: #e5e5e1;
+  --blog-text-secondary: #9e9ea4;
   --blog-accent: #818cf8;
-  --blog-accent-soft: #1e1b4b;
-  --blog-border: #334155;
-  --blog-code-bg: #0f172a;
+  --blog-accent-soft: #26262e;
+  --blog-border: #39393f;
+  --blog-code-bg: #141416;
   --blog-reading-bar: #818cf8;
 }
 
