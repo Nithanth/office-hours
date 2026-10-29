@@ -14,8 +14,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 # Copy dependency manifests first (layer caching)
 COPY pyproject.toml uv.lock ./
 
-# Install production dependencies into a prefix dir (keeps final image slim)
-RUN uv pip install --system --no-cache --prefix=/install -r pyproject.toml
+# Install production dependencies into a prefix dir (keeps final image slim).
+# --torch-backend=cpu resolves CPU-only torch wheels — without it the default
+# CUDA build pulls ~5GB of nvidia-* wheels and the image export exceeds
+# Railway's build deadline.
+RUN uv pip install --system --no-cache --prefix=/install \
+      --torch-backend=cpu -r pyproject.toml \
+    && rm -rf /install/lib/python3.11/site-packages/nvidia* \
+              /install/lib/python3.11/site-packages/triton* \
+              /install/lib/python3.11/site-packages/torch/include \
+              /install/lib/python3.11/site-packages/torch/test \
+    && find /install -type d -name "__pycache__" -prune -exec rm -rf {} + \
+    && find /install -type d -name "tests" -prune -exec rm -rf {} + \
+    && find /install -name "*.pyc" -delete
 
 # Copy application source
 COPY . .
