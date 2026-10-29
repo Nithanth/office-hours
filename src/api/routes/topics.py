@@ -324,11 +324,24 @@ async def topics_page(request: Request) -> HTMLResponse:
     )
 
 
+def _status_script() -> str:
+    from api.routes._status_widget import STATUS_CHANGE_SCRIPT
+
+    return str(STATUS_CHANGE_SCRIPT)
+
+
 def _paper_rows_html(
-    topic: Topic, papers: list[TopicPaper], *, readonly: bool = False
+    topic: Topic,
+    papers: list[TopicPaper],
+    *,
+    readonly: bool = False,
+    statuses: dict[str, str] | None = None,
 ) -> str:
     """One rendered row per topic paper (shared by the page, feed refresh,
-    and the public share page — readonly drops the remove/viewer buttons)."""
+    and the public share page — readonly drops the remove/viewer buttons).
+
+    ``statuses`` maps paper_id → saved reading status; marking one claims
+    the paper into the library (the endpoint upserts)."""
     paper_rows = []
     for p in papers:
         title_link = (
@@ -349,6 +362,8 @@ def _paper_rows_html(
         meta = f"<div class='pm'>{' · '.join(meta_bits)}</div>" if meta_bits else ""
         actions = ""
         if not readonly:
+            from api.routes._status_widget import status_options
+
             pid_q = quote(p.paper_id, safe="")
             viewer_btn = (
                 f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
@@ -358,8 +373,11 @@ def _paper_rows_html(
                 if p.url
                 else ""
             )
+            status_sel = status_options(
+                (statuses or {}).get(p.paper_id, "to_read"), p.paper_id
+            )
             actions = (
-                f"<div>{viewer_btn}"
+                f'<div style="display:flex;gap:6px;align-items:center;">{status_sel}{viewer_btn}'
                 f'<button type="button" class="copy-icon-btn" title="Remove from topic"'
                 f' hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe="")}/remove"'
                 f' hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>'
@@ -605,11 +623,15 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
         papers = await list_topic_papers(session, topic_id=topic.id)
         reports = await list_topic_reports(session, topic_id=topic.id, limit=5)
         from services.persistence.repositories import (
+            list_saved_statuses,
             list_topic_facets,
             list_topics,
         )
 
         facets = await list_topic_facets(session, topic_id=topic.id)
+        statuses = await list_saved_statuses(
+            session, owner_id=owner, paper_ids=[p.paper_id for p in papers]
+        )
         siblings = [
             t
             for t in await list_topics(session, owner_id=owner)
@@ -619,7 +641,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     facets_html = _facets_section(topic, facets)
     related_html = _related_topics_section(topic, siblings)
 
-    papers_html = _paper_rows_html(topic, papers)
+    papers_html = _paper_rows_html(topic, papers, statuses=statuses)
 
     blog_html = _md_section(
         "topic-blog",
@@ -681,7 +703,8 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
 {blog_html}
 {notes_html}
 {facets_html}
-{related_html}"""
+{related_html}
+{_status_script()}"""
     return HTMLResponse(_shell(topic.title, body))
 
 
@@ -835,6 +858,11 @@ async def topic_feed_now(topic_id: str, request: Request) -> HTMLResponse:
             )
         added = await topic_feed.feed_topic(session, topic)
         papers = await list_topic_papers(session, topic_id=topic.id)
+        from services.persistence.repositories import list_saved_statuses
+
+        statuses = await list_saved_statuses(
+            session, owner_id=owner, paper_ids=[p.paper_id for p in papers]
+        )
 
     status = (
         f"<b>{added}</b> new paper{'s' if added != 1 else ''} added."
@@ -843,7 +871,7 @@ async def topic_feed_now(topic_id: str, request: Request) -> HTMLResponse:
     )
     oob = (
         f'<div id="topic-papers" hx-swap-oob="true">'
-        f"{_paper_rows_html(topic, papers)}</div>"
+        f"{_paper_rows_html(topic, papers, statuses=statuses)}</div>"
         f'<span id="papers-count" hx-swap-oob="true">{len(papers)}</span>'
     )
     return HTMLResponse(status + oob)

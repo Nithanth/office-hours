@@ -9,10 +9,13 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    column,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -203,8 +206,22 @@ class ReportPaper(Base):
 
 
 class ChatThread(Base):
+    """One conversation. Identity = (user_id, report_id, paper_id, topic_id)
+    with NULLs treated as equal — the coalesce index enforces it because a
+    plain unique constraint treats NULL scope fields as distinct and would
+    let topic threads (report_id NULL) silently duplicate."""
+
     __tablename__ = "chat_threads"
-    __table_args__ = (UniqueConstraint("user_id", "report_id", "paper_id"),)
+    __table_args__ = (
+        Index(
+            "uq_chat_threads_scope",
+            "user_id",
+            func.coalesce(column("report_id"), ""),
+            "paper_id",
+            func.coalesce(column("topic_id"), ""),
+            unique=True,
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     # Owner key (see Report.user_id): auth user_id or "sess:{session_id}".

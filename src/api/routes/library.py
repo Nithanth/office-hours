@@ -13,6 +13,8 @@ from loguru import logger
 from sqlalchemy import select
 
 from api.deps import get_exa_client
+from api.routes._status_widget import STATUS_LABELS as _STATUS_LABELS
+from api.routes._status_widget import status_options as _status_options
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
@@ -32,23 +34,17 @@ from services.persistence.repositories import (
     notion_access_token,
     save_paper,
     set_notion_databases,
+    set_paper_status,
     set_report_notion_page,
     set_saved_paper_notion_chat_count,
     set_saved_paper_notion_page,
     set_saved_paper_notion_status,
-    set_saved_paper_status,
     set_topic_notion,
     unsave_paper,
 )
 from utils.static_assets import static_url
 
 router = APIRouter(tags=["library"])
-
-_STATUS_LABELS = {
-    "to_read": "To read",
-    "reading": "Reading",
-    "done": "Done",
-}
 
 
 def _owner_id(request: Request) -> str | None:
@@ -231,7 +227,7 @@ async def library_status(request: Request) -> JSONResponse:
     paper_id = str(form.get("paper_id") or "").strip()
     status = str(form.get("status") or "").strip()
     async for session in session_scope():
-        saved = await set_saved_paper_status(
+        saved = await set_paper_status(
             session, owner_id=owner_id, paper_id=paper_id, status=status
         )
     if saved is None:
@@ -1004,18 +1000,6 @@ def _library_shell(content_html: str) -> str:
   </script>""",
             wrap_class="page-wrap",
         )
-    )
-
-
-def _status_options(current: str, paper_id: str) -> str:
-    opts = []
-    for value, label in _STATUS_LABELS.items():
-        sel = " selected" if value == current else ""
-        opts.append(f'<option value="{value}"{sel}>{label}</option>')
-    return (
-        f'<select class="lib-status-select" data-paper-id="{html.escape(paper_id, quote=True)}">'
-        + "".join(opts)
-        + "</select>"
     )
 
 
