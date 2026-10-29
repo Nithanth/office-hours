@@ -11,6 +11,7 @@ import html
 import logging
 import re
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 from fastapi import APIRouter, HTTPException, Request
@@ -148,7 +149,7 @@ async def repro_modal(
         onclick="htmx.find('#modal-container').innerHTML = ''">&times;</button>
     </div>
     <div class="modal-body chat-log-container" id="repro-body"
-         hx-get="/api/topics/{_esc(topic_id)}/papers/{_esc(paper_id)}/reproduce"
+         hx-get="/api/topics/{_esc(topic_id)}/reproduce?paper_id={quote(paper_id, safe='')}"
          hx-trigger="load" hx-swap="innerHTML" style="padding:1rem;">
       <div class="topic-meta">Checking the paper, its code links, and its data…</div>
     </div>
@@ -157,10 +158,10 @@ async def repro_modal(
     return HTMLResponse(body)
 
 
-@router.get(
-    "/api/topics/{topic_id}/papers/{paper_id}/reproduce", response_class=HTMLResponse
-)
-async def repro_report(topic_id: str, paper_id: str, request: Request) -> HTMLResponse:
+@router.get("/api/topics/{topic_id}/reproduce", response_class=HTMLResponse)
+async def repro_report(
+    topic_id: str, request: Request, paper_id: str = ""
+) -> HTMLResponse:
     """The assessment itself — cached on the topic paper's metadata_json."""
     from services.core.model_prefs import prefs_owner_id
     from services.persistence.models import Topic, TopicPaper
@@ -168,6 +169,8 @@ async def repro_report(topic_id: str, paper_id: str, request: Request) -> HTMLRe
     owner = prefs_owner_id(request)
     if not owner:
         raise HTTPException(status_code=401, detail="Sign in to run this check.")
+    if not paper_id:
+        raise HTTPException(status_code=400, detail="paper_id required")
     if not database_available():
         raise HTTPException(status_code=503, detail="Database unavailable")
 
