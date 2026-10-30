@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import html
 import json as _json
+import re
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -217,9 +218,13 @@ async def author_profile_view(
 
 def _paper_matches_keyword(sp: AuthorPaper, keyword: str) -> bool:
     """All keyword tokens must appear in the paper's title/abstract/venue —
-    triangulation should only surface works that name every term."""
+    triangulation should only surface works that name every term. Word-
+    boundary matching so "ai" doesn't hit "training"."""
     hay = " ".join([sp.title or "", sp.abstract or "", sp.venue or ""]).lower()
-    return all(tok in hay for tok in keyword.lower().split())
+    return all(
+        re.search(rf"\b{re.escape(tok)}\b", hay) is not None
+        for tok in keyword.lower().split()
+    )
 
 
 def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) -> str:
@@ -255,10 +260,6 @@ def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) 
         f" hx-indicator='#profile-loading'>"
         f"Generate Research Profile</button>"
         f"</div>"
-        f"<input type='search' placeholder='Filter these papers…' aria-label='Filter papers'"
-        f" style='width:100%;margin-top:12px;padding:8px 10px;font-size:0.85rem;"
-        f"border:1px solid var(--oh-border,#444);border-radius:6px;background:var(--oh-input-bg,transparent);color:var(--fg,inherit);'"
-        f' oninput=\'const q=this.value.toLowerCase().trim();document.querySelectorAll("#papers-list > li").forEach(el=>{{el.style.display=!q||el.dataset.title.toLowerCase().includes(q)||el.dataset.authors.toLowerCase().includes(q)?"":"none";}});\'>'
         f"<div id='profile-loading' class='htmx-indicator' style='text-align:center;padding:8px;'>"
         f"<span class='spinner'></span> Generating research profile…</div>"
         f"<div id='author-profile-container' style='margin-top:12px;'></div>"
@@ -298,11 +299,13 @@ def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) 
             f"{empty_msg}</div>"
         )
 
-    # Render using standard search results component
+    # The keyword prefills the standard results filter so the triangulation
+    # stays visible (and editable) on the profile surface.
     results_component = render_search_results(
         papers_list=papers,
         is_url_search=False,
         original_query=f"Author: {a.name}",
+        filter_value=keyword or "",
     )
     return header_html + str(results_component)
 

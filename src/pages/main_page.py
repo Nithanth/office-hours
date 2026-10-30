@@ -446,6 +446,7 @@ def render_search_results(
     is_url_search: bool,
     papers_list: Optional[list[Paper]] = None,
     forced_topic: bool = False,
+    filter_value: str = "",
 ) -> Div:
     """Render search results list, shuffle/reset controls and hidden HTMX fields."""
     # Out-of-band clears so a new search hides any old report UI instantly
@@ -528,7 +529,8 @@ def render_search_results(
                     INPUT(
                         type="text",
                         id="author-filter-input",
-                        placeholder="Filter by author…",
+                        placeholder="Filter papers…",
+                        value=filter_value,
                         style="font-size:0.85rem;padding:3px 6px;width:14rem;",
                     ),
                     style="display:inline-flex;gap:6px;align-items:center;margin-left:12px;",

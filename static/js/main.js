@@ -167,14 +167,27 @@ console.debug("[oh] main.js history clean listener wired");
     }
   }
 
+  function applyPaperFilter() {
+    // Single source of truth: the filter input. Sets a data flag per item;
+    // the pager then pages only the matched subset.
+    const ul = getPapersList();
+    if (!ul) return;
+    const input = document.getElementById("author-filter-input");
+    const query = (input ? input.value : "").toLowerCase().trim();
+    ul.querySelectorAll("li").forEach((li) => {
+      if (!query) {
+        delete li.dataset.filtered;
+        return;
+      }
+      const hay = `${li.dataset.title || ""} ${li.dataset.authors || ""}`;
+      li.dataset.filtered = hay.includes(query) ? "0" : "1";
+    });
+  }
+  window.applyPaperFilter = applyPaperFilter;
+
   function handleSortDate() {
     const ul = getPapersList();
     if (!ul) return;
-    // Clear any author filter first
-    const filterInput = document.getElementById("author-filter-input");
-    if (filterInput) filterInput.value = "";
-    ul.querySelectorAll("li").forEach((li) => (li.style.display = ""));
-
     const items = Array.from(ul.querySelectorAll("li"));
     items.sort((a, b) => {
       const da = a.dataset.date || "";
@@ -190,26 +203,15 @@ console.debug("[oh] main.js history clean listener wired");
     reinitPagination();
   }
 
-  function handleAuthorFilter(ev) {
-    const query = (ev.target.value || "").toLowerCase().trim();
-    const ul = getPapersList();
-    if (!ul) return;
-    ul.querySelectorAll("li").forEach((li) => {
-      if (!query) {
-        li.style.display = "";
-        return;
-      }
-      const authors = li.dataset.authors || "";
-      li.style.display = authors.includes(query) ? "" : "none";
-    });
-  }
-
   document.addEventListener("click", (ev) => {
     if (ev.target.closest("#sort-date-btn")) handleSortDate();
   });
 
   document.addEventListener("input", (ev) => {
-    if (ev.target.id === "author-filter-input") handleAuthorFilter(ev);
+    if (ev.target.id === "author-filter-input") {
+      applyPaperFilter();
+      reinitPagination();
+    }
   });
 })();
 
