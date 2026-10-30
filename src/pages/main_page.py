@@ -22,6 +22,7 @@ from fasthtml.components import (
     Div,
     Footer,
     Head,
+    Html,
     I,
     Label,
     Link,
@@ -736,7 +737,7 @@ def render_chat_message(message: str, role: str) -> Div:
     return ChatBubble(message, role)
 
 
-def home_page(page_data: SharedPageData) -> Body:
+def home_page(page_data: SharedPageData) -> Html:
     # "Your topics" strip — quick links back into existing workspaces.
     topics_strip = None
     if page_data.recent_topics:
@@ -793,7 +794,7 @@ def home_page(page_data: SharedPageData) -> Body:
             cls="empty-state",
         )
 
-    return Body(
+    return Html(
         Head(
             Title(page_data.title),
             # Apply saved theme before first paint — prevents a light flash on
@@ -840,259 +841,268 @@ def home_page(page_data: SharedPageData) -> Body:
             Script(src=static_url("/static/js/similar-papers.js"), defer=True),
             # No inline init - handled in settings.js
         ),
-        # Comma added above to separate Head component from next Body child
-        # Pure nav bar — search/report controls live in the "Search options"
-        # collapsible inside the search form, next to the thing they configure.
-        top_bar(""),
-        Div(id="status-banner"),  # Placeholder for busy/alert banners
-        Div(
+        Body(
+            # Pure nav bar — search/report controls live in the "Search options"
+            # collapsible inside the search form, next to the thing they configure.
+            top_bar(""),
+            Div(id="status-banner"),  # Placeholder for busy/alert banners
             Div(
-                # Hero — visible only pre-search; collapses via
-                # .search-card:has(.empty-state) once results land.
                 Div(
+                    # Hero — visible only pre-search; collapses via
+                    # .search-card:has(.empty-state) once results land.
                     Div(
-                        "A workbench for ",
-                        Span("research", cls="oh-hero-em"),
-                        " questions.",
-                        cls="oh-hero-title",
-                    ),
-                    Div(
-                        "Search a topic, a paper link, or an author. Office Hours turns it "
-                        "into a topic page: the papers, streamed reports, notes, a blog, "
-                        "and a chat that knows them all.",
-                        cls="oh-hero-sub",
-                    ),
-                    cls="oh-hero-block",
-                ),
-                FORM(  # Search Form
-                    Div("QUERY ▸", cls="oh-query-label"),
-                    Div(
-                        INPUT(
-                            type="search",
-                            id="search_query",
-                            name="search_query",
-                            placeholder="a topic, 'papers by Sitzmann', or an arXiv link",
-                            value=page_data.current_query or "",
-                        ),
-                        BUTTON(
-                            I(cls="fa-solid fa-magnifying-glass"),
-                            " Search",
-                            type="submit",
-                            name="mode",
-                            value="auto",
-                            id="search-papers-btn",
-                            cls="oh-search-go",
-                            onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
-                        ),
-                        cls="oh-search-field",
-                    ),
-                    # "Try" example-query chips — first-run affordance that
-                    # collapses with the hero once results land.
-                    Div(
-                        Span("Try", cls="oh-hero-try"),
-                        *[
-                            BUTTON(
-                                q,
-                                type="button",
-                                cls="oh-hero-chip",
-                                data_q=q,
-                            )
-                            for q in [
-                                "implicit neural representations",
-                                "papers by Yann LeCun",
-                                "https://arxiv.org/abs/1706.03762",
-                            ]
-                        ],
-                        cls="oh-hero-chips",
-                    ),
-                    # Filters row — date + sources dropdown (collapsible)
-                    Details(
-                        Summary("Search options", cls="oh-options-summary"),
                         Div(
-                            Div(
-                                Span("After ", cls="filter-label"),
-                                INPUT(
-                                    type="text",
-                                    id="start_published_date",
-                                    name="start_published_date",
-                                    placeholder="YYYY-MM-DD",
-                                    autocomplete="off",
-                                    style="font-size:0.8rem;padding:2px 4px;width:9rem;",
-                                ),
-                            ),
-                            # Custom dropdown-checkbox for sources
-                            Div(
-                                Span("Sources ", cls="filter-label"),
-                                Div(
-                                    BUTTON(
-                                        "All sources ▾",
-                                        type="button",
-                                        id="sources-dropdown-btn",
-                                        style="font-size:0.8rem;padding:2px 8px;cursor:pointer;background:var(--container-bg);border:1px solid #aaa;border-radius:3px;min-width:9rem;text-align:left;",
-                                    ),
-                                    Div(
-                                        *[
-                                            Label(
-                                                INPUT(
-                                                    type="checkbox",
-                                                    name="include_domains",
-                                                    value=dom,
-                                                    id=f"src-{dom.split('.')[0]}",
-                                                    cls="source-checkbox",
-                                                ),
-                                                Span(
-                                                    f" {label}",
-                                                    style="font-size:0.8rem;",
-                                                ),
-                                                style="display:flex;align-items:center;gap:4px;padding:3px 8px;cursor:pointer;",
-                                            )
-                                            for dom, label in [
-                                                ("arxiv.org", "arXiv"),
-                                                ("biorxiv.org", "bioRxiv"),
-                                                ("medrxiv.org", "medRxiv"),
-                                                ("ieeexplore.ieee.org", "IEEE"),
-                                                ("dl.acm.org", "ACM"),
-                                                ("openreview.net", "OpenReview"),
-                                                ("aclanthology.org", "ACL"),
-                                            ]
-                                        ],
-                                        id="sources-dropdown-menu",
-                                        style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--container-bg);border:1px solid #aaa;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:4px 0;min-width:10rem;",
-                                    ),
-                                    style="position:relative;display:inline-block;",
-                                ),
-                            ),
-                            # Report controls — what the report is written for,
-                            # which effort tier, how much detail, and whether to
-                            # run the slower/broader deep search.
-                            Div(
-                                Span("Audience ", cls="filter-label"),
-                                Select(
-                                    Option(
-                                        "Any",
-                                        value="",
-                                        selected=True,
-                                    ),
-                                    Option("Technical (PhD)", value="technical"),
-                                    Option("Semi-Technical", value="semi_technical"),
-                                    Option("Non-Technical", value="non_technical"),
-                                    id="aud-select",
-                                    name="audience",
-                                    cls="oh-opt-select",
-                                ),
-                                cls="oh-tip oh-tip-below",
-                                data_tip="Who the report is written for",
-                            ),
-                            Div(
-                                Span("Model ", cls="filter-label"),
-                                Select(
-                                    Option(
-                                        "Default",
-                                        value="",
-                                        selected=True,
-                                    ),
-                                    *[
-                                        Option(cfg["display_name"], value=key)
-                                        for key, cfg in config.config.AVAILABLE_MODELS.items()
-                                    ],
-                                    id="model-select",
-                                    name="model_key",
-                                    cls="oh-opt-select",
-                                ),
-                                cls="oh-tip oh-tip-below",
-                                data_tip="Which model runs at each tier. Pinned in Settings.",
-                            ),
-                            Div(
-                                A(
-                                    "edit model defaults →",
-                                    href="/settings",
-                                    style="font-size:0.72rem;color:var(--fg-muted,#888);text-decoration:none;",
-                                ),
-                            ),
-                            Div(
-                                Span("Detail ", cls="filter-label"),
-                                Select(
-                                    Option("S (Concise)", value="S"),
-                                    Option("M (Standard)", value="M", selected=True),
-                                    Option("L (Detailed)", value="L"),
-                                    id="size-select",
-                                    name="summary_size",
-                                    cls="oh-opt-select",
-                                ),
-                                cls="oh-tip oh-tip-below",
-                                data_tip="Report depth. S is concise, L is detailed.",
-                            ),
-                            Label(
-                                Span("Deep ", cls="filter-label"),
-                                INPUT(
-                                    type="checkbox",
-                                    name="deep_search",
-                                    id="deep-search-toggle",
-                                    value="1",
-                                    style="margin:0;",
-                                ),
-                                cls="oh-tip oh-tip-below",
-                                data_tip="Slower but broader. Exa splits the query and runs more retrieval rounds.",
-                                style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;",
-                            ),
-                            cls="search-form-filters",
+                            "A workbench for ",
+                            Span("research", cls="oh-hero-em"),
+                            " questions.",
+                            cls="oh-hero-title",
                         ),
-                        cls="oh-search-options",
+                        Div(
+                            "Search a topic, a paper link, or an author. Office Hours turns it "
+                            "into a topic page: the papers, streamed reports, notes, a blog, "
+                            "and a chat that knows them all.",
+                            cls="oh-hero-sub",
+                        ),
+                        cls="oh-hero-block",
                     ),
-                    hx_post="/search",
-                    hx_target="#search-results-container",
-                    hx_swap="innerHTML",
-                    hx_push_url="false",
-                    novalidate=True,  # kill the browser's yellow-bubble validation;
-                    # the onsubmit below shows our own mono error instead
-                    **{"hx-trigger": "submit", "hx-indicator": "#loading-indicator"},
-                    onsubmit=(
-                        "var q=document.getElementById('search_query').value;"
-                        "if(!q.trim()){"
-                        "document.getElementById('search-results-container').innerHTML="
-                        "\"<div class='oh-toast'>type a question first &#x25B2;</div>\";"
-                        "event.stopImmediatePropagation();return false;"
-                        "}"
-                        "['report-display-area','report-config-area','ask-result-container'].forEach("
-                        "function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});"
+                    FORM(  # Search Form
+                        Div("QUERY ▸", cls="oh-query-label"),
+                        Div(
+                            INPUT(
+                                type="search",
+                                id="search_query",
+                                name="search_query",
+                                placeholder="a topic, 'papers by Sitzmann', or an arXiv link",
+                                value=page_data.current_query or "",
+                            ),
+                            BUTTON(
+                                I(cls="fa-solid fa-magnifying-glass"),
+                                " Search",
+                                type="submit",
+                                name="mode",
+                                value="auto",
+                                id="search-papers-btn",
+                                cls="oh-search-go",
+                                onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
+                            ),
+                            cls="oh-search-field",
+                        ),
+                        # "Try" example-query chips — first-run affordance that
+                        # collapses with the hero once results land.
+                        Div(
+                            Span("Try", cls="oh-hero-try"),
+                            *[
+                                BUTTON(
+                                    q,
+                                    type="button",
+                                    cls="oh-hero-chip",
+                                    data_q=q,
+                                )
+                                for q in [
+                                    "implicit neural representations",
+                                    "papers by Yann LeCun",
+                                    "https://arxiv.org/abs/1706.03762",
+                                ]
+                            ],
+                            cls="oh-hero-chips",
+                        ),
+                        # Filters row — date + sources dropdown (collapsible)
+                        Details(
+                            Summary("Search options", cls="oh-options-summary"),
+                            Div(
+                                Div(
+                                    Span("After ", cls="filter-label"),
+                                    INPUT(
+                                        type="text",
+                                        id="start_published_date",
+                                        name="start_published_date",
+                                        placeholder="YYYY-MM-DD",
+                                        autocomplete="off",
+                                        style="font-size:0.8rem;padding:2px 4px;width:9rem;",
+                                    ),
+                                ),
+                                # Custom dropdown-checkbox for sources
+                                Div(
+                                    Span("Sources ", cls="filter-label"),
+                                    Div(
+                                        BUTTON(
+                                            "All sources ▾",
+                                            type="button",
+                                            id="sources-dropdown-btn",
+                                            style="font-size:0.8rem;padding:2px 8px;cursor:pointer;background:var(--container-bg);border:1px solid #aaa;border-radius:3px;min-width:9rem;text-align:left;",
+                                        ),
+                                        Div(
+                                            *[
+                                                Label(
+                                                    INPUT(
+                                                        type="checkbox",
+                                                        name="include_domains",
+                                                        value=dom,
+                                                        id=f"src-{dom.split('.')[0]}",
+                                                        cls="source-checkbox",
+                                                    ),
+                                                    Span(
+                                                        f" {label}",
+                                                        style="font-size:0.8rem;",
+                                                    ),
+                                                    style="display:flex;align-items:center;gap:4px;padding:3px 8px;cursor:pointer;",
+                                                )
+                                                for dom, label in [
+                                                    ("arxiv.org", "arXiv"),
+                                                    ("biorxiv.org", "bioRxiv"),
+                                                    ("medrxiv.org", "medRxiv"),
+                                                    ("ieeexplore.ieee.org", "IEEE"),
+                                                    ("dl.acm.org", "ACM"),
+                                                    ("openreview.net", "OpenReview"),
+                                                    ("aclanthology.org", "ACL"),
+                                                ]
+                                            ],
+                                            id="sources-dropdown-menu",
+                                            style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--container-bg);border:1px solid #aaa;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);padding:4px 0;min-width:10rem;",
+                                        ),
+                                        style="position:relative;display:inline-block;",
+                                    ),
+                                ),
+                                # Report controls — what the report is written for,
+                                # which effort tier, how much detail, and whether to
+                                # run the slower/broader deep search.
+                                Div(
+                                    Span("Audience ", cls="filter-label"),
+                                    Select(
+                                        Option(
+                                            "Any",
+                                            value="",
+                                            selected=True,
+                                        ),
+                                        Option("Technical (PhD)", value="technical"),
+                                        Option(
+                                            "Semi-Technical", value="semi_technical"
+                                        ),
+                                        Option("Non-Technical", value="non_technical"),
+                                        id="aud-select",
+                                        name="audience",
+                                        cls="oh-opt-select",
+                                    ),
+                                    cls="oh-tip oh-tip-below",
+                                    data_tip="Who the report is written for",
+                                ),
+                                Div(
+                                    Span("Model ", cls="filter-label"),
+                                    Select(
+                                        Option(
+                                            "Default",
+                                            value="",
+                                            selected=True,
+                                        ),
+                                        *[
+                                            Option(cfg["display_name"], value=key)
+                                            for key, cfg in config.config.AVAILABLE_MODELS.items()
+                                        ],
+                                        id="model-select",
+                                        name="model_key",
+                                        cls="oh-opt-select",
+                                    ),
+                                    cls="oh-tip oh-tip-below",
+                                    data_tip="Which model runs at each tier. Pinned in Settings.",
+                                ),
+                                Div(
+                                    A(
+                                        "edit model defaults →",
+                                        href="/settings",
+                                        style="font-size:0.72rem;color:var(--fg-muted,#888);text-decoration:none;",
+                                    ),
+                                ),
+                                Div(
+                                    Span("Detail ", cls="filter-label"),
+                                    Select(
+                                        Option("S (Concise)", value="S"),
+                                        Option(
+                                            "M (Standard)", value="M", selected=True
+                                        ),
+                                        Option("L (Detailed)", value="L"),
+                                        id="size-select",
+                                        name="summary_size",
+                                        cls="oh-opt-select",
+                                    ),
+                                    cls="oh-tip oh-tip-below",
+                                    data_tip="Report depth. S is concise, L is detailed.",
+                                ),
+                                Label(
+                                    Span("Deep ", cls="filter-label"),
+                                    INPUT(
+                                        type="checkbox",
+                                        name="deep_search",
+                                        id="deep-search-toggle",
+                                        value="1",
+                                        style="margin:0;",
+                                    ),
+                                    cls="oh-tip oh-tip-below",
+                                    data_tip="Slower but broader. Exa splits the query and runs more retrieval rounds.",
+                                    style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;user-select:none;",
+                                ),
+                                cls="search-form-filters",
+                            ),
+                            cls="oh-search-options",
+                        ),
+                        hx_post="/search",
+                        hx_target="#search-results-container",
+                        hx_swap="innerHTML",
+                        hx_push_url="false",
+                        novalidate=True,  # kill the browser's yellow-bubble validation;
+                        # the onsubmit below shows our own mono error instead
+                        **{
+                            "hx-trigger": "submit",
+                            "hx-indicator": "#loading-indicator",
+                        },
+                        onsubmit=(
+                            "var q=document.getElementById('search_query').value;"
+                            "if(!q.trim()){"
+                            "document.getElementById('search-results-container').innerHTML="
+                            "\"<div class='oh-toast'>type a question first &#x25B2;</div>\";"
+                            "event.stopImmediatePropagation();return false;"
+                            "}"
+                            "['report-display-area','report-config-area','ask-result-container'].forEach("
+                            "function(id){var el=document.getElementById(id); if(el){el.innerHTML='';}});"
+                        ),
+                        id="paper-search-form",
+                        style="background:inherit;padding:0.5rem 0;",
                     ),
-                    id="paper-search-form",
-                    style="background:inherit;padding:0.5rem 0;",
+                    # "Your topics" quick-link strip (only when the owner has any)
+                    topics_strip,
+                    # Centered search spinner (outside search form so it spans the card)
+                    loading_indicator_component(),
+                    # Results and Report Form (wraps hidden inputs etc.)
+                    FORM(
+                        # Search results are displayed here, targeted by the search form's hx_target
+                        Div(
+                            results_display_content,
+                            id="search-results-container",
+                        ),  # Corrected: child directly passed
+                        # Report configuration form will be loaded here
+                        Div(id="report-config-area"),
+                        report_loading_indicator_component(),  # For when report is generating
+                        # Actual report will be displayed here
+                        Div(id="report-display-area"),
+                        id="results-and-report-form",
+                    ),
+                    Div(id="modal-container"),
+                    # no extra class – outer search-card handles border
                 ),
-                # "Your topics" quick-link strip (only when the owner has any)
-                topics_strip,
-                # Centered search spinner (outside search form so it spans the card)
-                loading_indicator_component(),
-                # Results and Report Form (wraps hidden inputs etc.)
-                FORM(
-                    # Search results are displayed here, targeted by the search form's hx_target
-                    Div(
-                        results_display_content,
-                        id="search-results-container",
-                    ),  # Corrected: child directly passed
-                    # Report configuration form will be loaded here
-                    Div(id="report-config-area"),
-                    report_loading_indicator_component(),  # For when report is generating
-                    # Actual report will be displayed here
-                    Div(id="report-display-area"),
-                    id="results-and-report-form",
+                cls="search-card",
+            ),
+            Footer(
+                P(
+                    f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
                 ),
-                Div(id="modal-container"),
-                # no extra class – outer search-card handles border
+                style="padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; font-size:0.75rem; color:#aaa;",
             ),
-            cls="search-card",
+            **{"hx-push-url": "false"},
         ),
-        Footer(
-            P(
-                f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
-            ),
-            style="padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; font-size:0.75rem; color:#aaa;",
-        ),
-        **{"hx-push-url": "false"},
-    )  # Close Body
+        doctype=False,
+    )  # Close Html
 
 
-def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
+def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Html:
     """Dedicated sign-in landing page for unauthenticated visitors.
 
     Shown only when ``REQUIRE_LOGIN=1`` and the request has no auth cookie.
@@ -1105,7 +1115,7 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
         next_url, safe="/?&="
     )
 
-    return Body(
+    return Html(
         Head(
             Title(page_data.title),
             # Apply saved theme before first paint (class lives on <html>)
@@ -1124,71 +1134,74 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Body:
             # the same script so the welcome page respects the user's theme.
             Script(src=static_url("/static/js/settings.js")),
         ),
-        top_bar(""),
-        Div(
+        Body(
+            top_bar(""),
             Div(
                 Div(
-                    "Office Hours",
-                    cls="welcome-brand",
+                    Div(
+                        "Office Hours",
+                        cls="welcome-brand",
+                    ),
+                    P(
+                        "An AI research assistant for paper discovery, deep-dive "
+                        "reports, and blog-style synthesis.",
+                        cls="welcome-tagline",
+                    ),
+                    A(
+                        Span("Continue with Google", cls="welcome-cta-label"),
+                        href=sign_in_href,
+                        cls="welcome-cta",
+                        rel="nofollow",
+                    ),
+                    Div(
+                        Div(
+                            Span("🔎", cls="welcome-feature-icon"),
+                            Span(
+                                "Search the literature with semantic + keyword retrieval",
+                                cls="welcome-feature-text",
+                            ),
+                            cls="welcome-feature",
+                        ),
+                        Div(
+                            Span("📄", cls="welcome-feature-icon"),
+                            Span(
+                                "Generate audience-aware reports across multiple papers",
+                                cls="welcome-feature-text",
+                            ),
+                            cls="welcome-feature",
+                        ),
+                        Div(
+                            Span("✍️", cls="welcome-feature-icon"),
+                            Span(
+                                "Turn any report into a Distill-style blog with "
+                                "diagrams and interactive charts",
+                                cls="welcome-feature-text",
+                            ),
+                            cls="welcome-feature",
+                        ),
+                        cls="welcome-features",
+                    ),
+                    P(
+                        "Private beta. Sign in with the Google account you "
+                        "shared with Nithu.",
+                        cls="welcome-fineprint",
+                    ),
+                    cls="welcome-card",
                 ),
+                cls="welcome-shell",
+            ),
+            Footer(
                 P(
-                    "An AI research assistant for paper discovery, deep-dive "
-                    "reports, and blog-style synthesis.",
-                    cls="welcome-tagline",
+                    f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
                 ),
-                A(
-                    Span("Continue with Google", cls="welcome-cta-label"),
-                    href=sign_in_href,
-                    cls="welcome-cta",
-                    rel="nofollow",
+                style=(
+                    "padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; "
+                    "font-size:0.75rem; color:#aaa;"
                 ),
-                Div(
-                    Div(
-                        Span("🔎", cls="welcome-feature-icon"),
-                        Span(
-                            "Search the literature with semantic + keyword retrieval",
-                            cls="welcome-feature-text",
-                        ),
-                        cls="welcome-feature",
-                    ),
-                    Div(
-                        Span("📄", cls="welcome-feature-icon"),
-                        Span(
-                            "Generate audience-aware reports across multiple papers",
-                            cls="welcome-feature-text",
-                        ),
-                        cls="welcome-feature",
-                    ),
-                    Div(
-                        Span("✍️", cls="welcome-feature-icon"),
-                        Span(
-                            "Turn any report into a Distill-style blog with "
-                            "diagrams and interactive charts",
-                            cls="welcome-feature-text",
-                        ),
-                        cls="welcome-feature",
-                    ),
-                    cls="welcome-features",
-                ),
-                P(
-                    "Private beta. Sign in with the Google account you "
-                    "shared with Nithu.",
-                    cls="welcome-fineprint",
-                ),
-                cls="welcome-card",
             ),
-            cls="welcome-shell",
+            **{"hx-push-url": "false"},
         ),
-        Footer(
-            P(
-                f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
-            ),
-            style=(
-                "padding:0.5rem 0; border-top:1px solid #ccc; text-align:center; "
-                "font-size:0.75rem; color:#aaa;"
-            ),
-        ),
-        **{"hx-push-url": "false"},
+        doctype=False,
     )
 
 

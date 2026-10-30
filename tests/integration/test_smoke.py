@@ -135,6 +135,23 @@ def test_home_page(client: TestClient):
     _assert_ok(client.get("/"))
 
 
+def test_full_pages_have_head_inside_html(client: TestClient):
+    """Pages must emit <html><head>…</head><body>… — a <head> nested inside
+    <body> leaves stylesheet <link>s as body children, which HTMX history
+    restores then strip (Back button renders an unstyled page)."""
+    for path in ("/", "/settings"):
+        resp = client.get(path)
+        assert resp.status_code < 500, path
+        html = resp.text
+        head_open, head_close = html.find("<head>"), html.find("</head>")
+        assert 0 < head_open < head_close, path
+        body_open = html.find("<body")
+        assert head_close < body_open, f"{path}: </head> must close before <body>"
+        assert (
+            '<link rel="stylesheet"' not in html[body_open:]
+        ), f"{path}: stylesheet links must live in <head>, not <body>"
+
+
 def test_search_endpoint(client: TestClient):
     resp = client.post(
         "/search",

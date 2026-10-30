@@ -8,6 +8,7 @@ from fasthtml.common import (
     Div,
     Form,
     Head,
+    Html,
     Input,
     Label,
     Link,
@@ -116,7 +117,7 @@ def settings_page(
     openrouter_key: str | None,
     saved: bool = False,
     error: str | None = None,
-) -> Body:
+) -> Html:
     """Render the settings page."""
     defaults = {
         tier: str(_cfg.config.AVAILABLE_MODELS[tier]["id"])
@@ -140,7 +141,7 @@ def settings_page(
             style="color:#3fb950;border:1px solid #3fb950;border-radius:4px;padding:8px 12px;margin:0 0 16px 0;",
         )
 
-    return Body(
+    return Html(
         Head(
             Title("Settings · Office Hours"),
             # Apply saved theme before first paint (class lives on <html>)
@@ -159,87 +160,93 @@ def settings_page(
             Script(src="https://unpkg.com/htmx.org@1.9.12"),
             Script(src=static_url("/static/js/settings.js")),
         ),
-        top_bar("settings"),
-        Div(
-            Div("Settings", style="font-size:1.4rem;font-weight:700;margin:0 0 4px 0;"),
-            P(
-                "Model preferences are saved to your account (or this browser session if you're not signed in).",
-                style="opacity:0.7;margin:0 0 20px 0;font-size:0.9rem;",
-            ),
-            flash if flash else "",
-            Form(
-                Div(
-                    "Model tiers",
-                    style="font-weight:600;margin:0 0 8px 0;",
-                ),
-                *(
-                    _tier_row(tier, pins.get(tier), defaults[tier])
-                    for tier in ("fast", "standard", "deep")
-                ),
-                Button(
-                    "Save model preferences",
-                    type="submit",
-                    cls="btn-secondary",
-                ),
-                method="post",
-                action="/settings/models",
-            ),
-            Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
+        Body(
+            top_bar("settings"),
             Div(
-                "OpenRouter API key",
-                style="font-weight:600;margin:0 0 8px 0;",
-            ),
-            P(key_status, style="opacity:0.8;font-size:0.85rem;margin:0 0 10px 0;"),
-            Form(
-                Input(
-                    type="password",
-                    name="openrouter_key",
-                    placeholder="sk-or-…",
-                    autocomplete="off",
-                    style="padding:6px 8px;border:1px solid var(--border,#444);border-radius:4px;background:var(--bg,#111);color:var(--fg,#eee);min-width:320px;",
+                Div(
+                    "Settings",
+                    style="font-size:1.4rem;font-weight:700;margin:0 0 4px 0;",
                 ),
-                Button(
-                    "Save key",
-                    type="submit",
-                    cls="btn-secondary",
-                    style="margin-left:8px;",
+                P(
+                    "Model preferences are saved to your account (or this browser session if you're not signed in).",
+                    style="opacity:0.7;margin:0 0 20px 0;font-size:0.9rem;",
                 ),
-                method="post",
-                action="/settings/openrouter-key",
-            ),
-            (
+                flash if flash else "",
                 Form(
+                    Div(
+                        "Model tiers",
+                        style="font-weight:600;margin:0 0 8px 0;",
+                    ),
+                    *(
+                        _tier_row(tier, pins.get(tier), defaults[tier])
+                        for tier in ("fast", "standard", "deep")
+                    ),
                     Button(
-                        "Remove saved key",
+                        "Save model preferences",
                         type="submit",
-                        style="margin-top:10px;padding:6px 12px;background:transparent;color:#d9534f;border:1px solid #d9534f;border-radius:4px;cursor:pointer;",
+                        cls="btn-secondary",
                     ),
                     method="post",
-                    action="/settings/openrouter-key/delete",
-                )
-                if openrouter_key
-                else ""
+                    action="/settings/models",
+                ),
+                Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
+                Div(
+                    "OpenRouter API key",
+                    style="font-weight:600;margin:0 0 8px 0;",
+                ),
+                P(key_status, style="opacity:0.8;font-size:0.85rem;margin:0 0 10px 0;"),
+                Form(
+                    Input(
+                        type="password",
+                        name="openrouter_key",
+                        placeholder="sk-or-…",
+                        autocomplete="off",
+                        style="padding:6px 8px;border:1px solid var(--border,#444);border-radius:4px;background:var(--bg,#111);color:var(--fg,#eee);min-width:320px;",
+                    ),
+                    Button(
+                        "Save key",
+                        type="submit",
+                        cls="btn-secondary",
+                        style="margin-left:8px;",
+                    ),
+                    method="post",
+                    action="/settings/openrouter-key",
+                ),
+                (
+                    Form(
+                        Button(
+                            "Remove saved key",
+                            type="submit",
+                            style="margin-top:10px;padding:6px 12px;background:transparent;color:#d9534f;border:1px solid #d9534f;border-radius:4px;cursor:pointer;",
+                        ),
+                        method="post",
+                        action="/settings/openrouter-key/delete",
+                    )
+                    if openrouter_key
+                    else ""
+                ),
+                Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
+                Div(
+                    "Notion integration",
+                    style="font-weight:600;margin:0 0 8px 0;",
+                ),
+                Div(
+                    Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
+                    id="settings-notion",
+                ),
+                Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
+                Div(
+                    "Account",
+                    style="font-weight:600;margin:0 0 8px 0;",
+                ),
+                Div(
+                    Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
+                    id="settings-account",
+                ),
+                style="max-width:900px;margin:2rem auto;padding:0 1rem 60px 1rem;",
             ),
-            Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
-            Div(
-                "Notion integration",
-                style="font-weight:600;margin:0 0 8px 0;",
-            ),
-            Div(
-                Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
-                id="settings-notion",
-            ),
-            Div(style="margin:28px 0;border-top:1px solid var(--border,#444);"),
-            Div(
-                "Account",
-                style="font-weight:600;margin:0 0 8px 0;",
-            ),
-            Div(
-                Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
-                id="settings-account",
-            ),
-            style="max-width:900px;margin:2rem auto;padding:0 1rem 60px 1rem;",
+            # target for the toolbar assistant's chat modal
+            Div(id="modal-container"),
         ),
-        # target for the toolbar assistant's chat modal
-        Div(id="modal-container"),
+        doctype=False,
     )
