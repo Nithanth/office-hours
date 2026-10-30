@@ -138,12 +138,28 @@ def _fetch_candidates_sync(
             start_published_date=since,
         )
     else:  # subject
+        # A subject facet seeded with the "TOPIC by NAME" cross query keeps
+        # its author constraint: fetch the subject, then keep only papers
+        # whose bylines match the resolved person. Unresolvable names poll
+        # the full query unchanged — same behavior as the search route.
+        from api.routes.search import _resolve_topic_author
+
+        fetch_query, author = _resolve_topic_author(query)
         papers = client._fetch_papers_from_exa(  # noqa: SLF001
-            query,
+            fetch_query,
             FEED_PER_TOPIC_LIMIT,
             category="publication",
             start_published_date=since,
         )
+        if author is not None:
+            from services.paper.metadata.author_search import _paper_authors_match
+
+            papers = [
+                p
+                for p in papers
+                if p.authors
+                and _paper_authors_match(p.authors, author.name, author.aliases)
+            ]
     return papers[:FEED_PER_TOPIC_LIMIT]
 
 

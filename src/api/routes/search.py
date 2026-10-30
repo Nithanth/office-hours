@@ -138,6 +138,48 @@ def _norm_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (title or "").lower())
 
 
+def _resolve_topic_author(query: str) -> tuple[str, Any | None]:
+    """Resolve the ``TOPIC by NAME`` grammar.
+
+    Returns ``(topic_query, author_pick)`` when the trailing name resolves to
+    a confirmed author entity; ``(query, None)`` otherwise. Explicit author
+    phrasing ("papers by X") is left for the author route, and a name that
+    does not resolve keeps the whole string as the topic — natural-language
+    "by" ("step by step") must not be split.
+
+    Shared with the topic feed: a topic seeded with a cross query applies
+    the same constraint when polling for new papers.
+    """
+    q = query.strip()
+    if _AUTHOR_INTENT_RE.match(q) or _AUTHOR_TOPIC_RE.match(q):
+        return query, None
+    m = _TOPIC_AUTHOR_RE.match(q)
+    if not m:
+        return query, None
+    topic_part = m.group("topic").strip()
+    name_part = m.group("name").strip().rstrip("?")
+    if not topic_part or not name_part or not 1 <= len(name_part.split()) <= 4:
+        return query, None
+    from services.paper.metadata.author_search import (
+        all_tokens_match,
+        rank_author_matches,
+        search_authors,
+    )
+
+    try:
+        cands = search_authors(name_part, limit=5, timeout=10)
+    except Exception:  # noqa: BLE001 — constraint is best-effort
+        return query, None
+    hits = [
+        a
+        for a in rank_author_matches(cands, name_part)
+        if all_tokens_match(a, name_part)
+    ]
+    if not hits:
+        return query, None
+    return topic_part, hits[0]
+
+
 def _constraint_banner(topic_query: str, author_name: str) -> str:
     """'author: X ×' chip on constrained results — × re-runs the topic
     search without the constraint."""
@@ -378,32 +420,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     topic_query = input_query_stripped
     author_pick: Any | None = None
-    if mode == "auto":
-        tm = _TOPIC_AUTHOR_RE.match(input_query_stripped)
-        if tm:
-            _tpart = tm.group("topic").strip()
-            _npart = tm.group("name").strip().rstrip("?")
-            if _tpart and _npart and 1 <= len(_npart.split()) <= 4:
-                from services.paper.metadata.author_search import (
-                    all_tokens_match,
-                    rank_author_matches,
-                    search_authors,
-                )
-
-                try:
-                    _cands = await asyncio.to_thread(
-                        search_authors, _npart, limit=5, timeout=10
-                    )
-                except Exception:  # noqa: BLE001 — constraint is best-effort
-                    _cands = []
-                _hits = [
-                    a
-                    for a in rank_author_matches(_cands, _npart)
-                    if all_tokens_match(a, _npart)
-                ]
-                if _hits:
-                    author_pick = _hits[0]
-                    topic_query = _tpart
+    if mode == "auto" and not _url_utils.is_paper_url(input_query_stripped):
+        topic_query, author_pick = await asyncio.to_thread(
+            _resolve_topic_author, input_query_stripped
+        )
 
     # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)
@@ -518,12 +538,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             exa_results = await asyncio.to_thread(
                 client.search_and_cache,
                 query=topic_query,
-                # Over-fetch when an author constraint will thin the set.
-                k=(
-                    min(num_results_display * 3, 30)
-                    if author_pick
-                    else num_results_display
-                ),
+                # k is the display count; the provider pool is always
+                # MAX_RETURNED_PAPERS deep, so the author constraint below
+                # has a large candidate set to thin without extra fetching.
+                k=num_results_display,
                 session_id=session_id,
                 **search_kwargs,
             )
@@ -574,16 +592,24 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                     p.authors, author_pick.name, author_pick.aliases
                 )
 
-            constrained = [p for p in exa_results if _authored_by_pick(p)]
+            # Constrain the WHOLE cached pool — not just the displayed k —
+            # so shuffle/reset/wildcard stay inside the constraint too.
+            constrained = client.subset_cached_search(
+                session_id=session_id, keep=_authored_by_pick
+            )
             if constrained:
                 exa_results = constrained
                 constraint_active = True
 
         # Render results ----------------------------------------------------------
+        # original_query carries the FULL typed query so a report generated
+        # from "topic by author" seeds a topic keyed to that constraint —
+        # its feed re-applies it via _resolve_topic_author instead of
+        # blending into the plain subject topic.
         results_component = render_search_results(
             papers_list=exa_results,
             is_url_search=is_url_search,
-            original_query=topic_query,
+            original_query=input_query_stripped,
             forced_topic=mode == "topic",
         )
         # Constraint chip / notice sits above any intent banner — it

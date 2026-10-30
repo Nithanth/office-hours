@@ -738,6 +738,16 @@ def _stub_external_singletons(monkeypatch: pytest.MonkeyPatch):
                 get_display_papers=lambda: self._papers,
             )
 
+        def subset_cached_search(self, session_id=None, *, keep=None):  # noqa: D401
+            # Mirror ExaClient.subset_cached_search: rebuild the pool on the
+            # matching subset; empty subset leaves the pool untouched.
+            if keep is None:
+                return []
+            papers = [p for p in self._papers if keep(p)]
+            if papers:
+                self._papers = papers
+            return papers
+
     stub_exa = _StubExaClient()
     monkeypatch.setattr(app_module, "exa_client_instance", stub_exa, raising=False)
 

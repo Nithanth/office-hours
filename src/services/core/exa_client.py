@@ -15,6 +15,7 @@ import re
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 
 # Shared thread pool for enrich_url calls (avoids creating a new pool per call)
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
@@ -522,13 +523,15 @@ class ExaClient:
                     r = res.results[0]
                     meta = {
                         "title": getattr(r, "title", None),
-                        "authors": [
-                            n.strip()
-                            for n in str(getattr(r, "author", "")).split(",")
-                            if n.strip()
-                        ]
-                        if getattr(r, "author", None)
-                        else None,
+                        "authors": (
+                            [
+                                n.strip()
+                                for n in str(getattr(r, "author", "")).split(",")
+                                if n.strip()
+                            ]
+                            if getattr(r, "author", None)
+                            else None
+                        ),
                         "published_date": getattr(r, "published_date", None),
                     }
                     complete_now = bool(meta["authors"] and meta["published_date"])
@@ -1409,6 +1412,30 @@ class ExaClient:
         """Restore the cached paper list to its original deterministic ordering."""
         cs = self._cached_searches.get(session_id)
         return cast(list[Paper], cs.reset_display()) if cs is not None else []
+
+    def subset_cached_search(
+        self,
+        session_id: str = "_default",
+        *,
+        keep: Callable[[Paper], bool] | None = None,
+    ) -> list[Paper]:
+        """Rebuild the session's CachedSearch on the subset of its pool
+        matching *keep*, preserving the display count and pool order.
+
+        Returns the new display list — empty when no cache exists or the
+        subset is empty (the existing cache is left untouched in that
+        case). Used to fold a post-hoc constraint (e.g. an author filter)
+        into the pool that shuffle/reset/wildcard draw from.
+        """
+        cs = self._cached_searches.get(session_id)
+        if cs is None or keep is None:
+            return []
+        papers = [p for p in cs.paper_by_id.values() if keep(p)]
+        new_cs = self._build_cache(papers, cs.k, "subset")
+        if new_cs is None:
+            return []
+        self._cached_searches[session_id] = new_cs
+        return cast(list[Paper], new_cs.get_display_papers())
 
     def clear_cache(self) -> None:
         """Drop all records from the on-disk PaperCache."""
