@@ -870,7 +870,7 @@ def home_page(page_data: SharedPageData) -> Body:
                             type="search",
                             id="search_query",
                             name="search_query",
-                            placeholder="e.g., 'transformer architecture overview' or paste an arXiv link",
+                            placeholder="a topic, 'papers by Sitzmann', or an arXiv link",
                             value=page_data.current_query or "",
                         ),
                         BUTTON(
@@ -1037,31 +1037,6 @@ def home_page(page_data: SharedPageData) -> Body:
                             cls="search-form-filters",
                         ),
                         cls="oh-search-options",
-                    ),
-                    # Secondary action — author search is a ghost link, not a
-                    # peer button: Search is the product's primary verb.
-                    BUTTON(
-                        I(cls="fa-solid fa-user-graduate"),
-                        " Search by Author",
-                        type="button",
-                        id="search-author-btn",
-                        cls="oh-ghost-btn",
-                        title="Search for a researcher by name (Semantic Scholar)",
-                        hx_post="/author/search",
-                        hx_include="#paper-search-form",
-                        hx_target="#search-results-container",
-                        hx_swap="innerHTML",
-                        **{"hx-indicator": "#loading-indicator"},
-                        onclick=(
-                            "var q=document.getElementById('search_query').value;"
-                            "if(!q.trim()){"
-                            "document.getElementById('search-results-container').innerHTML="
-                            "\"<div class='oh-toast'>enter an author name first &#x25B2;</div>\";"
-                            "event.stopImmediatePropagation();"
-                            "}else{"
-                            "document.getElementById('oh-loading-text').textContent='Searching authors...';"
-                            "}"
-                        ),
                     ),
                     hx_post="/search",
                     hx_target="#search-results-container",

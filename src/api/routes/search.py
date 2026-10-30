@@ -67,6 +67,22 @@ def _detect_author_query(query: str) -> tuple[str, bool] | None:
     return None
 
 
+def _author_miss_notice(author_name: str) -> str:
+    """Subtle note when a name-shaped query fell back to a topic search —
+    neutral wording, since a capitalized query may be a subject ("Neural
+    Scaling Laws"), not a person. Informs rather than blocks."""
+    esc = html.escape(author_name)
+    return (
+        "<div class='intent-banner' style='padding:8px 12px;margin-bottom:10px;"
+        "font-size:0.85rem;border:1px solid var(--container-border,#ccc);"
+        "border-radius:6px;background:var(--container-bg,#fff);'>"
+        f"<span style='opacity:0.75;'>Searched &ldquo;{esc}&rdquo; as a topic &mdash; "
+        "meant the researcher? Try "
+        f"&ldquo;papers by {esc}&rdquo;</span>"
+        "</div>"
+    )
+
+
 def _intent_banner(detected: str, original_query: str) -> str:
     """Small banner naming the detected intent + a 'search as topic' escape."""
     # hx-vals must stay valid JSON after HTML-attribute decoding: build it with
@@ -206,7 +222,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     # Author-intent detection — "papers by X" / "works from X" routes into the
     # Semantic Scholar author search; a banner offers a one-click topic retry.
+    # A name-shaped query that confirms no author falls through to the topic
+    # pipeline with a notice, rather than silently misrouting or blocking.
     # ------------------------------------------------------------------
+    author_miss_name: str | None = None
     if mode == "auto":
         detected = _detect_author_query(input_query_stripped)
         if detected:
@@ -230,10 +249,18 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             except Exception as exc:  # noqa: BLE001 - fall back to topic search
                 logger.warning("author_intent_failed", error=str(exc))
                 authors = []
+                unavailable = True
             # Bare-name guesses ("Vincent Sitzmann") only stick when a real
             # person matches every token — otherwise the query is a
             # coincidentally-capitalized topic ("Neural Scaling Laws") and
-            # falls through to the normal pipeline.
+            # falls through to the normal pipeline. A confirmed miss on a
+            # name-shaped query is surfaced as a notice atop the results.
+            if (
+                not explicit
+                and not unavailable
+                and not any(all_tokens_match(a, author_name) for a in authors)
+            ):
+                author_miss_name = author_name
             if explicit or any(all_tokens_match(a, author_name) for a in authors):
                 banner = _intent_banner(
                     f"Author search for &ldquo;{html.escape(author_name)}&rdquo;",
@@ -397,8 +424,10 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             # LLM round-trip must not slow the paper list itself.
             from urllib.parse import quote as _quote
 
+            notice = _author_miss_notice(author_miss_name) if author_miss_name else ""
             results_component = (
-                f"<div hx-get='/related_terms?q={_quote(input_query_stripped)}' "
+                notice
+                + f"<div hx-get='/related_terms?q={_quote(input_query_stripped)}' "
                 "hx-trigger='load' hx-swap='outerHTML'></div>"
             ) + str(results_component)
 
