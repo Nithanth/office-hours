@@ -10,9 +10,11 @@ Main responsibilities:
 """
 
 import asyncio
+import hashlib
 import html
 import os
 import pathlib as _pathlib
+import re
 import sys
 import time
 from collections.abc import AsyncIterator
@@ -26,6 +28,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from starlette.responses import Response
+from starlette.types import Scope
 
 import config
 from middleware.logging_setup import configure_logging
@@ -286,6 +290,106 @@ async def _unhandled_exception_handler(
 # Static file mounting
 # ---------------------------------------------------------------------------
 
+
+_IMPORT_SPEC_RE = re.compile(
+    r'((?:import|from)\s*["\']|import\s*["\'])'
+    r"(/static/|\.{1,2}/)"
+    r'([^"\']+?)'
+    r'(["\'])'
+)
+
+
+def _asset_tag(fs_path: _pathlib.Path) -> str:
+    try:
+        return hashlib.sha256(fs_path.read_bytes()).hexdigest()[:10]
+    except OSError:
+        return ""
+
+
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    if not if_none_match:
+        return False
+    for tag in if_none_match.split(","):
+        tag = tag.strip()
+        if tag == "*":
+            return True
+        if tag.removeprefix("W/") == etag:
+            return True
+    return False
+
+
+class _RevalidatingStaticFiles(StaticFiles):
+    """Freshness for every static asset, including ES-module subresources.
+
+    Two mechanisms:
+    - ``Cache-Control: no-cache`` on every response → conditional
+      revalidation (cheap 304s) for anything already at the right revision.
+    - ``.js`` bodies are served with every relative or ``/static/`` import
+      specifier rewritten to ``?v=<content-hash-of-target>``. A browser
+      whose cached module is stale under a pinned URL (``?v=2`` literals,
+      heuristic-fresh entries) gets a brand-new URL whenever content
+      changes — the ONLY reliable way to bust a stale ES module, since
+      ``no-cache`` cannot expire an entry the browser still considers
+      fresh. Versioning is transitive: the rewritten URL hits this same
+      handler, so each module's own imports are hashed too.
+    """
+
+    def _versioned_js(self, fs_path: _pathlib.Path) -> str:
+        src = fs_path.read_text(encoding="utf-8", errors="replace")
+        base_dir = fs_path.parent
+
+        def _sub(m: re.Match[str]) -> str:
+            head, root, spec, quote = m.groups()
+            spec = spec.split("?v=")[0]  # drop any pinned/stale version
+            target = (
+                _pathlib.Path(str(self.directory)) / spec
+                if root == "/static/"
+                else (base_dir / spec).resolve()
+            )
+            tag = _asset_tag(target)
+            if not tag:
+                return m.group(0)
+            return f"{head}{root}{spec}?v={tag}{quote}"
+
+        return _IMPORT_SPEC_RE.sub(_sub, src)
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        method = scope.get("method", "GET")
+        if path.endswith(".js") and method in ("GET", "HEAD"):
+            full_path, _stat_result = self.lookup_path(path)
+            if full_path and os.path.isfile(full_path):
+                body = self._versioned_js(_pathlib.Path(full_path))
+                body_bytes = body.encode("utf-8")
+                # ETag over the REWRITTEN body — it changes when either this
+                # file or any import it references changes, so a 304 is only
+                # ever sent when the whole transitive module set is fresh.
+                etag = f'"js-{hashlib.sha256(body_bytes).hexdigest()[:16]}"'
+                headers = {
+                    "Cache-Control": "no-cache",
+                    "ETag": etag,
+                    "Content-Length": str(len(body_bytes)),
+                }
+                if_none_match = ""
+                for hk, hv in scope.get("headers", []):
+                    if hk.lower() == b"if-none-match":
+                        if_none_match = hv.decode("latin-1")
+                        break
+                # Per RFC 9110: comma-separated entity tags, `*` matches any
+                # current representation; weak comparison ignores a `W/`
+                # prefix (correct for GET/HEAD).
+                if _etag_matches(if_none_match, etag):
+                    return Response(status_code=304, headers=headers)
+                return Response(
+                    b"" if method == "HEAD" else body_bytes,
+                    media_type="application/javascript",
+                    headers=headers,
+                )
+        resp = await super().get_response(path, scope)
+        if resp.status_code == 200:
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 _static_candidates = [
     _pathlib.Path(__file__).parent / "static",
     _pathlib.Path(__file__).parent.parent / "static",
@@ -294,7 +398,11 @@ _static_candidates = [
 for _static_path in _static_candidates:
     if _static_path.exists():
         logger.info("mounting static assets", path=str(_static_path))
-        app.mount("/static", StaticFiles(directory=str(_static_path)), name="static")
+        app.mount(
+            "/static",
+            _RevalidatingStaticFiles(directory=str(_static_path)),
+            name="static",
+        )
         break
 else:
     logger.warning(

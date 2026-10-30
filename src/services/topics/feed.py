@@ -137,7 +137,60 @@ def _fetch_candidates_sync(
             num_results=FEED_PER_TOPIC_LIMIT,
             start_published_date=since,
         )
-    else:  # subject
+    elif kind == "subject_author":
+        # A subject facet persisted as author-constrained (cross query where
+        # the constraint actually applied at search time). Re-resolve the
+        # person each poll, fetch a wide subject pool, then keep only
+        # matching bylines. Provider failures raise — the facet contributes
+        # nothing rather than polluting the topic with unfiltered papers,
+        # and the caller preserves the retry window.
+        from api.routes.search import _TOPIC_AUTHOR_RE
+        from services.paper.metadata.author_search import (
+            _paper_authors_match,
+            all_tokens_match,
+            rank_author_matches,
+            search_authors,
+        )
+
+        m = _TOPIC_AUTHOR_RE.match(query)
+        topic_part = m.group("topic").strip() if m else ""
+        name_part = m.group("name").strip().rstrip("?") if m else ""
+        if not topic_part or not name_part or not 1 <= len(name_part.split()) <= 4:
+            raise ConstraintLookupFailed(f"unparseable constrained query: {query}")
+        try:
+            cands = search_authors(name_part, limit=5, timeout=10)
+        except Exception as exc:
+            raise ConstraintLookupFailed(name_part) from exc
+        hits = [
+            a
+            for a in rank_author_matches(cands, name_part)
+            if all_tokens_match(a, name_part)
+        ]
+        if not hits:
+            # Lookup succeeded but the name no longer resolves — an index
+            # change or empty result could flip back later. Treating it as
+            # an incomplete poll preserves the retry window AND keeps the
+            # facet from ever polluting the topic with unfiltered papers.
+            raise ConstraintLookupFailed(f"name no longer resolves: {name_part}")
+        try:
+            papers = client._fetch_papers_from_exa(  # noqa: SLF001
+                topic_part,
+                FEED_PER_TOPIC_LIMIT * 4,  # wider pool before the byline filter
+                category="publication",
+                start_published_date=since,
+            )
+        except Exception as exc:
+            # A failed constrained fetch is an incomplete poll — stamping
+            # last_feed_check would slide the window past papers the fetch
+            # never saw.
+            raise ConstraintLookupFailed(topic_part) from exc
+        return [
+            p
+            for p in papers
+            if p.authors
+            and _paper_authors_match(p.authors, hits[0].name, hits[0].aliases)
+        ][:FEED_PER_TOPIC_LIMIT]
+    else:  # subject — literal query, never re-interpreted as a cross query
         papers = client._fetch_papers_from_exa(  # noqa: SLF001
             query,
             FEED_PER_TOPIC_LIMIT,
@@ -147,12 +200,25 @@ def _fetch_candidates_sync(
     return papers[:FEED_PER_TOPIC_LIMIT]
 
 
-async def fetch_feed_papers(topic: Topic, *, since: datetime) -> list[Paper]:
+class ConstraintLookupFailed(Exception):
+    """A constrained (subject_author) facet could not re-resolve its person
+    — provider outage or an unparseable seed. The facet contributes nothing;
+    the caller skips the last-feed-check stamp so the window is retried."""
+
+
+async def fetch_feed_papers(
+    topic: Topic, *, since: datetime
+) -> tuple[list[Paper], bool]:
     """Provider-facing fetch for a topic — every facet contributes candidates.
 
     A topic is a research question; its facets are the different vocabularies
     into it. Each facet polls by its own kind (subject/paper/author) and the
     results merge into the shared paper set.
+
+    Returns ``(papers, constraint_failed)`` — the flag is set when a
+    subject_author facet's author lookup failed, meaning the poll window
+    must NOT be marked complete (papers published during it would be
+    permanently missed on the next sweep).
     """
     from services.persistence.repositories import list_topic_facets
 
@@ -171,6 +237,7 @@ async def fetch_feed_papers(topic: Topic, *, since: datetime) -> list[Paper]:
         facets = [(topic.kind, topic.seed_query or topic.title)]
 
     papers: list[Paper] = []
+    constraint_failed = False
     for kind, query in facets:
         if not query:
             continue
@@ -184,11 +251,22 @@ async def fetch_feed_papers(topic: Topic, *, since: datetime) -> list[Paper]:
                     log_ctx=f"{topic.id}:{kind}",
                 )
             )
+        except ConstraintLookupFailed as exc:
+            # Constrained facet couldn't resolve its person — contributes
+            # nothing AND the sweep must not stamp last_feed_check, or the
+            # window slides past papers the failed poll never saw.
+            constraint_failed = True
+            logger.warning(
+                "feed_constraint_lookup_failed",
+                topic_id=topic.id,
+                kind=kind,
+                err=str(exc),
+            )
         except Exception as exc:  # noqa: BLE001 - one bad facet can't kill a sweep
             logger.warning(
                 "feed_fetch_failed", topic_id=topic.id, kind=kind, err=str(exc)
             )
-    return papers
+    return papers, constraint_failed
 
 
 async def feed_topic(
@@ -199,11 +277,12 @@ async def feed_topic(
 
     now = now or datetime.utcnow()
     since = topic.last_feed_check or (now - timedelta(days=FEED_LOOKBACK_DAYS))
-    papers = await fetch_feed_papers(topic, since=since)
+    papers, constraint_failed = await fetch_feed_papers(topic, since=since)
     added = await add_topic_papers(
         session, topic_id=topic.id, papers=papers, source="feed"
     )
-    topic.last_feed_check = now
+    if not constraint_failed:
+        topic.last_feed_check = now
     if added:
         topic.updated_at = now
         asyncio.create_task(_ingest_feed_papers(papers))

@@ -64,7 +64,7 @@ class TestFeedTopic:
         await db_session.commit()
 
         async def fake_fetch(t, *, since):
-            return [_paper("2501.0001", "New INR paper")]
+            return [_paper("2501.0001", "New INR paper")], False
 
         monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
 
@@ -90,7 +90,7 @@ class TestFeedTopic:
         await db_session.commit()
 
         async def fake_fetch(t, *, since):
-            return [_paper("2501.0001"), _paper("2501.0002")]
+            return [_paper("2501.0001"), _paper("2501.0002")], False
 
         monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
         added = await feed.feed_topic(db_session, topic)
@@ -107,7 +107,7 @@ class TestFeedTopic:
 
         async def fake_fetch(t, *, since):
             seen_since.append(since)
-            return []
+            return [], False
 
         monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
         await feed.feed_topic(db_session, topic)
@@ -124,7 +124,7 @@ class TestFeedTopic:
 
         async def fake_fetch(t, *, since):
             seen_since.append(since)
-            return []
+            return [], False
 
         monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
         await feed.feed_topic(db_session, topic, now=now)
@@ -241,6 +241,116 @@ class TestFetchPerKind:
         )  # noqa: SLF001
 
 
+class TestSubjectAuthorFacet:
+    """subject_author facets re-resolve the person each poll and keep only
+    matching bylines — the persisted form of a 'TOPIC by AUTHOR' search
+    whose constraint actually applied."""
+
+    def test_filters_pool_by_byline(self, monkeypatch):
+        from services.paper.metadata.author_search import AuthorResult
+
+        calls: dict = {}
+
+        class FakeExa:
+            def _fetch_papers_from_exa(self, query, k, **kwargs):
+                calls.update(query=query, k=k)
+                return [
+                    Paper(
+                        id="a",
+                        title="Theirs",
+                        url="https://arxiv.org/abs/a",
+                        authors=["Abhinav Shrivastava"],
+                    ),
+                    Paper(
+                        id="b",
+                        title="Not theirs",
+                        url="https://arxiv.org/abs/b",
+                        authors=["Someone Else"],
+                    ),
+                ]
+
+        monkeypatch.setattr(feed, "_exa_client", lambda: FakeExa())
+        monkeypatch.setattr(
+            "services.paper.metadata.author_search.search_authors",
+            lambda name, **kw: [
+                AuthorResult(
+                    author_id="42",
+                    name="Abhinav Shrivastava",
+                    aliases=[],
+                    url="",
+                    paper_count=1,
+                    citation_count=1,
+                    h_index=1,
+                )
+            ],
+        )
+        papers = feed._fetch_candidates_sync(  # noqa: SLF001
+            "subject_author",
+            "implicit neural representations by abhinav shrivastava",
+            since=datetime(2025, 1, 1),
+        )
+        assert calls["query"] == "implicit neural representations"
+        assert calls["k"] == feed.FEED_PER_TOPIC_LIMIT * 4
+        assert [p.id for p in papers] == ["a"]
+
+    def test_lookup_failure_raises(self, monkeypatch):
+        def _raise(name, **kw):
+            raise RuntimeError("S2 down")
+
+        monkeypatch.setattr(
+            "services.paper.metadata.author_search.search_authors", _raise
+        )
+        with pytest.raises(feed.ConstraintLookupFailed):
+            feed._fetch_candidates_sync(  # noqa: SLF001
+                "subject_author",
+                "topic by some name",
+                since=datetime(2025, 1, 1),
+            )
+
+    def test_subject_kind_never_splits_by_grammar(self, monkeypatch):
+        """A plain subject facet seeded with an 'X by Y' string polls it
+        literally — only subject_author facets re-interpret the grammar."""
+        calls: dict = {}
+
+        class FakeExa:
+            def _fetch_papers_from_exa(self, query, k, **kwargs):
+                calls["query"] = query
+                return []
+
+        monkeypatch.setattr(feed, "_exa_client", lambda: FakeExa())
+        feed._fetch_candidates_sync(  # noqa: SLF001
+            "subject",
+            "implicit neural representations by abhinav shrivastava",
+            since=datetime(2025, 1, 1),
+        )
+        assert calls["query"] == (
+            "implicit neural representations by abhinav shrivastava"
+        )
+
+
+@pytest.mark.asyncio
+class TestConstraintFailureWindow:
+    async def test_lookup_failure_skips_check_stamp(
+        self, db_session: AsyncSession, monkeypatch
+    ):
+        """A failed constraint lookup must not stamp last_feed_check — the
+        window would slide past papers the failed poll never saw."""
+        from services.persistence.repositories import list_topic_papers
+
+        topic = _topic()
+        db_session.add(topic)
+        await db_session.commit()
+
+        async def fake_fetch(t, *, since):
+            return [_paper("2501.0001")], True
+
+        monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
+        await feed.feed_topic(db_session, topic)
+        assert topic.last_feed_check is None
+        # Papers fetched before the failure still land
+        assert await list_topic_papers(db_session, topic_id=topic.id)
+
+
 class TestTombstones:
     async def test_feed_never_resurrects_removed_paper(
         self, db_session: AsyncSession, monkeypatch
@@ -262,7 +372,7 @@ class TestTombstones:
         )
 
         async def fake_fetch(t, *, since):
-            return [_paper("2501.0001")]  # provider still returns it
+            return [_paper("2501.0001")], False  # provider still returns it
 
         monkeypatch.setattr(feed, "fetch_feed_papers", fake_fetch)
         added = await feed.feed_topic(db_session, topic)

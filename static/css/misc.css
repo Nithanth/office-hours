@@ -281,20 +281,6 @@ html.oh-dark .domain-pill:has(input:checked) {
   line-height: 1.6;
 }
 
-/* Field label — the lab-notebook detail that turns the bar into an
-   instrument. Pre-search only (hide alongside the hero's collapse). */
-.oh-query-label {
-  display: none;
-  font-family: var(--oh-font-mono, monospace);
-  font-size: 0.68rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--fg-muted, #888);
-  margin: 0 0 6px 4px;
-}
-.search-card:has(.empty-state) .oh-query-label {
-  display: block;
-}
 /* Bigger instrument while it's the whole page */
 .search-card:has(.empty-state) .oh-search-field {
   padding: 4px 4px 4px 22px;

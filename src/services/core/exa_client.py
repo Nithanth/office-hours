@@ -15,6 +15,7 @@ import re
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 
 # Shared thread pool for enrich_url calls (avoids creating a new pool per call)
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
@@ -522,13 +523,15 @@ class ExaClient:
                     r = res.results[0]
                     meta = {
                         "title": getattr(r, "title", None),
-                        "authors": [
-                            n.strip()
-                            for n in str(getattr(r, "author", "")).split(",")
-                            if n.strip()
-                        ]
-                        if getattr(r, "author", None)
-                        else None,
+                        "authors": (
+                            [
+                                n.strip()
+                                for n in str(getattr(r, "author", "")).split(",")
+                                if n.strip()
+                            ]
+                            if getattr(r, "author", None)
+                            else None
+                        ),
                         "published_date": getattr(r, "published_date", None),
                     }
                     complete_now = bool(meta["authors"] and meta["published_date"])
@@ -1260,16 +1263,34 @@ class ExaClient:
         return cached
 
     def search_and_cache(
-        self, query: str, k: int = 10, *, session_id: str = "_default", **kwargs: Any
+        self,
+        query: str,
+        k: int = 10,
+        *,
+        session_id: str = "_default",
+        candidate_k: int | None = None,
+        **kwargs: Any,
     ) -> list[Paper]:
-        """Fetches papers from Exa, caches them, and returns the initial display list."""
-        pool_key = self._pool_cache_key("q", query, kwargs)
+        """Fetches papers from Exa, caches them, and returns the initial display list.
+
+        ``k`` is the display count; ``candidate_k`` (defaults to ``k``) is the
+        score-threshold retention target inside the fetch — pass a larger
+        value when a post-hoc filter will thin the pool.
+        """
+        # The score-threshold retention target is part of the pool identity:
+        # a constrained query must not inherit a pool trimmed for a smaller
+        # display count (and vice versa — a widened pool must not leak extra
+        # candidates into a later plain search of the same query).
+        effective_cand_k = candidate_k if candidate_k is not None else k
+        pool_key = self._pool_cache_key(
+            "q", query, {**kwargs, "_cand": effective_cand_k}
+        )
         hit = self._pool_cache_get(pool_key)
         if hit is not None:
             papers = hit[0]
             logger.info("search_pool_cache_hit", query=query)
         else:
-            papers = self._fetch_papers_from_exa(query, k, **kwargs)
+            papers = self._fetch_papers_from_exa(query, effective_cand_k, **kwargs)
             self._pool_cache_set(pool_key, papers, None)
 
         cached_search = self._build_cache(papers, k, query)
@@ -1409,6 +1430,30 @@ class ExaClient:
         """Restore the cached paper list to its original deterministic ordering."""
         cs = self._cached_searches.get(session_id)
         return cast(list[Paper], cs.reset_display()) if cs is not None else []
+
+    def subset_cached_search(
+        self,
+        session_id: str = "_default",
+        *,
+        keep: Callable[[Paper], bool] | None = None,
+    ) -> list[Paper]:
+        """Rebuild the session's CachedSearch on the subset of its pool
+        matching *keep*, preserving the display count and pool order.
+
+        Returns the new display list — empty when no cache exists or the
+        subset is empty (the existing cache is left untouched in that
+        case). Used to fold a post-hoc constraint (e.g. an author filter)
+        into the pool that shuffle/reset/wildcard draw from.
+        """
+        cs = self._cached_searches.get(session_id)
+        if cs is None or keep is None:
+            return []
+        papers = [p for p in cs.paper_by_id.values() if keep(p)]
+        new_cs = self._build_cache(papers, cs.k, "subset")
+        if new_cs is None:
+            return []
+        self._cached_searches[session_id] = new_cs
+        return cast(list[Paper], new_cs.get_display_papers())
 
     def clear_cache(self) -> None:
         """Drop all records from the on-disk PaperCache."""

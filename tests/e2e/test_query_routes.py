@@ -181,3 +181,92 @@ def test_author_provider_outage_degrades_to_topic(client, monkeypatch):
     # Explicit phrasing still shows the author surface with the
     # unavailable state — never a false "no such author" claim.
     assert "Vincent Sitzmann" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# "TOPIC by NAME" — the cross query: subject search constrained to a
+# resolved author's papers.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.e2e
+def test_topic_by_author_constrains_results(client, monkeypatch):
+    """'neural nets by Alice Smith' keeps only papers in her corpus/byline
+    and labels the set with a removable constraint chip."""
+    import services.paper.metadata.author_search as author_mod
+    from services.paper.metadata.author_search import AuthorPaper, AuthorProfile
+
+    monkeypatch.setattr(
+        author_mod,
+        "search_authors",
+        lambda *a, **k: [AuthorResult(author_id="a1", name="Alice Smith")],
+    )
+    profile = AuthorProfile(
+        author=AuthorResult(author_id="a1", name="Alice Smith"),
+        papers=[
+            AuthorPaper(paper_id="p1", title="Example Paper One"),
+            AuthorPaper(paper_id="p3", title="Example Paper Three"),
+        ],
+    )
+    monkeypatch.setattr(author_mod, "get_author_profile", lambda *a, **k: profile)
+    resp = client.post(
+        "/search",
+        data={"search_query": "neural nets by alice smith"},
+        headers=_HX,
+    )
+    assert resp.status_code == 200
+    # Corpus members stay; the non-author paper is filtered out.
+    assert "Example Paper One" in resp.text
+    assert "Example Paper Three" in resp.text
+    assert "Example Paper Two" not in resp.text
+    # Constraint chip names the author and offers the unfiltered retry.
+    assert "author:" in resp.text
+    assert "Alice Smith" in resp.text
+    assert "remove" in resp.text
+
+
+@pytest.mark.e2e
+def test_topic_by_unresolvable_name_is_plain_topic(client, monkeypatch):
+    """Natural-language 'by' with no real author stays a topic search on
+    the full string — 'step by step' must not route anywhere else."""
+    import services.paper.metadata.author_search as author_mod
+
+    monkeypatch.setattr(author_mod, "search_authors", lambda *a, **k: [])
+    resp = client.post(
+        "/search",
+        data={"search_query": "step by step reinforcement learning"},
+        headers=_HX,
+    )
+    assert resp.status_code == 200
+    # Full unfiltered topic results — no constraint chip, no notice.
+    assert "Example Paper One" in resp.text
+    assert "Example Paper Two" in resp.text
+    assert "author:" not in resp.text
+
+
+@pytest.mark.e2e
+def test_topic_by_author_empty_constraint_warns(client, monkeypatch):
+    """A resolved author with none of their papers in the result set
+    shows everything plus a notice — not an empty page."""
+    import services.paper.metadata.author_search as author_mod
+    from services.paper.metadata.author_search import AuthorPaper, AuthorProfile
+
+    monkeypatch.setattr(
+        author_mod,
+        "search_authors",
+        lambda *a, **k: [AuthorResult(author_id="a9", name="Zoe Fable")],
+    )
+    profile = AuthorProfile(
+        author=AuthorResult(author_id="a9", name="Zoe Fable"),
+        papers=[AuthorPaper(paper_id="px", title="Unrelated Elsewhere Paper")],
+    )
+    monkeypatch.setattr(author_mod, "get_author_profile", lambda *a, **k: profile)
+    resp = client.post(
+        "/search",
+        data={"search_query": "neural nets by zoe fable"},
+        headers=_HX,
+    )
+    assert resp.status_code == 200
+    assert "Example Paper One" in resp.text
+    assert "Example Paper Two" in resp.text
+    assert "No papers by Zoe Fable" in resp.text

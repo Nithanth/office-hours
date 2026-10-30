@@ -51,6 +51,16 @@ _AUTHOR_TOPIC_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "TOPIC by NAME" — the cross query: a subject constrained to a person's
+# papers. Distinct from "papers by X" (author-first): here the query is the
+# subject and `by X` is a removable filter on it. Only fires when the name
+# resolves to a real author, so natural-language "by" ("step by step")
+# stays a plain topic query.
+_TOPIC_AUTHOR_RE = re.compile(
+    r"^(?P<topic>.+?)\s+by\s+(?P<name>.+?)\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
 # Bare person-name heuristic: 2-4 capitalized tokens (allowing lowercase
 # particles like "van"/"de"/"der" mid-name). A typo'd name still matches —
 # author search handles fuzziness far better than the topic pipeline, which
@@ -119,6 +129,81 @@ def _intent_banner(detected: str, original_query: str) -> str:
         f"hx-vals='{esc_vals}' "
         "style='color:var(--oh-accent,#0d6e63);' "
         "onclick='event.preventDefault()'>Not what you meant? Search as a topic</a>"
+        "</div>"
+    )
+
+
+def _norm_title(title: str) -> str:
+    """Lowercase alnum-only title — robust join key across providers."""
+    return re.sub(r"[^a-z0-9]+", "", (title or "").lower())
+
+
+def _resolve_topic_author(query: str) -> tuple[str, Any | None, bool]:
+    """Resolve the ``TOPIC by NAME`` grammar.
+
+    Returns ``(topic_query, author_pick, lookup_failed)``:
+    - name resolves to a confirmed author → ``(topic_part, author, False)``
+    - grammar matched but the provider lookup raised → ``(query, None, True)``
+      so callers can distinguish an outage from a confirmed non-match AND
+      the literal text survives — "step by step X" must not degrade to
+      searching just "step" during an outage
+    - anything else (no match, unresolvable name, explicit "papers by X"
+      phrasing left for the author route) → ``(query, None, False)`` — the
+      whole string stays the topic, so natural-language "by" is untouched.
+
+    Shared with the topic feed: a topic seeded with a cross query applies
+    the same constraint when polling for new papers.
+    """
+    q = query.strip()
+    if _AUTHOR_INTENT_RE.match(q) or _AUTHOR_TOPIC_RE.match(q):
+        return query, None, False
+    m = _TOPIC_AUTHOR_RE.match(q)
+    if not m:
+        return query, None, False
+    topic_part = m.group("topic").strip()
+    name_part = m.group("name").strip().rstrip("?")
+    if not topic_part or not name_part or not 1 <= len(name_part.split()) <= 4:
+        return query, None, False
+    from services.paper.metadata.author_search import (
+        all_tokens_match,
+        rank_author_matches,
+        search_authors,
+    )
+
+    try:
+        cands = search_authors(name_part, limit=5, timeout=10)
+    except Exception:  # noqa: BLE001 — outage ≠ non-match; preserve literal topic
+        return query, None, True
+    hits = [
+        a
+        for a in rank_author_matches(cands, name_part)
+        if all_tokens_match(a, name_part)
+    ]
+    if not hits:
+        return query, None, False
+    return topic_part, hits[0], False
+
+
+def _constraint_banner(topic_query: str, author_name: str) -> str:
+    """'author: X ×' chip on constrained results — × re-runs the topic
+    search without the constraint."""
+    esc_vals = html.escape(
+        _json.dumps({"search_query": topic_query, "mode": "topic"}),
+        quote=True,
+    )
+    return (
+        "<div class='intent-banner' style='display:flex;flex-wrap:wrap;gap:8px;"
+        "align-items:center;padding:8px 12px;margin-bottom:10px;font-size:0.85rem;"
+        "border:1px solid var(--container-border,#ccc);border-radius:6px;"
+        "background:var(--container-bg,#fff);'>"
+        "<span style='opacity:0.75;'>author:</span>"
+        f"<strong>{html.escape(author_name)}</strong>"
+        "<a href='#' hx-post='/search' hx-target='#search-results-container' "
+        "hx-swap='innerHTML' hx-indicator='#loading-indicator' "
+        f"hx-vals='{esc_vals}' "
+        "style='color:var(--oh-accent,#0d6e63);' "
+        "onclick='event.preventDefault()' "
+        "title='Search the topic without the author filter'>remove &times;</a>"
         "</div>"
     )
 
@@ -332,6 +417,21 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 )
 
     # ------------------------------------------------------------------
+    # "TOPIC by NAME" — the cross query: run the subject search, then keep
+    # only papers the resolved person plausibly wrote. Fires only when the
+    # name resolves to a real author; otherwise the whole string stays the
+    # topic query, so natural-language "by" phrasing is untouched.
+    # ------------------------------------------------------------------
+    topic_query = input_query_stripped
+    author_pick: Any | None = None
+    if mode == "auto" and not _url_utils.is_paper_url(input_query_stripped):
+        topic_query, author_pick, _lookup_failed = await asyncio.to_thread(
+            _resolve_topic_author, input_query_stripped
+        )
+        # A lookup outage searches the literal query — the constraint just
+        # doesn't apply; better than failing the request.
+
+    # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)
     # ------------------------------------------------------------------
     if mode == "direct":
@@ -402,12 +502,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 error_html = (
                     "<div class='oh-toast'>Invalid date format. Use YYYY-MM-DD.</div>"
                 )
+                # No history header — the date error must not clobber the
+                # view currently under the address bar.
                 return HTMLResponse(
                     content=error_html,
                     headers={
                         "HX-Retarget": "#search-results-container",
                         "HX-Reswap": "innerHTML",
-                        "HX-Replace-Url": "/",
                     },
                 )
 
@@ -442,8 +543,14 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             search_kwargs.update(shared_kwargs)
             exa_results = await asyncio.to_thread(
                 client.search_and_cache,
-                query=input_query_stripped,
+                query=topic_query,
+                # k is the display count; the provider pool is always
+                # MAX_RETURNED_PAPERS deep. candidate_k widens the score-
+                # threshold retention target when an author constraint will
+                # thin the set — otherwise matching papers ranked below the
+                # threshold cut are discarded before the filter sees them.
                 k=num_results_display,
+                candidate_k=num_results_display * 3 if author_pick else None,
                 session_id=session_id,
                 **search_kwargs,
             )
@@ -460,13 +567,79 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                     metadata={"mode": "url" if is_url_search else "query"},
                 )
 
+        # Author constraint: keep papers the resolved person plausibly
+        # wrote — S2 corpus intersection when available, byline match
+        # (surname + given/initial) always. An empty intersection shows the
+        # full set with a notice rather than an empty page.
+        constraint_active = False
+        if author_pick is not None and not is_url_search:
+            from services.paper.metadata.author_search import (
+                _paper_authors_match,
+                get_author_profile,
+            )
+
+            corpus_titles: set[str] = set()
+            try:
+                _prof = await asyncio.to_thread(
+                    get_author_profile,
+                    author_pick.author_id,
+                    paper_limit=200,
+                    timeout=15,
+                )
+                corpus_titles = {
+                    _norm_title(p.title) for p in (_prof.papers if _prof else [])
+                }
+                corpus_titles.discard("")
+            except Exception:  # noqa: BLE001 — byline match still applies
+                pass
+
+            def _authored_by_pick(p: Paper) -> bool:
+                t = _norm_title(str(p.title) if p.title else "")
+                if t and t in corpus_titles:
+                    return True
+                return bool(p.authors) and _paper_authors_match(
+                    p.authors, author_pick.name, author_pick.aliases
+                )
+
+            # Constrain the WHOLE cached pool — not just the displayed k —
+            # so shuffle/reset/wildcard stay inside the constraint too.
+            constrained = client.subset_cached_search(
+                session_id=session_id, keep=_authored_by_pick
+            )
+            if constrained:
+                exa_results = constrained
+                constraint_active = True
+
         # Render results ----------------------------------------------------------
+        # original_query carries the FULL typed query so a report generated
+        # from "topic by author" seeds a topic keyed to that constraint —
+        # its feed re-applies it via _resolve_topic_author instead of
+        # blending into the plain subject topic.
         results_component = render_search_results(
             papers_list=exa_results,
             is_url_search=is_url_search,
             original_query=input_query_stripped,
             forced_topic=mode == "topic",
+            author_constraint=(
+                author_pick.name if constraint_active and author_pick else ""
+            ),
         )
+        # Constraint chip / notice sits above any intent banner — it
+        # describes the whole result set.
+        if constraint_active and author_pick is not None:
+            results_component = _constraint_banner(topic_query, author_pick.name) + str(
+                results_component
+            )
+        elif author_pick is not None and not is_url_search:
+            esc_name = html.escape(author_pick.name)
+            results_component = (
+                "<div class='intent-banner' style='padding:8px 12px;margin-bottom:10px;"
+                "font-size:0.85rem;border:1px solid var(--container-border,#ccc);"
+                "border-radius:6px;background:var(--container-bg,#fff);'>"
+                f"<span style='opacity:0.75;'>No papers by {esc_name} in this result "
+                "set &mdash; showing unfiltered results.</span></div>"
+            ) + str(results_component)
+
         if is_url_search:
             results_component = _intent_banner(
                 "Detected a paper link &mdash; pinned it and listed similar papers.",
@@ -479,8 +652,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
 
             notice = _author_miss_notice(author_miss_name) if author_miss_name else ""
             results_component = (
-                notice
-                + f"<div hx-get='/related_terms?q={_quote(input_query_stripped)}' "
+                notice + f"<div hx-get='/related_terms?q={_quote(topic_query)}' "
                 "hx-trigger='load' hx-swap='outerHTML'></div>"
             ) + str(results_component)
 

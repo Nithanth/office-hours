@@ -275,9 +275,19 @@
     document.body.addEventListener('htmx:responseError', evt => {
       const xhr = evt.detail.xhr;
       let msg = 'Request failed.';
-      if (xhr && xhr.responseText) {
+      if (xhr && xhr.status >= 500) {
+        // Gateway/proxy errors (e.g. Railway's JSON 502) are not user
+        // content — show a friendly retry prompt instead of the raw body.
+        msg = 'Server unreachable — retry in a moment.';
+      } else if (xhr && xhr.responseText) {
         // Strip HTML tags for toast readability
         msg = xhr.responseText.replace(/<[^>]+>/g, '').trim() || msg;
+        try {
+          // JSON error bodies — surface the message field when present.
+          const j = JSON.parse(msg);
+          if (j && typeof j.message === 'string' && j.message) msg = j.message;
+        } catch (_) { /* plain text body — keep it */ }
+        if (msg.length > 140) msg = msg.slice(0, 140) + '…';
       }
       console.debug('[oh] showToast:', msg);
       showToast(msg);
