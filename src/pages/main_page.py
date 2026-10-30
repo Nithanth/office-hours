@@ -966,9 +966,10 @@ def home_page(page_data: SharedPageData) -> Html:
                             ),
                             Div(
                                 A(
-                                    "edit model defaults →",
+                                    "Model defaults",
                                     href="/settings",
-                                    style="font-size:0.72rem;color:var(--fg-muted,#888);text-decoration:none;",
+                                    cls="btn-secondary",
+                                    style="font-size:0.75rem;padding:5px 11px;",
                                 ),
                             ),
                             Div(
