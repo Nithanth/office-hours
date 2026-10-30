@@ -68,15 +68,16 @@ def _detect_author_query(query: str) -> tuple[str, bool] | None:
 
 
 def _author_miss_notice(author_name: str) -> str:
-    """Subtle note when a name-shaped query found no matching author — the
-    topic results still render, so this informs rather than blocks."""
+    """Subtle note when a name-shaped query fell back to a topic search —
+    neutral wording, since a capitalized query may be a subject ("Neural
+    Scaling Laws"), not a person. Informs rather than blocks."""
     esc = html.escape(author_name)
     return (
         "<div class='intent-banner' style='padding:8px 12px;margin-bottom:10px;"
         "font-size:0.85rem;border:1px solid var(--container-border,#ccc);"
         "border-radius:6px;background:var(--container-bg,#fff);'>"
-        f"<span style='opacity:0.75;'>No author named &ldquo;{esc}&rdquo; found &mdash; "
-        "searched as a topic. Looking for a person? Try "
+        f"<span style='opacity:0.75;'>Searched &ldquo;{esc}&rdquo; as a topic &mdash; "
+        "meant the researcher? Try "
         f"&ldquo;papers by {esc}&rdquo;</span>"
         "</div>"
     )
