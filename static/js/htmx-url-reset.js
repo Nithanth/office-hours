@@ -21,37 +21,51 @@ document.body.addEventListener('htmx:afterSwap', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Keep the "/" history-cache entry = the pristine page.
-// htmx's pushUrlIntoHistory saves the *post-swap* body under the current path
-// before pushing — so the first fragment swap overwrites cache["/"] with a
-// body that already lost the hero/intro chrome. On restore, Back to "/" then
-// shows a bare search card. Snapshot the body at load and pin it back into the
-// "/" cache entry right after each history save.
+// Keep history-cache snapshots = the fully-settled view.
+// htmx saves the body at push-time, before the swap settles — the entry can
+// capture an emptied results container (Back then restores a bare card).
+// Record each path's settled body after every swap; whenever htmx writes a
+// history entry, overwrite it with the recorded settled version.
 // ---------------------------------------------------------------------------
 
-const pristineBodyHtml = document.body.innerHTML;
-const pristineTitle = document.title;
+const settledBodies = new Map();
+settledBodies.set('/', {
+  content: document.body.innerHTML,
+  title: document.title,
+});
+
+const writeCacheEntry = (path, content, title) => {
+  try {
+    const cache = JSON.parse(
+      localStorage.getItem('htmx-history-cache') || '[]'
+    );
+    let changed = false;
+    for (const item of cache) {
+      if (item.url === path) {
+        item.content = content;
+        item.title = title;
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem('htmx-history-cache', JSON.stringify(cache));
+    }
+  } catch (_) {
+    // best-effort — a stale entry just restores a barer page
+  }
+};
+
+document.body.addEventListener('htmx:afterSettle', () => {
+  const path = window.location.pathname + window.location.search;
+  settledBodies.set(path, {
+    content: document.body.innerHTML,
+    title: document.title,
+  });
+  writeCacheEntry(path, document.body.innerHTML, document.title);
+});
 
 document.body.addEventListener('htmx:beforeHistorySave', (evt) => {
-  if (evt.detail.path !== '/' || !pristineBodyHtml) return;
-  setTimeout(() => {
-    try {
-      const cache = JSON.parse(
-        localStorage.getItem('htmx-history-cache') || '[]'
-      );
-      let changed = false;
-      for (const item of cache) {
-        if (item.url === '/') {
-          item.content = pristineBodyHtml;
-          item.title = pristineTitle;
-          changed = true;
-        }
-      }
-      if (changed) {
-        localStorage.setItem('htmx-history-cache', JSON.stringify(cache));
-      }
-    } catch (_) {
-      // best-effort — a stale "/" entry just restores a barer page
-    }
-  }, 0);
+  const settled = settledBodies.get(evt.detail.path);
+  if (!settled) return;
+  setTimeout(() => writeCacheEntry(evt.detail.path, settled.content, settled.title), 0);
 });
