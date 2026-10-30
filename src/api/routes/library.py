@@ -18,7 +18,7 @@ from api.routes._status_widget import status_options as _status_options
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
-from services.persistence.models import SavedPaper
+from services.persistence.models import SavedPaper, Topic
 from services.persistence.repositories import (
     get_notion_integration,
     get_report,
@@ -887,7 +887,10 @@ async def _answer_notion_comments(user_id: str) -> int:
     Holds the per-owner lock like a real sync so a concurrent workspace sync
     can't interleave page writes; re-checks the token inside it.
     """
-    from services.notion.library_sync import answer_comments_for_paper
+    from services.notion.library_sync import (
+        answer_comments_for_paper,
+        answer_comments_for_topic,
+    )
     from services.notion.notion_exporter import NotionExporter
 
     integration, token = await _load_integration(user_id)
@@ -901,7 +904,17 @@ async def _answer_notion_comments(user_id: str) -> int:
             )
         )
         pages = [(r[0], r[1]) for r in rows.all()]
-    if not pages:
+        # Topic pages hold the living blog+notes — comments there deserve the
+        # same grounded answers, scoped to the topic's paper set.
+        topic_rows = await session.execute(
+            select(Topic.id, Topic.notion_page_id).where(
+                Topic.owner_id == user_id,
+                Topic.archived.is_(False),
+                Topic.notion_page_id.is_not(None),
+            )
+        )
+        topic_pages = [(r[0], r[1]) for r in topic_rows.all()]
+    if not pages and not topic_pages:
         return 0
     from services.core.model_prefs import (
         current_model_context,
@@ -941,6 +954,23 @@ async def _answer_notion_comments(user_id: str) -> int:
                         err=str(exc),
                     )
             # Notion's ~3 req/s budget — the sweep is background work.
+            await asyncio.sleep(0.4)
+        for topic_id, page_id in topic_pages:
+            async with _notion_lock(user_id):
+                try:
+                    answered += await answer_comments_for_topic(
+                        exporter,
+                        notion_page_id=str(page_id),
+                        topic_id=topic_id,
+                        user_id=user_id,
+                        bot_id=bot_id,
+                    )
+                except Exception as exc:  # one page can't stop the sweep
+                    logger.warning(
+                        "notion_comment_sweep_page_failed",
+                        topic_id=topic_id,
+                        err=str(exc),
+                    )
             await asyncio.sleep(0.4)
     finally:
         set_model_context(prev_ctx)
@@ -990,13 +1020,13 @@ def _library_shell(content_html: str) -> str:
             "Library",
             lib_subtabs_html("papers") + content_html,
             active="library",
-            scripts=f"""<script src="{static_url('/static/js/library.js')}" defer></script>
-  <script src="{static_url('/static/js/cluster-viz.js')}" defer></script>
+            scripts=f"""<script src="{static_url("/static/js/library.js")}" defer></script>
+  <script src="{static_url("/static/js/cluster-viz.js")}" defer></script>
   <script type="module">
-    import "{static_url('/static/js/chat/stream.js')}";
-    import "{static_url('/static/js/chat/ui.js')}";
-    import "{static_url('/static/js/chat/events.js')}";
-    import "{static_url('/static/js/chat/snippet.js')}";
+    import "{static_url("/static/js/chat/stream.js")}";
+    import "{static_url("/static/js/chat/ui.js")}";
+    import "{static_url("/static/js/chat/events.js")}";
+    import "{static_url("/static/js/chat/snippet.js")}";
   </script>""",
             wrap_class="page-wrap",
         )

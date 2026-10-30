@@ -16,6 +16,7 @@ The sync treats Notion as a live surface, not a dump target:
 from __future__ import annotations
 
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loguru import logger
@@ -711,15 +712,55 @@ async def _paper_tldr(paper_id: str, owner_id: str | None) -> str | None:
         return None
 
 
-async def answer_comments_for_paper(
+async def answer_question_for_topic(
+    *, topic_id: str, question: str, user_id: str
+) -> str:
+    """Answer a Notion comment on a topic page — grounded in the topic's
+    living paper set + latest report, same agent as the topic-page chat."""
+    import config as _cfg
+    from api.deps import get_llm_service
+    from services.chat.chat_runtime import _build_topic_prompt
+    from services.chat.chat_state import ChatMessage, get_chat_state
+    from services.core import model_prefs
+
+    service = get_llm_service()
+    if service is None:
+        raise NotionExportError(
+            "The assistant isn't running in this process. Answer comments from the running app."
+        )
+
+    state = get_chat_state(user_id)
+    topic_key = f"topic:{topic_id}"
+    state.append(topic_key, ChatMessage(role="user", content=question))
+    bundle = await _build_topic_prompt(
+        state,
+        topic_key,
+        audience_type="semi_technical",
+        max_history=10,
+        user_id=user_id,
+    )
+    selected_key = _cfg.config.DEFAULT_MODEL_KEY
+    model_cfg = _cfg.config.AVAILABLE_MODELS[selected_key]
+    model_id = model_prefs.resolve_model_id(selected_key)
+    answer = await service.generate_completion(
+        provider_name=model_cfg["provider"],
+        model_name=model_id,
+        prompt=bundle.prompt,
+        max_tokens=800,
+        temperature=_cfg.config.CHAT_TEMPERATURE,
+    )
+    state.append(topic_key, ChatMessage(role="assistant", content=answer))
+    return str(answer)
+
+
+async def _answer_page_comments(
     exporter: NotionExporter,
     *,
     notion_page_id: str,
-    paper_id: str,
-    user_id: str,
+    answer_fn: Callable[[str], Awaitable[str]],
     bot_id: str | None,
 ) -> int:
-    """Reply to every unanswered comment thread on a paper's Notion page.
+    """Reply to every unanswered comment thread on a synced page.
 
     Returns the number of threads answered.
     """
@@ -727,9 +768,7 @@ async def answer_comments_for_paper(
     answered = 0
     for discussion_id, question in unanswered_threads(comments, bot_id):
         try:
-            answer = await answer_question(
-                paper_id=paper_id, question=question, user_id=user_id
-            )
+            answer = await answer_fn(question)
             # [n] chunk citations dangle in Notion — there's no Sources
             # footer to resolve them, so drop the markers entirely.
             answer = re.sub(r"\s*\[\d+\]", "", answer)
@@ -746,3 +785,41 @@ async def answer_comments_for_paper(
                 error=str(exc),
             )
     return answered
+
+
+async def answer_comments_for_paper(
+    exporter: NotionExporter,
+    *,
+    notion_page_id: str,
+    paper_id: str,
+    user_id: str,
+    bot_id: str | None,
+) -> int:
+    """Reply to unanswered comment threads on a paper's Notion page."""
+    return await _answer_page_comments(
+        exporter,
+        notion_page_id=notion_page_id,
+        answer_fn=lambda q: answer_question(
+            paper_id=paper_id, question=q, user_id=user_id
+        ),
+        bot_id=bot_id,
+    )
+
+
+async def answer_comments_for_topic(
+    exporter: NotionExporter,
+    *,
+    notion_page_id: str,
+    topic_id: str,
+    user_id: str,
+    bot_id: str | None,
+) -> int:
+    """Reply to unanswered comment threads on a topic's Notion page."""
+    return await _answer_page_comments(
+        exporter,
+        notion_page_id=notion_page_id,
+        answer_fn=lambda q: answer_question_for_topic(
+            topic_id=topic_id, question=q, user_id=user_id
+        ),
+        bot_id=bot_id,
+    )

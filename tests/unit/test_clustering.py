@@ -1,5 +1,6 @@
 """Unit tests for paper clustering service."""
 
+import numpy as np
 
 from services.paper.clustering import ClusterResult, cluster_papers
 
@@ -44,7 +45,7 @@ class TestClusterPapers:
             and result.papers[0]["y"] == result.papers[1]["y"]
         )
 
-    def test_multiple_papers_with_clusters(self):
+    def test_multiple_papers_with_clusters(self, monkeypatch):
         # Create two distinct topic groups
         group_a = [
             {
@@ -67,6 +68,14 @@ class TestClusterPapers:
             for i in range(5)
         ]
         papers = group_a + group_b
+        # Real embeddings are hardware-dependent — torch matmul varies enough
+        # across CPU archs for UMAP/HDBSCAN to merge the groups (CI flake).
+        # Two orthogonal embedding blocks keep the pipeline deterministic
+        # while still exercising reduce → cluster → label end to end.
+        vecs = np.zeros((10, 8))
+        vecs[:5, 0] = 1.0
+        vecs[5:, 4] = 1.0
+        monkeypatch.setattr("services.paper.clustering.embed_texts", lambda texts: vecs)
         result = cluster_papers(papers)
 
         assert len(result.papers) == 10
