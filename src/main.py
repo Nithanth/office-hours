@@ -306,6 +306,18 @@ def _asset_tag(fs_path: _pathlib.Path) -> str:
         return ""
 
 
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    if not if_none_match:
+        return False
+    for tag in if_none_match.split(","):
+        tag = tag.strip()
+        if tag == "*":
+            return True
+        if tag.removeprefix("W/") == etag:
+            return True
+    return False
+
+
 class _RevalidatingStaticFiles(StaticFiles):
     """Freshness for every static asset, including ES-module subresources.
 
@@ -357,9 +369,16 @@ class _RevalidatingStaticFiles(StaticFiles):
                     "ETag": etag,
                     "Content-Length": str(len(body_bytes)),
                 }
+                if_none_match = ""
                 for hk, hv in scope.get("headers", []):
-                    if hk.lower() == b"if-none-match" and etag in hv.decode("latin-1"):
-                        return Response(status_code=304, headers=headers)
+                    if hk.lower() == b"if-none-match":
+                        if_none_match = hv.decode("latin-1")
+                        break
+                # Per RFC 9110: comma-separated entity tags, `*` matches any
+                # current representation; weak comparison ignores a `W/`
+                # prefix (correct for GET/HEAD).
+                if _etag_matches(if_none_match, etag):
+                    return Response(status_code=304, headers=headers)
                 return Response(
                     b"" if method == "HEAD" else body_bytes,
                     media_type="application/javascript",
