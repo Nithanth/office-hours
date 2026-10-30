@@ -909,6 +909,7 @@ async def _answer_notion_comments(user_id: str) -> int:
         topic_rows = await session.execute(
             select(Topic.id, Topic.notion_page_id).where(
                 Topic.owner_id == user_id,
+                Topic.archived.is_(False),
                 Topic.notion_page_id.is_not(None),
             )
         )
