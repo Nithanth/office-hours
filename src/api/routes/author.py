@@ -12,6 +12,7 @@ import asyncio
 import html
 import json as _json
 import re
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -162,7 +163,7 @@ async def author_search(
         headers={
             "HX-Retarget": "#search-results-container",
             "HX-Reswap": "innerHTML",
-            "HX-Push-Url": "/",
+            "HX-Push-Url": f"/authors?q={quote(query)}",
         },
     )
 
@@ -206,12 +207,14 @@ async def author_profile_view(
             },
         )
 
+    kw = keyword.strip()
     return HTMLResponse(
-        content=_author_profile_html(profile, keyword=keyword.strip() or None),
+        content=_author_profile_html(profile, keyword=kw or None),
         headers={
             "HX-Retarget": "#search-results-container",
             "HX-Reswap": "innerHTML",
-            "HX-Push-Url": "/",
+            "HX-Push-Url": f"/author/{quote(author_id)}"
+            + (f"?kw={quote(kw)}" if kw else ""),
         },
     )
 
