@@ -19,7 +19,7 @@ A research paper assistant. Search the literature, read the full text, generate 
 
 ## Setup
 
-The only required env vars are `EXA_API_KEY` and at least one LLM provider key (e.g. `OPENROUTER_API_KEY`). The full list is in `.env.example`.
+Required env vars: `EXA_API_KEY` and `OPENROUTER_API_KEY` (the default model tiers all route through OpenRouter; other provider keys are only needed if you override the models). For demo mode, comment out the placeholder `DATABASE_URL` that `.env.example` ships. The full list is in `.env.example`.
 
 ### Docker
 
@@ -33,16 +33,16 @@ The app is on http://localhost:8000.
 ### Local dev
 
 ```bash
-uv sync --extra dev    # or: python -m venv .venv && pip install .
+uv sync --extra dev    # or: python -m venv .venv && .venv/bin/pip install .
 cp .env.example .env
 ./dev.sh               # uvicorn on $PORT, default 8000
 ```
 
-Run `pre-commit install` after cloning to get the ruff/black/mypy hooks.
+Run `uv tool install pre-commit && pre-commit install` after cloning to get the ruff/black/mypy hooks (`pip install pre-commit` works too).
 
 ### Persistence and multi-user mode
 
-Without `DATABASE_URL` the app runs in single-user demo mode. To enable accounts and the saved library:
+Without `DATABASE_URL` the app runs in single-user demo mode (note `.env.example` sets a placeholder value, so clear or comment it if you want demo mode). To enable accounts and the saved library:
 
 1. Set `DATABASE_URL` (Postgres) and `OH_SECRET_ENCRYPTION_KEY`:
    `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
