@@ -6,6 +6,7 @@ import json as _json
 import re
 from datetime import datetime
 from typing import Any, cast
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -176,7 +177,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
-                "HX-Push-Url": "/",
+                "HX-Replace-Url": "/",
             },
         )
 
@@ -312,7 +313,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                             headers={
                                 "HX-Retarget": "#search-results-container",
                                 "HX-Reswap": "innerHTML",
-                                "HX-Push-Url": "/",
+                                "HX-Push-Url": f"/author/{quote(pick.author_id)}",
                             },
                         )
                 return HTMLResponse(
@@ -323,7 +324,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                     headers={
                         "HX-Retarget": "#search-results-container",
                         "HX-Reswap": "innerHTML",
-                        "HX-Push-Url": "/",
+                        "HX-Push-Url": f"/authors?q={quote(author_name)}",
                     },
                 )
 
@@ -362,7 +363,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 headers={
                     "HX-Retarget": "#search-results-container",
                     "HX-Reswap": "innerHTML",
-                    "HX-Push-Url": "/",
+                    "HX-Push-Url": f"/answer?q={quote(input_query_stripped)}",
                 },
             )
         except asyncio.CancelledError:
@@ -403,7 +404,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                     headers={
                         "HX-Retarget": "#search-results-container",
                         "HX-Reswap": "innerHTML",
-                        "HX-Push-Url": "/",
+                        "HX-Replace-Url": "/",
                     },
                 )
 
@@ -497,7 +498,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
-                "HX-Push-Url": "/",
+                "HX-Push-Url": f"/results?q={quote(input_query_stripped)}",
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -510,7 +511,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
-                "HX-Push-Url": "/",
+                "HX-Replace-Url": "/",
             },
         )
 

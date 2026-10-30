@@ -105,6 +105,21 @@ async def get_home(
     return HTMLResponse(f"<!DOCTYPE html>{str(home_page(page_data=page_data))}")
 
 
+# Pseudo-URLs pushed by HTMX fragment responses so each view gets its own
+# history entry (and cache key). A real GET — refresh, shared link — has no
+# view state to rebuild, so it renders the home page rather than 404.
+@router.get("/results", response_class=HTMLResponse)
+@router.get("/authors", response_class=HTMLResponse)
+@router.get("/answer", response_class=HTMLResponse)
+@router.get("/author/{author_id}", response_class=HTMLResponse)
+async def fragment_view_fallback(
+    request: Request,
+    settings: AppConfig = Depends(get_settings),  # noqa: B008
+) -> HTMLResponse:
+    """GET fallbacks for HTMX history pseudo-URLs — render the home page."""
+    return await get_home(request, search_query=None, settings=settings)
+
+
 @router.post("/show-report-config", response_class=HTMLResponse)
 async def show_report_config(
     request: Request,

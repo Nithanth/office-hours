@@ -135,8 +135,13 @@ document.body.addEventListener("htmx:afterSwap", (evt) => {
   const tgt = evt.target;
   if (tgt && tgt.id === "papers-list") {
     try {
-      // Replace history without reloading
-      history.replaceState(null, "", "/");
+      // Only strip the legacy ?search_query= param — fragment responses push
+      // their own pseudo-URLs (/results?q=, /authors?q=, /author/<id>) so Back
+      // restores the right view; clobbering them with "/" would collapse
+      // every history entry into one cache key.
+      if (window.location.search.includes("search_query=")) {
+        history.replaceState(null, "", "/");
+      }
     } catch (_) {
       // noop
     }
