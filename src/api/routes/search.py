@@ -143,8 +143,10 @@ def _resolve_topic_author(query: str) -> tuple[str, Any | None, bool]:
 
     Returns ``(topic_query, author_pick, lookup_failed)``:
     - name resolves to a confirmed author → ``(topic_part, author, False)``
-    - grammar matched but the provider lookup raised → ``(topic_part, None, True)``
-      so callers can distinguish an outage from a confirmed non-match
+    - grammar matched but the provider lookup raised → ``(query, None, True)``
+      so callers can distinguish an outage from a confirmed non-match AND
+      the literal text survives — "step by step X" must not degrade to
+      searching just "step" during an outage
     - anything else (no match, unresolvable name, explicit "papers by X"
       phrasing left for the author route) → ``(query, None, False)`` — the
       whole string stays the topic, so natural-language "by" is untouched.
@@ -170,8 +172,8 @@ def _resolve_topic_author(query: str) -> tuple[str, Any | None, bool]:
 
     try:
         cands = search_authors(name_part, limit=5, timeout=10)
-    except Exception:  # noqa: BLE001 — outage ≠ non-match; tell the caller
-        return topic_part, None, True
+    except Exception:  # noqa: BLE001 — outage ≠ non-match; preserve literal topic
+        return query, None, True
     hits = [
         a
         for a in rank_author_matches(cands, name_part)
@@ -426,9 +428,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         topic_query, author_pick, _lookup_failed = await asyncio.to_thread(
             _resolve_topic_author, input_query_stripped
         )
-        # A lookup outage degrades to a plain topic search of the parsed
-        # subject — better than failing the request, and the result is
-        # still topically correct.
+        # A lookup outage searches the literal query — the constraint just
+        # doesn't apply; better than failing the request.
 
     # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)

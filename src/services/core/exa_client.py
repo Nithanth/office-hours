@@ -1277,15 +1277,20 @@ class ExaClient:
         score-threshold retention target inside the fetch — pass a larger
         value when a post-hoc filter will thin the pool.
         """
-        pool_key = self._pool_cache_key("q", query, kwargs)
+        # The score-threshold retention target is part of the pool identity:
+        # a constrained query must not inherit a pool trimmed for a smaller
+        # display count (and vice versa — a widened pool must not leak extra
+        # candidates into a later plain search of the same query).
+        effective_cand_k = candidate_k if candidate_k is not None else k
+        pool_key = self._pool_cache_key(
+            "q", query, {**kwargs, "_cand": effective_cand_k}
+        )
         hit = self._pool_cache_get(pool_key)
         if hit is not None:
             papers = hit[0]
             logger.info("search_pool_cache_hit", query=query)
         else:
-            papers = self._fetch_papers_from_exa(
-                query, candidate_k if candidate_k is not None else k, **kwargs
-            )
+            papers = self._fetch_papers_from_exa(query, effective_cand_k, **kwargs)
             self._pool_cache_set(pool_key, papers, None)
 
         cached_search = self._build_cache(papers, k, query)

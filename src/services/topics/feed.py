@@ -167,18 +167,23 @@ def _fetch_candidates_sync(
             if all_tokens_match(a, name_part)
         ]
         if not hits:
-            # Lookup succeeded but the name no longer resolves — skip the
-            # facet quietly; polling unfiltered would pollute the topic.
-            logger.warning(
-                "feed_constraint_name_unresolved", ctx=log_ctx, name=name_part
+            # Lookup succeeded but the name no longer resolves — an index
+            # change or empty result could flip back later. Treating it as
+            # an incomplete poll preserves the retry window AND keeps the
+            # facet from ever polluting the topic with unfiltered papers.
+            raise ConstraintLookupFailed(f"name no longer resolves: {name_part}")
+        try:
+            papers = client._fetch_papers_from_exa(  # noqa: SLF001
+                topic_part,
+                FEED_PER_TOPIC_LIMIT * 4,  # wider pool before the byline filter
+                category="publication",
+                start_published_date=since,
             )
-            return []
-        papers = client._fetch_papers_from_exa(  # noqa: SLF001
-            topic_part,
-            FEED_PER_TOPIC_LIMIT * 4,  # wider pool before the byline filter
-            category="publication",
-            start_published_date=since,
-        )
+        except Exception as exc:
+            # A failed constrained fetch is an incomplete poll — stamping
+            # last_feed_check would slide the window past papers the fetch
+            # never saw.
+            raise ConstraintLookupFailed(topic_part) from exc
         return [
             p
             for p in papers
