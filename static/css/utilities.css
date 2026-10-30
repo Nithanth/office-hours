@@ -181,13 +181,28 @@ html, body { overflow-x: clip; }
 
 /* Optional hover tint for clarity */
 
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.pager-pos {
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--fg-muted, #888);
+}
 .pager button {
   background: none;
   border: none;
   color: var(--oh-blue, #0074d9);
   cursor: pointer;
   padding: 4px 6px;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
+}
+.pager button:hover:not(:disabled) {
+  text-decoration: underline;
 }
 .pager button.active {
   font-weight: 600;
@@ -195,6 +210,7 @@ html, body { overflow-x: clip; }
 }
 .pager button:disabled {
   color: var(--fg-muted);
+  opacity: 0.5;
   cursor: default;
 }
 
