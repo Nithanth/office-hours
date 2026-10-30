@@ -358,25 +358,6 @@ html.oh-dark .oh-search-go {
   color: #0f1720;
 }
 
-/* Ghost secondary action — quiet text button, not a peer CTA */
-.oh-ghost-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: none;
-  padding: 6px 10px;
-  font-family: var(--oh-font-sans, inherit);
-  font-size: 0.82rem;
-  color: var(--fg-muted, #888);
-  cursor: pointer;
-  border-radius: var(--oh-radius-sm, 6px);
-}
-.oh-ghost-btn:hover {
-  color: var(--oh-accent);
-  background: var(--oh-accent-soft, rgba(37, 99, 235, 0.08));
-}
-
 /* "Try" example chips — only relevant before the first search */
 .search-card:not(:has(.empty-state)) .oh-hero-chips {
   display: none;
