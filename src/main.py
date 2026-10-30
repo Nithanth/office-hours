@@ -10,9 +10,11 @@ Main responsibilities:
 """
 
 import asyncio
+import hashlib
 import html
 import os
 import pathlib as _pathlib
+import re
 import sys
 import time
 from collections.abc import AsyncIterator
@@ -289,17 +291,66 @@ async def _unhandled_exception_handler(
 # ---------------------------------------------------------------------------
 
 
-class _RevalidatingStaticFiles(StaticFiles):
-    """Always send ``Cache-Control: no-cache`` on static responses.
+_IMPORT_SPEC_RE = re.compile(
+    r'((?:import|from)\s*["\']|import\s*["\'])'
+    r"(/static/|\.{1,2}/)"
+    r'([^"\']+?)'
+    r'(["\'])'
+)
 
-    ES-module subresource imports (``import "./pagination.js"`` inside
-    main.js) and a few hardcoded ``?v=N`` script tags can't carry a content
-    hash, so heuristic caching could pin a stale module forever — any edit
-    silently went unserved. ``no-cache`` keeps ETag/Last-Modified
-    revalidation (304s stay cheap) while guaranteeing freshness.
+
+def _asset_tag(fs_path: _pathlib.Path) -> str:
+    try:
+        return hashlib.sha256(fs_path.read_bytes()).hexdigest()[:10]
+    except OSError:
+        return ""
+
+
+class _RevalidatingStaticFiles(StaticFiles):
+    """Freshness for every static asset, including ES-module subresources.
+
+    Two mechanisms:
+    - ``Cache-Control: no-cache`` on every response → conditional
+      revalidation (cheap 304s) for anything already at the right revision.
+    - ``.js`` bodies are served with every relative or ``/static/`` import
+      specifier rewritten to ``?v=<content-hash-of-target>``. A browser
+      whose cached module is stale under a pinned URL (``?v=2`` literals,
+      heuristic-fresh entries) gets a brand-new URL whenever content
+      changes — the ONLY reliable way to bust a stale ES module, since
+      ``no-cache`` cannot expire an entry the browser still considers
+      fresh. Versioning is transitive: the rewritten URL hits this same
+      handler, so each module's own imports are hashed too.
     """
 
+    def _versioned_js(self, fs_path: _pathlib.Path) -> str:
+        src = fs_path.read_text(encoding="utf-8", errors="replace")
+        base_dir = fs_path.parent
+
+        def _sub(m: re.Match[str]) -> str:
+            head, root, spec, quote = m.groups()
+            spec = spec.split("?v=")[0]  # drop any pinned/stale version
+            target = (
+                _pathlib.Path(str(self.directory)) / spec
+                if root == "/static/"
+                else (base_dir / spec).resolve()
+            )
+            tag = _asset_tag(target)
+            if not tag:
+                return m.group(0)
+            return f"{head}{root}{spec}?v={tag}{quote}"
+
+        return _IMPORT_SPEC_RE.sub(_sub, src)
+
     async def get_response(self, path: str, scope: Scope) -> Response:
+        if path.endswith(".js"):
+            full_path, _stat_result = self.lookup_path(path)
+            if full_path and os.path.isfile(full_path):
+                body = self._versioned_js(_pathlib.Path(full_path))
+                return Response(
+                    body,
+                    media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache"},
+                )
         resp = await super().get_response(path, scope)
         if resp.status_code == 200:
             resp.headers["Cache-Control"] = "no-cache"

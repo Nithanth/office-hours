@@ -160,7 +160,26 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
             f"{html.escape(topic_title)}</a>"
         )
     from pages.shell import lib_subtabs_html, page_shell
+    from utils.static_assets import static_url
 
+    # static_url → ?v=<content-hash>: a pinned ?v=N would serve the OLD body
+    # under a stale-cache entry indefinitely.
+    scripts = (
+        f'<script src="{static_url("/static/js/report.js")}" defer></script>\n'
+        f'  <script src="{static_url("/static/js/library.js")}" defer></script>\n'
+        f'  <script src="{static_url("/static/js/blog-modal.js")}" defer></script>\n'
+        f'  <script src="{static_url("/static/js/blog-view.js")}" defer></script>\n'
+        f'  <script src="{static_url("/static/js/blog-pane.js")}" defer></script>\n'
+        '  <script>document.addEventListener("DOMContentLoaded",function(){\n'
+        "      var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){\n"
+        "        r.renderKaTeX(document.getElementById('report-content'));});});</script>\n"
+        '  <script type="module">\n'
+        f'      import "{static_url("/static/js/chat/stream.js")}";\n'
+        f'      import "{static_url("/static/js/chat/ui.js")}";\n'
+        f'      import "{static_url("/static/js/chat/events.js")}";\n'
+        f'      import "{static_url("/static/js/chat/snippet.js")}";\n'
+        "    </script>"
+    )
     return HTMLResponse(
         page_shell(
             _display_title(report),
@@ -201,20 +220,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     .report-actions button:hover{background:var(--oh-accent-soft,#333);}
     .report-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.5rem;}
   </style>""",
-            scripts="""<script src="/static/js/report.js" defer></script>
-  <script src="/static/js/library.js?v=1" defer></script>
-  <script src="/static/js/blog-modal.js" defer></script>
-  <script src="/static/js/blog-view.js" defer></script>
-  <script src="/static/js/blog-pane.js" defer></script>
-  <script>document.addEventListener("DOMContentLoaded",function(){
-      var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){
-        r.renderKaTeX(document.getElementById('report-content'));});});</script>
-  <script type="module">
-      import "/static/js/chat/stream.js?v=2";
-      import "/static/js/chat/ui.js?v=2";
-      import "/static/js/chat/events.js?v=2";
-      import "/static/js/chat/snippet.js?v=1";
-    </script>""",
+            scripts=scripts,
             wrap_class="report-wrap",
         )
     )

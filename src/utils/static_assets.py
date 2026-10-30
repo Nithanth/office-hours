@@ -13,7 +13,21 @@ import hashlib
 import os
 from functools import lru_cache
 
-_STATIC_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+def _find_static_root() -> str:
+    """Assets live at the repo-root ``static/`` (a sibling of ``src/``); a
+    ``src/static`` tree is also honored if one ever exists."""
+    here = os.path.dirname(__file__)  # src/utils
+    for cand in (
+        os.path.join(here, "..", "static"),  # src/static
+        os.path.join(here, "..", "..", "static"),  # repo static/
+    ):
+        if os.path.isdir(cand):
+            return os.path.abspath(cand)
+    return os.path.abspath(os.path.join(here, "..", "..", "static"))
+
+
+_STATIC_ROOT = _find_static_root()
 
 
 @lru_cache(maxsize=512)
