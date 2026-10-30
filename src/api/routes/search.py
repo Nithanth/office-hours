@@ -42,6 +42,14 @@ _AUTHOR_INTENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "papers by X about Y" — author + keyword triangulation in one query.
+# The keyword narrows the author's publication list server-side.
+_AUTHOR_TOPIC_RE = re.compile(
+    r"^(?:papers?|works?|publications?|research)\s+(?:by|from|of)\s+"
+    r"(?P<name>.+?)\s+(?:about|on|for)\s+(?P<keyword>.+)$",
+    re.IGNORECASE,
+)
+
 # Bare person-name heuristic: 2-4 capitalized tokens (allowing lowercase
 # particles like "van"/"de"/"der" mid-name). A typo'd name still matches —
 # author search handles fuzziness far better than the topic pipeline, which
@@ -54,16 +62,24 @@ _BARE_NAME_RE = re.compile(
 )
 
 
-def _detect_author_query(query: str) -> tuple[str, bool] | None:
-    """Return (name, explicit) for author searches — explicit means the query
-    used "papers by X" phrasing; bare names are guesses that must be
-    confirmed by an actual name match before routing."""
-    m = _AUTHOR_INTENT_RE.match(query.strip())
-    if m:
-        return m.group(1).strip().rstrip("?"), True
+def _detect_author_query(query: str) -> tuple[str, bool, str | None] | None:
+    """Return (name, explicit, keyword) for author searches — explicit means
+    the query used "papers by X" phrasing; bare names are guesses that must
+    be confirmed by an actual name match before routing. keyword is the
+    "about Y" triangulation term, when present."""
     q = query.strip()
+    m = _AUTHOR_TOPIC_RE.match(q)
+    if m:
+        return (
+            m.group("name").strip().rstrip("?"),
+            True,
+            m.group("keyword").strip().rstrip("?"),
+        )
+    m = _AUTHOR_INTENT_RE.match(q)
+    if m:
+        return m.group(1).strip().rstrip("?"), True, None
     if _BARE_NAME_RE.match(q):
-        return q, False
+        return q, False, None
     return None
 
 
@@ -229,11 +245,15 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     if mode == "auto":
         detected = _detect_author_query(input_query_stripped)
         if detected:
-            author_name, explicit = detected
-            from api.routes.author import _render_author_list
+            author_name, explicit, keyword = detected
+            from api.routes.author import (
+                _author_profile_html,
+                _render_author_list,
+            )
             from services.paper.metadata.author_search import (
                 S2UnavailableError,
                 all_tokens_match,
+                get_author_profile,
                 search_authors,
             )
 
@@ -255,21 +275,50 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             # coincidentally-capitalized topic ("Neural Scaling Laws") and
             # falls through to the normal pipeline. A confirmed miss on a
             # name-shaped query is surfaced as a notice atop the results.
-            if (
-                not explicit
-                and not unavailable
-                and not any(all_tokens_match(a, author_name) for a in authors)
-            ):
+            confirmed = [a for a in authors if all_tokens_match(a, author_name)]
+            if not explicit and not unavailable and not confirmed:
                 author_miss_name = author_name
-            if explicit or any(all_tokens_match(a, author_name) for a in authors):
+            if explicit or confirmed:
+                detected_label = (
+                    f"Author search for &ldquo;{html.escape(author_name)}&rdquo;"
+                )
+                if keyword:
+                    detected_label += (
+                        f" filtered by &ldquo;{html.escape(keyword)}&rdquo;"
+                    )
                 banner = _intent_banner(
-                    f"Author search for &ldquo;{html.escape(author_name)}&rdquo;",
+                    detected_label,
                     input_query_stripped,
                 )
+                # "papers by X about Y" with one confirmed person: land
+                # straight on the filtered works — the card list is just a
+                # namesake picker, and there's nothing to pick.
+                pick = confirmed[0] if len(confirmed) == 1 else None
+                if keyword and pick is not None:
+                    try:
+                        profile = await asyncio.to_thread(
+                            get_author_profile,
+                            pick.author_id,
+                            paper_limit=30,
+                            timeout=15,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("author_topic_profile_failed", error=str(exc))
+                        profile = None
+                    if profile is not None:
+                        return HTMLResponse(
+                            content=banner
+                            + _author_profile_html(profile, keyword=keyword),
+                            headers={
+                                "HX-Retarget": "#search-results-container",
+                                "HX-Reswap": "innerHTML",
+                                "HX-Push-Url": "/",
+                            },
+                        )
                 return HTMLResponse(
                     content=banner
                     + _render_author_list(
-                        authors, author_name, unavailable=unavailable
+                        authors, author_name, unavailable=unavailable, keyword=keyword
                     ),
                     headers={
                         "HX-Retarget": "#search-results-container",

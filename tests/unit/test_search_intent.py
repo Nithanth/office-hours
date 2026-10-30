@@ -4,22 +4,58 @@ from api.routes.search import _detect_author_query, _intent_banner
 
 
 def test_detects_author_phrases():
-    assert _detect_author_query("papers by Yann LeCun") == ("Yann LeCun", True)
-    assert _detect_author_query("Papers by Vaswani?") == ("Vaswani", True)
+    assert _detect_author_query("papers by Yann LeCun") == (
+        "Yann LeCun",
+        True,
+        None,
+    )
+    assert _detect_author_query("Papers by Vaswani?") == ("Vaswani", True, None)
     assert _detect_author_query("works from Geoffrey Hinton") == (
         "Geoffrey Hinton",
         True,
+        None,
     )
-    assert _detect_author_query("publications of Fei-Fei Li") == ("Fei-Fei Li", True)
-    assert _detect_author_query("research by Jiaya Jia") == ("Jiaya Jia", True)
+    assert _detect_author_query("publications of Fei-Fei Li") == (
+        "Fei-Fei Li",
+        True,
+        None,
+    )
+    assert _detect_author_query("research by Jiaya Jia") == (
+        "Jiaya Jia",
+        True,
+        None,
+    )
+
+
+def test_detects_author_keyword_triangulation():
+    assert _detect_author_query("papers by Vincent Sitzmann about siren") == (
+        "Vincent Sitzmann",
+        True,
+        "siren",
+    )
+    assert _detect_author_query("works by yann lecun on self-supervised learning") == (
+        "yann lecun",
+        True,
+        "self-supervised learning",
+    )
+    assert _detect_author_query("papers by Vaswani for attention") == (
+        "Vaswani",
+        True,
+        "attention",
+    )
 
 
 def test_detects_bare_names():
-    assert _detect_author_query("Vincent Sitzmann") == ("Vincent Sitzmann", False)
-    assert _detect_author_query("Yann LeCun") == ("Yann LeCun", False)
+    assert _detect_author_query("Vincent Sitzmann") == (
+        "Vincent Sitzmann",
+        False,
+        None,
+    )
+    assert _detect_author_query("Yann LeCun") == ("Yann LeCun", False, None)
     assert _detect_author_query("Laurens van der Maaten") == (
         "Laurens van der Maaten",
         False,
+        None,
     )
 
 

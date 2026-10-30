@@ -258,6 +258,7 @@ def _render_paper_item(
         "data-paper-id": paper.id,
         "data-date": date_sort_key,
         "data-authors": authors_lower,
+        "data-title": (paper.title or "").lower(),
     }
     if wildcard:
         li_attrs["id"] = "wild-card-item"

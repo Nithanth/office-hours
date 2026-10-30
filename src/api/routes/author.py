@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json as _json
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -21,6 +22,8 @@ from models.paper import Paper
 from pages.main_page import render_search_results
 from services.core import model_prefs
 from services.paper.metadata.author_search import (
+    AuthorPaper,
+    AuthorProfile,
     AuthorResult,
     S2UnavailableError,
     get_author_profile,
@@ -32,13 +35,15 @@ from utils.rate_limit import limiter
 router = APIRouter(prefix="/author", tags=["author"])
 
 
-def _render_author_card(author: AuthorResult) -> str:
+def _render_author_card(author: AuthorResult, keyword: str | None = None) -> str:
     """Render a single author result card as an HTML fragment."""
     name_esc = html.escape(author.name)
     aliases_str = ""
     if author.aliases:
         visible = author.aliases[:3]
-        aliases_str = f"<div style='font-size:0.8rem;opacity:0.7;margin-top:2px;'>Also: {html.escape(', '.join(visible))}</div>"
+        # unescape first — S2 names arrive entity-encoded and escape() would
+        # double-encode the '&' ("Bottou L&eacute;on" renders literally).
+        aliases_str = f"<div style='font-size:0.8rem;opacity:0.7;margin-top:2px;'>Also: {html.escape(html.unescape(', '.join(visible)))}</div>"
 
     # Metrics row
     metrics = (
@@ -47,11 +52,20 @@ def _render_author_card(author: AuthorResult) -> str:
         f" &middot; <span title='h-index'>h-index {author.h_index}</span>"
     )
 
+    # hx-vals is JSON inside a single-quoted attr — dump it then escape so
+    # quotes in names/keywords can't break either layer.
+    vals: dict[str, str] = {
+        "author_id": author.author_id,
+        "author_name": author.name,
+    }
+    if keyword:
+        vals["keyword"] = keyword
+    esc_vals = html.escape(_json.dumps(vals), quote=True)
     return (
         f"<div class='author-card' style='padding:12px;border:1px solid var(--oh-border,#444);"
         f"border-radius:8px;margin-bottom:8px;cursor:pointer;transition:border-color 0.15s;'"
         f" hx-post='/author/profile' hx-target='#search-results-container' hx-swap='innerHTML'"
-        f' hx-vals=\'{{"author_id": "{html.escape(author.author_id)}", "author_name": "{name_esc}"}}\''
+        f" hx-vals='{esc_vals}'"
         f" hx-indicator='#author-loading'>"
         f"<div style='font-size:1.1rem;font-weight:600;'>{name_esc}</div>"
         f"{aliases_str}"
@@ -61,7 +75,10 @@ def _render_author_card(author: AuthorResult) -> str:
 
 
 def _render_author_list(
-    authors: list[AuthorResult], query: str, unavailable: bool = False
+    authors: list[AuthorResult],
+    query: str,
+    unavailable: bool = False,
+    keyword: str | None = None,
 ) -> str:
     """Render the full author search results panel."""
     if unavailable:
@@ -80,7 +97,7 @@ def _render_author_list(
             "Try a different name or spelling.</p></div>"
         )
 
-    cards = "\n".join(_render_author_card(a) for a in authors)
+    cards = "\n".join(_render_author_card(a, keyword) for a in authors)
     return (
         f"<div id='author-results'>"
         f"<p style='margin-bottom:8px;font-size:0.9rem;opacity:0.7;'>"
@@ -155,6 +172,7 @@ async def author_profile_view(
     request: Request,
     author_id: str = Form(...),
     author_name: str = Form(""),
+    keyword: str = Form(""),
 ) -> HTMLResponse:
     """Fetch and render full author profile with papers.
 
@@ -187,17 +205,47 @@ async def author_profile_view(
             },
         )
 
-    # Build header with author stats + generate profile button
+    return HTMLResponse(
+        content=_author_profile_html(profile, keyword=keyword.strip() or None),
+        headers={
+            "HX-Retarget": "#search-results-container",
+            "HX-Reswap": "innerHTML",
+            "HX-Push-Url": "/",
+        },
+    )
+
+
+def _paper_matches_keyword(sp: AuthorPaper, keyword: str) -> bool:
+    """All keyword tokens must appear in the paper's title/abstract/venue —
+    triangulation should only surface works that name every term."""
+    hay = " ".join([sp.title or "", sp.abstract or "", sp.venue or ""]).lower()
+    return all(tok in hay for tok in keyword.lower().split())
+
+
+def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) -> str:
+    """Header + publication list for an author profile.
+
+    *keyword* pre-filters the list server-side ("papers by X about Y"); the
+    filter input then narrows it further client-side — the loaded page is a
+    small set, so live filtering needs no round trip.
+    """
     a = profile.author
+    filter_chip = (
+        f"<div style='font-size:0.8rem;opacity:0.75;margin-top:6px;'>"
+        f"filtered by &ldquo;{html.escape(keyword)}&rdquo;</div>"
+        if keyword
+        else ""
+    )
     header_html = (
         f"<div style='margin-bottom:16px;padding:16px;border:1px solid var(--oh-border,#444);"
         f"border-radius:10px;background:var(--oh-card-bg,rgba(255,255,255,0.03));'>"
         f"<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;'>"
         f"<div>"
-        f"<h2 style='margin:0;font-size:1.3rem;'>{html.escape(a.name)}</h2>"
+        f"<h2 style='margin:0;font-size:1.3rem;'>{html.escape(html.unescape(a.name))}</h2>"
         f"<div style='font-size:0.85rem;opacity:0.7;margin-top:4px;'>"
         f"{a.paper_count:,} papers &middot; {a.citation_count:,} citations &middot; h-index {a.h_index}"
         f"</div>"
+        f"{filter_chip}"
         f"</div>"
         f"<button class='btn-secondary'"
         f" hx-post='/author/research-profile'"
@@ -207,6 +255,10 @@ async def author_profile_view(
         f" hx-indicator='#profile-loading'>"
         f"Generate Research Profile</button>"
         f"</div>"
+        f"<input type='search' placeholder='Filter these papers…' aria-label='Filter papers'"
+        f" style='width:100%;margin-top:12px;padding:8px 10px;font-size:0.85rem;"
+        f"border:1px solid var(--oh-border,#444);border-radius:6px;background:var(--oh-input-bg,transparent);color:var(--fg,inherit);'"
+        f' oninput=\'const q=this.value.toLowerCase().trim();document.querySelectorAll("#papers-list > li").forEach(el=>{{el.style.display=!q||el.dataset.title.toLowerCase().includes(q)||el.dataset.authors.toLowerCase().includes(q)?"":"none";}});\'>'
         f"<div id='profile-loading' class='htmx-indicator' style='text-align:center;padding:8px;'>"
         f"<span class='spinner'></span> Generating research profile…</div>"
         f"<div id='author-profile-container' style='margin-top:12px;'></div>"
@@ -214,8 +266,11 @@ async def author_profile_view(
     )
 
     # Convert S2 papers to our Paper model for reuse with existing UI
+    source_papers = profile.papers
+    if keyword:
+        source_papers = [p for p in source_papers if _paper_matches_keyword(p, keyword)]
     papers: list[Paper] = []
-    for sp in profile.papers:
+    for sp in source_papers:
         url = get_paper_url(sp)
         if not url:
             continue
@@ -233,13 +288,14 @@ async def author_profile_view(
         )
 
     if not papers:
-        return HTMLResponse(
+        empty_msg = (
+            f'No papers by {html.escape(a.name)} match "{html.escape(keyword)}".'
+            if keyword
+            else "No papers with accessible URLs found for this author."
+        )
+        return (
             header_html + "<div style='padding:16px;text-align:center;opacity:0.7;'>"
-            "No papers with accessible URLs found for this author.</div>",
-            headers={
-                "HX-Retarget": "#search-results-container",
-                "HX-Reswap": "innerHTML",
-            },
+            f"{empty_msg}</div>"
         )
 
     # Render using standard search results component
@@ -248,15 +304,7 @@ async def author_profile_view(
         is_url_search=False,
         original_query=f"Author: {a.name}",
     )
-
-    return HTMLResponse(
-        content=header_html + str(results_component),
-        headers={
-            "HX-Retarget": "#search-results-container",
-            "HX-Reswap": "innerHTML",
-            "HX-Push-Url": "/",
-        },
-    )
+    return header_html + str(results_component)
 
 
 @limiter.limit("10/5minute")

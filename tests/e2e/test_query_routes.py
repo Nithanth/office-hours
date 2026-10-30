@@ -94,6 +94,74 @@ def test_topic_query_routes_to_topic(client):
 
 
 @pytest.mark.e2e
+def test_author_keyword_lands_on_filtered_works(client, monkeypatch):
+    """'papers by X about Y' with one confirmed person skips the card list
+    and lands on the keyword-filtered publication view."""
+    import services.paper.metadata.author_search as author_mod
+    from services.paper.metadata.author_search import AuthorPaper, AuthorProfile
+
+    monkeypatch.setattr(
+        author_mod,
+        "search_authors",
+        lambda *a, **k: [AuthorResult(author_id="a1", name="Vincent Sitzmann")],
+    )
+    profile = AuthorProfile(
+        author=AuthorResult(author_id="a1", name="Vincent Sitzmann"),
+        papers=[
+            AuthorPaper(
+                paper_id="p1",
+                title="SIREN: Implicit Neural Representations",
+                url="https://arxiv.org/abs/2006.09661",
+                abstract="sinusoidal activation",
+            ),
+            AuthorPaper(
+                paper_id="p2",
+                title="Scene Representation Networks",
+                url="https://arxiv.org/abs/1906.01618",
+            ),
+        ],
+    )
+    monkeypatch.setattr(author_mod, "get_author_profile", lambda *a, **k: profile)
+    resp = client.post(
+        "/search",
+        data={"search_query": "papers by Vincent Sitzmann about siren"},
+        headers=_HX,
+    )
+    assert resp.status_code == 200
+    # Filtered view: SIREN stays, SRN filtered out; filter chip labels it.
+    assert "SIREN" in resp.text
+    assert "Scene Representation Networks" not in resp.text
+    assert "filtered by" in resp.text
+    # And the client-side filter input rendered.
+    assert "Filter these papers" in resp.text
+
+
+@pytest.mark.e2e
+def test_author_keyword_multiple_candidates_stays_on_cards(client, monkeypatch):
+    """Ambiguous namesakes keep the card picker — the keyword just rides
+    along into whichever profile the user opens."""
+    import services.paper.metadata.author_search as author_mod
+
+    monkeypatch.setattr(
+        author_mod,
+        "search_authors",
+        lambda *a, **k: [
+            AuthorResult(author_id="a1", name="Vincent Sitzmann"),
+            AuthorResult(author_id="a2", name="Vincent Sitzmann"),
+        ],
+    )
+    resp = client.post(
+        "/search",
+        data={"search_query": "papers by Vincent Sitzmann about siren"},
+        headers=_HX,
+    )
+    assert resp.status_code == 200
+    assert resp.text.count("Vincent Sitzmann") >= 2
+    # Cards carry the keyword forward into the profile call.
+    assert "siren" in resp.text
+
+
+@pytest.mark.e2e
 def test_author_provider_outage_degrades_to_topic(client, monkeypatch):
     import services.paper.metadata.author_search as author_mod
     from services.paper.metadata.author_search import S2UnavailableError
