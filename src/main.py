@@ -342,14 +342,28 @@ class _RevalidatingStaticFiles(StaticFiles):
         return _IMPORT_SPEC_RE.sub(_sub, src)
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        if path.endswith(".js"):
+        method = scope.get("method", "GET")
+        if path.endswith(".js") and method in ("GET", "HEAD"):
             full_path, _stat_result = self.lookup_path(path)
             if full_path and os.path.isfile(full_path):
                 body = self._versioned_js(_pathlib.Path(full_path))
+                body_bytes = body.encode("utf-8")
+                # ETag over the REWRITTEN body — it changes when either this
+                # file or any import it references changes, so a 304 is only
+                # ever sent when the whole transitive module set is fresh.
+                etag = f'"js-{hashlib.sha256(body_bytes).hexdigest()[:16]}"'
+                headers = {
+                    "Cache-Control": "no-cache",
+                    "ETag": etag,
+                    "Content-Length": str(len(body_bytes)),
+                }
+                for hk, hv in scope.get("headers", []):
+                    if hk.lower() == b"if-none-match" and etag in hv.decode("latin-1"):
+                        return Response(status_code=304, headers=headers)
                 return Response(
-                    body,
+                    b"" if method == "HEAD" else body_bytes,
                     media_type="application/javascript",
-                    headers={"Cache-Control": "no-cache"},
+                    headers=headers,
                 )
         resp = await super().get_response(path, scope)
         if resp.status_code == 200:
