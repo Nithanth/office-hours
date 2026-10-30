@@ -12,14 +12,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
     && pip install --no-cache-dir uv
 
 # Copy dependency manifests first (layer caching)
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock requirements.lock ./
 
 # Install production dependencies into a prefix dir (keeps final image slim).
-# --torch-backend=cpu resolves CPU-only torch wheels — without it the default
-# CUDA build pulls ~5GB of nvidia-* wheels and the image export exceeds
-# Railway's build deadline.
+# requirements.lock is pinned to the uv.lock resolution so deploys match CI;
+# --torch-backend=cpu points uv at the CPU wheel index so torch's +cpu build
+# is fetched instead of ~5GB of CUDA wheels (which exceeded Railway's build
+# deadline). Rebuild requirements.lock with:
+#   uv export --frozen --format requirements-txt --no-hashes --no-dev --no-emit-project -o /tmp/c.txt
+#   uv pip compile pyproject.toml --torch-backend=cpu --emit-index-url -c /tmp/c.txt -o requirements.lock
 RUN uv pip install --system --no-cache --prefix=/install \
-      --torch-backend=cpu -r pyproject.toml \
+      --torch-backend=cpu -r requirements.lock \
     && rm -rf /install/lib/python3.11/site-packages/nvidia* \
               /install/lib/python3.11/site-packages/triton* \
               /install/lib/python3.11/site-packages/torch/include \
