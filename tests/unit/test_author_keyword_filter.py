@@ -32,6 +32,13 @@ def test_punctuation_ending_tokens_match():
     assert _paper_matches_keyword(q, "c#")
 
 
+def test_versioned_language_terms_match():
+    p = _paper(title="Modern C++20 Techniques")
+    assert _paper_matches_keyword(p, "c++")
+    q = _paper(title="C++17 memory model")
+    assert _paper_matches_keyword(q, "c++")
+
+
 def test_all_tokens_required_across_fields():
     p = _paper(
         title="Neural Systems",

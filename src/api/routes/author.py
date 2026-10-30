@@ -219,12 +219,21 @@ async def author_profile_view(
 def _paper_matches_keyword(sp: AuthorPaper, keyword: str) -> bool:
     """All keyword tokens must appear in the paper's title/abstract/venue —
     triangulation should only surface works that name every term. Lookarounds
-    (not \\b) so "ai" can't hit "training" but "C++" and "C#" still match —
-    they demand no word char adjacent rather than a boundary at the edge."""
+    (not \\b) so "ai" can't hit "training" but "C++" and "C#" still match:
+    a guard is only placed where the token's edge is a word char, so
+    versioned forms like "c++17" keep matching while inside-word hits fail."""
     hay = " ".join([sp.title or "", sp.abstract or "", sp.venue or ""]).lower()
+
+    def _pattern(tok: str) -> str:
+        pat = re.escape(tok)
+        if re.match(r"\w", tok[0]):
+            pat = r"(?<!\w)" + pat
+        if re.match(r"\w", tok[-1]):
+            pat += r"(?!\w)"
+        return pat
+
     return all(
-        re.search(rf"(?<!\w){re.escape(tok)}(?!\w)", hay) is not None
-        for tok in keyword.lower().split()
+        re.search(_pattern(tok), hay) is not None for tok in keyword.lower().split()
     )
 
 
