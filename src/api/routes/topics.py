@@ -717,6 +717,8 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
   <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
     hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML" title="Poll the tracked searches for newly published papers">Check for new papers</button>
 </h2>
+<input type="text" id="author-filter-input" placeholder="Filter papers by title or author…"
+  style="font-size:0.85rem;padding:4px 8px;width:16rem;margin-bottom:8px;"/>
 <div id="feed-status" class="topic-meta"></div>
 <div id="topic-papers">{papers_html}</div>
 <h2 style="font-size:0.95rem;margin-top:1.5rem;">Report versions</h2>

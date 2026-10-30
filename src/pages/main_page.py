@@ -870,7 +870,6 @@ def home_page(page_data: SharedPageData) -> Html:
                         cls="oh-hero-block",
                     ),
                     FORM(  # Search Form
-                        Div("QUERY ▸", cls="oh-query-label"),
                         Div(
                             INPUT(
                                 type="search",
@@ -910,7 +909,74 @@ def home_page(page_data: SharedPageData) -> Html:
                             ],
                             cls="oh-hero-chips",
                         ),
-                        # Filters row — date + sources dropdown (collapsible)
+                        # Report controls — always visible: they configure
+                        # Generate Report, which lives on the results view,
+                        # so burying them in the collapsed options hid the
+                        # required inputs. Search-only filters stay behind
+                        # the disclosure below.
+                        Div(
+                            Div(
+                                Span("Audience ", cls="filter-label"),
+                                Select(
+                                    Option(
+                                        "Any",
+                                        value="",
+                                        selected=True,
+                                    ),
+                                    Option("Technical (PhD)", value="technical"),
+                                    Option("Semi-Technical", value="semi_technical"),
+                                    Option("Non-Technical", value="non_technical"),
+                                    id="aud-select",
+                                    name="audience",
+                                    cls="oh-opt-select",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Who the report is written for",
+                            ),
+                            Div(
+                                Span("Model ", cls="filter-label"),
+                                Select(
+                                    Option(
+                                        "Default",
+                                        value="",
+                                        selected=True,
+                                    ),
+                                    *[
+                                        Option(cfg["display_name"], value=key)
+                                        for key, cfg in config.config.AVAILABLE_MODELS.items()
+                                    ],
+                                    id="model-select",
+                                    name="model_key",
+                                    cls="oh-opt-select",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Which model runs at each tier. Pinned in Settings.",
+                            ),
+                            Div(
+                                A(
+                                    "edit model defaults →",
+                                    href="/settings",
+                                    style="font-size:0.72rem;color:var(--fg-muted,#888);text-decoration:none;",
+                                ),
+                            ),
+                            Div(
+                                Span("Detail ", cls="filter-label"),
+                                Select(
+                                    Option("S (Concise)", value="S"),
+                                    Option("M (Standard)", value="M", selected=True),
+                                    Option("L (Detailed)", value="L"),
+                                    id="size-select",
+                                    name="summary_size",
+                                    cls="oh-opt-select",
+                                ),
+                                cls="oh-tip oh-tip-below",
+                                data_tip="Report depth. S is concise, L is detailed.",
+                            ),
+                            cls="search-form-filters",
+                            style="margin-top:0.45rem;",
+                        ),
+                        # Search-only filters — occasional, so they stay
+                        # behind a disclosure.
                         Details(
                             Summary("Search options", cls="oh-options-summary"),
                             Div(
@@ -966,70 +1032,6 @@ def home_page(page_data: SharedPageData) -> Html:
                                         ),
                                         style="position:relative;display:inline-block;",
                                     ),
-                                ),
-                                # Report controls — what the report is written for,
-                                # which effort tier, how much detail, and whether to
-                                # run the slower/broader deep search.
-                                Div(
-                                    Span("Audience ", cls="filter-label"),
-                                    Select(
-                                        Option(
-                                            "Any",
-                                            value="",
-                                            selected=True,
-                                        ),
-                                        Option("Technical (PhD)", value="technical"),
-                                        Option(
-                                            "Semi-Technical", value="semi_technical"
-                                        ),
-                                        Option("Non-Technical", value="non_technical"),
-                                        id="aud-select",
-                                        name="audience",
-                                        cls="oh-opt-select",
-                                    ),
-                                    cls="oh-tip oh-tip-below",
-                                    data_tip="Who the report is written for",
-                                ),
-                                Div(
-                                    Span("Model ", cls="filter-label"),
-                                    Select(
-                                        Option(
-                                            "Default",
-                                            value="",
-                                            selected=True,
-                                        ),
-                                        *[
-                                            Option(cfg["display_name"], value=key)
-                                            for key, cfg in config.config.AVAILABLE_MODELS.items()
-                                        ],
-                                        id="model-select",
-                                        name="model_key",
-                                        cls="oh-opt-select",
-                                    ),
-                                    cls="oh-tip oh-tip-below",
-                                    data_tip="Which model runs at each tier. Pinned in Settings.",
-                                ),
-                                Div(
-                                    A(
-                                        "edit model defaults →",
-                                        href="/settings",
-                                        style="font-size:0.72rem;color:var(--fg-muted,#888);text-decoration:none;",
-                                    ),
-                                ),
-                                Div(
-                                    Span("Detail ", cls="filter-label"),
-                                    Select(
-                                        Option("S (Concise)", value="S"),
-                                        Option(
-                                            "M (Standard)", value="M", selected=True
-                                        ),
-                                        Option("L (Detailed)", value="L"),
-                                        id="size-select",
-                                        name="summary_size",
-                                        cls="oh-opt-select",
-                                    ),
-                                    cls="oh-tip oh-tip-below",
-                                    data_tip="Report depth. S is concise, L is detailed.",
                                 ),
                                 Label(
                                     Span("Deep ", cls="filter-label"),

@@ -175,18 +175,33 @@ console.debug("[oh] main.js history clean listener wired");
   function applyPaperFilter() {
     // Single source of truth: the filter input. Sets a data flag per item;
     // the pager then pages only the matched subset.
-    const ul = getPapersList();
-    if (!ul) return;
     const input = document.getElementById("author-filter-input");
     const query = (input ? input.value : "").toLowerCase().trim();
-    ul.querySelectorAll("li").forEach((li) => {
-      if (!query) {
-        delete li.dataset.filtered;
-        return;
-      }
-      const hay = `${li.dataset.title || ""} ${li.dataset.authors || ""}`;
-      li.dataset.filtered = hay.includes(query) ? "0" : "1";
-    });
+    const ul = getPapersList();
+    if (ul) {
+      ul.querySelectorAll("li").forEach((li) => {
+        if (!query) {
+          delete li.dataset.filtered;
+          return;
+        }
+        const hay = `${li.dataset.title || ""} ${li.dataset.authors || ""}`;
+        li.dataset.filtered = hay.includes(query) ? "0" : "1";
+      });
+    }
+    // Topic pages list papers as .paper-row divs (no pager) — plain
+    // textContent filtering on title + author meta, and keep the
+    // "Papers (N)" count honest.
+    const rows = document.querySelectorAll("#topic-papers .paper-row");
+    if (rows.length) {
+      let shown = 0;
+      rows.forEach((row) => {
+        const hit = !query || row.textContent.toLowerCase().includes(query);
+        row.style.display = hit ? "" : "none";
+        if (hit) shown += 1;
+      });
+      const count = document.getElementById("papers-count");
+      if (count) count.textContent = shown;
+    }
   }
   window.applyPaperFilter = applyPaperFilter;
 
