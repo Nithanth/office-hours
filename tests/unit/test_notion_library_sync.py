@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from services.notion.library_sync import (
     _paper_properties,
     _topic_properties,
@@ -113,6 +115,111 @@ class TestUnansweredThreads:
 
     def test_empty(self):
         assert unanswered_threads([], bot_id="bot-9") == []
+
+
+class TestAnswerPageComments:
+    """The shared sweep helper: unanswered threads get a grounded,
+    attributed reply; bot threads and answer failures are handled."""
+
+    @staticmethod
+    def _comment(discussion_id, created_by, text, created_time="2026-10-13T09:00:00Z"):
+        return {
+            "discussion_id": discussion_id,
+            "created_time": created_time,
+            "created_by": {"id": created_by},
+            "rich_text": [{"plain_text": text}],
+        }
+
+    class _FakeExporter:
+        def __init__(self, comments):
+            self._comments = comments
+            self.replies = []
+
+        async def list_comments(self, page_id):
+            return self._comments
+
+        async def reply_to_discussion(self, discussion_id, text):
+            self.replies.append((discussion_id, text))
+
+    @pytest.mark.asyncio
+    async def test_answers_and_attributes(self):
+        from services.notion.library_sync import _answer_page_comments
+
+        exporter = self._FakeExporter(
+            [self._comment("d1", "user-1", "which papers argue against?")]
+        )
+
+        async def fake_answer(question):
+            return "T2A-GAN [3] argues attention transfer is lossy."
+
+        answered = await _answer_page_comments(
+            exporter,
+            notion_page_id="page-1",
+            answer_fn=fake_answer,
+            bot_id="bot-9",
+        )
+        assert answered == 1
+        disc_id, text = exporter.replies[0]
+        assert disc_id == "d1"
+        assert text.startswith("**Office Hours:**")
+        # [n] chunk citations strip out — no Sources footer in Notion.
+        assert "[3]" not in text
+
+    @pytest.mark.asyncio
+    async def test_answer_failure_skips_thread(self):
+        from services.notion.library_sync import _answer_page_comments
+
+        exporter = self._FakeExporter(
+            [
+                self._comment("d1", "user-1", "boom?"),
+                self._comment("d2", "user-1", "ok?", "2026-10-13T10:00:00Z"),
+            ]
+        )
+        calls = 0
+
+        async def flaky(question):
+            nonlocal calls
+            calls += 1
+            if question == "boom?":
+                raise RuntimeError("llm down")
+            return "fine."
+
+        answered = await _answer_page_comments(
+            exporter,
+            notion_page_id="page-1",
+            answer_fn=flaky,
+            bot_id="bot-9",
+        )
+        # One thread failed, the other still answered.
+        assert answered == 1
+        assert exporter.replies[0][0] == "d2"
+
+    @pytest.mark.asyncio
+    async def test_topic_comments_route_to_topic_answerer(self, monkeypatch):
+        from services.notion import library_sync
+
+        exporter = self._FakeExporter(
+            [self._comment("d1", "user-1", "summarize the thread?")]
+        )
+        seen = {}
+
+        async def fake_topic_answer(*, topic_id, question, user_id):
+            seen["topic_id"] = topic_id
+            seen["user_id"] = user_id
+            return "topic-grounded."
+
+        monkeypatch.setattr(
+            library_sync, "answer_question_for_topic", fake_topic_answer
+        )
+        answered = await library_sync.answer_comments_for_topic(
+            exporter,
+            notion_page_id="topic-page-1",
+            topic_id="topic-42",
+            user_id="u-1",
+            bot_id="bot-9",
+        )
+        assert answered == 1
+        assert seen == {"topic_id": "topic-42", "user_id": "u-1"}
 
 
 class TestMarkdownToRichText:
