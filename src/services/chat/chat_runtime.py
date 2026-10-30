@@ -64,6 +64,7 @@ async def _build_topic_prompt(
     title = "this topic"
     report_excerpt = ""
     pid_to_title: dict[str, str] = {}
+    pid_to_url: dict[str, str] = {}
     if user_id:
         try:
             from services.persistence.database import (
@@ -96,6 +97,7 @@ async def _build_topic_prompt(
                     pid_to_title = {
                         p.paper_id: (p.title or p.paper_id) for p in topic_papers
                     }
+                    pid_to_url = {p.paper_id: str(p.url) for p in topic_papers if p.url}
                     latest_reports = await list_topic_reports(
                         db_session, topic_id=topic.id, limit=1
                     )
@@ -128,6 +130,9 @@ async def _build_topic_prompt(
                             pid_to_title = {
                                 p.paper_id: (p.title or p.paper_id)
                                 for p in report.papers
+                            }
+                            pid_to_url = {
+                                p.paper_id: str(p.url) for p in report.papers if p.url
                             }
         except Exception as exc:  # noqa: BLE001
             logger.warning("topic_report_load_failed", error=str(exc))
@@ -168,7 +173,9 @@ async def _build_topic_prompt(
                 sources = [
                     {
                         "n": i + 1,
-                        "section": pid_to_title.get(m.get("paper_id"), ""),
+                        "section": str(m.get("section") or ""),
+                        "title": pid_to_title.get(m.get("paper_id"), ""),
+                        "url": pid_to_url.get(m.get("paper_id"), ""),
                         "snippet": cast(str, m.get("text") or "")[:240],
                     }
                     for i, m in enumerate(matches)
@@ -356,6 +363,8 @@ async def build_prompt(
             parts: list[str] = []
             if title := meta.get("title"):
                 parts.append(f"Title: {title}")
+                for s in sources:
+                    s.setdefault("title", title)
             if auth := meta.get("authors"):
                 parts.append(f"Authors: {auth}")
             if yr := meta.get("year"):
@@ -363,6 +372,10 @@ async def build_prompt(
             metadata_block = "\n".join(parts)
     except Exception as _me:
         logger.debug("metadata_load_failed", paper_id=paper_id, err=str(_me))
+    # paper_id is the source URL for direct-paper flows — link sources to it.
+    if paper_id.startswith("http"):
+        for s in sources:
+            s.setdefault("url", paper_id)
 
     excerpt = chat_state.paper_cache.setdefault(paper_id, {}).get("excerpt")
 

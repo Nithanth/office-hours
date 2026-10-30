@@ -391,24 +391,54 @@ function _finalizeBubble(targetEl) {
 // ---------------------------------------------------------------------------
 // Citations: [n] markers → superscript chips + Sources footer
 // ---------------------------------------------------------------------------
-function _renderSourcesFooter(bubbleEl, sources) {
+const MAX_SOURCE_ITEMS = 6;
+
+function _renderSourcesFooter(bubbleEl, sources, citedNums) {
+  // Only list chunks the answer actually cited — the retrieval set is
+  // larger than what the model drew on, and dumping it all reads as noise.
+  const shown = [];
+  const seen = new Set();
+  for (const s of sources) {
+    if (!citedNums.has(s.n)) continue;
+    const key = `${s.title || ""}${s.section || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    shown.push(s);
+    if (shown.length >= MAX_SOURCE_ITEMS) break;
+  }
+  if (!shown.length) return;
   const footer = document.createElement("div");
   footer.className = "chat-sources";
   const label = document.createElement("div");
   label.className = "chat-sources-label";
   label.textContent = "Sources";
   footer.appendChild(label);
-  for (const s of sources) {
+  for (const s of shown) {
     const item = document.createElement("div");
     item.className = "chat-source-item";
     item.title = s.snippet || "";
     const num = document.createElement("span");
     num.className = "chat-source-n";
     num.textContent = `[${s.n}]`;
-    const txt = document.createElement("span");
-    txt.textContent = s.section || "Paper excerpt";
+    // Label: paper title (+ section/page when known) — far more useful than
+    // a bare "Paper excerpt". Links to the paper when a URL is known.
+    let labelText = s.title || "Paper excerpt";
+    if (s.title && s.section) labelText += ` — ${s.section}`;
+    else if (!s.title && s.section) labelText = s.section;
     item.appendChild(num);
-    item.appendChild(txt);
+    if (s.url) {
+      const a = document.createElement("a");
+      a.className = "chat-source-link";
+      a.href = s.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = labelText;
+      item.appendChild(a);
+    } else {
+      const txt = document.createElement("span");
+      txt.textContent = labelText;
+      item.appendChild(txt);
+    }
     footer.appendChild(item);
   }
   bubbleEl.appendChild(footer);
@@ -422,6 +452,7 @@ function _applyCitations(bubbleEl, sources) {
   let node;
   while ((node = walker.nextNode())) nodes.push(node);
   const re = /\[(\d{1,2})\]/g;
+  const citedNums = new Set();
   for (const tn of nodes) {
     const parent = tn.parentElement;
     if (!parent || parent.closest("pre, code, a, .chat-cite, .chat-sources")) continue;
@@ -435,6 +466,7 @@ function _applyCitations(bubbleEl, sources) {
     while ((m = re.exec(text))) {
       const src = byNum.get(parseInt(m[1], 10));
       if (!src) continue; // [n] outside the known chunks stays plain text
+      citedNums.add(src.n);
       frag.appendChild(document.createTextNode(text.slice(last, m.index)));
       const sup = document.createElement("sup");
       sup.className = "chat-cite";
@@ -447,7 +479,7 @@ function _applyCitations(bubbleEl, sources) {
     frag.appendChild(document.createTextNode(text.slice(last)));
     parent.replaceChild(frag, tn);
   }
-  if (!bubbleEl.querySelector(".chat-sources")) _renderSourcesFooter(bubbleEl, sources);
+  if (!bubbleEl.querySelector(".chat-sources")) _renderSourcesFooter(bubbleEl, sources, citedNums);
 }
 
 // ---------------------------------------------------------------------------
