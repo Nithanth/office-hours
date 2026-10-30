@@ -218,11 +218,12 @@ async def author_profile_view(
 
 def _paper_matches_keyword(sp: AuthorPaper, keyword: str) -> bool:
     """All keyword tokens must appear in the paper's title/abstract/venue —
-    triangulation should only surface works that name every term. Word-
-    boundary matching so "ai" doesn't hit "training"."""
+    triangulation should only surface works that name every term. Lookarounds
+    (not \\b) so "ai" can't hit "training" but "C++" and "C#" still match —
+    they demand no word char adjacent rather than a boundary at the edge."""
     hay = " ".join([sp.title or "", sp.abstract or "", sp.venue or ""]).lower()
     return all(
-        re.search(rf"\b{re.escape(tok)}\b", hay) is not None
+        re.search(rf"(?<!\w){re.escape(tok)}(?!\w)", hay) is not None
         for tok in keyword.lower().split()
     )
 
@@ -299,13 +300,13 @@ def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) 
             f"{empty_msg}</div>"
         )
 
-    # The keyword prefills the standard results filter so the triangulation
-    # stays visible (and editable) on the profile surface.
+    # No prefill on the results filter: it narrows by title/authors only,
+    # while the server match also covers abstract/venue — prefilling would
+    # hide papers the server deliberately kept. The chip carries the keyword.
     results_component = render_search_results(
         papers_list=papers,
         is_url_search=False,
         original_query=f"Author: {a.name}",
-        filter_value=keyword or "",
     )
     return header_html + str(results_component)
 

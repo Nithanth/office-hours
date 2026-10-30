@@ -132,9 +132,10 @@ def test_author_keyword_lands_on_filtered_works(client, monkeypatch):
     assert "SIREN" in resp.text
     assert "Scene Representation Networks" not in resp.text
     assert "filtered by" in resp.text
-    # And the shared filter input is prefilled with the keyword.
+    # The shared filter input renders (empty — the chip carries the keyword;
+    # prefilling would hide papers matched only on abstract/venue).
     assert 'id="author-filter-input"' in resp.text
-    assert 'value="siren"' in resp.text
+    assert 'value="siren"' not in resp.text
 
 
 @pytest.mark.e2e
