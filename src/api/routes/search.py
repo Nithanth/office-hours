@@ -6,7 +6,7 @@ import json as _json
 import re
 from datetime import datetime
 from typing import Any, cast
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
@@ -172,12 +172,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     if not settings.EXA_API_KEY:
         logger.error("search_missing_exa_key")
         error_html = "<div class='oh-toast'>Search service not configured. Contact support.</div>"  # minimal banner; original used render_error_message but keep dependencies slim
+        # No history header: a config error must not clobber the current
+        # URL/entry — the user may be viewing prior results.
         return HTMLResponse(
             content=error_html,
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
-                "HX-Replace-Url": "/",
             },
         )
 
@@ -313,7 +314,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                             headers={
                                 "HX-Retarget": "#search-results-container",
                                 "HX-Reswap": "innerHTML",
-                                "HX-Push-Url": f"/author/{quote(pick.author_id)}",
+                                "HX-Push-Url": f"/author/{quote(pick.author_id)}"
+                                + (f"?kw={quote(keyword)}" if keyword else ""),
                             },
                         )
                 return HTMLResponse(
@@ -324,7 +326,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                     headers={
                         "HX-Retarget": "#search-results-container",
                         "HX-Reswap": "innerHTML",
-                        "HX-Push-Url": f"/authors?q={quote(author_name)}",
+                        "HX-Push-Url": f"/authors?q={quote(author_name)}"
+                        + (f"&kw={quote(keyword)}" if keyword else ""),
                     },
                 )
 
@@ -493,12 +496,26 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 retry_backoff=2.0,
             )
 
+        # Push a URL that keys on the effective request, not just the
+        # query — the same query under different filters/modes is a
+        # distinct view and needs its own history snapshot.
+        _result_params: dict[str, str] = {"q": input_query_stripped}
+        if start_published_date:
+            _result_params["date"] = start_published_date
+        if num_results is not None:
+            _result_params["n"] = str(num_results_display)
+        if deep_search:
+            _result_params["deep"] = "1"
+        if mode and mode != "auto":
+            _result_params["mode"] = mode
+        if include_domains:
+            _result_params["domains"] = ",".join(include_domains)
         return HTMLResponse(
             content=str(results_component),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
-                "HX-Push-Url": f"/results?q={quote(input_query_stripped)}",
+                "HX-Push-Url": "/results?" + urlencode(_result_params),
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -506,12 +523,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         error_html = (
             "<div class='oh-toast'>Could not retrieve results. Try again later.</div>"
         )
+        # No history header on failure — replacing the current URL
+        # would drop the successful results entry it sat on.
         return HTMLResponse(
             content=error_html,
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
-                "HX-Replace-Url": "/",
             },
         )
 

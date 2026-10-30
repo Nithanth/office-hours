@@ -207,12 +207,14 @@ async def author_profile_view(
             },
         )
 
+    kw = keyword.strip()
     return HTMLResponse(
-        content=_author_profile_html(profile, keyword=keyword.strip() or None),
+        content=_author_profile_html(profile, keyword=kw or None),
         headers={
             "HX-Retarget": "#search-results-container",
             "HX-Reswap": "innerHTML",
-            "HX-Push-Url": f"/author/{quote(author_id)}",
+            "HX-Push-Url": f"/author/{quote(author_id)}"
+            + (f"?kw={quote(kw)}" if kw else ""),
         },
     )
 
