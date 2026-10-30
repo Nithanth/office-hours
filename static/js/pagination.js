@@ -46,10 +46,10 @@ function buildPager() {
   };
 
   btn("‹ Prev", currentPage - 1, currentPage === 0);
-  const sep = document.createElement("span");
-  sep.textContent = " | ";
-  sep.style.margin = "0 4px";
-  pager.appendChild(sep);
+  const pos = document.createElement("span");
+  pos.className = "pager-pos";
+  pos.textContent = `${currentPage + 1} / ${totalPages}`;
+  pager.appendChild(pos);
   btn("Next ›", currentPage + 1, currentPage >= totalPages - 1);
 }
 

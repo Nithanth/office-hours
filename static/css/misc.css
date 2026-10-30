@@ -625,3 +625,33 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 
 /* "+N new" badge on home topics-strip pills */
 .oh-topic-badge{display:inline-block;margin-left:5px;padding:0 6px;font-size:0.68rem;font-weight:600;letter-spacing:0.03em;background:var(--oh-accent);color:#fff;vertical-align:1px;}
+
+/* Report generation zone — progress status + section label */
+#report-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--oh-font-mono, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-muted, #888);
+  margin: 10px 0;
+}
+.report-title {
+  font-family: var(--oh-font-mono, monospace) !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-muted, #888) !important;
+  margin: 20px 0 10px !important;
+}
+/* Report section card — replaces dead tailwind classes on #report-content */
+#report-content {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--container-border, #ddd);
+  border-radius: 10px;
+  background: var(--container-bg, #fff);
+}
