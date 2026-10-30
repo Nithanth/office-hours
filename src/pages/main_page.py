@@ -258,6 +258,7 @@ def _render_paper_item(
         "data-paper-id": paper.id,
         "data-date": date_sort_key,
         "data-authors": authors_lower,
+        "data-title": (paper.title or "").lower(),
     }
     if wildcard:
         li_attrs["id"] = "wild-card-item"
@@ -527,7 +528,7 @@ def render_search_results(
                     INPUT(
                         type="text",
                         id="author-filter-input",
-                        placeholder="Filter by author…",
+                        placeholder="Filter papers…",
                         style="font-size:0.85rem;padding:3px 6px;width:14rem;",
                     ),
                     style="display:inline-flex;gap:6px;align-items:center;margin-left:12px;",

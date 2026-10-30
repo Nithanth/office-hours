@@ -7,14 +7,22 @@ function sliceNodes(list) {
   return Array.from(list.children);
 }
 
+function matchedNodes(list) {
+  // Items hidden by the results filter never enter the page math.
+  return sliceNodes(list).filter((li) => li.dataset.filtered !== "1");
+}
+
 function renderPage(n) {
   const list = document.getElementById("papers-list");
   if (!list) return;
-  const nodes = sliceNodes(list);
+  const all = sliceNodes(list);
+  const nodes = matchedNodes(list);
   totalPages = Math.ceil(nodes.length / PAGE_SIZE) || 1;
   currentPage = Math.max(0, Math.min(n, totalPages - 1));
-  nodes.forEach((li, idx) => {
-    li.style.display = idx >= currentPage * PAGE_SIZE && idx < (currentPage + 1) * PAGE_SIZE ? "" : "none";
+  const start = currentPage * PAGE_SIZE;
+  const visible = new Set(nodes.slice(start, start + PAGE_SIZE));
+  all.forEach((li) => {
+    li.style.display = visible.has(li) ? "" : "none";
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
   updatePager();
@@ -53,8 +61,9 @@ function updatePager() {
 export function initPagination() {
   const list = document.getElementById("papers-list");
   if (!list) return;
-  // Recalculate total from visible items
-  totalPages = Math.ceil(Array.from(list.children).length / PAGE_SIZE) || 1;
+  // Re-derive filter flags first so paging only counts matching papers.
+  if (typeof window.applyPaperFilter === "function") window.applyPaperFilter();
+  totalPages = Math.ceil(matchedNodes(list).length / PAGE_SIZE) || 1;
   renderPage(0);
 }
 
