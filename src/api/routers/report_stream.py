@@ -215,6 +215,7 @@ async def generate_report_incremental(  # noqa: PLR0913
     selected_model_key: str = Form(...),  # noqa: B008
     is_url_input: bool = Form(False),  # noqa: B008
     forced_topic: bool = Form(False),  # noqa: B008
+    author_constraint: str = Form(""),  # noqa: B008
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
     from services.core.model_prefs import prefs_owner_id
@@ -282,6 +283,13 @@ async def generate_report_incremental(  # noqa: PLR0913
             confirm_bare_name=True,
             subject_forced=forced_topic,
         )
+        if author_constraint.strip() and kind == "subject":
+            # The report came from a 'TOPIC by AUTHOR' search where the
+            # constraint actually applied — persist it as the topic/facet
+            # kind so the feed re-applies the constraint instead of
+            # polling the literal query (a forced plain 'X by Y' search
+            # carries no constraint and stays a plain subject).
+            kind = "subject_author"
         ckey = canonical_key_for(original_query_for_report, kind=kind)
         if ckey:
             async for session in session_scope():

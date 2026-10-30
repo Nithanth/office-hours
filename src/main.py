@@ -26,6 +26,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from starlette.responses import Response
+from starlette.types import Scope
 
 import config
 from middleware.logging_setup import configure_logging
@@ -286,6 +288,24 @@ async def _unhandled_exception_handler(
 # Static file mounting
 # ---------------------------------------------------------------------------
 
+
+class _RevalidatingStaticFiles(StaticFiles):
+    """Always send ``Cache-Control: no-cache`` on static responses.
+
+    ES-module subresource imports (``import "./pagination.js"`` inside
+    main.js) and a few hardcoded ``?v=N`` script tags can't carry a content
+    hash, so heuristic caching could pin a stale module forever — any edit
+    silently went unserved. ``no-cache`` keeps ETag/Last-Modified
+    revalidation (304s stay cheap) while guaranteeing freshness.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        resp = await super().get_response(path, scope)
+        if resp.status_code == 200:
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 _static_candidates = [
     _pathlib.Path(__file__).parent / "static",
     _pathlib.Path(__file__).parent.parent / "static",
@@ -294,7 +314,11 @@ _static_candidates = [
 for _static_path in _static_candidates:
     if _static_path.exists():
         logger.info("mounting static assets", path=str(_static_path))
-        app.mount("/static", StaticFiles(directory=str(_static_path)), name="static")
+        app.mount(
+            "/static",
+            _RevalidatingStaticFiles(directory=str(_static_path)),
+            name="static",
+        )
         break
 else:
     logger.warning(

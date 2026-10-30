@@ -449,6 +449,7 @@ def render_search_results(
     is_url_search: bool,
     papers_list: Optional[list[Paper]] = None,
     forced_topic: bool = False,
+    author_constraint: str = "",
 ) -> Div:
     """Render search results list, shuffle/reset controls and hidden HTMX fields."""
     # Out-of-band clears so a new search hides any old report UI instantly
@@ -467,6 +468,12 @@ def render_search_results(
             id="original_query_for_report_hidden",
             name="original_search_query_for_report",
             value=original_query,
+        ),
+        INPUT(
+            type="hidden",
+            id="author_constraint_hidden",
+            name="author_constraint",
+            value=author_constraint,
         ),
         INPUT(
             type="hidden",
@@ -583,6 +590,11 @@ def render_search_results(
                         value=original_query,
                         id="original_query_for_report_hidden",
                     ),
+                    INPUT(
+                        type="hidden",
+                        name="author_constraint",
+                        value=author_constraint,
+                    ),
                     Br(),
                     Div(
                         BUTTON(
@@ -599,7 +611,7 @@ def render_search_results(
                     hx_disabled_elt="#generate-report-btn",
                     hx_target="#report-display-area",
                     hx_swap="innerHTML",
-                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='is_url_input'], #size-select",
+                    hx_include="[name='selected_papers_json'], #original_query_for_report_hidden, [name='author_constraint'], [name='is_url_input'], #size-select",
                 ),
             ]
         )

@@ -42,12 +42,21 @@ def _owner_id(request: Request) -> str:
 
 def _shell(title: str, body: str) -> str:
     from pages.shell import lib_subtabs_html, page_shell
+    from utils.static_assets import static_url
 
+    # static_url → ?v=<content-hash> so a module edit can't ride a stale
+    # cached copy (hardcoded ?v=N tags pin the OLD body forever).
+    scripts = (
+        f'<script src="{static_url("/static/js/report.js")}" defer></script>\n'
+        f'  <script src="{static_url("/static/js/main.js")}" type="module"></script>\n'
+        f'  <script src="{static_url("/static/js/blog-view.js")}" defer></script>'
+    )
     return str(
         page_shell(
             title,
             lib_subtabs_html("topics") + body,
             active="library",
+            scripts=scripts,
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
     .topic-card{border:1px solid var(--container-border);border-radius:var(--oh-radius,8px);padding:1rem;margin:0.75rem 0;
@@ -74,9 +83,6 @@ def _shell(title: str, body: str) -> str:
     .topic-section .blog-article{max-height:480px;overflow-y:auto;
       border:1px solid var(--container-border);border-radius:var(--oh-radius,8px);padding:1rem;}
   </style>""",
-            scripts="""<script src="/static/js/report.js?v=2" defer></script>
-  <script src="/static/js/main.js?v=2" type="module"></script>
-  <script src="/static/js/blog-view.js?v=1" defer></script>""",
             wrap_class="page-wrap",
         )
     )
@@ -105,7 +111,11 @@ def _share_link_html(request: Request, topic: Topic) -> str:
 def _kind_label(kind: str | None) -> str:
     """Human chip for non-default kinds — 'subject' (the common case) gets
     no chip since a topic is a subject by definition."""
-    return {"author": "Author", "paper": "Paper"}.get(kind or "", "")
+    return {
+        "author": "Author",
+        "paper": "Paper",
+        "subject_author": "Topic + author",
+    }.get(kind or "", "")
 
 
 def _fmt_authors(authors: object) -> str:

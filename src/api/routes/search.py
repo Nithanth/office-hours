@@ -138,28 +138,30 @@ def _norm_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (title or "").lower())
 
 
-def _resolve_topic_author(query: str) -> tuple[str, Any | None]:
+def _resolve_topic_author(query: str) -> tuple[str, Any | None, bool]:
     """Resolve the ``TOPIC by NAME`` grammar.
 
-    Returns ``(topic_query, author_pick)`` when the trailing name resolves to
-    a confirmed author entity; ``(query, None)`` otherwise. Explicit author
-    phrasing ("papers by X") is left for the author route, and a name that
-    does not resolve keeps the whole string as the topic — natural-language
-    "by" ("step by step") must not be split.
+    Returns ``(topic_query, author_pick, lookup_failed)``:
+    - name resolves to a confirmed author → ``(topic_part, author, False)``
+    - grammar matched but the provider lookup raised → ``(topic_part, None, True)``
+      so callers can distinguish an outage from a confirmed non-match
+    - anything else (no match, unresolvable name, explicit "papers by X"
+      phrasing left for the author route) → ``(query, None, False)`` — the
+      whole string stays the topic, so natural-language "by" is untouched.
 
     Shared with the topic feed: a topic seeded with a cross query applies
     the same constraint when polling for new papers.
     """
     q = query.strip()
     if _AUTHOR_INTENT_RE.match(q) or _AUTHOR_TOPIC_RE.match(q):
-        return query, None
+        return query, None, False
     m = _TOPIC_AUTHOR_RE.match(q)
     if not m:
-        return query, None
+        return query, None, False
     topic_part = m.group("topic").strip()
     name_part = m.group("name").strip().rstrip("?")
     if not topic_part or not name_part or not 1 <= len(name_part.split()) <= 4:
-        return query, None
+        return query, None, False
     from services.paper.metadata.author_search import (
         all_tokens_match,
         rank_author_matches,
@@ -168,16 +170,16 @@ def _resolve_topic_author(query: str) -> tuple[str, Any | None]:
 
     try:
         cands = search_authors(name_part, limit=5, timeout=10)
-    except Exception:  # noqa: BLE001 — constraint is best-effort
-        return query, None
+    except Exception:  # noqa: BLE001 — outage ≠ non-match; tell the caller
+        return topic_part, None, True
     hits = [
         a
         for a in rank_author_matches(cands, name_part)
         if all_tokens_match(a, name_part)
     ]
     if not hits:
-        return query, None
-    return topic_part, hits[0]
+        return query, None, False
+    return topic_part, hits[0], False
 
 
 def _constraint_banner(topic_query: str, author_name: str) -> str:
@@ -421,9 +423,12 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     topic_query = input_query_stripped
     author_pick: Any | None = None
     if mode == "auto" and not _url_utils.is_paper_url(input_query_stripped):
-        topic_query, author_pick = await asyncio.to_thread(
+        topic_query, author_pick, _lookup_failed = await asyncio.to_thread(
             _resolve_topic_author, input_query_stripped
         )
+        # A lookup outage degrades to a plain topic search of the parsed
+        # subject — better than failing the request, and the result is
+        # still topically correct.
 
     # ------------------------------------------------------------------
     # Direct Ask-LLM path (no Exa search)
@@ -539,9 +544,12 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 client.search_and_cache,
                 query=topic_query,
                 # k is the display count; the provider pool is always
-                # MAX_RETURNED_PAPERS deep, so the author constraint below
-                # has a large candidate set to thin without extra fetching.
+                # MAX_RETURNED_PAPERS deep. candidate_k widens the score-
+                # threshold retention target when an author constraint will
+                # thin the set — otherwise matching papers ranked below the
+                # threshold cut are discarded before the filter sees them.
                 k=num_results_display,
+                candidate_k=num_results_display * 3 if author_pick else None,
                 session_id=session_id,
                 **search_kwargs,
             )
@@ -611,6 +619,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             is_url_search=is_url_search,
             original_query=input_query_stripped,
             forced_topic=mode == "topic",
+            author_constraint=(
+                author_pick.name if constraint_active and author_pick else ""
+            ),
         )
         # Constraint chip / notice sits above any intent banner — it
         # describes the whole result set.
