@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -144,6 +145,82 @@ async def daily_usage_count(
     )
 
 
+def _advisory_lock_key(bucket: str) -> int:
+    """Stable signed 64-bit key for ``pg_advisory_xact_lock``."""
+    digest = hashlib.sha256(bucket.encode()).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+async def reserve_usage(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    event_type: str,
+    limit: int,
+    client_ip: str | None = None,
+    ip_limit: int | None = None,
+    provider: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """Atomically count today's usage and record one more event if under cap.
+
+    Returns ``False`` (nothing recorded) when the owner already used *limit*
+    events in the last 24h, or when *ip_limit* is set and anonymous
+    (``sess:``) owners from *client_ip* together used that many. On Postgres
+    the count + insert run under transaction-scoped advisory locks on each
+    bucket, so concurrent requests can't all pass the same count. Callers
+    on single-writer backends (SQLite) must serialize in-process.
+    """
+    since = datetime.utcnow() - timedelta(days=1)
+    check_ip = bool(client_ip) and ip_limit is not None
+
+    if session.get_bind().dialect.name == "postgresql":
+        buckets = {f"usage:{event_type}:owner:{user_id}"}
+        if check_ip:
+            buckets.add(f"usage:{event_type}:ip:{client_ip}")
+        for bucket in sorted(buckets):
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": _advisory_lock_key(bucket)},
+            )
+
+    used = await session.scalar(
+        select(func.count(UsageEvent.id)).where(
+            UsageEvent.user_id == user_id,
+            UsageEvent.event_type == event_type,
+            UsageEvent.created_at >= since,
+        )
+    )
+    if int(used or 0) >= limit:
+        await session.rollback()
+        return False
+
+    if check_ip:
+        ip_used = await session.scalar(
+            select(func.count(UsageEvent.id)).where(
+                UsageEvent.client_ip == client_ip,
+                UsageEvent.event_type == event_type,
+                UsageEvent.user_id.like("sess:%"),
+                UsageEvent.created_at >= since,
+            )
+        )
+        if int(ip_used or 0) >= cast(int, ip_limit):
+            await session.rollback()
+            return False
+
+    session.add(
+        UsageEvent(
+            user_id=user_id,
+            event_type=event_type,
+            provider=provider,
+            client_ip=client_ip,
+            metadata_json=metadata or {},
+        )
+    )
+    await session.commit()
+    return True
+
+
 async def create_report(
     session: AsyncSession,
     *,
@@ -157,6 +234,7 @@ async def create_report(
     report_html: str,
     papers: list[Paper],
     topic_id: str | None = None,
+    record_usage_event: bool = True,
 ) -> Report:
     report = Report(
         user_id=user_id,
@@ -190,14 +268,16 @@ async def create_report(
                 },
             )
         )
-    session.add(
-        UsageEvent(
-            user_id=user_id,
-            event_type="report_generated",
-            provider=None,
-            metadata_json={"model_key": model_key, "paper_count": len(papers)},
+    # Quota-checked callers already recorded the event via reserve_usage.
+    if record_usage_event:
+        session.add(
+            UsageEvent(
+                user_id=user_id,
+                event_type="report_generated",
+                provider=None,
+                metadata_json={"model_key": model_key, "paper_count": len(papers)},
+            )
         )
-    )
     await session.commit()
     await session.refresh(report)
     return report

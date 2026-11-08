@@ -14,9 +14,13 @@ signing in is the free upgrade path, BYOK is the power-user path.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import zlib
 from typing import Any
 
 from fastapi import Request
+from loguru import logger
 
 from config import config
 from services.core.model_prefs import load_model_context, prefs_owner_id
@@ -73,12 +77,26 @@ def limit_message(event_type: str) -> str:
     return _LIMIT_COPY.get(event_type, _GENERIC_LIMIT)
 
 
-async def check_daily_limit(request: Request, event_type: str) -> str | None:
-    """Return the limit-reached message when the owner is over today's cap.
+_RESERVE_LOCK_STRIPES = 64
+_reserve_locks = [asyncio.Lock() for _ in range(_RESERVE_LOCK_STRIPES)]
 
-    ``None`` means the request may proceed. Fails open when the DB is
-    unavailable or the event type is unknown — a counting hiccup should
-    never break the product.
+
+def _bucket_locks(*buckets: str) -> list[asyncio.Lock]:
+    """In-process locks for the given buckets, in a fixed acquisition order."""
+    stripes = sorted({zlib.crc32(b.encode()) % _RESERVE_LOCK_STRIPES for b in buckets})
+    return [_reserve_locks[i] for i in stripes]
+
+
+async def reserve_daily_quota(
+    request: Request, event_type: str, *, provider: str | None = None, **metadata: Any
+) -> str | None:
+    """Atomically check today's cap and record one usage event.
+
+    Returns the limit-reached message when the owner is over the cap (no
+    event recorded); ``None`` means the event was recorded (or the owner is
+    exempt) and the request may proceed. Anonymous owners are also capped
+    per client IP, so a fresh ``oh_sid`` cookie doesn't reset the quota.
+    Fails open when the DB is unavailable or the event type is unknown.
     """
     owner_id = prefs_owner_id(request)
     if not owner_id or not database_available():
@@ -89,7 +107,8 @@ async def check_daily_limit(request: Request, event_type: str) -> str | None:
     limit_user, limit_anon, byok_exempt = _EVENT_LIMITS.get(event_type, (0, 0, False))
     if not limit_user:
         return None
-    limit = limit_anon if owner_id.startswith("sess:") else limit_user
+    anonymous = owner_id.startswith("sess:")
+    limit = limit_anon if anonymous else limit_user
 
     if byok_exempt:
         try:
@@ -99,37 +118,41 @@ async def check_daily_limit(request: Request, event_type: str) -> str | None:
         except Exception:  # noqa: BLE001 — fail open on prefs lookup
             pass
 
-    from services.persistence.repositories import daily_usage_count
+    from services.persistence.repositories import reserve_usage
+    from utils.rate_limit import client_ip
+
+    ip = client_ip(request)
+    ip_limit = (
+        limit * max(1, config.BETA_ANON_IP_LIMIT_MULTIPLIER) if anonymous else None
+    )
+    buckets = [f"{event_type}:owner:{owner_id}"]
+    if ip_limit is not None:
+        buckets.append(f"{event_type}:ip:{ip}")
 
     try:
-        async for db_session in session_scope():
-            used = await daily_usage_count(
-                db_session, user_id=owner_id, event_type=event_type
-            )
-    except Exception:  # noqa: BLE001 — fail open on counting failure
+        async with contextlib.AsyncExitStack() as stack:
+            for lock in _bucket_locks(*buckets):
+                await stack.enter_async_context(lock)
+            allowed = True
+            async for db_session in session_scope():
+                allowed = await reserve_usage(
+                    db_session,
+                    user_id=owner_id,
+                    event_type=event_type,
+                    limit=limit,
+                    client_ip=ip,
+                    ip_limit=ip_limit,
+                    provider=provider,
+                    metadata=metadata,
+                )
+    except Exception as exc:  # noqa: BLE001 — fail open on counting failure
+        logger.warning(
+            "daily_quota_reserve_failed", event_type=event_type, error=str(exc)
+        )
         return None
-    if used >= limit:
+    if not allowed:
         return limit_message(event_type)
     return None
-
-
-async def record_event(request: Request, event_type: str, **metadata: Any) -> None:
-    """Record a usage event for the request owner (best effort)."""
-    owner_id = prefs_owner_id(request)
-    if not owner_id or not database_available():
-        return
-    from services.persistence.repositories import record_usage
-
-    try:
-        async for db_session in session_scope():
-            await record_usage(
-                db_session,
-                user_id=owner_id,
-                event_type=event_type,
-                metadata=metadata,
-            )
-    except Exception:  # noqa: BLE001 — never let metering break the flow
-        pass
 
 
 def friendly_error_message(exc: BaseException | str, fallback: str) -> str:

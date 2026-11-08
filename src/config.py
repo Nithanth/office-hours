@@ -111,6 +111,13 @@ class Config(BaseSettings):
     BETA_DAILY_GENERATION_LIMIT_ANON: int = 5
     # Comma-separated owner ids that bypass all beta limits (demo/admin).
     BETA_EXEMPT_USER_IDS: str = ""
+    # Anonymous caps also apply per client IP (across all sess:{id} cookies
+    # from that IP) at this multiple of the per-session cap, so dropping the
+    # oh_sid cookie doesn't reset the quota. Headroom covers shared NATs.
+    BETA_ANON_IP_LIMIT_MULTIPLIER: int = 3
+    # Read the client IP from the rightmost X-Forwarded-For hop. Enable only
+    # behind a proxy that sets it (Railway); otherwise clients can spoof it.
+    TRUST_PROXY_HEADERS: bool = False
 
     # ------------------------------------------------------------------
     # Cache directories

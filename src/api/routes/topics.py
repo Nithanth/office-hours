@@ -845,6 +845,15 @@ async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
         for r in rows
     ]
 
+    from services.limits import reserve_daily_quota
+
+    limit_msg = await reserve_daily_quota(request, "report_generated")
+    if limit_msg:
+        return HTMLResponse(
+            f"<div class='alert-error'>{html.escape(limit_msg)}</div>",
+            status_code=429,
+        )
+
     from api.routers.report_stream import (
         _report_skeleton_html,
         cache_report_request,
@@ -860,6 +869,7 @@ async def topic_rerender(topic_id: str, request: Request) -> HTMLResponse:
             "is_url_input": topic.kind == "paper",
             "user_id": owner,
             "topic_id": topic.id,
+            "quota_reserved": True,
         }
     )
     return HTMLResponse(_report_skeleton_html(token))

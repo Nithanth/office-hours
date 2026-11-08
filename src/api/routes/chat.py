@@ -101,14 +101,13 @@ async def chat_post(
 
     # Daily chat budget (BYOK lifts it; BETA_EXEMPT_USER_IDS bypasses).
     # 200 + an assistant bubble so HTMX renders the notice in the chat log.
-    from services.limits import check_daily_limit, record_event
+    from services.limits import reserve_daily_quota
 
-    limit_msg = await check_daily_limit(request, "chat_message")
+    limit_msg = await reserve_daily_quota(request, "chat_message")
     if limit_msg:
         return HTMLResponse(
             f'<div class="assistant-message">{html.escape(limit_msg)}</div>'
         )
-    await record_event(request, "chat_message")
 
     # Topic chats scope in-memory state per topic ("topic:{topic_id}"),
     # falling back to the report key for legacy report-linked topic chats;

@@ -234,10 +234,6 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     """Process the main search form (HTMX) or an Ask-LLM direct query."""
 
     session_id = await get_session_id(request)
-    from services.core.model_prefs import prefs_owner_id
-    from services.persistence.database import database_available, session_scope
-
-    user_id = prefs_owner_id(request)
 
     exa_client = get_exa_client()
     llm_service = get_llm_service()
@@ -261,19 +257,6 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         # URL/entry — the user may be viewing prior results.
         return HTMLResponse(
             content=error_html,
-            headers={
-                "HX-Retarget": "#search-results-container",
-                "HX-Reswap": "innerHTML",
-            },
-        )
-
-    from services.limits import check_daily_limit
-
-    limit_msg = await check_daily_limit(request, "search")
-    if limit_msg:
-        return HTMLResponse(
-            f"<div class='oh-toast'>{limit_msg}</div>",
-            status_code=429,
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -305,6 +288,24 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     _MAX_QUERY_LEN = 500
     if len(input_query_stripped) > _MAX_QUERY_LEN:
         input_query_stripped = input_query_stripped[:_MAX_QUERY_LEN]
+
+    from services.limits import reserve_daily_quota
+
+    limit_msg = await reserve_daily_quota(
+        request,
+        "search",
+        provider="exa",
+        mode="url" if _url_utils.is_paper_url(input_query_stripped) else "query",
+    )
+    if limit_msg:
+        return HTMLResponse(
+            f"<div class='oh-toast'>{limit_msg}</div>",
+            status_code=429,
+            headers={
+                "HX-Retarget": "#search-results-container",
+                "HX-Reswap": "innerHTML",
+            },
+        )
 
     # ------------------------------------------------------------------
     # Prune completed tasks to prevent unbounded dict growth
@@ -554,18 +555,6 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                 session_id=session_id,
                 **search_kwargs,
             )
-
-        if user_id and database_available():
-            from services.persistence.repositories import record_usage
-
-            async for db_session in session_scope():
-                await record_usage(
-                    db_session,
-                    user_id=user_id,
-                    event_type="search",
-                    provider="exa",
-                    metadata={"mode": "url" if is_url_search else "query"},
-                )
 
         # Author constraint: keep papers the resolved person plausibly
         # wrote — S2 corpus intersection when available, byline match

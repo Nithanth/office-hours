@@ -279,6 +279,30 @@ class TestReports:
         assert evt is not None
         assert evt.metadata_json["paper_count"] == 2
 
+    async def test_create_report_skips_usage_event_when_reserved(
+        self, db_session: AsyncSession
+    ):
+        uid = await _make_user(db_session)
+        await create_report(
+            db_session,
+            user_id=uid,
+            title="Reserved",
+            original_query="q",
+            audience_type="expert",
+            summary_size="long",
+            model_key="openai/gpt-4o",
+            is_url_input=False,
+            report_html="<p>x</p>",
+            papers=_sample_papers(),
+            record_usage_event=False,
+        )
+        from sqlalchemy import select
+
+        evt = await db_session.scalar(
+            select(UsageEvent).where(UsageEvent.user_id == uid)
+        )
+        assert evt is None
+
     async def test_list_reports_returns_user_reports_only(
         self, db_session: AsyncSession
     ):
