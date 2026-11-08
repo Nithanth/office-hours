@@ -569,19 +569,26 @@ async def pdf_proxy(
     resp_headers = {
         "Content-Type": upstream.headers.get("Content-Type", "application/pdf"),
         "Accept-Ranges": upstream.headers.get("Accept-Ranges", "bytes"),
-        "Cache-Control": "public, max-age=86400",
     }
     for h in ("Content-Length", "Content-Range"):
         if upstream.headers.get(h):
             resp_headers[h] = upstream.headers[h]
+    # Unknown-length bodies may be aborted at the cap, so never let caches keep them
+    resp_headers["Cache-Control"] = (
+        "public, max-age=86400" if declared is not None else "no-store"
+    )
 
     async def _body() -> AsyncIterator[bytes]:
         sent = 0
         async for chunk in upstream.content.iter_chunked(64 * 1024):
             sent += len(chunk)
             if sent > _PDF_PROXY_MAX_BYTES:
-                logger.info("pdf_proxy_truncated", url=url, cap=_PDF_PROXY_MAX_BYTES)
-                return
+                logger.info("pdf_proxy_aborted", url=url, cap=_PDF_PROXY_MAX_BYTES)
+                # Abort the connection so the client sees a failed transfer, not a
+                # complete-looking truncated PDF
+                raise ResponseTooLargeError(
+                    f"body exceeded {_PDF_PROXY_MAX_BYTES} bytes"
+                )
             yield chunk
 
     # Release the upstream response when streaming finishes (session is pooled)

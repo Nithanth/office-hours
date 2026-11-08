@@ -178,6 +178,24 @@ async def test_pdf_proxy_streams_public(
     assert r.status_code == 200
     assert r.content == b"%PDF-1.4 ok"
     assert "access-control-allow-origin" not in r.headers
+    assert r.headers["cache-control"] == "public, max-age=86400"
+
+
+async def test_pdf_proxy_aborts_oversized_chunked_body(
+    proxy_client: httpx.AsyncClient,
+    upstream: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_modal, "_PDF_PROXY_MAX_BYTES", 1024 * 1024)
+    received = 0
+    with pytest.raises(ResponseTooLargeError):
+        async with proxy_client.stream(
+            "GET", "/pdf-proxy", params={"url": f"{upstream}/big"}
+        ) as r:
+            assert r.headers["cache-control"] == "no-store"
+            async for chunk in r.aiter_bytes():
+                received += len(chunk)
+    assert received <= 1024 * 1024
 
 
 @pytest.mark.parametrize("path", ["/to-loopback", "/to-metadata", "/to-internal"])
