@@ -30,12 +30,12 @@ A FastAPI + FastHTML web app for reading research papers: search (Exa / Semantic
 - Every other page and API (about 86 routes): any signed-in Google user.
 - `/share/{token}`: public read-only topic share. It is not in the auth-gate public list, so with `REQUIRE_LOGIN` on it still needs sign-in (inferred from the code).
 - `/admin/*`: bearer `ADMIN_API_KEY`, fails closed in prod (`src/api/routes/admin.py`).
-- `/metrics`, `/healthz`: unauthenticated.
+- `/healthz`: unauthenticated. `/metrics`: unauthenticated, but only registered when `ENABLE_METRICS` is true (default false; `src/utils/observability.py`).
 - Notion OAuth connect/callback and destination selection (`src/api/routes/integrations.py`).
 
 ## Assets and sensitivity [owner: all roughly equal]
 
-1. **Users' stored secrets:** OpenRouter BYOK keys (`user_preferences.openrouter_key_encrypted`, Fernet via `OH_SECRET_ENCRYPTION_KEY`) and Notion OAuth tokens (`user_integrations`).
+1. **Users' stored secrets:** OpenRouter BYOK keys (`user_preferences.openrouter_key_encrypted`, Fernet via `OH_SECRET_ENCRYPTION_KEY`), Google OAuth access/refresh tokens (Fernet-encrypted by `upsert_google_user` in `repositories.py`), and Notion OAuth tokens (`user_integrations`).
 2. **Server-side secrets and spend:** `EXA_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, `OH_SESSION_SECRET`, `OH_SECRET_ENCRYPTION_KEY`, `ADMIN_API_KEY`, Google/Notion OAuth client secrets.
 3. **Per-user data isolation:** reports, saved papers, topics, chats and preferences, keyed by `owner_id` (auth `user_id`, or `sess:{oh_sid}` before sign-in; claimed on login by `claim_anonymous_session`).
 
@@ -51,7 +51,7 @@ A FastAPI + FastHTML web app for reading research papers: search (Exa / Semantic
 - Signed cookies (itsdangerous), HttpOnly, Secure in prod, SameSite=Lax; the app refuses to start in non-dev with the default `OH_SESSION_SECRET` (`src/config.py`).
 - OAuth state is signed with a 10-minute TTL; the `next` value must start with `/` (`//host` is not rejected; see open questions).
 - Security headers and CSP, X-Frame-Options DENY, HSTS, HTTPS redirect in prod (`src/middleware/security.py`). The CSP allows `'unsafe-inline'` scripts.
-- CORS allowlist from `AUTH_REDIRECT_BASE_URL`, with `allow_credentials=True`; it falls back to `*` if that is unset.
+- CORS allowlist from `AUTH_REDIRECT_BASE_URL`, with `allow_credentials=True`. If that is unset, `Config._compute_derived` (`src/config.py`) defaults it to `http://localhost:{PORT}`, so the `*` fallback in `src/middleware/__init__.py` is never reached.
 - SlowAPI rate limiting (about 14 decorated routes); anonymous-session limits in `src/config.py`.
 - Fernet encryption for BYOK keys; owner-scoped repository queries (`owner_id=` arguments in `repositories.py`).
 - Vega specs run in a sandboxed iframe (`/vega-frame`) with its own CSP, so global CSP has no `unsafe-eval`.
@@ -66,6 +66,6 @@ Nothing is out of scope. The owner wants to open the tool to other people and mi
 
 ## Open questions
 
-- Is `AUTH_REDIRECT_BASE_URL` set in Railway? If not, CORS falls back to `*` with credentials.
-- Should `/metrics` be public in prod?
+- Is `AUTH_REDIRECT_BASE_URL` set in Railway? If not, it defaults to localhost, which breaks the OAuth redirect and the prod CORS origin.
+- Is `ENABLE_METRICS` on in prod? If so, `/metrics` is public.
 - Is any email allowlist enforced outside the code (e.g., the Google OAuth consent screen set to "internal"/test users)?
