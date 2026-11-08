@@ -17,6 +17,7 @@ from services.auth.session import (
     clear_auth_cookie,
     clear_oauth_state_cookie,
     get_auth_user_id,
+    safe_local_path,
     set_auth_cookie,
     set_oauth_state_cookie,
     sign_oauth_state,
@@ -51,7 +52,9 @@ async def google_login(
     if not _auth_configured():
         raise HTTPException(status_code=503, detail="Google login is not configured.")
 
-    state = sign_oauth_state({"nonce": secrets.token_urlsafe(16), "next": next})
+    state = sign_oauth_state(
+        {"nonce": secrets.token_urlsafe(16), "next": safe_local_path(next)}
+    )
     params = {
         "client_id": _cfg.config.GOOGLE_CLIENT_ID,
         "redirect_uri": _redirect_uri(),
@@ -162,8 +165,7 @@ async def google_callback(
 
     invalidate_prefs_cache(user.id)
 
-    redirect_to = str(payload.get("next") or "/")
-    response = RedirectResponse(redirect_to if redirect_to.startswith("/") else "/")
+    response = RedirectResponse(safe_local_path(payload.get("next")))
     clear_oauth_state_cookie(response)
     set_auth_cookie(response, user.id, request)
     return response

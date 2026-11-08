@@ -17,6 +17,7 @@ from services.auth.session import (
     clear_oauth_state_cookie,
     get_auth_user_id,
     require_auth_user_id,
+    safe_local_path,
     set_oauth_state_cookie,
     sign_oauth_state,
     verify_oauth_state,
@@ -54,6 +55,7 @@ def _basic_auth_header() -> str:
 
 @router.get("/integrations/notion/connect")
 async def notion_connect(request: Request, next: str = "/") -> Response:  # noqa: A002
+    next = safe_local_path(next)
     if not get_auth_user_id(request):
         # Safety net for direct hits (library link, bookmarks): bounce through
         # Google sign-in and come back here instead of a bare 401 page.
@@ -64,13 +66,11 @@ async def notion_connect(request: Request, next: str = "/") -> Response:  # noqa
             "/auth/google/login?next=" + urllib.parse.quote(login_next, safe="/?&=")
         )
     if not _notion_oauth_configured():
-        # Local paths only — `//host` would navigate off-site from our page.
-        safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
         return HTMLResponse(
             "<div style='font-family:system-ui,sans-serif;max-width:420px;margin:120px auto;text-align:center;'>"
             "<h2 style='font-size:1.1rem;'>Notion sync isn't set up yet</h2>"
             "<p style='color:#666;font-size:0.9rem;'>The Notion integration isn't configured on this deployment.</p>"
-            f"<a href='{urllib.parse.quote(safe_next, safe='/?&=')}' style='color:#2563eb;'>← Back</a>"
+            f"<a href='{urllib.parse.quote(next, safe='/?&=')}' style='color:#2563eb;'>← Back</a>"
             "</div>",
             status_code=503,
         )
@@ -146,7 +146,7 @@ async def notion_callback(
             workspace_icon=token_data.get("workspace_icon"),
         )
 
-    response = RedirectResponse(str(payload.get("next") or "/"))
+    response = RedirectResponse(safe_local_path(payload.get("next")))
     clear_oauth_state_cookie(response)
     return response
 

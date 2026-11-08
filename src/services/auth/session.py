@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, Response, status
 from itsdangerous import BadData, URLSafeTimedSerializer
@@ -69,6 +70,25 @@ def set_auth_cookie(response: Response, user_id: str, request: Request) -> None:
 
 def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+
+
+def safe_local_path(target: object) -> str:
+    """Return ``target`` if it is a same-origin path, else ``"/"``.
+
+    Rejects protocol-relative (``//host``), backslash (``/\\host``), absolute
+    URLs and control characters, which browsers may strip or normalise.
+    """
+
+    if not isinstance(target, str) or not target.startswith("/"):
+        return "/"
+    if target[1:2] in ("/", "\\"):
+        return "/"
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in target):
+        return "/"
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc:
+        return "/"
+    return target
 
 
 def sign_oauth_state(payload: dict[str, Any]) -> str:
