@@ -318,6 +318,10 @@ narwhals==2.22.1
     # via
     #   -c /tmp/uv_constraints.txt
     #   scikit-learn
+nh3==0.3.7
+    # via
+    #   -c /tmp/uv_constraints.txt
+    #   office-hours (pyproject.toml)
 networkx==3.6.1
     # via
     #   -c /tmp/uv_constraints.txt

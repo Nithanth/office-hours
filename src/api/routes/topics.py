@@ -417,7 +417,7 @@ def _paper_rows_html(
 
 # Markdown → HTML, rendered server-side so a CDN hiccup can never surface raw
 # markdown; JS only enhances (KaTeX) afterwards. LLM output can embed raw
-# HTML — strip active-content tags and on* handlers before parsing.
+# HTML — render_markdown_safe allowlist-sanitizes the rendered output.
 
 
 def _md_to_html(md: str) -> str:
