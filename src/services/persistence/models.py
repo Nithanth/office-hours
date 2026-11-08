@@ -355,5 +355,8 @@ class UsageEvent(Base):
     user_id: Mapped[str | None] = mapped_column(String(80), index=True)
     event_type: Mapped[str] = mapped_column(String(64), index=True)
     provider: Mapped[str | None] = mapped_column(String(64))
+    # Requesting client IP for quota-reserved events; anonymous caps also
+    # count per IP so a fresh session cookie doesn't reset them.
+    client_ip: Mapped[str | None] = mapped_column(String(64), index=True)
     metadata_json: Mapped[dict] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)

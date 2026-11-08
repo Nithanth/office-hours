@@ -74,12 +74,13 @@ async def generate_report_notes(
         logger.warning("report_notes: empty report text provided")
         raise HTTPException(status_code=400, detail="Report text required")
 
-    from services.limits import check_daily_limit, record_event
+    from services.limits import reserve_daily_quota
 
-    limit_msg = await check_daily_limit(request, "notes_generation")
+    limit_msg = await reserve_daily_quota(
+        request, "notes_generation", output_format=output_format
+    )
     if limit_msg:
         raise HTTPException(status_code=429, detail=limit_msg)
-    await record_event(request, "notes_generation", output_format=output_format)
 
     session_id = await get_session_id(request)
     chat_state = get_chat_state(session_id)
@@ -925,12 +926,11 @@ async def generate_blog(
     if not report_text.strip():
         raise HTTPException(status_code=400, detail="Report text required")
 
-    from services.limits import check_daily_limit, record_event
+    from services.limits import reserve_daily_quota
 
-    limit_msg = await check_daily_limit(request, "blog_generation")
+    limit_msg = await reserve_daily_quota(request, "blog_generation")
     if limit_msg:
         raise HTTPException(status_code=429, detail=limit_msg)
-    await record_event(request, "blog_generation")
 
     session_id = await get_session_id(request)
     chat_state = get_chat_state(session_id)
@@ -1025,12 +1025,11 @@ async def regenerate_blog(
 
     logger.info("blog_regenerate: request received")
 
-    from services.limits import check_daily_limit, record_event
+    from services.limits import reserve_daily_quota
 
-    limit_msg = await check_daily_limit(request, "blog_generation")
+    limit_msg = await reserve_daily_quota(request, "blog_generation", revise=True)
     if limit_msg:
         raise HTTPException(status_code=429, detail=limit_msg)
-    await record_event(request, "blog_generation", revise=True)
 
     _purge_expired_blogs()
 

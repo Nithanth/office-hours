@@ -219,14 +219,14 @@ async def generate_report_incremental(  # noqa: PLR0913
 ) -> HTMLResponse:
     """Return HTML scaffold that connects to live `/report/stream`."""
     from services.core.model_prefs import prefs_owner_id
-    from services.limits import check_daily_limit
+    from services.limits import reserve_daily_quota
     from services.persistence.database import database_available, session_scope
 
     # Owner key: auth user_id when signed in, else "sess:{id}" — anonymous
     # visitors own (and are rate-limited on) their reports too. A BYOK
     # OpenRouter key lifts the cap; BETA_EXEMPT_USER_IDS bypass it.
     user_id = prefs_owner_id(request)
-    limit_msg = await check_daily_limit(request, "report_generated")
+    limit_msg = await reserve_daily_quota(request, "report_generated")
     if limit_msg:
         return HTMLResponse(
             "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
@@ -319,6 +319,7 @@ async def generate_report_incremental(  # noqa: PLR0913
         "is_url_input": is_url_input,
         "user_id": user_id,
         "topic_id": topic_id,
+        "quota_reserved": True,
     }
     REPORT_REQUEST_CACHE[token] = payload
     _save_report_request(token, payload)
@@ -768,6 +769,7 @@ async def report_stream(
                             report_html="\n".join(persisted_blocks),
                             papers=papers_list,
                             topic_id=topic_id,
+                            record_usage_event=not payload.get("quota_reserved"),
                         )
                         if topic_id:
                             from services.persistence.repositories import (

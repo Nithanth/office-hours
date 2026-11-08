@@ -14,10 +14,28 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.responses import Response
 
+import config as _cfg
+
+
+def client_ip(request: Request) -> str:
+    """Best-effort client IP for rate limits and quota buckets.
+
+    With ``TRUST_PROXY_HEADERS`` the rightmost ``X-Forwarded-For`` hop is
+    used: that's the address our proxy saw, and earlier hops are client
+    controlled. Otherwise the socket peer address.
+    """
+    if _cfg.config.TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+        if hops:
+            return str(hops[-1])[:64]
+    return str(get_remote_address(request))
+
+
 # Global limiter instance with sensible defaults.
 # Override/extend per-route limits via the decorator.
 limiter: Limiter = Limiter(
-    key_func=get_remote_address, default_limits=["100/5minute"]
+    key_func=client_ip, default_limits=["100/5minute"]
 )  # ~0.33 r/s
 
 
@@ -84,6 +102,7 @@ def _parse_retry_seconds(detail: str) -> int:
 
 # Re-export helpers for convenience
 __all__ = [
+    "client_ip",
     "limiter",
     "RateLimitExceeded",
     "_rate_limit_exceeded_handler",
