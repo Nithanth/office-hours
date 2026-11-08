@@ -45,9 +45,7 @@ def _auth_configured() -> bool:
 
 
 @router.get("/auth/google/login")
-async def google_login(
-    request: Request, next: str = "/"
-) -> RedirectResponse:  # noqa: A002
+async def google_login(request: Request, next: str = "/") -> RedirectResponse:  # noqa: A002
     if not _auth_configured():
         raise HTTPException(status_code=503, detail="Google login is not configured.")
 
@@ -75,27 +73,19 @@ async def google_callback(
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing OAuth code or state.")
 
-    # The state token is already cryptographically signed via
-    # URLSafeTimedSerializer + OH_SESSION_SECRET, so an attacker cannot
-    # forge it. The cookie comparison adds defense-in-depth against CSRF by
-    # binding the in-flight OAuth flow to the user's browser. On localhost
-    # over plain HTTP, browsers / privacy modes sometimes drop the SameSite=Lax
-    # cookie across the Google redirect, producing 400 "OAuth state mismatch"
-    # on every dev sign-in. To make development frictionless without
-    # weakening prod we keep strict comparison on HTTPS and downgrade to a
-    # warning on HTTP (where deployments shouldn't accept real traffic
-    # anyway). The signed-state verification below is always enforced.
+    # Bind the callback to the browser that started the flow. A signed state
+    # alone doesn't stop login CSRF: an attacker can start a flow, then send
+    # the victim their own callback link, merging the victim's anonymous
+    # session into the attacker's account. Enforced regardless of scheme,
+    # since behind Railway's TLS proxy request.url.scheme is http.
     state_cookie = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
-    is_https = request.url.scheme == "https"
-    if state_cookie != state:
-        if state_cookie is None and not is_https:
-            logger.warning(
-                "oauth_state_cookie_missing_dev_fallback",
-                scheme=request.url.scheme,
-                host=request.url.hostname,
-            )
-        else:
-            raise HTTPException(status_code=400, detail="OAuth state mismatch.")
+    if not state_cookie or not secrets.compare_digest(state_cookie.encode(), state.encode()):
+        logger.warning(
+            "oauth_state_mismatch",
+            cookie_present=state_cookie is not None,
+            scheme=request.url.scheme,
+        )
+        raise HTTPException(status_code=400, detail="OAuth state mismatch.")
 
     payload = verify_oauth_state(state)
     try:

@@ -1,15 +1,10 @@
 """Unit tests for the OAuth callback's state-cookie comparison logic.
 
-The state token itself is cryptographically signed (URLSafeTimedSerializer
-with OH_SESSION_SECRET), so an attacker can't forge it. The cookie
-comparison is defense-in-depth CSRF binding. On localhost over plain HTTP,
-browsers (especially privacy-strict ones) sometimes drop the SameSite=Lax
-state cookie across the Google redirect — producing 400 on every dev sign-in.
-
-The route now:
-- HTTPS: strict comparison (cookie required, must match state).
-- HTTP + cookie missing: warn and fall through to signature verification.
-- HTTP + cookie present but != state: still rejected (real tampering signal).
+The state token is signed, but a signed state alone doesn't prevent login
+CSRF: an attacker can start a flow and hand the victim their own callback
+link. The cookie binds the flow to the initiating browser, so the callback
+must always require it to match, on every scheme (behind Railway's TLS proxy
+request.url.scheme is http).
 """
 
 from __future__ import annotations
@@ -95,21 +90,42 @@ async def test_https_strict_when_cookie_missing(
 
 
 @pytest.mark.asyncio
-async def test_http_falls_through_when_cookie_missing(
+async def test_http_rejects_when_cookie_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """HTTP + no cookie → state check passes; we should reach the network
-    layer (which is mocked to raise the sentinel)."""
+    """HTTP + no cookie → 400. Prod sees http behind the TLS proxy, so a
+    scheme-based fallback would reopen login CSRF."""
+
+    with pytest.raises(HTTPException) as excinfo:
+        await _call_callback(monkeypatch, scheme="http", cookie_value=None, state_value="state-abc")
+    assert excinfo.value.status_code == 400
+    assert "state mismatch" in excinfo.value.detail.lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheme", ["http", "https"])
+async def test_matching_cookie_passes_state_check(
+    monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    """Cookie == state → we get past the check and reach the (mocked) network."""
 
     with pytest.raises(Exception) as excinfo:
-        result, NetworkBlocked = await _call_callback(
-            monkeypatch, scheme="http", cookie_value=None, state_value="state-abc"
+        await _call_callback(
+            monkeypatch, scheme=scheme, cookie_value="state-abc", state_value="state-abc"
         )
-    # The sentinel must be the _NetworkBlocked exception (class created
-    # inside _call_callback) — i.e. we got past the cookie check.
-    assert "NetworkBlocked" in type(excinfo.value).__name__ or "post() called" in str(
-        excinfo.value
-    )
+    assert not isinstance(excinfo.value, HTTPException)
+    assert "post() called" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_non_ascii_state_rejected_not_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(HTTPException) as excinfo:
+        await _call_callback(
+            monkeypatch, scheme="https", cookie_value="state-abc", state_value="stäte"
+        )
+    assert excinfo.value.status_code == 400
 
 
 @pytest.mark.asyncio
