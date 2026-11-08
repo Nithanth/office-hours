@@ -54,7 +54,7 @@ def _filter_attribute(tag: str, attr: str, value: str) -> str | None:
 
 
 def sanitize_html(html: str) -> str:
-    return nh3.clean(
+    cleaned: str = nh3.clean(
         html,
         tags=_ALLOWED_TAGS,
         attributes=_ALLOWED_ATTRIBUTES,
@@ -63,6 +63,7 @@ def sanitize_html(html: str) -> str:
         filter_style_properties={"text-align"},
         link_rel="noopener noreferrer nofollow",
     )
+    return cleaned
 
 
 def render_markdown_safe(md: str) -> str:

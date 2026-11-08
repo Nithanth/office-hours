@@ -5,7 +5,9 @@ import pytest
 from utils.md_render import render_markdown_safe
 
 _HANDLER = re.compile(r"(?i)<[^>]*\son\w+\s*=")
-_SCRIPT_URL = re.compile(r"(?i)<[^>]*(href|src)\s*=\s*\"?\s*(javascript|vbscript|data:text)")
+_SCRIPT_URL = re.compile(
+    r"(?i)<[^>]*(href|src)\s*=\s*\"?\s*(javascript|vbscript|data:text)"
+)
 
 
 @pytest.mark.parametrize(
