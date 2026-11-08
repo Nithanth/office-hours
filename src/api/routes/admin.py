@@ -1,5 +1,6 @@
 """Health-check and small admin utilities (cache flush, metadata recheck, task status)."""
 
+import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -18,19 +19,19 @@ router = APIRouter()
 
 
 def _require_admin(creds: HTTPAuthorizationCredentials | None) -> None:
-    """Fail closed for admin operations in production."""
+    """Fail closed for admin operations: a configured key is always required."""
 
     secret = _cfg.config.ADMIN_API_KEY
     if not secret:
-        if _cfg.config.ENV == "prod":
-            logger.error("admin_secret_missing")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Admin API key is not configured",
-            )
-        return
+        logger.error("admin_secret_missing")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin API key is not configured",
+        )
 
-    if creds is None or creds.credentials != secret:
+    if creds is None or not secrets.compare_digest(
+        creds.credentials.encode(), secret.encode()
+    ):
         logger.warning("admin_forbidden")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
