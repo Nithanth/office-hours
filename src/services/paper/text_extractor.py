@@ -17,6 +17,13 @@ from pdfminer.high_level import extract_text
 
 # Internal helpers
 from services.core.exa_utils import url_utils as _url_utils
+from utils.safe_fetch import (
+    ResponseTooLargeError,
+    read_capped,
+    safe_get,
+    safe_session,
+    text_capped,
+)
 
 if TYPE_CHECKING:
     # During static type checking we don't care about implementation – use Any.
@@ -457,15 +464,22 @@ class TextExtractor:
 
                     async def _meta_task() -> None:
                         """Background task to download the PDF and parse metadata."""
-                        import requests  # type: ignore[import-untyped,unused-ignore]
-
                         nonlocal meta
                         try:
-                            resp = requests.get(url, timeout=15)
-                            if resp.ok and resp.headers.get(
-                                "content-type", ""
-                            ).startswith("application/pdf"):
-                                meta = _extract_pdf_metadata(resp.content)
+                            async with (
+                                safe_session() as _meta_session,
+                                safe_get(
+                                    _meta_session,
+                                    url,
+                                    timeout=aiohttp.ClientTimeout(total=15),
+                                ) as resp,
+                            ):
+                                if resp.ok and resp.headers.get(
+                                    "content-type", ""
+                                ).startswith("application/pdf"):
+                                    meta = _extract_pdf_metadata(
+                                        await read_capped(resp, MAX_PDF_BYTES)
+                                    )
                         except Exception as _req_exc:  # pragma: no cover – best-effort
                             logger.debug("meta_dl_failed", err=str(_req_exc))
 
@@ -503,14 +517,17 @@ class TextExtractor:
                             import tempfile
 
                             async with (
-                                aiohttp.ClientSession() as _fig_session,
-                                _fig_session.get(
+                                safe_session() as _fig_session,
+                                safe_get(
+                                    _fig_session,
                                     url,
                                     timeout=aiohttp.ClientTimeout(total=30),
                                 ) as _fig_resp,
                             ):
                                 if _fig_resp.status == 200:
-                                    _pdf_data = await _fig_resp.read()
+                                    _pdf_data = await read_capped(
+                                        _fig_resp, MAX_PDF_BYTES
+                                    )
                                     with tempfile.NamedTemporaryFile(
                                         suffix=".pdf", delete=False
                                     ) as _tmp:
@@ -664,15 +681,17 @@ class TextExtractor:
         legal/boilerplate links and try each remaining candidate in order.
         """
         async with (
-            aiohttp.ClientSession() as session,
-            session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp,
+            safe_session() as session,
+            safe_get(session, url, timeout=aiohttp.ClientTimeout(total=15)) as resp,
         ):
             if resp.content_type != "text/html":
                 return None
-            raw_html = await resp.text()
+            raw_html = await text_capped(resp)
+            # Resolve relative hrefs against the final (post-redirect) URL.
+            page_url = str(resp.url)
         for link in _paper_pdf_links(raw_html):
-            pdf_link = urljoin(url, link)  # handle relative link
-            try:
+            pdf_link = urljoin(page_url, link)  # handle relative link
+            try:  # _layer_pdf re-checks the scraped link before fetching
                 extracted = await self._layer_pdf(pdf_link)
             except Exception:  # noqa: BLE001 - dead/bogus pdf link; try next
                 continue
@@ -702,8 +721,9 @@ class TextExtractor:
                 pass  # no existing file ⇒ full download
 
         async with (
-            aiohttp.ClientSession() as session,
-            session.get(
+            safe_session() as session,
+            safe_get(
+                session,
                 url,
                 timeout=aiohttp.ClientTimeout(total=30),
                 headers=headers,  # may be None
@@ -723,14 +743,13 @@ class TextExtractor:
                 )
                 return None
 
-            pdf_bytes = await resp.read()
-
-            # Final check on the actual bytes received.
-            if len(pdf_bytes) > MAX_PDF_BYTES:
+            try:
+                pdf_bytes = await read_capped(resp, MAX_PDF_BYTES)
+            except ResponseTooLargeError:
                 logger.info(
                     "pdf_skip_too_large_dl",
                     url=url,
-                    mb=len(pdf_bytes) // 1_048_576,
+                    max_mb=MAX_PDF_BYTES // 1_048_576,
                 )
                 return None
 
@@ -804,12 +823,12 @@ class TextExtractor:
 
     async def _layer_html(self, url: str) -> str | None:
         async with (
-            aiohttp.ClientSession() as session,
-            session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as resp,
+            safe_session() as session,
+            safe_get(session, url, timeout=aiohttp.ClientTimeout(total=20)) as resp,
         ):
             if resp.content_type != "text/html":
                 return None
-            raw_html = await resp.text()
+            raw_html = await text_capped(resp)
         readable = Document(raw_html)
         main_html = readable.summary(html_partial=True)
         text = re.sub(r"<[^>]+>", " ", main_html)  # crude strip tags

@@ -6,21 +6,31 @@ input, and rewrites HTMX attributes so the front-end can immediately stream
 messages via SSE.
 """
 
+import asyncio
 import html
-import ipaddress
 import re
 import time
 import urllib.parse
+from collections.abc import AsyncIterator
 from uuid import uuid4
 
-import httpx
+import aiohttp
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from loguru import logger
 from starlette.background import BackgroundTask
 
 from api.deps import get_paper_service  # lightweight helper, no heavy imports
+from config import config as app_config
 from services.chat.chat_components import ChatBubble, ChatModal
+from utils.safe_fetch import (
+    ResponseTooLargeError,
+    UnsafeURLError,
+    is_safe_url,
+    open_get,
+    safe_session,
+    text_capped,
+)
 from utils.static_assets import static_url
 
 router: APIRouter = APIRouter()
@@ -43,20 +53,20 @@ async def _warm_paper_cache(paper_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Shared httpx client pool (reuses TCP connections across proxy requests)
+# Shared SSRF-safe session (reuses TCP connections across proxy requests)
 # ---------------------------------------------------------------------------
-_PROXY_CLIENT: httpx.AsyncClient | None = None
+_PROXY_SESSION: aiohttp.ClientSession | None = None
+_PROXY_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=30)
+_PDF_PROXY_MAX_BYTES = app_config.MAX_PDF_MB * 2 * 1024 * 1024
+_HTML_PROXY_MAX_BYTES = 10 * 1024 * 1024
+_UPSTREAM_ERRORS = (aiohttp.ClientError, asyncio.TimeoutError)
 
 
-def _get_proxy_client() -> httpx.AsyncClient:
-    global _PROXY_CLIENT
-    if _PROXY_CLIENT is None or _PROXY_CLIENT.is_closed:
-        _PROXY_CLIENT = httpx.AsyncClient(
-            timeout=30,
-            follow_redirects=True,
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-        )
-    return _PROXY_CLIENT
+def _get_proxy_session() -> aiohttp.ClientSession:
+    global _PROXY_SESSION
+    if _PROXY_SESSION is None or _PROXY_SESSION.closed:
+        _PROXY_SESSION = safe_session(timeout=_PROXY_TIMEOUT)
+    return _PROXY_SESSION
 
 
 # ---------------------------------------------------------------------------
@@ -111,13 +121,8 @@ def _is_url_allowed(url: str) -> bool:
         host = parsed.hostname or ""
         host = host.lower().rstrip(".")
 
-        # Block obvious SSRF: loopback, private IPs
-        try:
-            ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_reserved:
-                return False
-        except ValueError:
-            pass  # Not an IP literal — continue with domain check
+        if not is_safe_url(url):
+            return False
 
         # Check if host matches or is a subdomain of an allowed domain
         for allowed in _ALLOWED_PROXY_DOMAINS:
@@ -129,32 +134,15 @@ def _is_url_allowed(url: str) -> bool:
 
 
 def _is_public_http_url(url: str) -> bool:
-    """Looser check for the PDF proxy: any public https host.
+    """Looser check for the PDF proxy: any public http(s) host.
 
     The PDF endpoint blindly streams bytes back — it doesn't inject or
     rewrite content — so the SSRF risk is hitting internal services, not
-    content injection. Block non-http(s) and private/reserved IPs only.
+    content injection. This is the cheap syntactic gate; DNS answers and
+    every redirect hop are vetted again at fetch time by ``utils.safe_fetch``.
     """
-    try:
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return False
-        host = (parsed.hostname or "").lower().rstrip(".")
-        if not host:
-            return False
-        try:
-            ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-                return False
-        except ValueError:
-            pass
-        # Block obvious internal hostnames
-        return not (
-            host in ("localhost", "metadata.google.internal")
-            or host.endswith((".internal", ".local", ".localhost"))
-        )
-    except Exception:
-        return False
+    safe: bool = is_safe_url(url)
+    return safe
 
 
 @router.get("/chat-modal", response_class=HTMLResponse)
@@ -540,8 +528,8 @@ async def pdf_proxy(
 ) -> StreamingResponse:  # noqa: D401
     """Stream *url* so the browser treats the PDF as same-origin.
 
-    Supports Range requests so pdf.js can fetch partial chunks. Adds
-    `Access-Control-Allow-Origin: *` so client-side canvas rendering works.
+    Supports Range requests so pdf.js can fetch partial chunks. pdf.js loads
+    it same-origin, so no CORS header is sent (cross-site pages can't read it).
     """
 
     # Basic validation – only allow http(s)
@@ -555,38 +543,56 @@ async def pdf_proxy(
         raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
 
     # Forward Range / If-Modified-Since so seeking & caching still work
-    fwd_headers: dict[str, str] = {}
+    # identity keeps Content-Length/Content-Range consistent with the bytes
+    # we relay (aiohttp would otherwise transparently decompress).
+    fwd_headers: dict[str, str] = {"Accept-Encoding": "identity"}
     for h in ("range", "if-modified-since", "if-none-match"):
         if h in request.headers:
             fwd_headers[h] = request.headers[h]
 
-    client = _get_proxy_client()
-    upstream = await client.send(
-        client.build_request("GET", url, headers=fwd_headers),
-        stream=True,
-    )
+    try:
+        upstream = await open_get(_get_proxy_session(), url, headers=fwd_headers)
+    except UnsafeURLError as exc:
+        logger.info("pdf_proxy_blocked", url=url, reason=str(exc))
+        raise HTTPException(
+            status_code=403, detail="Domain not allowed for proxying"
+        ) from exc
+    except _UPSTREAM_ERRORS as exc:
+        raise HTTPException(status_code=502, detail="Upstream fetch failed") from exc
+
+    declared = upstream.content_length
+    if declared is not None and declared > _PDF_PROXY_MAX_BYTES:
+        upstream.release()
+        raise HTTPException(status_code=413, detail="Document too large to proxy")
 
     # Prepare response headers – copy selective safe ones
     resp_headers = {
         "Content-Type": upstream.headers.get("Content-Type", "application/pdf"),
-        "Content-Length": upstream.headers.get("Content-Length", ""),
         "Accept-Ranges": upstream.headers.get("Accept-Ranges", "bytes"),
-        "Content-Range": upstream.headers.get("Content-Range", ""),
         "Cache-Control": "public, max-age=86400",
-        "Access-Control-Allow-Origin": "*",
     }
+    for h in ("Content-Length", "Content-Range"):
+        if upstream.headers.get(h):
+            resp_headers[h] = upstream.headers[h]
 
-    # Close the upstream response when streaming finishes (client is pooled)
+    async def _body() -> AsyncIterator[bytes]:
+        sent = 0
+        async for chunk in upstream.content.iter_chunked(64 * 1024):
+            sent += len(chunk)
+            if sent > _PDF_PROXY_MAX_BYTES:
+                logger.info("pdf_proxy_truncated", url=url, cap=_PDF_PROXY_MAX_BYTES)
+                return
+            yield chunk
+
+    # Release the upstream response when streaming finishes (session is pooled)
     async def _cleanup() -> None:
-        await upstream.aclose()
-
-    background = BackgroundTask(_cleanup)
+        upstream.release()
 
     return StreamingResponse(
-        upstream.aiter_bytes(),
-        status_code=upstream.status_code,
+        _body(),
+        status_code=upstream.status,
         headers=resp_headers,
-        background=background,
+        background=BackgroundTask(_cleanup),
     )
 
 
@@ -612,11 +618,26 @@ async def html_proxy(
     if not _is_url_allowed(url):
         raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
 
-    client = _get_proxy_client()
-    upstream = await client.get(url)
+    # The allowlist gates the first hop only (doi.org etc. redirect to
+    # arbitrary publishers); every hop is still held to public addresses.
+    try:
+        upstream = await open_get(_get_proxy_session(), url)
+    except UnsafeURLError as exc:
+        logger.info("html_proxy_blocked", url=url, reason=str(exc))
+        raise HTTPException(
+            status_code=403, detail="Domain not allowed for proxying"
+        ) from exc
+    except _UPSTREAM_ERRORS as exc:
+        raise HTTPException(status_code=502, detail="Upstream fetch failed") from exc
 
-    # Decode using httpx' detected encoding.
-    text: str = upstream.text
+    try:
+        text: str = await text_capped(upstream, _HTML_PROXY_MAX_BYTES)
+    except ResponseTooLargeError as exc:
+        raise HTTPException(status_code=413, detail="Page too large to proxy") from exc
+    except _UPSTREAM_ERRORS as exc:
+        raise HTTPException(status_code=502, detail="Upstream fetch failed") from exc
+    finally:
+        upstream.release()
     content_type = upstream.headers.get("Content-Type", "text/html")
 
     # Remove frame-blocking meta CSP/XFO tags to allow embedding
@@ -644,12 +665,6 @@ async def html_proxy(
     except Exception:  # noqa: BLE001 – best-effort only
         pass
 
-    # Cleanup handles closing the upstream response (client is pooled).
-    async def _cleanup() -> None:
-        await upstream.aclose()
-
-    background = BackgroundTask(_cleanup)
-
     return HTMLResponse(
         content=text,
         media_type=content_type.split(";")[0],
@@ -669,7 +684,6 @@ async def html_proxy(
                 "connect-src 'self' https:;"
             ),
         },
-        background=background,
     )
 
 
