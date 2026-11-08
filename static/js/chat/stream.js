@@ -3,7 +3,7 @@
 
 import { dbg, decodeEntities } from "../util.js?v=2";
 import { getModalParts, setControlsEnabled, addCopyButtons, scrollToBottom } from "./ui.js?v=2";
-import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded, ensureKatexLoaded } from "./markdown.js?v=2";
+import { ensureMarkdownLibs, ensureHighlightLoaded as mdHighlightLoaded, ensureKatexLoaded, markdownToSafeHtml } from "./markdown.js?v=2";
 
 // Pre-load markdown libs so they're available for progressive rendering
 ensureMarkdownLibs();
@@ -131,42 +131,10 @@ function _flushTokens(targetEl) {
 
   // --- Progressive markdown rendering (throttled) ---
   const now = performance.now();
-  if (window.marked && (now - entry.lastRender >= 100)) {
+  const libsReady = Boolean(window.marked && window.DOMPurify);
+  if (libsReady && (now - entry.lastRender >= 100)) {
     try {
-      // Protect LaTeX from marked.js
-      const mathPlaceholders = [];
-      let protectedMd = entry.md;
-
-      protectedMd = protectedMd.replace(/\$\$([\s\S]*?)\$\$/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-      protectedMd = protectedMd.replace(/\\\[([\s\S]*?)\\\]/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-      protectedMd = protectedMd.replace(/\$([^\$\n]+?)\$/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-      protectedMd = protectedMd.replace(/\\\((.*?)\\\)/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-
-      // Close any open code fences so marked doesn't choke on incomplete blocks
-      const fenceCt = (protectedMd.match(/```/g) || []).length;
-      const mdSrc = fenceCt % 2 === 1 ? `${protectedMd}\n\n\`\`\`` : protectedMd;
-
-      // Parse with marked (skip DOMPurify, KaTeX, highlight.js for perf – applied on finalize)
-      let html = window.marked.parse(mdSrc, { gfm: true, breaks: true });
-
-      // Restore math placeholders
-      mathPlaceholders.forEach((original, i) => {
-        html = html.replace(`%%MATH${i}%%`, original);
-      });
-
-      entry.contentEl.innerHTML = html;
+      entry.contentEl.innerHTML = markdownToSafeHtml(entry.md);
       entry.contentEl.appendChild(entry.cursorEl);
       entry.lastRender = now;
     } catch (e) {
@@ -174,8 +142,8 @@ function _flushTokens(targetEl) {
       entry.contentEl.textContent = entry.md;
       entry.contentEl.appendChild(entry.cursorEl);
     }
-  } else if (!window.marked) {
-    // marked.js not yet loaded – fall back to raw text
+  } else if (!libsReady) {
+    // marked.js / DOMPurify not yet loaded – fall back to raw text
     entry.contentEl.textContent = entry.md;
     entry.contentEl.appendChild(entry.cursorEl);
   }
@@ -283,44 +251,12 @@ function _finalizeBubble(targetEl) {
 
   ensureMarkdownLibs()
     .then(() => {
-      // --- Protect LaTeX from marked.js -----------------------------------
-      // marked will mangle backslashes and underscores inside math blocks.
-      // We temporarily replace them with placeholders, parse markdown, then
-      // restore them so KaTeX can render properly.
-      const mathPlaceholders = [];
-      let protectedMd = rawMd;
-
-      // Protect display math ($$...$$) and (\[...\])
-      protectedMd = protectedMd.replace(/\$\$([\s\S]*?)\$\$/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-      protectedMd = protectedMd.replace(/\\\[([\s\S]*?)\\\]/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-      // Protect inline math ($...$) and (\(...\))
-      protectedMd = protectedMd.replace(/\$([^\$\n]+?)\$/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-      protectedMd = protectedMd.replace(/\\\((.*?)\\\)/g, (m) => {
-        mathPlaceholders.push(m);
-        return `%%MATH${mathPlaceholders.length - 1}%%`;
-      });
-
-      // Make sure code fences are balanced
-      const fenceCt = (protectedMd.match(/```/g) || []).length;
-      const mdSrc = fenceCt % 2 === 1 ? `${protectedMd}\n\n\`\`\`` : protectedMd;
-      const dirtyHtml = window.marked.parse(mdSrc, { gfm: true, breaks: true });
-      const safeHtml = window.DOMPurify ? window.DOMPurify.sanitize(dirtyHtml) : dirtyHtml;
-
-      // Restore math placeholders
-      let finalHtml = safeHtml;
-      mathPlaceholders.forEach((original, i) => {
-        finalHtml = finalHtml.replace(`%%MATH${i}%%`, original);
-      });
-      targetEl.innerHTML = finalHtml;
+      const safeHtml = markdownToSafeHtml(rawMd);
+      if (safeHtml === null) {
+        targetEl.textContent = rawMd;
+      } else {
+        targetEl.innerHTML = safeHtml;
+      }
       // Convert [n] markers to citation chips and append a Sources footer
       // when the stream announced numbered context chunks.
       _applyCitations(targetEl, targetEl._ohSources);

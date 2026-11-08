@@ -116,45 +116,54 @@ export function ensureKatexLoaded() {
 // ---------------------------------------------------------------------------
 // Render helpers
 // ---------------------------------------------------------------------------
+const _MATH_PATTERNS = [
+  /\$\$([\s\S]*?)\$\$/g,
+  /\\\[([\s\S]*?)\\\]/g,
+  /\$([^\$\n]+?)\$/g,
+  /\\\((.*?)\\\)/g,
+];
+
+function _escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Markdown -> sanitized HTML for chat bubbles. Math spans are shielded from
+// marked with placeholders, restored HTML-escaped (KaTeX auto-render reads
+// text nodes), and DOMPurify runs last over the combined output. Returns null
+// when marked/DOMPurify aren't loaded so callers can fall back to textContent.
+export function markdownToSafeHtml(md) {
+  if (!window.marked || !window.DOMPurify) return null;
+
+  const math = [];
+  let src = md;
+  for (const re of _MATH_PATTERNS) {
+    src = src.replace(re, (m) => {
+      math.push(m);
+      return `%%MATH${math.length - 1}%%`;
+    });
+  }
+
+  // Close any still-open code fence so marked won't choke mid-stream.
+  if ((src.match(/```/g) || []).length % 2 === 1) src += "\n\n```";
+
+  const html = window.marked
+    .parse(src, { gfm: true, breaks: true })
+    .replace(/%%MATH(\d+)%%/g, (ph, i) => (Number(i) < math.length ? _escapeHtml(math[Number(i)]) : ph));
+  return window.DOMPurify.sanitize(html);
+}
+
 export async function renderMarkdownPartial(el) {
   try {
     await ensureMarkdownLibs();
 
-    let rawMd = el.textContent ?? "";
-
-    // --- Protect LaTeX from marked.js ------------------------------------
-    const mathPlaceholders = [];
-    let protectedMd = rawMd;
-    protectedMd = protectedMd.replace(/\$\$([\s\S]*?)\$\$/g, (m) => {
-      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
-    });
-    protectedMd = protectedMd.replace(/\\\[([\s\S]*?)\\\]/g, (m) => {
-      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
-    });
-    protectedMd = protectedMd.replace(/\$([^\$\n]+?)\$/g, (m) => {
-      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
-    });
-    protectedMd = protectedMd.replace(/\\\((.*?)\\\)/g, (m) => {
-      mathPlaceholders.push(m); return `%%MATH${mathPlaceholders.length - 1}%%`;
-    });
-
-    // Close any still-open code block fence so marked won’t choke.
-    const fenceCount = (protectedMd.match(/```/g) || []).length;
-    if (fenceCount % 2 === 1) protectedMd += "\n```";
-
-    const dirtyHtml = window.marked.parse(protectedMd, {
-      gfm: true,
-      breaks: true,
-      smartLists: true,
-    });
-    const safeHtml = window.DOMPurify ? window.DOMPurify.sanitize(dirtyHtml) : dirtyHtml;
-
-    // Restore math placeholders
-    let finalHtml = safeHtml;
-    mathPlaceholders.forEach((original, i) => {
-      finalHtml = finalHtml.replace(`%%MATH${i}%%`, original);
-    });
-    el.innerHTML = finalHtml;
+    const safeHtml = markdownToSafeHtml(el.textContent ?? "");
+    if (safeHtml === null) return;
+    el.innerHTML = safeHtml;
 
     // Render LaTeX expressions with KaTeX (lazy-loaded)
     await ensureKatexLoaded();
