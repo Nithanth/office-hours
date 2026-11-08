@@ -20,7 +20,7 @@ COPY pyproject.toml uv.lock requirements.lock ./
 # is fetched instead of ~5GB of CUDA wheels (which exceeded Railway's build
 # deadline). Rebuild requirements.lock with:
 #   uv export --frozen --format requirements-txt --no-hashes --no-dev --no-emit-project -o /tmp/c.txt
-#   uv pip compile pyproject.toml --torch-backend=cpu --emit-index-url -c /tmp/c.txt -o requirements.lock
+#   uv pip compile pyproject.toml --python-version 3.11 --torch-backend=cpu --emit-index-url -c /tmp/c.txt -o requirements.lock
 RUN uv pip install --system --no-cache --prefix=/install \
       --torch-backend=cpu -r requirements.lock \
     && rm -rf /install/lib/python3.11/site-packages/nvidia* \
