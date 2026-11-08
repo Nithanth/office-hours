@@ -50,6 +50,7 @@ dependencies = [
     "markdown~=3.7",
     "umap-learn>=0.5.12",
     "hdbscan>=0.8.44",
+    "nh3>=0.2.17",
 ]
 
 [project.optional-dependencies]
