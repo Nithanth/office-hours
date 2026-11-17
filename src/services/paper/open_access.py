@@ -36,15 +36,27 @@ class _VisibleText(HTMLParser):
 
 
 def is_paywall(text: str, *, max_chars: int = 3000, is_html: bool = False) -> bool:
+    challenge_markup = False
     if is_html:
+        challenge_markup = bool(
+            re.search(
+                r"cf-turnstile|g-recaptcha|h-captcha|/recaptcha/|challenges\.cloudflare\.com/|"
+                r"(?:class|id)=[\"'][^\"']*(?:captcha|turnstile)|"
+                r"<title[^>]*>\s*just a moment",
+                text,
+                re.I,
+            )
+        )
         parser = _VisibleText()
         parser.feed(text)
         text = " ".join(" ".join(parser.parts).split())
     if len(text) >= max_chars:
         return False
-    return bool(
+    return challenge_markup or bool(
         re.search(
-            r"access denied|purchase (?:this |the )?article|sign in to (?:access|read)|subscribe to (?:access|read)|403 forbidden",
+            r"access denied|purchase (?:this |the )?article|sign in to (?:access|read)|subscribe to (?:access|read)|403 forbidden|"
+            r"just a moment|verifying (?:you are human|your browser)|complete the check below|"
+            r"enable javascript and cookies to continue|(?:complete|solve) (?:the )?captcha",
             text,
             re.I,
         )

@@ -186,6 +186,52 @@ def response(status=200, body=b"%PDF-1.4 test"):
     )
 
 
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "Just a moment...",
+        "Verifying you are human",
+        "Verifying your browser",
+        "Complete the check below",
+        "Enable JavaScript and cookies to continue",
+        '<div class="cf-turnstile" data-sitekey="public-test-key"></div>',
+        '<div class="g-recaptcha"></div>',
+        '<div id="captcha-container"></div>',
+        '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>',
+    ],
+)
+def test_short_browser_challenge_detection(marker):
+    assert open_access.is_paywall(marker, max_chars=2000, is_html=True)
+    assert not open_access.is_paywall(
+        marker + "<p>" + "Security research content. " * 200 + "</p>",
+        max_chars=2000,
+        is_html=True,
+    )
+
+
+async def test_source_pane_falls_back_from_browser_challenge(monkeypatch):
+    challenge = """<!DOCTYPE html><html><head><title>Just a moment...</title>
+    <style>.main-content { margin: 8rem auto; }</style></head><body>
+    <main class="main-content"><h1>openreview.net</h1>
+    <h2>Verifying your browser</h2><p>Complete the check below</p>
+    <div class="cf-turnstile" data-sitekey="public-test-key"></div>
+    <noscript>Enable JavaScript and cookies to continue</noscript></main>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>
+    </body></html>"""
+    source = "https://openreview.net/forum?id=YicbFdNTTy"
+    monkeypatch.setattr(chat_modal, "_is_url_allowed", lambda _: True)
+    monkeypatch.setattr(chat_modal, "_is_public_http_url", lambda _: True)
+    monkeypatch.setattr(chat_modal, "_get_proxy_session", lambda: None)
+    monkeypatch.setattr(chat_modal, "open_get", AsyncMock(return_value=response()))
+    monkeypatch.setattr(chat_modal, "text_capped", AsyncMock(return_value=challenge))
+    monkeypatch.setattr(chat_modal, "open_copy_candidates", AsyncMock(return_value=[]))
+    result = await chat_modal.source_pane(None, source)
+    body = result.body.decode()
+    assert "Open at source" in body
+    assert f'href="{source}"' in body
+    assert "<iframe" not in body
+
+
 async def test_viewer_skips_failed_candidate(monkeypatch):
     monkeypatch.setattr(chat_modal, "_is_public_http_url", lambda _: True)
     monkeypatch.setattr(chat_modal, "_get_proxy_session", lambda: None)
