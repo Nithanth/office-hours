@@ -335,6 +335,19 @@ async def generate_report_incremental(  # noqa: PLR0913
     return HTMLResponse(content=_report_skeleton_html(token))
 
 
+def _ask_assistant_button(paper: Paper, audience_type: str, model_key: str) -> str:
+    """Per-paper "Ask Assistant" button that opens the two-pane viewer.
+
+    Paper ids are often URLs with ``?``/``#`` (e.g. OpenReview), so the id is
+    path-encoded; raw, the viewer would get a truncated id and no ``url``.
+    """
+    return (
+        "<button class='ask-assistant-btn' style='position:static;display:inline-block;margin-top:0.75rem;' "
+        f"hx-get='/viewer/{urllib.parse.quote(paper.id, safe='')}?url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&title={urllib.parse.quote_plus(paper.title or '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(model_key)}' "
+        "hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
+    )
+
+
 def _report_skeleton_html(token: str) -> str:
     """Streaming skeleton for the SSE report generator — shared by the
     generate endpoint and the topic re-render endpoint."""
@@ -603,7 +616,7 @@ async def report_stream(
         html_block = (
             f"<div class='paper-summary'><h4><a href='{html.escape(str(paper.url) if paper.url else '#')}' target='_blank' rel='noopener noreferrer'>{html.escape(paper.title or 'Paper')}</a></h4>"
             f"{rg._text_to_html_paragraphs(summary)}"
-            f"<button class='ask-assistant-btn' style='position:static;display:inline-block;margin-top:0.75rem;' hx-get='/viewer/{paper.id}?url={urllib.parse.quote_plus(str(paper.url) if paper.url else '')}&title={urllib.parse.quote_plus(paper.title or '')}&audience_type={urllib.parse.quote_plus(audience_type)}&model_key={urllib.parse.quote_plus(selected_model_key)}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About This Paper</button>"
+            f"{_ask_assistant_button(paper, audience_type, selected_model_key)}"
             "</div>"
         )
         return role, html_block

@@ -612,7 +612,9 @@ class ReportGenerator:
                     # At this point mypy still sees result as str | BaseException; but we already handled
                     assert isinstance(result, str)
                     report_parts.append(text_to_html_paragraphs(result))
-                paper_id_safe = paper_obj.id if paper_obj else ""
+                paper_id_safe = (
+                    urllib.parse.quote(paper_obj.id, safe="") if paper_obj else ""
+                )
                 # Safe encode title & URL
                 title_q = urllib.parse.quote_plus(
                     paper_obj.title if paper_obj and paper_obj.title else ""

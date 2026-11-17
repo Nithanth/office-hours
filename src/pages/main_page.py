@@ -681,7 +681,7 @@ def render_report(
             <p class="text-sm">Source: <a href="{html.escape(paper.url)}" target="_blank" class="hover:underline">{html.escape(paper.url)}</a></p>
             <p class="mt-2">{html.escape(summary)}</p>
             <button class="ask-assistant-btn mt-2 text-sm flex items-center gap-1"
-                    hx-get="/viewer/{paper.id}?url={urllib.parse.quote_plus(str(paper.url))}"
+                    hx-get="/viewer/{urllib.parse.quote(paper.id, safe='')}?url={urllib.parse.quote_plus(str(paper.url))}"
                     hx-target="#modal-container"
                     hx-swap="innerHTML">
                 <i class="fa-solid fa-comment-dots"></i><span>Ask Assistant About This Paper</span>
