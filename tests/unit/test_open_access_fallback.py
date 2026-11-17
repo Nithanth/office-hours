@@ -1,6 +1,7 @@
 import io
 import json
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -12,6 +13,7 @@ import pytest
 import config as config_module
 from api.routers import chat_modal
 from services.paper import open_access
+from services.paper import text_extractor as extractor_module
 from services.paper.text_extractor import TextExtractor
 
 
@@ -324,3 +326,52 @@ async def test_extractor_keeps_long_security_paper(monkeypatch, tmp_path):
     )
     assert path and Path(path).read_text() == text
     fallback.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    ["https://openreview.net/pdf?id=abc", "https://repository.test/download/123"],
+)
+@pytest.mark.parametrize("body", [b"%PDF-1.7 paper bytes", b"<html>Not a PDF</html>"])
+async def test_extractor_fetches_extensionless_open_copy(
+    monkeypatch, tmp_path, candidate, body
+):
+    monkeypatch.setattr(extractor_module, "CACHE_ROOT", tmp_path)
+    extractor = TextExtractor()
+    for name in (
+        "_layer_arxiv_pdf",
+        "_layer_html_pdf_link",
+        "_layer_exa_contents",
+        "_layer_arxiv",
+        "_layer_html",
+    ):
+        monkeypatch.setattr(extractor, name, AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        open_access, "open_copy_candidates", AsyncMock(return_value=[candidate])
+    )
+
+    @asynccontextmanager
+    async def session():
+        yield None
+
+    @asynccontextmanager
+    async def get(_session, url, **kwargs):
+        assert url == candidate
+        yield SimpleNamespace(status=200, headers={})
+
+    monkeypatch.setattr(extractor_module, "safe_session", session)
+    monkeypatch.setattr(extractor_module, "safe_get", get)
+    monkeypatch.setattr(extractor_module, "read_capped", AsyncMock(return_value=body))
+    monkeypatch.setattr(extractor_module, "fitz", True)
+    parse = Mock(return_value="Open paper content " * 1000)
+    monkeypatch.setattr(extractor_module, "_extract_with_pymupdf", parse)
+    monkeypatch.setattr(extractor_module, "_extract_tables", Mock(return_value=""))
+    path = await extractor.ensure_cached(
+        "https://publisher.test/article", "extensionless"
+    )
+    if body.startswith(b"%PDF-"):
+        assert path and Path(path).read_text().startswith("Open paper content")
+        parse.assert_called_once_with(body)
+    else:
+        assert path is None
+        parse.assert_not_called()

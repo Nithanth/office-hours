@@ -7,6 +7,7 @@ import json
 import os
 import re
 import textwrap
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 from urllib.parse import urljoin
@@ -382,7 +383,7 @@ class TextExtractor:
 
         from services.paper.open_access import is_paywall, open_copy_candidates
 
-        layers = [
+        layers: list[Callable[[str], Awaitable[str | None]] | None] = [
             # Prefer full-text sources first; fall back to lighter layers later.
             self._layer_arxiv_pdf,
             self._layer_pdf,
@@ -444,7 +445,9 @@ class TextExtractor:
         if extracted is None:
             for candidate in await open_copy_candidates(url, title):
                 try:
-                    copy_text = await self._layer_pdf(candidate)
+                    copy_text = await self._layer_pdf(
+                        candidate, allow_extensionless=True
+                    )
                     if copy_text and len(copy_text) >= _MIN_FULL_TEXT:
                         extracted = copy_text
                         break
@@ -713,8 +716,12 @@ class TextExtractor:
                 return extracted
         return None
 
-    async def _layer_pdf(self, url: str) -> str | None:
-        if not (url.lower().endswith(".pdf") or "/pdf/" in url.lower()):
+    async def _layer_pdf(
+        self, url: str, *, allow_extensionless: bool = False
+    ) -> str | None:
+        if not allow_extensionless and not (
+            url.lower().endswith(".pdf") or "/pdf/" in url.lower()
+        ):
             return None
 
         # ---------------- conditional fetch ----------------
@@ -744,6 +751,8 @@ class TextExtractor:
             ) as resp,
         ):
             # Short-circuit when server signals resource unchanged.
+            if resp.status >= 400:
+                return None
             if resp.status == 304:
                 logger.debug("pdf_not_modified", url=url)
                 return None
@@ -766,6 +775,9 @@ class TextExtractor:
                     max_mb=MAX_PDF_BYTES // 1_048_576,
                 )
                 return None
+
+        if not pdf_bytes.lstrip().startswith(b"%PDF-"):
+            return None
 
         text: str = ""
 
