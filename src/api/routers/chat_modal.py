@@ -23,6 +23,7 @@ from starlette.background import BackgroundTask
 from api.deps import get_paper_service  # lightweight helper, no heavy imports
 from config import config as app_config
 from services.chat.chat_components import ChatBubble, ChatModal
+from services.paper.open_access import is_paywall, open_copy_candidates
 from utils.safe_fetch import (
     ResponseTooLargeError,
     UnsafeURLError,
@@ -609,7 +610,9 @@ async def pdf_proxy(
 # ---------------------------------------------------------------------------
 @router.get("/html-proxy", response_class=HTMLResponse)
 async def html_proxy(
-    request: Request, url: str = Query(..., description="Remote HTML URL")
+    request: Request,
+    url: str = Query(..., description="Remote HTML URL"),
+    title: str = "",
 ) -> HTMLResponse:  # noqa: D401
     """Return *url*'s contents with frame-blocking headers removed.
 
@@ -635,16 +638,20 @@ async def html_proxy(
             status_code=403, detail="Domain not allowed for proxying"
         ) from exc
     except _UPSTREAM_ERRORS as exc:
-        raise HTTPException(status_code=502, detail="Upstream fetch failed") from exc
+        logger.debug("html_source_failed", error=str(exc))
+        return await open_copy_pane(request, url=url, title=title)
 
     try:
         text: str = await text_capped(upstream, _HTML_PROXY_MAX_BYTES)
     except ResponseTooLargeError as exc:
         raise HTTPException(status_code=413, detail="Page too large to proxy") from exc
     except _UPSTREAM_ERRORS as exc:
-        raise HTTPException(status_code=502, detail="Upstream fetch failed") from exc
+        logger.debug("html_source_failed", error=str(exc))
+        return await open_copy_pane(request, url=url, title=title)
     finally:
         upstream.release()
+    if upstream.status >= 400 or is_paywall(text, max_chars=2000, is_html=True):
+        return await open_copy_pane(request, url=url, title=title)
     content_type = upstream.headers.get("Content-Type", "text/html")
 
     # Remove frame-blocking meta CSP/XFO tags to allow embedding
@@ -658,17 +665,20 @@ async def html_proxy(
     # Compute base href for relative resources.
     try:
         parsed = urllib.parse.urlparse(str(upstream.url))
-        base_href = f"{parsed.scheme}://{parsed.netloc}/"
+        base_href = urllib.parse.urlunparse(parsed._replace(fragment=""))
 
-        if "<head" in text.lower() and "<base" not in text.lower():
-            # Inject right after opening <head> tag.
-            text = re.sub(
-                r"(<head[^>]*>)",
-                r"\1<base href=\"" + html.escape(base_href) + '">',
-                text,
-                count=1,
-                flags=re.IGNORECASE,
-            )
+        if "<base" not in text.lower():
+            base_tag = '<base href="' + html.escape(base_href, quote=True) + '">'
+            if "<head" in text.lower():
+                text = re.sub(
+                    r"(<head[^>]*>)",
+                    lambda match: match.group(1) + base_tag,
+                    text,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                text = base_tag + text
     except Exception:  # noqa: BLE001 – best-effort only
         pass
 
@@ -826,7 +836,7 @@ async def viewer_modal(
     if report_id:
         panel_q += f"&report_id={urllib.parse.quote_plus(report_id)}"
 
-    embed_html = _doc_embed(url)
+    embed_html = _doc_embed(url, title=title or "")
 
     modal_html = f"""
 <div class=\"modal\" id=\"viewer-{paper_id}\">
@@ -910,20 +920,86 @@ def _resolve_pdf_url(url: str) -> str | None:
     return None
 
 
-def _doc_embed(url: str) -> str:
+def _doc_embed(
+    url: str, original: str | None = None, failed: str = "", title: str = ""
+) -> str:
     """Viewer-pane markup for a doc URL (pdf.js container or proxied iframe)."""
     pdf_url = _resolve_pdf_url(url)
+    if original is not None or (
+        urllib.parse.urlparse(url).hostname == "openreview.net"
+        and urllib.parse.urlparse(url).path == "/pdf"
+    ):
+        pdf_url = url
     if pdf_url:
         proxied = f"/pdf-proxy?url={urllib.parse.quote_plus(pdf_url)}"
         return (
-            f'<div class="pdf-container" data-pdf-src="{html.escape(proxied)}"></div>'
+            f'<div class="pdf-container" data-pdf-src="{html.escape(proxied)}"'
+            ' style="height:100%;min-height:500px"'
+            f' data-original-url="{html.escape(original or url, quote=True)}"'
+            f' data-failed="{html.escape(failed, quote=True)}"'
+            f' data-paper-title="{html.escape(title, quote=True)}"></div>'
             f'<script type="module" src="{static_url("/static/js/pdf-viewer.js")}"></script>'
         )
-    proxied = f"/html-proxy?url={urllib.parse.quote_plus(url)}"
-    return (
-        f'<iframe id="doc-frame" src="{html.escape(proxied)}" '
+    proxied = f"/source-pane?url={urllib.parse.quote_plus(url)}&title={urllib.parse.quote_plus(title)}"
+    return f'<div hx-get="{html.escape(proxied)}" hx-trigger="load" hx-swap="outerHTML"></div>'
+
+
+@router.get("/source-pane", response_class=HTMLResponse)
+async def source_pane(request: Request, url: str, title: str = "") -> HTMLResponse:
+    try:
+        result = await html_proxy(request, url, title)
+    except HTTPException:
+        return HTMLResponse(_source_link(url))
+    if result.headers.get("X-Open-Copy"):
+        return result
+    proxied = "/html-proxy?" + urllib.parse.urlencode({"url": url, "title": title})
+    return HTMLResponse(
+        f'<iframe id="doc-frame" src="{html.escape(proxied, quote=True)}" '
         'sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>'
+        + _source_link(url, unavailable=False)
     )
+
+
+def _source_link(url: str, *, unavailable: bool = True) -> str:
+    safe = html.escape(url, quote=True) if _is_public_http_url(url) else "#"
+    message = "No readable open copy was found. " if unavailable else ""
+    return (
+        f'<div class="paper-text-empty">{message}'
+        f'<a class="btn-secondary" href="{safe}" target="_blank" '
+        'rel="noopener noreferrer">Open at source</a></div>'
+    )
+
+
+@router.get("/open-copy-pane", response_class=HTMLResponse)
+async def open_copy_pane(
+    request: Request, url: str, failed: str = "", title: str = ""
+) -> HTMLResponse:
+    if not _is_public_http_url(url):
+        raise HTTPException(status_code=403, detail="Domain not allowed for proxying")
+    tried = tuple(failed.split("\n")) if failed else (url,)
+    for candidate in await open_copy_candidates(url, title, tried):
+        tried += (candidate,)
+        try:
+            upstream = await open_get(_get_proxy_session(), candidate)
+            try:
+                if upstream.status >= 400:
+                    continue
+                # Landing pages and publisher denial pages are not PDFs.
+                try:
+                    header = await upstream.content.readexactly(1024)
+                except asyncio.IncompleteReadError as exc:
+                    header = exc.partial
+                if not header.lstrip().startswith(b"%PDF-"):
+                    continue
+            finally:
+                upstream.release()
+        except (*_UPSTREAM_ERRORS, UnsafeURLError):
+            continue
+        return HTMLResponse(
+            _doc_embed(candidate, url, "\n".join(tried), title),
+            headers={"X-Open-Copy": "1"},
+        )
+    return HTMLResponse(_source_link(url), headers={"X-Open-Copy": "1"})
 
 
 @router.get("/doc-pane", response_class=HTMLResponse)

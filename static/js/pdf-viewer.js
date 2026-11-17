@@ -71,50 +71,50 @@ async function renderPdf(container) {
     '<svg class="spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M22 12a10 10 0 0 1-10 10" stroke-linecap="round"/></svg> <span style="margin-left:6px;">Loading…</span>';
   container.appendChild(spinner);
 
-  const pdfjsLib = await loadPdfJs();
-  const pdfjsViewer = await loadPdfViewer();
-
-  const { GlobalWorkerOptions, getDocument } = pdfjsLib;
-  const { EventBus, PDFLinkService, PDFViewer } = pdfjsViewer;
-
-  if (!GlobalWorkerOptions.workerSrc) {
-    GlobalWorkerOptions.workerSrc = `${CDN_BASE}/pdf.worker.min.js`;
-  }
-
   const src = container.dataset.pdfSrc;
   if (!src || container.dataset.rendered) return;
   container.dataset.rendered = "1";
 
-  // Keep outer .pdf-container in flex layout; create inner scroll box required by PDFJS
-  container.style.position = "relative";
-
-  const scrollEl = document.createElement("div");
-  scrollEl.style.position = "absolute";
-  scrollEl.style.top = 0;
-  scrollEl.style.left = 0;
-  scrollEl.style.right = 0;
-  scrollEl.style.bottom = 0;
-  scrollEl.style.overflow = "auto";
-  container.appendChild(scrollEl);
-
-  const viewerEl = document.createElement("div");
-  viewerEl.className = "pdfViewer";
-  scrollEl.appendChild(viewerEl);
-
-  // Set up viewer plumbing (event bus, link svc)
-  const eventBus = new EventBus();
-  const linkService = new PDFLinkService({ eventBus });
-  const viewer = new PDFViewer({
-    container: scrollEl, // scroll container (absolute inside)
-    viewer: viewerEl,   // inner pages container
-    eventBus,
-    linkService,
-    textLayerMode: 2, // selectable text layer on
-    maxCanvasPixels: 0, // enable CSS-based zoom without raster limits
-  });
-  linkService.setViewer(viewer);
-
   try {
+    const pdfjsLib = await loadPdfJs();
+    const pdfjsViewer = await loadPdfViewer();
+
+    const { GlobalWorkerOptions, getDocument } = pdfjsLib;
+    const { EventBus, PDFLinkService, PDFViewer } = pdfjsViewer;
+
+    if (!GlobalWorkerOptions.workerSrc) {
+      GlobalWorkerOptions.workerSrc = `${CDN_BASE}/pdf.worker.min.js`;
+    }
+
+    // Keep outer .pdf-container in flex layout; create inner scroll box required by PDFJS
+    container.style.position = "relative";
+
+    const scrollEl = document.createElement("div");
+    scrollEl.style.position = "absolute";
+    scrollEl.style.top = 0;
+    scrollEl.style.left = 0;
+    scrollEl.style.right = 0;
+    scrollEl.style.bottom = 0;
+    scrollEl.style.overflow = "auto";
+    container.appendChild(scrollEl);
+
+    const viewerEl = document.createElement("div");
+    viewerEl.className = "pdfViewer";
+    scrollEl.appendChild(viewerEl);
+
+    // Set up viewer plumbing (event bus, link svc)
+    const eventBus = new EventBus();
+    const linkService = new PDFLinkService({ eventBus });
+    const viewer = new PDFViewer({
+      container: scrollEl, // scroll container (absolute inside)
+      viewer: viewerEl,   // inner pages container
+      eventBus,
+      linkService,
+      textLayerMode: 2, // selectable text layer on
+      maxCanvasPixels: 0, // enable CSS-based zoom without raster limits
+    });
+    linkService.setViewer(viewer);
+
     const pdfDoc = await getDocument({ url: src, withCredentials: false, fontExtraProperties: true }).promise;
     viewer.setDocument(pdfDoc);
     linkService.setDocument(pdfDoc);
@@ -218,10 +218,30 @@ async function renderPdf(container) {
     // --- End zoom UI ------------------------------
   } catch (err) {
     console.warn("pdf.js viewer error", err);
-    container.innerHTML =
-      '<div style="padding:1rem;color:#b00;">Unable to display PDF inline. <a href="' +
-      src +
-      '" target="_blank" rel="noopener" style="color:#06c;text-decoration:underline;">Open in new tab</a>.</div>';
+    const original = container.dataset.originalUrl || new URL(src, location.href).searchParams.get("url");
+    const failed = new Set((container.dataset.failed || original).split("\n"));
+    failed.add(new URL(src, location.href).searchParams.get("url"));
+    const params = new URLSearchParams({
+      url: original,
+      failed: Array.from(failed).join("\n"),
+      title: container.dataset.paperTitle || "",
+    });
+    try {
+      const response = await fetch(`/open-copy-pane?${params}`);
+      if (!response.ok) throw new Error(`Open copy request failed: ${response.status}`);
+      const fragment = document.createElement("template");
+      fragment.innerHTML = await response.text();
+      container.classList.remove("pdf-container");
+      container.replaceChildren(fragment.content);
+    } catch (fallbackError) {
+      console.warn("open copy fallback error", fallbackError);
+      const link = document.createElement("a");
+      link.href = original;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Open at source";
+      container.replaceChildren(link);
+    }
   }
 
   // Shortcut: Cmd/Ctrl+L — quote current selection into chat box
@@ -251,13 +271,10 @@ async function renderPdf(container) {
 
 function init() {
   const processContainers = (root) => {
-    root.querySelectorAll?.(".pdf-container").forEach((el) => {
-      // If this container was previously rendered (attribute set), purge children
-      // so re-render works after modal reopen.
-      if (el.dataset.rendered) {
-        el.innerHTML = "";
-        delete el.dataset.rendered;
-      }
+    const containers = Array.from(root.querySelectorAll?.(".pdf-container") || []);
+    if (root.matches?.(".pdf-container")) containers.unshift(root);
+    containers.forEach((el) => {
+      if (el.dataset.rendered) return;
       renderPdf(el);
     });
   };

@@ -291,7 +291,10 @@ class ReportGenerator:
 
             async def _bounded_extract(url: str, pid: str) -> None:
                 async with sem:
-                    path = await extractor.ensure_cached(url, pid)
+                    paper_title = next(
+                        (p.title or "" for p in unique_papers if p.id == pid), ""
+                    )
+                    path = await extractor.ensure_cached(url, pid, title=paper_title)
                     # If we managed to cache and paper lacks text_content, load first chunk
                     if path:
                         paper_obj = next(
