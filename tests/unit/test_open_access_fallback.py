@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import re
@@ -182,7 +183,9 @@ def test_paywall_detection_uses_short_visible_text():
 def response(status=200, body=b"%PDF-1.4 test"):
     return SimpleNamespace(
         status=status,
-        content=SimpleNamespace(read=AsyncMock(return_value=body)),
+        content=SimpleNamespace(
+            readexactly=AsyncMock(side_effect=asyncio.IncompleteReadError(body, 1024))
+        ),
         release=Mock(),
         headers={},
     )
@@ -248,6 +251,34 @@ async def test_viewer_skips_failed_candidate(monkeypatch):
     assert "b.test" in result.body.decode()
     assert 'data-original-url="https://original.test/paper"' in result.body.decode()
     assert fetch.await_count == 2
+
+
+async def test_viewer_accumulates_short_pdf_chunks(monkeypatch):
+    upstream = response()
+    content = asyncio.StreamReader()
+    upstream.content = content
+    monkeypatch.setattr(chat_modal, "_is_public_http_url", lambda _: True)
+    monkeypatch.setattr(chat_modal, "_get_proxy_session", lambda: None)
+    monkeypatch.setattr(
+        chat_modal,
+        "open_copy_candidates",
+        AsyncMock(return_value=["https://oa.test/paper.pdf"]),
+    )
+    monkeypatch.setattr(chat_modal, "open_get", AsyncMock(return_value=upstream))
+
+    async def feed():
+        for chunk in (b"%", b"PD", b"F-1.7", b" paper"):
+            content.feed_data(chunk)
+            await asyncio.sleep(0)
+        content.feed_eof()
+
+    task = asyncio.create_task(feed())
+    result = await chat_modal.open_copy_pane(None, "https://publisher.test/paper")
+    await task
+    assert (
+        'data-pdf-src="/pdf-proxy?url=https%3A%2F%2Foa.test%2Fpaper.pdf"'
+        in result.body.decode()
+    )
 
 
 async def test_all_fail_source_link(monkeypatch):

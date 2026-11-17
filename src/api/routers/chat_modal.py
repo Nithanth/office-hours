@@ -985,7 +985,10 @@ async def open_copy_pane(
                 if upstream.status >= 400:
                     continue
                 # Landing pages and publisher denial pages are not PDFs.
-                header = await upstream.content.read(1024)
+                try:
+                    header = await upstream.content.readexactly(1024)
+                except asyncio.IncompleteReadError as exc:
+                    header = exc.partial
                 if not header.lstrip().startswith(b"%PDF-"):
                     continue
             finally:
