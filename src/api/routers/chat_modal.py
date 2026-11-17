@@ -184,7 +184,7 @@ async def chat_modal(
         # 'topic:*') which have no single-paper metadata.
         if paper_service and paper_id != "topic" and not paper_id.startswith("topic:"):
             try:
-                paper = await paper_service.get_paper_metadata(paper_id)
+                paper = await paper_service.load_metadata(paper_id)
             except Exception as exc:  # noqa: BLE001 - best effort
                 logger.warning(
                     f"chat_modal: metadata lookup failed for {paper_id}: {exc}"
@@ -204,8 +204,8 @@ async def chat_modal(
     provided_url = paper_url
 
     # If caller didn't provide title, try service lookup
-    if not title and paper and (svc_title := getattr(paper, "title", None)):
-        link_url = getattr(paper, "url", None)
+    if not title and paper and (svc_title := paper.get("title")):
+        link_url = paper.get("url")
         modal_title = html.escape(svc_title)
 
     # Determine final link_url precedence: caller > service > None
