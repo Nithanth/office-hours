@@ -226,11 +226,22 @@ async function renderPdf(container) {
       failed: Array.from(failed).join("\n"),
       title: container.dataset.paperTitle || "",
     });
-    const frame = document.createElement("iframe");
-    frame.src = `/open-copy-pane?${params}`;
-    frame.title = "Open copy";
-    frame.style.cssText = "width:100%;height:100%;border:0";
-    container.replaceChildren(frame);
+    try {
+      const response = await fetch(`/open-copy-pane?${params}`);
+      if (!response.ok) throw new Error(`Open copy request failed: ${response.status}`);
+      const fragment = document.createElement("template");
+      fragment.innerHTML = await response.text();
+      container.classList.remove("pdf-container");
+      container.replaceChildren(fragment.content);
+    } catch (fallbackError) {
+      console.warn("open copy fallback error", fallbackError);
+      const link = document.createElement("a");
+      link.href = original;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Open at source";
+      container.replaceChildren(link);
+    }
   }
 
   // Shortcut: Cmd/Ctrl+L — quote current selection into chat box
@@ -263,12 +274,7 @@ function init() {
     const containers = Array.from(root.querySelectorAll?.(".pdf-container") || []);
     if (root.matches?.(".pdf-container")) containers.unshift(root);
     containers.forEach((el) => {
-      // If this container was previously rendered (attribute set), purge children
-      // so re-render works after modal reopen.
-      if (el.dataset.rendered) {
-        el.innerHTML = "";
-        delete el.dataset.rendered;
-      }
+      if (el.dataset.rendered) return;
       renderPdf(el);
     });
   };
