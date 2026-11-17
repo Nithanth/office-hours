@@ -650,7 +650,7 @@ async def html_proxy(
         return await open_copy_pane(request, url=url, title=title)
     finally:
         upstream.release()
-    if upstream.status >= 400 or is_paywall(text):
+    if upstream.status >= 400 or is_paywall(text, max_chars=2000, is_html=True):
         return await open_copy_pane(request, url=url, title=title)
     content_type = upstream.headers.get("Content-Type", "text/html")
 
@@ -665,17 +665,20 @@ async def html_proxy(
     # Compute base href for relative resources.
     try:
         parsed = urllib.parse.urlparse(str(upstream.url))
-        base_href = f"{parsed.scheme}://{parsed.netloc}/"
+        base_href = urllib.parse.urlunparse(parsed._replace(fragment=""))
 
-        if "<head" in text.lower() and "<base" not in text.lower():
-            # Inject right after opening <head> tag.
-            text = re.sub(
-                r"(<head[^>]*>)",
-                r"\1<base href=\"" + html.escape(base_href) + '">',
-                text,
-                count=1,
-                flags=re.IGNORECASE,
-            )
+        if "<base" not in text.lower():
+            base_tag = '<base href="' + html.escape(base_href, quote=True) + '">'
+            if "<head" in text.lower():
+                text = re.sub(
+                    r"(<head[^>]*>)",
+                    lambda match: match.group(1) + base_tag,
+                    text,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                text = base_tag + text
     except Exception:  # noqa: BLE001 – best-effort only
         pass
 
@@ -949,9 +952,9 @@ async def source_pane(request: Request, url: str, title: str = "") -> HTMLRespon
         return HTMLResponse(_source_link(url))
     if result.headers.get("X-Open-Copy"):
         return result
-    document = html.escape(bytes(result.body).decode("utf-8"), quote=True)
+    proxied = "/html-proxy?" + urllib.parse.urlencode({"url": url, "title": title})
     return HTMLResponse(
-        f'<iframe id="doc-frame" srcdoc="{document}" '
+        f'<iframe id="doc-frame" src="{html.escape(proxied, quote=True)}" '
         'sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>'
         + _source_link(url, unavailable=False)
     )

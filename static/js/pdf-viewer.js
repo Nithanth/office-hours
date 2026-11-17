@@ -76,45 +76,44 @@ async function renderPdf(container) {
   container.dataset.rendered = "1";
 
   try {
-  const pdfjsLib = await loadPdfJs();
-  const pdfjsViewer = await loadPdfViewer();
+    const pdfjsLib = await loadPdfJs();
+    const pdfjsViewer = await loadPdfViewer();
 
-  const { GlobalWorkerOptions, getDocument } = pdfjsLib;
-  const { EventBus, PDFLinkService, PDFViewer } = pdfjsViewer;
+    const { GlobalWorkerOptions, getDocument } = pdfjsLib;
+    const { EventBus, PDFLinkService, PDFViewer } = pdfjsViewer;
 
-  if (!GlobalWorkerOptions.workerSrc) {
-    GlobalWorkerOptions.workerSrc = `${CDN_BASE}/pdf.worker.min.js`;
-  }
+    if (!GlobalWorkerOptions.workerSrc) {
+      GlobalWorkerOptions.workerSrc = `${CDN_BASE}/pdf.worker.min.js`;
+    }
 
+    // Keep outer .pdf-container in flex layout; create inner scroll box required by PDFJS
+    container.style.position = "relative";
 
-  // Keep outer .pdf-container in flex layout; create inner scroll box required by PDFJS
-  container.style.position = "relative";
+    const scrollEl = document.createElement("div");
+    scrollEl.style.position = "absolute";
+    scrollEl.style.top = 0;
+    scrollEl.style.left = 0;
+    scrollEl.style.right = 0;
+    scrollEl.style.bottom = 0;
+    scrollEl.style.overflow = "auto";
+    container.appendChild(scrollEl);
 
-  const scrollEl = document.createElement("div");
-  scrollEl.style.position = "absolute";
-  scrollEl.style.top = 0;
-  scrollEl.style.left = 0;
-  scrollEl.style.right = 0;
-  scrollEl.style.bottom = 0;
-  scrollEl.style.overflow = "auto";
-  container.appendChild(scrollEl);
+    const viewerEl = document.createElement("div");
+    viewerEl.className = "pdfViewer";
+    scrollEl.appendChild(viewerEl);
 
-  const viewerEl = document.createElement("div");
-  viewerEl.className = "pdfViewer";
-  scrollEl.appendChild(viewerEl);
-
-  // Set up viewer plumbing (event bus, link svc)
-  const eventBus = new EventBus();
-  const linkService = new PDFLinkService({ eventBus });
-  const viewer = new PDFViewer({
-    container: scrollEl, // scroll container (absolute inside)
-    viewer: viewerEl,   // inner pages container
-    eventBus,
-    linkService,
-    textLayerMode: 2, // selectable text layer on
-    maxCanvasPixels: 0, // enable CSS-based zoom without raster limits
-  });
-  linkService.setViewer(viewer);
+    // Set up viewer plumbing (event bus, link svc)
+    const eventBus = new EventBus();
+    const linkService = new PDFLinkService({ eventBus });
+    const viewer = new PDFViewer({
+      container: scrollEl, // scroll container (absolute inside)
+      viewer: viewerEl,   // inner pages container
+      eventBus,
+      linkService,
+      textLayerMode: 2, // selectable text layer on
+      maxCanvasPixels: 0, // enable CSS-based zoom without raster limits
+    });
+    linkService.setViewer(viewer);
 
     const pdfDoc = await getDocument({ url: src, withCredentials: false, fontExtraProperties: true }).promise;
     viewer.setDocument(pdfDoc);

@@ -408,7 +408,7 @@ class TextExtractor:
                     error=str(exc),
                 )
                 continue
-            if not extracted or is_paywall(extracted):
+            if not extracted or is_paywall(extracted, max_chars=_MIN_FULL_TEXT):
                 extracted = None
                 continue
 

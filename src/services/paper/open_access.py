@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from contextlib import suppress
 from functools import lru_cache
+from html.parser import HTMLParser
 
 from config import config
 from services.core.exa_utils.url_utils import extract_arxiv_id, extract_doi
@@ -15,7 +16,32 @@ from services.paper.metadata.semantic_scholar import _get_headers
 from services.paper.metadata.unpaywall import resolve_open_access_url
 
 
-def is_paywall(text: str) -> bool:
+class _VisibleText(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.hidden = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "head", "template"}:
+            self.hidden += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "head", "template"}:
+            self.hidden = max(0, self.hidden - 1)
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def is_paywall(text: str, *, max_chars: int = 3000, is_html: bool = False) -> bool:
+    if is_html:
+        parser = _VisibleText()
+        parser.feed(text)
+        text = " ".join(" ".join(parser.parts).split())
+    if len(text) >= max_chars:
+        return False
     return bool(
         re.search(
             r"access denied|purchase (?:this |the )?article|sign in to (?:access|read)|subscribe to (?:access|read)|403 forbidden",
@@ -30,30 +56,29 @@ def _candidates(url: str, title: str, epoch: int) -> tuple[str, ...]:
     doi = extract_doi(url)
     arxiv = extract_arxiv_id(url) if "arxiv" in url.lower() else None
     meta = {}
-    if config.SEMANTIC_SCHOLAR_API_KEY:
-        fields = "title,externalIds,openAccessPdf"
-        base = "https://api.semanticscholar.org/graph/v1/paper/"
-        if doi:
-            endpoint = (
-                base + urllib.parse.quote("DOI:" + doi, safe="") + "?fields=" + fields
-            )
-        elif title:
-            endpoint = (
-                base
-                + "search/match?"
-                + urllib.parse.urlencode({"query": title, "fields": fields})
-            )
-        else:
-            endpoint = (
-                base + urllib.parse.quote("URL:" + url, safe="") + "?fields=" + fields
-            )
-        try:
-            req = urllib.request.Request(endpoint, headers=_get_headers())
-            with urllib.request.urlopen(req, timeout=3) as response:
-                payload = json.load(response)
-            meta = (payload.get("data") or [{}])[0] if "data" in payload else payload
-        except (OSError, ValueError, IndexError):
-            meta = {}
+    fields = "title,externalIds,openAccessPdf"
+    base = "https://api.semanticscholar.org/graph/v1/paper/"
+    if doi:
+        endpoint = (
+            base + urllib.parse.quote("DOI:" + doi, safe="") + "?fields=" + fields
+        )
+    elif title:
+        endpoint = (
+            base
+            + "search/match?"
+            + urllib.parse.urlencode({"query": title, "fields": fields})
+        )
+    else:
+        endpoint = (
+            base + urllib.parse.quote("URL:" + url, safe="") + "?fields=" + fields
+        )
+    try:
+        req = urllib.request.Request(endpoint, headers=_get_headers())
+        with urllib.request.urlopen(req, timeout=3) as response:
+            payload = json.load(response)
+        meta = (payload.get("data") or [{}])[0] if "data" in payload else payload
+    except (OSError, ValueError, IndexError):
+        meta = {}
     ext = meta.get("externalIds") or {}
     arxiv = arxiv or ext.get("ArXiv")
     doi = doi or ext.get("DOI")
