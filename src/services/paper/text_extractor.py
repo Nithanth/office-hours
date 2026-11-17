@@ -337,6 +337,7 @@ class TextExtractor:
         *,
         force: bool = False,
         prefer_exa: bool = True,
+        title: str = "",
     ) -> str | None:
         """Idempotently create a cached full-text file for *url*.
 
@@ -379,6 +380,8 @@ class TextExtractor:
 
             return str(cache_path)
 
+        from services.paper.open_access import is_paywall, open_copy_candidates
+
         layers = [
             # Prefer full-text sources first; fall back to lighter layers later.
             self._layer_arxiv_pdf,
@@ -405,7 +408,8 @@ class TextExtractor:
                     error=str(exc),
                 )
                 continue
-            if not extracted:
+            if not extracted or is_paywall(extracted):
+                extracted = None
                 continue
 
             # Full-length success
@@ -436,6 +440,16 @@ class TextExtractor:
 
             # Reset so later layers can try to get full text.
             extracted = None
+
+        if extracted is None:
+            for candidate in await open_copy_candidates(url, title):
+                try:
+                    copy_text = await self._layer_pdf(candidate)
+                    if copy_text and len(copy_text) >= _MIN_FULL_TEXT:
+                        extracted = copy_text
+                        break
+                except Exception as exc:
+                    logger.debug("open_copy_failed", url=candidate, error=str(exc))
 
         # If no full text was found, fall back to the best partial (if any).
         if extracted is None and best_partial is not None:

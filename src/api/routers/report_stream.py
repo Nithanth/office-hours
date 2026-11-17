@@ -476,7 +476,9 @@ async def report_stream(
                 # it only counts as partial, so real PDFs still win, but
                 # paywalled/blocked pages (e.g. ACM DOIs) still get indexed
                 # text — which is what topic-chat retrieval draws on.
-                path = await extractor.ensure_cached(str(p.url), p.id, prefer_exa=True)
+                path = await extractor.ensure_cached(
+                    str(p.url), p.id, prefer_exa=True, title=p.title or ""
+                )
                 if path:
                     try:
                         txt = Path(path).read_text(encoding="utf-8")

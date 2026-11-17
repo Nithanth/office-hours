@@ -71,6 +71,11 @@ async function renderPdf(container) {
     '<svg class="spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M22 12a10 10 0 0 1-10 10" stroke-linecap="round"/></svg> <span style="margin-left:6px;">Loading…</span>';
   container.appendChild(spinner);
 
+  const src = container.dataset.pdfSrc;
+  if (!src || container.dataset.rendered) return;
+  container.dataset.rendered = "1";
+
+  try {
   const pdfjsLib = await loadPdfJs();
   const pdfjsViewer = await loadPdfViewer();
 
@@ -81,9 +86,6 @@ async function renderPdf(container) {
     GlobalWorkerOptions.workerSrc = `${CDN_BASE}/pdf.worker.min.js`;
   }
 
-  const src = container.dataset.pdfSrc;
-  if (!src || container.dataset.rendered) return;
-  container.dataset.rendered = "1";
 
   // Keep outer .pdf-container in flex layout; create inner scroll box required by PDFJS
   container.style.position = "relative";
@@ -114,7 +116,6 @@ async function renderPdf(container) {
   });
   linkService.setViewer(viewer);
 
-  try {
     const pdfDoc = await getDocument({ url: src, withCredentials: false, fontExtraProperties: true }).promise;
     viewer.setDocument(pdfDoc);
     linkService.setDocument(pdfDoc);
@@ -218,10 +219,19 @@ async function renderPdf(container) {
     // --- End zoom UI ------------------------------
   } catch (err) {
     console.warn("pdf.js viewer error", err);
-    container.innerHTML =
-      '<div style="padding:1rem;color:#b00;">Unable to display PDF inline. <a href="' +
-      src +
-      '" target="_blank" rel="noopener" style="color:#06c;text-decoration:underline;">Open in new tab</a>.</div>';
+    const original = container.dataset.originalUrl || new URL(src, location.href).searchParams.get("url");
+    const failed = new Set((container.dataset.failed || original).split("\n"));
+    failed.add(new URL(src, location.href).searchParams.get("url"));
+    const params = new URLSearchParams({
+      url: original,
+      failed: Array.from(failed).join("\n"),
+      title: container.dataset.paperTitle || "",
+    });
+    const frame = document.createElement("iframe");
+    frame.src = `/open-copy-pane?${params}`;
+    frame.title = "Open copy";
+    frame.style.cssText = "width:100%;height:100%;border:0";
+    container.replaceChildren(frame);
   }
 
   // Shortcut: Cmd/Ctrl+L — quote current selection into chat box
@@ -251,7 +261,9 @@ async function renderPdf(container) {
 
 function init() {
   const processContainers = (root) => {
-    root.querySelectorAll?.(".pdf-container").forEach((el) => {
+    const containers = Array.from(root.querySelectorAll?.(".pdf-container") || []);
+    if (root.matches?.(".pdf-container")) containers.unshift(root);
+    containers.forEach((el) => {
       // If this container was previously rendered (attribute set), purge children
       // so re-render works after modal reopen.
       if (el.dataset.rendered) {
