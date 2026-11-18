@@ -88,13 +88,18 @@ function loadDep(dep) {
   });
 }
 
-async function loadAllDeps() {
-  // Load CSS + core libs in parallel
-  const coreDeps = CDN_DEPS.filter(d => d.id !== "katex-auto");
-  await Promise.allSettled(coreDeps.map(loadDep));
-  // katex-auto depends on katex
-  const autoRender = CDN_DEPS.find(d => d.id === "katex-auto");
-  if (autoRender) await loadDep(autoRender).catch(() => {});
+let _depsPromise = null;
+function loadAllDeps() {
+  if (_depsPromise) return _depsPromise;
+  _depsPromise = (async () => {
+    // Load CSS + core libs in parallel
+    const coreDeps = CDN_DEPS.filter(d => d.id !== "katex-auto");
+    await Promise.allSettled(coreDeps.map(loadDep));
+    // katex-auto depends on katex
+    const autoRender = CDN_DEPS.find(d => d.id === "katex-auto");
+    if (autoRender) await loadDep(autoRender).catch(() => {});
+  })();
+  return _depsPromise;
 }
 
 // ---------------------------------------------------------------------------

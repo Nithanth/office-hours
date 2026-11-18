@@ -8,3 +8,11 @@ def test_renderers_use_pinned_browser_highlighter_build():
         source = (root / path).read_text()
         assert browser_build in source
         assert "/npm/highlight.js@11/highlight.min.js" not in source
+
+
+def test_blog_sections_share_dependency_loading_promise():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "static/js/blog-view.js").read_text()
+    assert "if (_depsPromise) return _depsPromise;" in source
+    assert "_depsPromise = (async () =>" in source
+    assert "return _depsPromise;" in source
