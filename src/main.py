@@ -367,7 +367,6 @@ class _RevalidatingStaticFiles(StaticFiles):
                 headers = {
                     "Cache-Control": "no-cache",
                     "ETag": etag,
-                    "Content-Length": str(len(body_bytes)),
                 }
                 if_none_match = ""
                 for hk, hv in scope.get("headers", []):
@@ -379,6 +378,7 @@ class _RevalidatingStaticFiles(StaticFiles):
                 # prefix (correct for GET/HEAD).
                 if _etag_matches(if_none_match, etag):
                     return Response(status_code=304, headers=headers)
+                headers["Content-Length"] = str(len(body_bytes))
                 return Response(
                     b"" if method == "HEAD" else body_bytes,
                     media_type="application/javascript",
