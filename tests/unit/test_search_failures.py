@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from api.routes import pages, search
+from api.routes import pages, search, similar
 from services.core.exa_client import ExaClient
 from services.limits import friendly_error_message
 
@@ -15,7 +15,7 @@ from services.limits import friendly_error_message
 def test_provider_failure_propagates_without_caching(monkeypatch, error):
     monkeypatch.setattr(
         "services.core.exa_client.ExaAdapter",
-        lambda _: SimpleNamespace(
+        lambda api_key: SimpleNamespace(
             sync_client=None, search=Mock(side_effect=RuntimeError(error))
         ),
     )
@@ -66,3 +66,31 @@ def test_home_initial_search_failure_is_friendly(client, monkeypatch):
     assert response.status_code == 200
     assert friendly_error_message("401", "") in response.text
     assert "No papers found" not in response.text
+
+
+def test_provider_zero_results_is_empty_not_an_error(monkeypatch):
+    monkeypatch.setattr(
+        "services.core.exa_client.ExaAdapter",
+        lambda api_key: SimpleNamespace(
+            sync_client=None, search=Mock(return_value=SimpleNamespace(results=[]))
+        ),
+    )
+    assert ExaClient(api_key="dummy").search_and_cache("no matching papers") == []
+
+
+def test_similar_provider_failure_is_friendly(client, monkeypatch):
+    monkeypatch.setattr(
+        similar,
+        "get_exa_client",
+        lambda: SimpleNamespace(
+            find_similar_papers=Mock(
+                side_effect=RuntimeError("429 rate limit private provider body")
+            )
+        ),
+    )
+    response = client.post(
+        "/api/similar", data={"paper_url": "https://arxiv.org/abs/2003.08934"}
+    )
+    assert response.status_code == 200
+    assert "private provider body" not in response.text
+    assert friendly_error_message("429", "") in response.text
