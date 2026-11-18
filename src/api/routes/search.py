@@ -681,9 +681,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("search_flow_failed", error=str(exc))
-        error_html = (
-            "<div class='oh-toast'>Could not retrieve results. Try again later.</div>"
-        )
+        error_html = f"<div class='oh-toast'>{html.escape(friendly_error_message(exc, 'Could not retrieve results. Try again later.'))}</div>"
         # No history header on failure — replacing the current URL
         # would drop the successful results entry it sat on.
         return HTMLResponse(
