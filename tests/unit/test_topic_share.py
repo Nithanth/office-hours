@@ -46,6 +46,36 @@ def _topic(**kw) -> Topic:
     )
 
 
+async def test_shared_topic_is_read_only_with_login_required(
+    client, db_session, monkeypatch
+):
+    import config
+    from api.routes import topics
+
+    topic = _topic(share_token="public-token")
+    db_session.add(topic)
+    await db_session.commit()
+    await add_topic_papers(
+        db_session,
+        topic_id=topic.id,
+        papers=[Paper(id="p1", title="Shared paper", url="https://example.org/paper")],
+    )
+    await db_session.commit()
+
+    async def scope():
+        yield db_session
+
+    monkeypatch.setattr(config.config, "REQUIRE_LOGIN", True)
+    monkeypatch.setattr(topics, "database_available", lambda: True)
+    monkeypatch.setattr(topics, "session_scope", scope)
+    response = client.get("/share/public-token", follow_redirects=False)
+    assert response.status_code == 200
+    assert "Shared paper" in response.text
+    assert "Read-only" in response.text
+    assert "hx-post=" not in response.text
+    assert "lib-status-select" not in response.text
+
+
 class TestShareToken:
     async def test_lookup_by_token(self, db_session: AsyncSession):
         topic = _topic()
