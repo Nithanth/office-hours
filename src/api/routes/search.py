@@ -16,7 +16,7 @@ import config as _cfg
 from api.deps import get_exa_client, get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
-from pages.main_page import render_search_results
+from pages.main_page import render_error_message, render_search_results
 from services.core import model_prefs
 from services.core.exa_client import ExaClient
 from services.core.exa_utils import url_utils as _url_utils
@@ -252,7 +252,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # ------------------------------------------------------------------
     if not settings.EXA_API_KEY:
         logger.error("search_missing_exa_key")
-        error_html = "<div class='oh-toast'>Search service not configured. Contact support.</div>"  # minimal banner; original used render_error_message but keep dependencies slim
+        error_html = str(
+            render_error_message("Search service not configured. Contact support.")
+        )
         # No history header: a config error must not clobber the current
         # URL/entry — the user may be viewing prior results.
         return HTMLResponse(
@@ -275,10 +277,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     # Reject empty or excessively long queries early.
     if not input_query_stripped:
         return HTMLResponse(
-            "<div class='oh-toast' style='padding:12px;border-radius:6px;"
-            "background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);"
-            "color:var(--oh-text,#e0e0e0);margin-top:8px;'>"
-            "Please enter a search query.</div>",
+            str(render_error_message("Please enter a search query.")),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -299,7 +298,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
     )
     if limit_msg:
         return HTMLResponse(
-            f"<div class='oh-toast'>{limit_msg}</div>",
+            str(render_error_message(limit_msg)),
             status_code=429,
             headers={
                 "HX-Retarget": "#search-results-container",
@@ -475,7 +474,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         except Exception as exc:  # noqa: BLE001 - bubble unexpected errors
             logger.exception("direct_query_failed", error=str(exc))
             return HTMLResponse(
-                f"<div class='oh-toast'>{html.escape(friendly_error_message(exc, 'Search hit a snag. Try again in a moment.'))}</div>",
+                str(
+                    render_error_message(
+                        friendly_error_message(
+                            exc, "Search hit a snag. Try again in a moment."
+                        )
+                    )
+                ),
                 status_code=500,
             )
         finally:
@@ -500,8 +505,8 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         if start_published_date and start_published_date.strip():
             parsed_start_date = parse_user_date(start_published_date)
             if not parsed_start_date:
-                error_html = (
-                    "<div class='oh-toast'>Invalid date format. Use YYYY-MM-DD.</div>"
+                error_html = str(
+                    render_error_message("Invalid date format. Use YYYY-MM-DD.")
                 )
                 # No history header — the date error must not clobber the
                 # view currently under the address bar.
@@ -681,7 +686,13 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("search_flow_failed", error=str(exc))
-        error_html = f"<div class='oh-toast'>{html.escape(friendly_error_message(exc, 'Could not retrieve results. Try again later.'))}</div>"
+        error_html = str(
+            render_error_message(
+                friendly_error_message(
+                    exc, "Could not retrieve results. Try again later."
+                )
+            )
+        )
         # No history header on failure — replacing the current URL
         # would drop the successful results entry it sat on.
         return HTMLResponse(

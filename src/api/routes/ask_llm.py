@@ -6,6 +6,7 @@ from loguru import logger
 
 from api.deps import get_exa_client, get_llm_service, get_settings
 from config import Config as AppConfig
+from pages.main_page import render_error_message
 from services.core import model_prefs
 from services.limits import friendly_error_message
 from services.report.report_generator import ReportGenerator
@@ -69,11 +70,11 @@ async def ask_llm(
         return HTMLResponse(answer_html)
     except Exception as exc:
         logger.exception("ask_llm_failed", error=str(exc))
-        err_html = (
-            "<div class='oh-toast'>"
-            + friendly_error_message(
-                exc, "Couldn't get an answer right now. Try again in a moment."
+        err_html = str(
+            render_error_message(
+                friendly_error_message(
+                    exc, "Couldn't get an answer right now. Try again in a moment."
+                )
             )
-            + "</div>"
         )
         return HTMLResponse(err_html, status_code=500)
