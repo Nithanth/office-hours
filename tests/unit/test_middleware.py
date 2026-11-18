@@ -24,6 +24,8 @@ def test_csp_header_present(client):
     assert "default-src" in csp
     assert "script-src" in csp
     assert "frame-ancestors 'none'" in csp
+    font_policy = next(part for part in csp.split(";") if "font-src" in part)
+    assert "https://cdn.jsdelivr.net" in font_policy
 
 
 def test_x_frame_options_deny(client):

@@ -54,7 +54,7 @@ export function ensureHighlightLoaded() {
     document.head.appendChild(css);
 
     const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js";
+    s.src = "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js";
     let settled = false;
     const done = () => {
       if (settled) return;
