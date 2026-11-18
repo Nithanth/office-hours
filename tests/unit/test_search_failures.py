@@ -1,9 +1,11 @@
+from html import unescape
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from api.routes import pages, search, similar
+from pages.main_page import render_error_message
 from services.core.exa_client import ExaClient
 from services.limits import friendly_error_message
 
@@ -47,25 +49,34 @@ def test_search_route_distinguishes_empty_and_failure(client, monkeypatch, error
     )
     assert response.status_code == 200
     if error:
-        assert friendly_error_message(error, "") in response.text
+        assert friendly_error_message(error, "") in unescape(response.text)
         assert "No papers found" not in response.text
     else:
         assert "No papers found" in response.text
 
 
-def test_home_initial_search_failure_is_friendly(client, monkeypatch):
+@pytest.mark.parametrize("error", [None, "401", "429", "network outage"])
+def test_home_initial_search_distinguishes_empty_and_failure(
+    client, monkeypatch, error
+):
+    monkeypatch.setattr("pages.main_page.render_error_message", render_error_message)
     monkeypatch.setattr(
         pages,
         "get_exa_client",
         lambda: SimpleNamespace(
-            search_and_cache=Mock(side_effect=RuntimeError("401")),
+            search_and_cache=Mock(
+                side_effect=RuntimeError(error) if error else None, return_value=[]
+            ),
             reset_cached_search=lambda: None,
         ),
     )
     response = client.get("/", params={"search_query": "neural fields"})
     assert response.status_code == 200
-    assert friendly_error_message("401", "") in response.text
-    assert "No papers found" not in response.text
+    if error:
+        assert friendly_error_message(error, "") in unescape(response.text)
+        assert "No papers found" not in response.text
+    else:
+        assert "No papers found" in response.text
 
 
 def test_provider_zero_results_is_empty_not_an_error(monkeypatch):
@@ -93,4 +104,4 @@ def test_similar_provider_failure_is_friendly(client, monkeypatch):
     )
     assert response.status_code == 200
     assert "private provider body" not in response.text
-    assert friendly_error_message("429", "") in response.text
+    assert friendly_error_message("429", "") in unescape(response.text)
