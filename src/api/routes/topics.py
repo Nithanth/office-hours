@@ -444,7 +444,7 @@ def _md_section(sec_id: str, heading: str, md: str | None, empty_msg: str) -> st
         f"</div>"
         f'<script>document.addEventListener("DOMContentLoaded",function(){{'
         f"var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){{"
-        f'r.renderKaTeX(document.getElementById("{sec_id}"));'
+        f'r.renderContent(document.getElementById("{sec_id}"));'
         f"}});}});</script></div>"
     )
 

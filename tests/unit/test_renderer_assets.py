@@ -16,3 +16,20 @@ def test_blog_sections_share_dependency_loading_promise():
     assert "if (_depsPromise) return _depsPromise;" in source
     assert "_depsPromise = (async () =>" in source
     assert "return _depsPromise;" in source
+
+
+def test_renderers_highlight_dom_after_dependencies_load():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "static/js/blog-view.js").read_text()
+    assert "highlight: function" not in source
+    assert "pre code:not([data-highlighted])" in source
+    assert "hljs.highlightElement(block)" in source
+    assert "await loadAllDeps();\n  highlightCode(root);" in source
+    assert source.count("highlightCode(articleEl);") == 2
+    assert '["htmx:afterSwap", "htmx:sseMessage"]' in source
+    for path in [
+        "src/api/routes/history.py",
+        "src/api/routes/topics.py",
+        "src/api/routers/report_stream.py",
+    ]:
+        assert "r.renderContent(document.getElementById(" in (root / path).read_text()

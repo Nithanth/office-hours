@@ -172,7 +172,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
         f'  <script src="{static_url("/static/js/blog-pane.js")}" defer></script>\n'
         '  <script>document.addEventListener("DOMContentLoaded",function(){\n'
         "      var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){\n"
-        "        r.renderKaTeX(document.getElementById('report-content'));});});</script>\n"
+        "        r.renderContent(document.getElementById('report-content'));});});</script>\n"
         '  <script type="module">\n'
         f'      import "{static_url("/static/js/chat/stream.js")}";\n'
         f'      import "{static_url("/static/js/chat/ui.js")}";\n'

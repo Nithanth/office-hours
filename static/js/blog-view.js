@@ -133,15 +133,6 @@ function renderMarkdown(md) {
     marked.setOptions({
       gfm: true,
       breaks: false,
-      highlight: function (code, lang) {
-        if (window.hljs && lang && hljs.getLanguage(lang)) {
-          try { return hljs.highlight(code, { language: lang }).value; } catch (_) {}
-        }
-        if (window.hljs) {
-          try { return hljs.highlightAuto(code).value; } catch (_) {}
-        }
-        return code;
-      },
     });
   }
 
@@ -372,6 +363,20 @@ function vegaErrorMarkup(message, rawSpec) {
 // ---------------------------------------------------------------------------
 // Render KaTeX
 // ---------------------------------------------------------------------------
+function highlightCode(root) {
+  if (!window.hljs || !root) return;
+  root.querySelectorAll('pre code:not([data-highlighted])').forEach(block => {
+    hljs.highlightElement(block);
+  });
+}
+
+async function renderContent(root) {
+  if (!root) return;
+  await loadAllDeps();
+  highlightCode(root);
+  renderKaTeX(root);
+}
+
 function renderKaTeX(root) {
   if (!window.renderMathInElement) return;
   const scope = root || document;
@@ -738,6 +743,7 @@ async function initBlog() {
   // Render markdown
   const { html, mermaidBlocks, vegaBlocks } = renderMarkdown(body);
   if (articleEl) articleEl.innerHTML = html;
+  highlightCode(articleEl);
 
   // Post-processing
   addFadeInClasses(articleEl);
@@ -844,6 +850,7 @@ window.ohBlogRender = {
   renderMermaidDiagrams,
   renderVegaCharts,
   renderKaTeX,
+  renderContent,
   addFadeInClasses,
   initImageFadeIn,
   readingTime,
@@ -856,6 +863,7 @@ window.ohBlogRender = {
     await loadAllDeps();
     const { html, mermaidBlocks, vegaBlocks } = renderMarkdown(body);
     articleEl.innerHTML = html;
+    highlightCode(articleEl);
     addFadeInClasses(articleEl);
     initImageFadeIn(articleEl);
     initFadeObserver(articleEl);
@@ -865,6 +873,12 @@ window.ohBlogRender = {
     return title;
   },
 };
+
+for (const event of ["htmx:afterSwap", "htmx:sseMessage"]) {
+  document.addEventListener(event, () => {
+    document.querySelectorAll('#report-content, .blog-article').forEach(renderContent);
+  });
+}
 
 // Run on DOM ready — only on the standalone /blog-view page (identified by the
 // token script or the legacy inline #blog-raw element). On report pages the
