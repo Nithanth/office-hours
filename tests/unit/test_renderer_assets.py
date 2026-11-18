@@ -33,3 +33,13 @@ def test_renderers_highlight_dom_after_dependencies_load():
         "src/api/routers/report_stream.py",
     ]:
         assert "r.renderContent(document.getElementById(" in (root / path).read_text()
+
+
+def test_report_copy_protects_code_from_prose_whitespace_cleanup():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "static/js/report.js").read_text()
+    assert 'el.tagName === "PRE" || el.tagName === "CODE"' in source
+    assert "codeBlocks.push(el.textContent);" in source
+    assert source.index(".trim()\n    .split(codeMarker)") < source.index(
+        '.map((text, index) => text + (codeBlocks[index] ?? ""))'
+    )
