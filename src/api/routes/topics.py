@@ -76,6 +76,10 @@ def _shell(title: str, body: str) -> str:
     .paper-row .pt{overflow-wrap:anywhere;}
     .paper-row .pt a{color:var(--fg);font-weight:600;}
     .paper-row .pm{font-size:0.78rem;color:var(--fg-muted,#888);margin-top:0.2rem;}
+    @media(max-width:480px){
+      .paper-row{flex-direction:column;}
+      .paper-row>div:last-child{align-self:flex-start;white-space:normal;}
+    }
     .topic-actions a,.topic-actions button{margin-right:0.5rem;}
     .empty-note{color:var(--fg-muted,#888);padding:2rem 0;text-align:center;}
     .topic-section{margin-top:1.5rem;}
