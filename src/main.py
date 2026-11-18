@@ -24,10 +24,11 @@ from typing import Optional
 # Silence the lance Rust crate's tracing output before any imports.
 os.environ.setdefault("RUST_LOG", "lance=error")
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import Scope
 
@@ -269,11 +270,33 @@ def _html_error_banner(message: str) -> str:
     )
 
 
-@app.exception_handler(HTTPException)
-async def _http_exception_handler(request: Request, exc: HTTPException) -> HTMLResponse:
-    """Convert HTTPException to a styled banner so HTMX swaps show feedback."""
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> Response:
+    """Render browser errors in the app shell and preserve JSON API responses."""
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
+        )
     banner = _html_error_banner(exc.detail if exc.detail else "Request failed")
-    return HTMLResponse(content=banner, status_code=exc.status_code)
+    if request.headers.get("HX-Request") == "true":
+        return HTMLResponse(
+            content=banner, status_code=exc.status_code, headers=exc.headers
+        )
+    if "text/html" in request.headers.get("accept", ""):
+        from pages.shell import page_shell
+
+        title = "Page not found" if exc.status_code == 404 else "Something went wrong"
+        content = page_shell(
+            title, f"<h1>{title}</h1>{banner}<p><a href='/'>Back to home</a></p>"
+        )
+        return HTMLResponse(
+            content=content, status_code=exc.status_code, headers=exc.headers
+        )
+    return JSONResponse(
+        {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
+    )
 
 
 @app.exception_handler(Exception)
