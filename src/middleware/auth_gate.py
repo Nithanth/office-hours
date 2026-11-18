@@ -20,6 +20,7 @@ _PUBLIC_PREFIXES = (
     "/metrics",
     "/api/me",
     "/favicon.ico",
+    "/share/",
 )
 
 

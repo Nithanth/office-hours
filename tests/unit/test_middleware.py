@@ -76,6 +76,25 @@ def test_auth_gate_allows_public_paths_when_login_required(client, monkeypatch):
     resp = client.get("/healthz")
     assert resp.status_code == 200
 
+
+def test_share_public_without_opening_private_routes(client, monkeypatch):
+    import config as _cfg
+
+    monkeypatch.setattr(_cfg.config, "REQUIRE_LOGIN", True)
+    response = client.get("/share/missing", follow_redirects=False)
+    assert response.status_code in (404, 503)
+    assert "location" not in response.headers
+    for method, path in [
+        ("get", "/topics"),
+        ("get", "/chat-modal?paper_id=global"),
+        ("post", "/topics/private/share"),
+        ("get", "/api/topics"),
+    ]:
+        response = getattr(client, method)(path, follow_redirects=False)
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("/auth/google/login")
+    assert client.get("/static/css/blog.css").status_code == 200
+
     # Static assets should pass through
     resp = client.get("/static/css/base.css")
     # Either 200 (file exists) or 404 (missing) — NOT 401/302
