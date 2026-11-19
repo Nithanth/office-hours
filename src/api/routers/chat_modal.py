@@ -696,6 +696,21 @@ async def html_proxy(
     )
 
 
+def _reader_storage_key(request: Request, document_url: str) -> str:
+    """Private browser marks are partitioned by owner and canonical document."""
+    import hashlib
+
+    from services.core.model_prefs import prefs_owner_id
+
+    owner = prefs_owner_id(request)
+    if not owner:
+        return ""
+    document = _resolve_pdf_url(document_url) or document_url
+    if urllib.parse.urlparse(document).hostname in {"arxiv.org", "www.arxiv.org"}:
+        document = document.removesuffix(".pdf")
+    return hashlib.sha256(f"{owner}\n{document}".encode()).hexdigest()[:32]
+
+
 # paper_id is a URL-style identifier (e.g. https://arxiv.org/abs/…) — needs
 # :path so multi-segment ids resolve instead of 404ing.
 @router.get("/viewer/{paper_id:path}", response_class=HTMLResponse)
@@ -829,13 +844,7 @@ async def viewer_modal(
         panel_q += f"&report_id={urllib.parse.quote_plus(report_id)}"
 
     embed_html = _doc_embed(url, title=title or "")
-    import hashlib
-
-    from services.core.model_prefs import prefs_owner_id
-
-    reader_key = hashlib.sha256(
-        f"{prefs_owner_id(request)}:{paper_id}".encode()
-    ).hexdigest()[:32]
+    reader_key = _reader_storage_key(request, url)
 
     modal_html = f"""
 <div class=\"modal\" id=\"viewer-{paper_id}\">
@@ -1066,9 +1075,11 @@ async def _topic_viewer_html(
         return None
 
     first_url = html.escape(papers[0][0])
+    reader_key = _reader_storage_key(request, papers[0][0])
     display_title = html.escape(title) if title else "Topic chat"
     options = "".join(
-        f'<option value="{i}" data-url="{html.escape(u)}">{html.escape(t)}</option>'
+        f'<option value="{i}" data-url="{html.escape(u)}" '
+        f'data-reader-key="{_reader_storage_key(request, u)}">{html.escape(t)}</option>'
         for i, (u, t) in enumerate(papers)
     )
 
@@ -1082,7 +1093,7 @@ async def _topic_viewer_html(
 
     return f"""
 <div class=\"modal\" id=\"viewer-topic\">
-  <div class=\"modal-content pdf-viewer\" data-viewer=\"topic\">
+  <div class=\"modal-content pdf-viewer\" data-viewer=\"topic\" data-reader-key=\"{reader_key}\">
     <div class=\"modal-header\">
       <h2>{display_title}</h2>
       <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>

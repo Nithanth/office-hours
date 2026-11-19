@@ -10,6 +10,44 @@ from pages.topic_workspace import topic_workspace
 from services.chat.topic_scope import scoped_topic_key, validate_topic_subset
 
 
+async def test_reader_marks_are_private_to_owner_and_selected_document(monkeypatch):
+    import re
+
+    from api.routers import chat_modal as reader
+    from services.core import model_prefs
+
+    current_owner = ["alice"]
+    monkeypatch.setattr(model_prefs, "prefs_owner_id", lambda _: current_owner[0])
+    monkeypatch.setattr(
+        reader,
+        "_topic_papers",
+        AsyncMock(
+            return_value=[
+                ("https://arxiv.org/abs/2005.11401", "First paper"),
+                ("https://arxiv.org/pdf/1706.03762.pdf", "Second paper"),
+            ]
+        ),
+    )
+
+    async def keys():
+        markup = await reader._topic_viewer_html(
+            object(), report_id="r1", title=None, audience_type=None, model_key=None
+        )
+        return re.findall(r'data-reader-key="([^"]+)"', markup)
+
+    alice = await keys()
+    assert len(alice) == 3 and alice[0] == alice[1] and alice[1] != alice[2]
+    assert alice[0] == reader._reader_storage_key(
+        object(), "https://arxiv.org/pdf/2005.11401.pdf"
+    )
+    current_owner[0] = "bob"
+    assert set(alice).isdisjoint(await keys())
+    current_owner[0] = None
+    assert (
+        reader._reader_storage_key(object(), "https://arxiv.org/abs/2005.11401") == ""
+    )
+
+
 @pytest.fixture
 def topic_data(monkeypatch):
     import services.core.model_prefs as prefs

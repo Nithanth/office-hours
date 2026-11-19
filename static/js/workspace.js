@@ -136,23 +136,31 @@
     });
     root.ohSyncPaper = () => syncPaper(true);
     syncPaper();
-    const key =
-      "oh-paper-marks:" + (root.dataset.readerKey || root.dataset.srcUrl || "");
+    const storageKey = () =>
+      root.dataset.readerKey
+        ? "oh-paper-marks:" + root.dataset.readerKey
+        : null;
+    let key = storageKey();
     let marks = [];
-    try {
-      const saved = JSON.parse(localStorage.getItem(key) || "[]");
-      if (Array.isArray(saved))
-        marks = saved
-          .filter(
-            (mark) =>
-              typeof mark?.text === "string" &&
-              Number.isInteger(mark.page) &&
-              mark.page > 0,
-          )
-          .slice(0, 50);
-    } catch (_) {
-      /* Storage may be disabled; keep the reader usable. */
+    function loadMarks() {
+      marks = [];
+      if (!key) return; // Never read unscoped/legacy keys across accounts.
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || "[]");
+        if (Array.isArray(saved))
+          marks = saved
+            .filter(
+              (mark) =>
+                typeof mark?.text === "string" &&
+                Number.isInteger(mark.page) &&
+                mark.page > 0,
+            )
+            .slice(0, 50);
+      } catch (_) {
+        /* Storage may be disabled; keep the reader usable. */
+      }
     }
+    loadMarks();
     function renderMarks() {
       const list = dialog.querySelector("[data-reader-marks]");
       list.replaceChildren();
@@ -180,6 +188,20 @@
     renderMarks();
     let selection = "",
       selectionPage = 1;
+    root
+      .querySelector(".topic-paper-select")
+      ?.addEventListener("change", (event) => {
+        root.dataset.readerKey =
+          event.target.selectedOptions[0]?.dataset.readerKey || "";
+        key = storageKey();
+        selection = "";
+        pdf = null; // The old PDF must not accept marks while the next one loads.
+        appearance.disabled = true;
+        loadMarks();
+        renderMarks();
+        dialog.querySelector("[data-reader-contents]").textContent =
+          "Loading contents…";
+      });
     document.addEventListener(
       "selectionchange",
       () => {
@@ -200,6 +222,11 @@
     );
     dialog.querySelector(".reader-save-mark").addEventListener("click", () => {
       const status = dialog.querySelector("[data-reader-mark-status]");
+      if (!key) {
+        status.textContent =
+          "Saving passages is unavailable without a private reader identity.";
+        return;
+      }
       if (!selection || !pdf) {
         status.textContent = "Select a passage in the PDF first.";
         return;
