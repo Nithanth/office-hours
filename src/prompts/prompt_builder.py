@@ -236,8 +236,6 @@ def get_topic_analysis_prompts(
     return system_prompt, user_prompt
 
 
-DIRECT_QUERY_USER_PROMPT: str = _load_template("query/direct_query_user.md")
-
 # ---------------------------------------------------------------------------
 # Chat prompt constants
 # ---------------------------------------------------------------------------
