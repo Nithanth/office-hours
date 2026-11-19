@@ -175,20 +175,52 @@ h2.chat-modal-title {
   margin-top: 0.5rem;
 }
 
-/* Empty hint inside chat log - disappears when messages arrive */
-.chat-empty-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  text-align: center;
-  color: #ccc;
-  font-family: var(--oh-font-mono, "Lucida Console", "Courier New", monospace);
-  font-size: 0.75rem;
-  letter-spacing: 0.5px;
+.chat-log-container:has(+ .chat-starters):not(:has(> *)),
+.chat-log-container:has(> .user-message, > .assistant-message) + .chat-starters {
+  display: none;
 }
-.chat-empty-hint p { margin: 0; }
-html.oh-dark .chat-empty-hint { color: var(--fg-muted); }
+
+.chat-starters {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.chat-starters-label {
+  margin: auto 0 0.25rem;
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.chat-starter {
+  width: min(100%, 25rem);
+  flex-shrink: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--container-border);
+  border-radius: 8px;
+  background: var(--container-bg);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-starter:last-child { margin-bottom: auto; }
+
+.chat-starter:not(:disabled):hover,
+.chat-starter:focus-visible {
+  border-color: var(--oh-accent);
+  background: var(--oh-accent-soft);
+}
+
+.chat-starter:focus-visible { outline: 2px solid var(--oh-accent); }
+.chat-starter:disabled { cursor: wait; }
 
 /* Chat input area */
 .chat-input-row {

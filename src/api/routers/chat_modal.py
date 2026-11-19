@@ -22,7 +22,7 @@ from starlette.background import BackgroundTask
 
 from api.deps import get_paper_service  # lightweight helper, no heavy imports
 from config import config as app_config
-from services.chat.chat_components import ChatBubble, ChatModal
+from services.chat.chat_components import ChatBubble, ChatModal, ChatStarters
 from services.paper.open_access import is_paywall, open_copy_candidates
 from utils.safe_fetch import (
     ResponseTooLargeError,
@@ -232,6 +232,13 @@ async def chat_modal(
     # Use short random id for HTML-safe selector; paperId may contain / and :
     chat_log_id = f"chat-log-{uuid4().hex[:8]}"
 
+    # Topic chats share state per topic, falling back to per-report.
+    history_key = (
+        f"topic:{topic_id}"
+        if topic_id
+        else (f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id)
+    )
+
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
         from services.chat.chat_state import (
@@ -240,14 +247,6 @@ async def chat_modal(
         )  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
-        # Topic chats share state per topic, falling back to per-report.
-        history_key = (
-            f"topic:{topic_id}"
-            if topic_id
-            else (
-                f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id
-            )
-        )
         history = get_chat_state(session_id).get_conversation(history_key)
         if not history:
             # In-memory state is empty (new session/restart) — hydrate from
@@ -287,8 +286,6 @@ async def chat_modal(
     except Exception:  # noqa: BLE001 - fallback silently
         history = []
 
-    history_html = "".join(str(ChatBubble(msg.content, msg.role)) for msg in history)
-
     # Build modal component
     modal_html = str(
         ChatModal(
@@ -296,36 +293,10 @@ async def chat_modal(
             title=modal_title,
             chat_log_id=chat_log_id,
             paper_id=paper_id,
+            chat_key=history_key,
+            history=(ChatBubble(msg.content, msg.role) for msg in history),
         )
     )
-
-    # Inject data-chat-pid and replace the empty-hint placeholder with
-    # prior history when available.  The chat-log div rendered by ChatModal
-    # contains a .chat-empty-hint child; we swap the entire inner content.
-    _search = f'id="{chat_log_id}" class="chat-log-container modal-body"'
-
-    # Find the chat-log div and replace its contents
-    _open_tag = f"{_search}>"
-    _open_repl = (
-        f'{_search} data-chat-pid="{html.escape(paper_id)}" style="visibility:hidden">'
-    )
-    modal_html = modal_html.replace(_open_tag, _open_repl, 1)
-
-    # If we have history, replace the empty hint with conversation bubbles
-    if history_html:
-        import re as _re
-
-        # history_html is user/LLM content — passing it as the re.sub
-        # replacement string treats backslashes (LaTeX \alpha, \cdot, \() as
-        # escapes: legal ones silently mangle text, invalid ones raise
-        # re.error → the "unexpected server error" on reopen. A lambda
-        # replacement inserts it literally.
-        modal_html = _re.sub(
-            r'(<div[^>]*class="chat-empty-hint"[^>]*>.*?</div>)',
-            lambda _m: history_html,
-            modal_html,
-            count=1,
-        )
 
     # Inject hidden paper_id input and fix HX attribute names for HTMX
     hidden_input = f"<input type='hidden' id='hidden-paper-id' name='paper_id' value='{paper_id}'/>"
@@ -408,6 +379,7 @@ async def chat_panel(
 
     # Generate lightweight IDs so multiple panels can coexist in DOM (unlikely)
     chat_log_id = f"chat-log-{uuid4().hex[:8]}"
+    form_id = f"{chat_log_id}-form"
 
     # Load prior history (best-effort)
     from services.chat.chat_state import (
@@ -503,11 +475,17 @@ async def chat_panel(
         if paper_id == "topic" or paper_id.startswith("topic:")
         else "Ask about this paper…"
     )
+    cache_attrs = (
+        ""
+        if no_history
+        else f'data-chat-pid="{html.escape(paper_id)}" data-chat-key="{html.escape(history_key)}"'
+    )
     panel_html = f"""
 <div class=\"chat-panel\" style=\"display:flex;flex-direction:column;height:100%;\">
-  <div id=\"{chat_log_id}\" class=\"chat-log-container modal-body\" {('data-chat-pid="' + html.escape(paper_id) + '"') if not no_history else ""} style=\"flex:1 1 auto;overflow-y:auto;\">{history_html}</div>
+  <div id=\"{chat_log_id}\" class=\"chat-log-container modal-body\" {cache_attrs} style=\"flex:1 1 auto;overflow-y:auto;\">{history_html}</div>
+  {ChatStarters(paper_id, form_id)}
   <div class=\"oh-snippet-tray\"></div>
-  <form hx-post=\"/chat\" hx-target=\"#{chat_log_id}\" hx-swap=\"beforeend\" method=\"POST\" style=\"display:flex;gap:6px;margin-top:6px;\">
+  <form id=\"{form_id}\" hx-post=\"/chat\" hx-target=\"#{chat_log_id}\" hx-swap=\"beforeend\" method=\"POST\" style=\"display:flex;gap:6px;margin-top:6px;\">
     {hidden_inputs}
     <textarea name=\"message\" rows=\"3\" placeholder=\"{chat_placeholder}\" style=\"flex:1;border-radius:4px;padding:5px;\"></textarea>
     <button type=\"submit\" class=\"send-btn\">→</button>
@@ -828,7 +806,7 @@ async def viewer_modal(
     )
 
     # Build chat-panel URL with optional context parameters
-    panel_q = f"/chat-panel?paper_id={html.escape(paper_id)}"
+    panel_q = f"/chat-panel?paper_id={urllib.parse.quote_plus(paper_id)}"
     if audience_type:
         panel_q += f"&audience_type={urllib.parse.quote_plus(audience_type)}"
     if model_key:

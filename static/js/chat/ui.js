@@ -47,7 +47,7 @@ export function getModalParts(el) {
 }
 
 /**
- * Enable / disable textarea and submit / stop controls in a modal.
+ * Enable / disable chat inputs, starter questions, and send / stop controls.
  */
 export function setControlsEnabled(modal, enabled) {
   if (!modal) return;
@@ -63,6 +63,9 @@ export function setControlsEnabled(modal, enabled) {
     if (enabled) submitBtn.removeAttribute("disabled");
     else submitBtn.setAttribute("disabled", "true");
   }
+  modal.querySelectorAll(".chat-starter").forEach((button) => {
+    button.disabled = !enabled;
+  });
   const { stopBtn } = getModalParts(modal);
   if (stopBtn) {
     if (enabled) stopBtn.classList.add("hidden");
