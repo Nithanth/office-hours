@@ -140,14 +140,9 @@ fsspec==2026.6.0
     #   -c /tmp/c.txt
     #   huggingface-hub
     #   torch
-google-api-core==2.31.0
-    # via
-    #   -c /tmp/c.txt
-    #   office-hours (pyproject.toml)
 google-auth==2.62.0
     # via
     #   -c /tmp/c.txt
-    #   google-api-core
     #   google-genai
 google-genai==2.34.0
     # via
@@ -156,7 +151,6 @@ google-genai==2.34.0
 googleapis-common-protos==1.75.0
     # via
     #   -c /tmp/c.txt
-    #   google-api-core
     #   xai-sdk
 greenlet==3.5.2
     # via
@@ -409,16 +403,10 @@ propcache==0.5.2
     #   -c /tmp/c.txt
     #   aiohttp
     #   yarl
-proto-plus==1.28.0
-    # via
-    #   -c /tmp/c.txt
-    #   google-api-core
 protobuf==6.33.6
     # via
     #   -c /tmp/c.txt
-    #   google-api-core
     #   googleapis-common-protos
-    #   proto-plus
     #   xai-sdk
 pyarrow==24.0.0
     # via
@@ -524,7 +512,6 @@ requests==2.34.2
     # via
     #   -c /tmp/c.txt
     #   exa-py
-    #   google-api-core
     #   google-auth
     #   google-genai
     #   tiktoken
