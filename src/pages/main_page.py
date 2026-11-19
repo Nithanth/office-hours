@@ -655,16 +655,6 @@ def report_loading_indicator_component() -> Div:
     )
 
 
-def ask_loading_indicator_component() -> Div:
-    """Spinner shown while waiting for direct LLM answer."""
-    return Div(
-        Div(cls="oh-spinner"),
-        Span("Consulting Assistant...", style="display:inline-block; margin-left:4px;"),
-        id="ask-loading-indicator",
-        cls="htmx-indicator ask-llm-indicator",
-    )
-
-
 def render_report(
     title: str, main_summary: str, paper_summaries: list[str], papers: list[Paper]
 ) -> str:
