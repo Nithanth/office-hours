@@ -149,14 +149,12 @@ class Config(BaseSettings):
     # ------------------------------------------------------------------
     # Server tuning
     # ------------------------------------------------------------------
-    UVICORN_WORKERS: Optional[int] = None
     RELOAD_APP: bool = True
 
     # ------------------------------------------------------------------
     # Search & display
     # ------------------------------------------------------------------
     DEFAULT_PAPER_COUNT: int = Field(default=60, ge=1)
-    DEFAULT_SIMILAR_PAPER_COUNT: int = Field(default=3, ge=1)
     MAX_AUTHORS_DISPLAY: int = 5
     TEXT_PREWARM_CONCURRENCY: int = Field(default=8, ge=1)
 
@@ -210,8 +208,6 @@ class Config(BaseSettings):
     # ------------------------------------------------------------------
     # Paper/report tuning
     # ------------------------------------------------------------------
-    MAX_PAPERS_PER_SEARCH: int = 20
-    SUMMARY_MAX_LENGTH: int = 300
     MAX_CONCURRENT_PAPER_SUMMARIES: int = Field(default=4, ge=1)
     PAPER_MAX_CONTENT_SNIPPET_CHARS: int = Field(default=150000, ge=1000)
     LLM_TIMEOUT_SECONDS: int = Field(default=120, ge=1)
@@ -257,7 +253,6 @@ class Config(BaseSettings):
     LLM_TEMPERATURE: float = Field(default=0.7, ge=0.0, le=2.0)
     MAX_RETRIES: int = Field(default=3, ge=0)
     MAX_CONCURRENT_REQUESTS_PER_PROVIDER: int = Field(default=4, ge=1)
-    REQUEST_TIMEOUT: int = Field(default=120, ge=1)
 
     # ------------------------------------------------------------------
     # Feature toggles
@@ -273,13 +268,6 @@ class Config(BaseSettings):
     # Chat prompt sizing
     # ------------------------------------------------------------------
     EXCERPT_CHARS: int = 15000
-
-    # ------------------------------------------------------------------
-    # Exa API back-off
-    # ------------------------------------------------------------------
-    EXA_MAX_RETRIES: int = Field(default=3, ge=0)
-    EXA_RETRY_MIN_WAIT: int = Field(default=1, ge=0)
-    EXA_RETRY_MAX_WAIT: int = Field(default=10, ge=1)
 
     # ------------------------------------------------------------------
     # LLM model tiers (all served through OpenRouter)
