@@ -52,6 +52,9 @@ function fallbackCopy(text) {
 function getCleanReportText(reportEl) {
   // Helper to walk DOM and collect text with newlines between blocks.
   const lines = [];
+  const codeBlocks = [];
+  let codeMarker = "\u0000";
+  while (reportEl.textContent.includes(codeMarker)) codeMarker += "\u0000";
 
   function dfs(node) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -78,6 +81,14 @@ function getCleanReportText(reportEl) {
       return;
     }
 
+    if (el.tagName === "PRE" || el.tagName === "CODE") {
+      codeBlocks.push(el.textContent);
+      if (el.tagName === "PRE") lines.push("\n");
+      lines.push(codeMarker);
+      if (el.tagName === "PRE") lines.push("\n");
+      return;
+    }
+
     for (const child of el.childNodes) dfs(child);
 
     if (BLOCK_TAGS.has(el.tagName)) {
@@ -90,7 +101,10 @@ function getCleanReportText(reportEl) {
   // Collapse multiple consecutive newlines
   return lines.join(" ")
     .replace(/(\s*\n\s*)+/g, "\n\n")
-    .trim();
+    .trim()
+    .split(codeMarker)
+    .map((text, index) => text + (codeBlocks[index] ?? ""))
+    .join("");
 }
 
 function handleCopyClick(ev) {

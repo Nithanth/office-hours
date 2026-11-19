@@ -1568,7 +1568,7 @@ class ExaClient:
             sdk_res = self.adapter.search(query, num_results=num_results, **kwargs)
         except Exception as exc:
             logger.error("Exa search failed for {} - {}", query, exc)
-            return []
+            raise
 
         papers: list[Paper] = []
         raw_pool_count: int = len(getattr(sdk_res, "results", []) or [])

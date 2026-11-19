@@ -58,7 +58,7 @@ _EVENT_LIMITS: dict[str, tuple[int, int, bool]] = {
 _UPGRADE_HINT = "Sign in for a higher limit, or add your own OpenRouter key in Settings to keep going."
 
 _LIMIT_COPY: dict[str, str] = {
-    "search": "You've hit today's free search limit. " + _UPGRADE_HINT,
+    "search": "You've hit today's free search limit. Sign in for a higher limit, or try again tomorrow.",
     "chat_message": "You've hit today's message limit. Add your own OpenRouter key in Settings to keep chatting.",
     "report_generated": "You've hit today's report limit. " + _UPGRADE_HINT,
     "blog_generation": "You've hit today's generation limit. " + _UPGRADE_HINT,

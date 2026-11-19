@@ -18,6 +18,14 @@ from utils import rate_limit
 aiosqlite = pytest.importorskip("aiosqlite")
 
 
+def test_search_limit_does_not_offer_byok():
+    message = limit_message("search")
+    assert "Sign in" in message
+    assert "tomorrow" in message
+    assert "OpenRouter" not in message
+    assert "Settings" not in message
+
+
 def test_limit_message_known_events():
     assert "search limit" in limit_message("search")
     assert "Settings" in limit_message("chat_message")

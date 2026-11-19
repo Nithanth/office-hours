@@ -59,7 +59,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdn.plot.ly blob:; "
                 "worker-src 'self' blob:; "
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-                "font-src 'self' https://fonts.gstatic.com; "
+                "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
                 "img-src 'self' data: https:; "
                 "connect-src 'self' https:; "
                 "frame-src 'self' https: data:; "

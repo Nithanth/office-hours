@@ -55,6 +55,7 @@ class SharedPageData(BaseModel):
     title: str = config.config.APP_TITLE
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
+    search_error: Optional[str] = None
     recent_topics: Optional[list] = None  # Topic rows for the home strip
     topic_new_counts: Optional[dict] = None  # topic_id -> feed-added papers this week
 
@@ -785,7 +786,9 @@ def home_page(page_data: SharedPageData) -> Html:
         )
     """The main page layout, including search form and results area."""
     # Initial content for search results area
-    if (
+    if page_data.search_error:
+        results_display_content = render_error_message(page_data.search_error)
+    elif (
         page_data.search_results is not None
     ):  # Check if search_results is explicitly set (even if empty)
         # This assumes render_search_results can handle an empty list for page_data.search_results

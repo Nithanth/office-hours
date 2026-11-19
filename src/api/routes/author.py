@@ -21,7 +21,7 @@ from loguru import logger
 from api.deps import get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
-from pages.main_page import render_search_results
+from pages.main_page import render_error_message, render_search_results
 from services.core import model_prefs
 from services.paper.metadata.author_search import (
     AuthorPaper,
@@ -124,7 +124,7 @@ async def author_search(
 
     if not query:
         return HTMLResponse(
-            "<div class='oh-toast'>Please enter an author name.</div>",
+            str(render_error_message("Please enter an author name.")),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -150,7 +150,7 @@ async def author_search(
     except Exception as exc:
         logger.exception("author_search_failed", error=str(exc))
         return HTMLResponse(
-            "<div class='oh-toast'>Author search failed. Please try again.</div>",
+            str(render_error_message("Author search failed. Please try again.")),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -191,7 +191,7 @@ async def author_profile_view(
     except Exception as exc:
         logger.exception("author_profile_failed", error=str(exc))
         return HTMLResponse(
-            "<div class='oh-toast'>Could not load author profile.</div>",
+            str(render_error_message("Could not load author profile.")),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -200,7 +200,7 @@ async def author_profile_view(
 
     if profile is None:
         return HTMLResponse(
-            f"<div class='oh-toast'>Author \"{html.escape(author_name)}\" not found.</div>",
+            str(render_error_message(f'Author "{author_name}" not found.')),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -338,7 +338,7 @@ async def generate_research_profile(
 
     if llm_service is None or not llm_service._initialized:
         return HTMLResponse(
-            "<div class='oh-toast'>LLM service not available.</div>",
+            str(render_error_message("LLM service not available.")),
             status_code=503,
         )
 
@@ -351,10 +351,10 @@ async def generate_research_profile(
         )
     except Exception as exc:
         logger.exception("research_profile_fetch_failed", error=str(exc))
-        return HTMLResponse("<div class='oh-toast'>Could not fetch author data.</div>")
+        return HTMLResponse(str(render_error_message("Could not fetch author data.")))
 
     if profile is None:
-        return HTMLResponse("<div class='oh-toast'>Author not found.</div>")
+        return HTMLResponse(str(render_error_message("Author not found.")))
 
     # Build papers summary for the prompt
     papers_lines: list[str] = []
@@ -389,7 +389,7 @@ async def generate_research_profile(
     except Exception as exc:
         logger.exception("research_profile_generation_failed", error=str(exc))
         return HTMLResponse(
-            "<div class='oh-toast'>Could not generate research profile. Try again.</div>"
+            str(render_error_message("Could not generate research profile. Try again."))
         )
 
     # Render markdown to HTML

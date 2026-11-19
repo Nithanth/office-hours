@@ -341,7 +341,12 @@ html.oh-dark .domain-pill:has(input:checked) {
   background: var(--oh-accent-hover);
 }
 html.oh-dark .oh-search-go {
-  color: #0f1720;
+  background: #2563eb;
+  color: #fff;
+}
+html.oh-dark .oh-search-go:hover {
+  background: #1d4ed8;
+  color: #fff;
 }
 
 /* "Try" example chips — only relevant before the first search */

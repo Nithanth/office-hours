@@ -57,7 +57,7 @@ const writeCacheEntry = (path, content, title) => {
 
 document.body.addEventListener('htmx:afterSettle', () => {
   const path = window.location.pathname + window.location.search;
-  // Error-only swaps (a lone .oh-toast in the results container) replace
+  // Error-only swaps in the results container replace
   // the visible view but carry no URL of their own — don't bake them into
   // the snapshot, or Back would restore the error over the prior results.
   const container = document.getElementById('search-results-container');
@@ -65,7 +65,7 @@ document.body.addEventListener('htmx:afterSettle', () => {
     container &&
     container.children.length === 1 &&
     container.firstElementChild &&
-    container.firstElementChild.classList.contains('oh-toast');
+    container.firstElementChild.matches('.oh-toast, .error-message, .alert-error');
   if (isErrorOnly) return;
   settledBodies.set(path, {
     content: document.body.innerHTML,

@@ -18,6 +18,7 @@ from loguru import logger
 from api.deps import get_exa_client
 from models.paper import Paper
 from services.core.exa_client import ExaClient
+from services.limits import friendly_error_message
 from utils.rate_limit import limiter
 
 router = APIRouter(prefix="/api", tags=["similar"])
@@ -56,7 +57,13 @@ async def find_similar(
         )
     except Exception as exc:
         logger.warning("find_similar_failed", url=paper_url, err=str(exc))
-        return HTMLResponse(_error_fragment(f"Could not find similar papers: {exc}"))
+        return HTMLResponse(
+            _error_fragment(
+                friendly_error_message(
+                    exc, "Could not find similar papers. Try again later."
+                )
+            )
+        )
 
     if not similar_papers:
         return HTMLResponse(_error_fragment("No similar papers found."))

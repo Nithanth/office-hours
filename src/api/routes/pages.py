@@ -18,6 +18,7 @@ from pages.main_page import (
 )
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
+from services.limits import friendly_error_message
 from services.persistence.database import database_available, session_scope
 from services.persistence.repositories import list_topics
 
@@ -82,6 +83,9 @@ async def get_home(
                         error=str(exc),
                     )
                     page_data.search_results = []
+                    page_data.search_error = friendly_error_message(
+                        exc, "Could not retrieve results. Try again later."
+                    )
 
     # Recent topics for the "Your topics" strip on the landing view
     if database_available():

@@ -134,7 +134,9 @@ class TestAuthorProfileRoute:
             data={"author_id": "123", "author_name": "Test"},
         )
         assert resp.status_code == 200
-        assert "oh-toast" in resp.text.lower()
+        assert 'class="error-message error-context-general"' in resp.text
+        assert "Could not load author profile." in resp.text
+        assert "oh-toast" not in resp.text
 
     @patch("api.routes.author.get_author_profile")
     def test_profile_has_author_stats(self, mock_profile, client: TestClient):
@@ -208,5 +210,7 @@ class TestResearchProfileRoute:
             "/author/research-profile",
             data={"author_id": "1234567", "author_name": "Test"},
         )
-        assert "oh-toast" in resp.text.lower()
+        assert 'class="error-message error-context-general"' in resp.text
+        assert "Could not generate research profile. Try again." in resp.text
+        assert "oh-toast" not in resp.text
         assert resp.status_code == 200

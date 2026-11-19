@@ -56,6 +56,20 @@ def _paper(pid: str, title: str = "P") -> Paper:
 
 
 class TestFeedTopic:
+    async def test_provider_failure_preserves_poll_window(
+        self, db_session, monkeypatch
+    ):
+        topic = _topic(last_feed_check=datetime(2024, 1, 1))
+        db_session.add(topic)
+        await db_session.commit()
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("429 rate limit")
+
+        monkeypatch.setattr(feed, "_fetch_candidates_sync", fail)
+        assert await feed.feed_topic(db_session, topic) == 0
+        assert topic.last_feed_check == datetime(2024, 1, 1)
+
     async def test_adds_feed_papers_and_stamps_check(
         self, db_session: AsyncSession, monkeypatch
     ):

@@ -829,7 +829,7 @@ async def report_stream(
         yield _format_sse_event(
             "done",
             "<script>var r=window.ohBlogRender;r&&r.loadAllDeps().then(function(){"
-            "r.renderKaTeX(document.getElementById('report-content'));});</script>",
+            "r.renderContent(document.getElementById('report-content'));});</script>",
         )
         # Also signal done for JSON stream so any listener can clean up.
         yield _format_sse_event(f"{_JSON_EVENT}-done", "")

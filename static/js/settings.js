@@ -382,6 +382,7 @@
 
       // Convert any injected error blocks to toasts and clean them up.
       document.querySelectorAll('.alert-error, .error-message').forEach(el => {
+        if (el.closest('#search-results-container')) return;
         console.debug('[oh] converted server error to toast:', el.textContent.trim());
         showToast(el.textContent.trim());
         el.remove();

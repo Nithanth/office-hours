@@ -263,6 +263,7 @@ async def fetch_feed_papers(
                 err=str(exc),
             )
         except Exception as exc:  # noqa: BLE001 - one bad facet can't kill a sweep
+            constraint_failed = True
             logger.warning(
                 "feed_fetch_failed", topic_id=topic.id, kind=kind, err=str(exc)
             )

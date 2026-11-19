@@ -52,7 +52,7 @@ function initThemeToggle() {
 const CDN_DEPS = [
   { id: "marked", src: "https://cdn.jsdelivr.net/npm/marked@12/marked.min.js" },
   { id: "dompurify", src: "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" },
-  { id: "hljs", src: "https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js" },
+  { id: "hljs", src: "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" },
   { id: "mermaid", src: "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" },
   { id: "katex-css", href: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css", tag: "link" },
   { id: "katex", src: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js" },
@@ -88,13 +88,18 @@ function loadDep(dep) {
   });
 }
 
-async function loadAllDeps() {
-  // Load CSS + core libs in parallel
-  const coreDeps = CDN_DEPS.filter(d => d.id !== "katex-auto");
-  await Promise.allSettled(coreDeps.map(loadDep));
-  // katex-auto depends on katex
-  const autoRender = CDN_DEPS.find(d => d.id === "katex-auto");
-  if (autoRender) await loadDep(autoRender).catch(() => {});
+let _depsPromise = null;
+function loadAllDeps() {
+  if (_depsPromise) return _depsPromise;
+  _depsPromise = (async () => {
+    // Load CSS + core libs in parallel
+    const coreDeps = CDN_DEPS.filter(d => d.id !== "katex-auto");
+    await Promise.allSettled(coreDeps.map(loadDep));
+    // katex-auto depends on katex
+    const autoRender = CDN_DEPS.find(d => d.id === "katex-auto");
+    if (autoRender) await loadDep(autoRender).catch(() => {});
+  })();
+  return _depsPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,15 +133,6 @@ function renderMarkdown(md) {
     marked.setOptions({
       gfm: true,
       breaks: false,
-      highlight: function (code, lang) {
-        if (window.hljs && lang && hljs.getLanguage(lang)) {
-          try { return hljs.highlight(code, { language: lang }).value; } catch (_) {}
-        }
-        if (window.hljs) {
-          try { return hljs.highlightAuto(code).value; } catch (_) {}
-        }
-        return code;
-      },
     });
   }
 
@@ -367,6 +363,20 @@ function vegaErrorMarkup(message, rawSpec) {
 // ---------------------------------------------------------------------------
 // Render KaTeX
 // ---------------------------------------------------------------------------
+function highlightCode(root) {
+  if (!window.hljs || !root) return;
+  root.querySelectorAll('pre code:not([data-highlighted])').forEach(block => {
+    hljs.highlightElement(block);
+  });
+}
+
+async function renderContent(root) {
+  if (!root) return;
+  await loadAllDeps();
+  highlightCode(root);
+  renderKaTeX(root);
+}
+
 function renderKaTeX(root) {
   if (!window.renderMathInElement) return;
   const scope = root || document;
@@ -733,6 +743,7 @@ async function initBlog() {
   // Render markdown
   const { html, mermaidBlocks, vegaBlocks } = renderMarkdown(body);
   if (articleEl) articleEl.innerHTML = html;
+  highlightCode(articleEl);
 
   // Post-processing
   addFadeInClasses(articleEl);
@@ -839,6 +850,7 @@ window.ohBlogRender = {
   renderMermaidDiagrams,
   renderVegaCharts,
   renderKaTeX,
+  renderContent,
   addFadeInClasses,
   initImageFadeIn,
   readingTime,
@@ -851,6 +863,7 @@ window.ohBlogRender = {
     await loadAllDeps();
     const { html, mermaidBlocks, vegaBlocks } = renderMarkdown(body);
     articleEl.innerHTML = html;
+    highlightCode(articleEl);
     addFadeInClasses(articleEl);
     initImageFadeIn(articleEl);
     initFadeObserver(articleEl);
@@ -860,6 +873,12 @@ window.ohBlogRender = {
     return title;
   },
 };
+
+for (const event of ["htmx:afterSwap", "htmx:sseMessage"]) {
+  document.addEventListener(event, () => {
+    document.querySelectorAll('#report-content, .blog-article').forEach(renderContent);
+  });
+}
 
 // Run on DOM ready — only on the standalone /blog-view page (identified by the
 // token script or the legacy inline #blog-raw element). On report pages the
