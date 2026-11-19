@@ -32,7 +32,6 @@ from fasthtml.components import (
     Select,
     Span,
     Summary,
-    Textarea,
     Title,
 )
 from loguru import logger
@@ -692,51 +691,6 @@ def render_report(
         </div>
         <button id="copy-report-btn" class="copy-icon-btn" title="Copy text" aria-label="Copy report" type="button"><i class="fa-solid fa-copy"></i></button>
     </div>"""
-
-
-def render_chat_modal(paper: Paper, session_id: str) -> Div:
-    """Renders the chat modal for a specific paper."""
-    paper_id = paper.id
-    return Div(
-        Div(
-            # Header
-            Div(
-                H2(f"Chat: {paper.title[:60]}..."),
-                BUTTON(
-                    "×",
-                    cls="modal-close-btn",
-                    aria_label="Close modal",
-                    tabindex="0",
-                ),
-                cls="modal-header",
-            ),
-            # Body
-            Div(
-                Div(
-                    id=f"chat-log-{paper_id}",
-                    cls="chat-log-container",
-                ),
-                # This container will receive the SSE connector from the POST response
-                Div(id=f"sse-connector-container-{paper_id}"),
-                FORM(
-                    Textarea(
-                        name="message",
-                        placeholder="Ask about this paper...",
-                        rows="3",
-                        style="width:100%;max-width:40rem;height:6rem;font-family:inherit;",
-                    ),
-                    BUTTON("Send", type="submit", style="margin-top: 5px;"),
-                    id=f"chat-form-{paper_id}",
-                    hx_post="/chat",
-                    hx_target=f"#chat-log-{paper_id}",
-                    hx_swap="beforeend",
-                ),
-                cls="modal-body",
-            ),
-            cls="modal-content",
-        ),
-        cls="modal",
-    )
 
 
 def render_chat_message(message: str, role: str) -> Div:
