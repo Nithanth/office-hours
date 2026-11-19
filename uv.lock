@@ -863,7 +863,7 @@ wheels = [
 
 [[package]]
 name = "exa-py"
-version = "2.25.0"
+version = "2.28.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpcore" },
@@ -874,9 +874,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/26/f7/89382f6adfb180b879ba6b71e25df857e093d38726d98688652a0c67482f/exa_py-2.25.0.tar.gz", hash = "sha256:4d171a4e099c0af18a725e4f64db6792a5874c3d08cf695334a6ae66f4ca5a92", size = 83644, upload-time = "2026-10-01T21:33:43.817Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/a2/715db84134b2bbd4da26fb13080914819e572bbb211063bf5ad5c9693a48/exa_py-2.28.0.tar.gz", hash = "sha256:e835facb38fda3875837ecc875cae1f69de27f5782fa7f6be1f4fcd0b2933214", size = 117524, upload-time = "2026-11-06T21:02:37.666Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/36/5b467bcb4bd0612404784779252ccdef98b424d12b3e0e1d472f754e6dce/exa_py-2.25.0-py3-none-any.whl", hash = "sha256:8d44cc80cbb591952a37a186e2af2130a99f00b0e67954139cd5e2fdfda1f561", size = 113156, upload-time = "2026-10-01T21:33:42.514Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/a9/6115797dbbdac131748dc057b806165ab9ac2658b0295de769c9b546a110/exa_py-2.28.0-py3-none-any.whl", hash = "sha256:ae4a4140e1721872d2915a5ba93f7ccea80961013e965eb6bf8ea1896eb8f471", size = 144953, upload-time = "2026-11-06T21:02:36.435Z" },
 ]
 
 [[package]]
