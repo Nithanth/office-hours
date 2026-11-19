@@ -1080,6 +1080,7 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Html:
                 ),
                 cls="welcome-shell",
             ),
+            Div(id="modal-container"),
             Footer(
                 P(
                     f"  {config.config.YEAR} {config.config.APP_TITLE}. v{config.config.VERSION}."
