@@ -654,45 +654,6 @@ def report_loading_indicator_component() -> Div:
     )
 
 
-def render_report(
-    title: str, main_summary: str, paper_summaries: list[str], papers: list[Paper]
-) -> str:
-    """Builds the final HTML for the report."""
-    paper_list_html = ""
-    # Ensure we only iterate as many times as we have summaries or papers
-    num_items = min(len(paper_summaries), len(papers))
-
-    for i in range(num_items):
-        paper = papers[i]
-        summary = paper_summaries[i]
-        paper_list_html += f"""\
-        <div class="paper-summary-item mt-4 pt-4 border-t border-gray-700">
-            <h4 class="text-lg font-semibold">{html.escape(paper.title)}</h4>
-            <p class="text-sm">Source: <a href="{html.escape(paper.url)}" target="_blank" class="hover:underline">{html.escape(paper.url)}</a></p>
-            <p class="mt-2">{html.escape(summary)}</p>
-            <button class="ask-assistant-btn mt-2 text-sm flex items-center gap-1"
-                    hx-get="/viewer/{urllib.parse.quote(paper.id, safe='')}?url={urllib.parse.quote_plus(str(paper.url))}"
-                    hx-target="#modal-container"
-                    hx-swap="innerHTML">
-                <i class="fa-solid fa-comment-dots"></i><span>Ask Assistant About This Paper</span>
-            </button>
-        </div>"""
-
-    return f"""\
-    <div id="report-content" class="mt-6 p-6 border border-gray-700 rounded-lg bg-gray-800/50">
-        <h2 class="text-2xl font-bold mb-4">{html.escape(title)}</h2>
-        <div class="main-summary mb-6">
-            <h3 class="text-xl font-semibold mb-2">Overall Analysis</h3>
-            <p>{html.escape(main_summary)}</p>
-        </div>
-        <div class="paper-summaries">
-            <h3 class="text-xl font-semibold mb-2">Key Paper Summaries</h3>
-            {paper_list_html}
-        </div>
-        <button id="copy-report-btn" class="copy-icon-btn" title="Copy text" aria-label="Copy report" type="button"><i class="fa-solid fa-copy"></i></button>
-    </div>"""
-
-
 def render_chat_message(message: str, role: str) -> Div:
     """Renders a single chat message bubble using ChatBubble component."""
     return ChatBubble(message, role)
