@@ -232,6 +232,7 @@ def test_workspace_keeps_real_topic_controls_and_escapes_titles(topic_data):
         siblings=[],
         papers=papers,
         reports=[],
+        report_count=7,
         papers_html="REAL PAPERS",
         reports_html="",
         facets_html="REAL QUERIES",
@@ -245,6 +246,7 @@ def test_workspace_keeps_real_topic_controls_and_escapes_titles(topic_data):
     assert "workspace-map" in markup and "workspace-report" in markup
     assert "REAL PAPERS" in markup and "REAL QUERIES" in markup
     assert "Your report starts here" in markup
+    assert "7 report versions" in markup
     assert 'hx-post="/topics/t1/report"' in markup
     assert 'hx-get="/viewer/p1?' in markup
 

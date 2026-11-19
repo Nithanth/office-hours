@@ -1181,6 +1181,16 @@ async def list_topic_papers(
     return list(result.scalars().all())
 
 
+async def count_topic_reports(session: AsyncSession, *, topic_id: str) -> int:
+    """Total versions, independent of the bounded recent-report preview."""
+    return int(
+        await session.scalar(
+            select(func.count()).select_from(Report).where(Report.topic_id == topic_id)
+        )
+        or 0
+    )
+
+
 async def list_topic_reports(
     session: AsyncSession, *, topic_id: str, limit: int = 10
 ) -> list[Report]:

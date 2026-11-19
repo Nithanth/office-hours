@@ -644,6 +644,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
     if not database_available():
         raise HTTPException(status_code=503, detail="Database unavailable")
     from services.persistence.repositories import (
+        count_topic_reports,
         get_topic,
         list_topic_papers,
         list_topic_reports,
@@ -655,6 +656,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
             raise HTTPException(status_code=404, detail="Topic not found")
         papers = await list_topic_papers(session, topic_id=topic.id)
         reports = await list_topic_reports(session, topic_id=topic.id, limit=5)
+        report_count = await count_topic_reports(session, topic_id=topic.id)
         from services.persistence.repositories import (
             list_saved_statuses,
             list_topic_facets,
@@ -717,6 +719,7 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
             siblings=siblings,
             papers=papers,
             reports=reports,
+            report_count=report_count,
             papers_html=papers_html,
             reports_html=reports_html,
             facets_html=facets_html,

@@ -21,9 +21,11 @@ def topic_workspace(
     blog_html: str,
     share_html: str,
     notion_badge: str,
+    report_count: int | None = None,
 ) -> str:
     esc = html.escape
     tid = esc(topic.id, quote=True)
+    report_count = len(reports) if report_count is None else report_count
     sources = []
     for index, paper in enumerate(papers[:8], 1):
         query = urlencode({"url": paper.url or "", "title": paper.title or "Paper"})
@@ -60,7 +62,7 @@ def topic_workspace(
       <section class="workspace-topic-sheet" data-topic-id="{tid}">
         <div class="workspace-breadcrumb"><a href="/topics">Workspace</a><span>/</span><span>Topic</span></div>
         <header class="workspace-topic-title"><h1>{esc(topic.title)}<span>_</span></h1>
-        <p>{len(papers)} {"paper" if len(papers) == 1 else "papers"} · {len(reports)} report {"version" if len(reports) == 1 else "versions"} {notion_badge}</p></header>
+        <p>{len(papers)} {"paper" if len(papers) == 1 else "papers"} · {report_count} report {"version" if report_count == 1 else "versions"} {notion_badge}</p></header>
         <div class="workspace-topic-actions"><button type="button" class="btn-secondary"
           hx-post="/topics/{tid}/report" hx-target="#topic-report-out" hx-swap="innerHTML" hx-disabled-elt="this">Update report</button>
           <button type="button" class="btn-secondary" hx-get="/chat-modal?paper_id=topic&amp;topic_id={tid}&amp;title=Chat%20about%20this%20topic"
