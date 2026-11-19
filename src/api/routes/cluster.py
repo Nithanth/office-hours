@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api", tags=["cluster"])
 async def cluster_papers_endpoint(
     request: Request,
     scope: str = "search",
+    topic_id: str | None = None,
 ) -> JSONResponse:
     """Compute paper clusters for the current session's search results.
 
@@ -48,7 +49,25 @@ async def cluster_papers_endpoint(
 
     client = cast(ExaClient, exa_client)
 
-    if scope == "library":
+    if scope == "topic":
+        if not topic_id:
+            return JSONResponse(
+                {"ok": False, "error": "Choose a topic first."}, status_code=400
+            )
+        paper_dicts = await _topic_paper_dicts(request, topic_id)
+        if paper_dicts is None:
+            return JSONResponse(
+                {"ok": False, "error": "Topic not found."}, status_code=404
+            )
+        if len(paper_dicts) < 2:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Add at least 2 papers to explore this topic's map.",
+                },
+                status_code=400,
+            )
+    elif scope == "library":
         paper_dicts = await _library_paper_dicts(request, client)
         if paper_dicts is None:
             return JSONResponse(
@@ -93,13 +112,65 @@ async def cluster_papers_endpoint(
             status_code=503,
         )
 
+    metadata = {paper["id"]: paper for paper in paper_dicts}
     return JSONResponse(
         {
             "ok": True,
-            "papers": result.papers,
+            "papers": [
+                {
+                    **paper,
+                    "status": metadata.get(paper["id"], {}).get("status", "to_read"),
+                    "url": metadata.get(paper["id"], {}).get("url", ""),
+                }
+                for paper in result.papers
+            ],
             "clusters": result.clusters,
         }
     )
+
+
+async def _topic_paper_dicts(
+    request: Request, topic_id: str
+) -> list[dict[str, Any]] | None:
+    """Only cluster papers belonging to a topic the current owner can read."""
+    from services.core.model_prefs import prefs_owner_id
+    from services.persistence.database import database_available, session_scope
+    from services.persistence.repositories import (
+        get_topic,
+        list_saved_statuses,
+        list_topic_papers,
+    )
+
+    owner = prefs_owner_id(request)
+    if not owner or not database_available():
+        return None
+    async for session in session_scope():
+        topic = await get_topic(session, owner_id=owner, topic_id=topic_id)
+        if topic is None:
+            return None
+        papers = await list_topic_papers(session, topic_id=topic.id)
+        statuses = await list_saved_statuses(
+            session, owner_id=owner, paper_ids=[p.paper_id for p in papers]
+        )
+        return [
+            {
+                "id": p.paper_id,
+                "title": p.title or "",
+                "url": p.url or "",
+                "authors": (
+                    (p.authors.get("items") or p.authors.get("list") or [])
+                    if isinstance(p.authors, dict)
+                    else (p.authors or [])
+                ),
+                # TopicPaper stores ISO publication dates as strings, not dates.
+                "year": str(p.published_date or "")[:4],
+                "highlights": "",
+                "citation_count": None,
+                "status": statuses.get(p.paper_id, "to_read"),
+            }
+            for p in papers
+        ]
+    return None
 
 
 async def _library_paper_dicts(

@@ -57,10 +57,14 @@ async def chat_post(
     report_id: str | None = Form(None),
     topic_id: str | None = Form(None),
     snippet_context: str | None = Form(None),
+    paper_ids: str | None = Form(None),
 ) -> Response:
     """Handle a user chat message and return HTML skeleton for streaming reply."""
 
     chat_state = get_chat_state(session_id)
+    from services.chat.topic_scope import scoped_topic_key, validate_topic_subset
+
+    selected_ids = await validate_topic_subset(request, topic_id, paper_ids)
 
     # Auto-reset stuck stream_active flag if it's been True longer than the timeout.
     if chat_state.stream_active and chat_state._stream_started_at > 0:
@@ -117,6 +121,11 @@ async def chat_post(
         if topic_id
         else (f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id)
     )
+    state_key = scoped_topic_key(state_key, selected_ids)
+    if selected_ids is not None:
+        chat_state.paper_cache.setdefault(state_key, {})[
+            "topic_paper_ids"
+        ] = selected_ids
     # Selection quotes: the bubble + persisted history show the one-line
     # excerpt (clean_msg); the model-facing turn carries the full passage.
     model_msg = clean_msg
@@ -130,7 +139,7 @@ async def chat_post(
     from services.persistence.database import database_available, session_scope
 
     user_id = prefs_owner_id(request)
-    if user_id and database_available():
+    if user_id and database_available() and selected_ids is None:
         try:
             from services.persistence.repositories import (
                 append_chat_message,
@@ -463,7 +472,7 @@ async def chat_stream(
                 )
 
                 user_id = prefs_owner_id(request)
-                if user_id and database_available():
+                if user_id and database_available() and ":subset:" not in paper_id:
                     try:
                         from services.persistence.repositories import (
                             append_chat_message,

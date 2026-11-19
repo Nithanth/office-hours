@@ -157,6 +157,7 @@ async def chat_modal(
     model_key: str | None = Query(None, description="(Optional) Selected model key"),
     report_id: str | None = Query(None, description="(Optional) saved report id"),
     topic_id: str | None = Query(None, description="(Optional) topic id"),
+    paper_ids: str | None = None,
 ) -> HTMLResponse:  # noqa: D401 - pydantic description fine
     """Return a fully-formed chat modal for *paper_id*.
 
@@ -165,6 +166,9 @@ async def chat_modal(
     """
 
     start_ts = time.perf_counter()
+    from services.chat.topic_scope import scoped_topic_key, validate_topic_subset
+
+    selected_ids = await validate_topic_subset(request, topic_id, paper_ids)
 
     # Best-effort metadata fetch; failures fall back to bare modal.
     try:
@@ -238,6 +242,7 @@ async def chat_modal(
         if topic_id
         else (f"topic:{report_id}" if paper_id == "topic" and report_id else paper_id)
     )
+    history_key = scoped_topic_key(history_key, selected_ids)
 
     # ----------------- Retrieve prior conversation (if any) -----------------
     try:
@@ -247,8 +252,12 @@ async def chat_modal(
         )  # local import avoids heavy dep
 
         session_id = getattr(request.state, "session_id", "anon")
+        if selected_ids is not None:
+            get_chat_state(session_id).paper_cache.setdefault(history_key, {})[
+                "topic_paper_ids"
+            ] = selected_ids
         history = get_chat_state(session_id).get_conversation(history_key)
-        if not history:
+        if not history and selected_ids is None:
             # In-memory state is empty (new session/restart) — hydrate from
             # the persisted thread so reopening a chat restores it.
             from services.core.model_prefs import prefs_owner_id
@@ -327,6 +336,11 @@ async def chat_modal(
         + hidden_model
         + hidden_report
         + hidden_topic
+        + (
+            f"<input type='hidden' name='paper_ids' value='{html.escape(paper_ids or '', quote=True)}'/>"
+            if selected_ids is not None
+            else ""
+        )
         + "<textarea",
     )
 
@@ -815,10 +829,17 @@ async def viewer_modal(
         panel_q += f"&report_id={urllib.parse.quote_plus(report_id)}"
 
     embed_html = _doc_embed(url, title=title or "")
+    import hashlib
+
+    from services.core.model_prefs import prefs_owner_id
+
+    reader_key = hashlib.sha256(
+        f"{prefs_owner_id(request)}:{paper_id}".encode()
+    ).hexdigest()[:32]
 
     modal_html = f"""
 <div class=\"modal\" id=\"viewer-{paper_id}\">
-  <div class=\"modal-content pdf-viewer\" data-viewer=\"{"pdf" if is_pdf else "html"}\" data-src-url=\"{safe_url}\">
+  <div class=\"modal-content pdf-viewer\" data-viewer=\"{"pdf" if is_pdf else "html"}\" data-src-url=\"{safe_url}\" data-reader-key=\"{reader_key}\">
     <div class=\"modal-header\">
       <h2><a href=\"{safe_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{display_title}</a></h2>
       <button class=\"save-paper-btn\" type=\"button\" title=\"Save to library\"

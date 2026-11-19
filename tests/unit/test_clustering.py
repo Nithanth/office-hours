@@ -5,6 +5,28 @@ import numpy as np
 from services.paper.clustering import ClusterResult, cluster_papers
 
 
+def test_subtopic_names_are_contiguous_title_phrases_not_keyword_pairs():
+    from services.paper.clustering import _generate_cluster_labels
+
+    titles = {
+        0: [
+            "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+            "Adaptive Retrieval-Augmented Generation",
+            "Evaluating Retrieval-Augmented Generation",
+        ],
+        1: [
+            "Large Language Models for Reasoning",
+            "Evaluating Large Language Models",
+            "Training Large Language Models",
+        ],
+    }
+    labels = _generate_cluster_labels(titles)
+    assert labels[0] == "Retrieval-augmented generation"
+    assert labels[1] == "Large language models"
+    assert all(" / " not in label for label in labels.values())
+    assert labels == _generate_cluster_labels(titles)
+
+
 def _make_papers(n: int, topic_prefix: str = "paper") -> list[dict]:
     """Generate n mock paper dicts with distinct titles."""
     return [

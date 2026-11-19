@@ -40,7 +40,7 @@ def _owner_id(request: Request) -> str:
     return str(owner)
 
 
-def _shell(title: str, body: str) -> str:
+def _shell(title: str, body: str, *, workspace: bool = False) -> str:
     from pages.shell import lib_subtabs_html, page_shell
     from utils.static_assets import static_url
 
@@ -50,11 +50,12 @@ def _shell(title: str, body: str) -> str:
         f'<script src="{static_url("/static/js/report.js")}" defer></script>\n'
         f'  <script src="{static_url("/static/js/main.js")}" type="module"></script>\n'
         f'  <script src="{static_url("/static/js/blog-view.js")}" defer></script>'
+        f'  <script src="{static_url("/static/js/topic-map.js")}" defer></script>'
     )
     return str(
         page_shell(
             title,
-            lib_subtabs_html("topics") + body,
+            ("" if workspace else lib_subtabs_html("topics")) + body,
             active="library",
             scripts=scripts,
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
@@ -411,7 +412,7 @@ def _paper_rows_html(
                 f' hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>'
             )
         paper_rows.append(
-            f"""<div class="paper-row">
+            f"""<div class="paper-row" data-paper-id="{_esc(p.paper_id)}">
   <div><div class="pt">{title_link}{feed_chip}</div>{meta}</div>
   {actions}
 </div>"""
@@ -708,42 +709,26 @@ async def topic_page(topic_id: str, request: Request) -> HTMLResponse:
             "↗ Notion</a>"
         )
 
-    topic_kind = _kind_label(topic.kind)
-    topic_kind_chip = (
-        f' <span class="topic-kind">{topic_kind}</span>' if topic_kind else ""
+    from pages.topic_workspace import topic_workspace
+
+    body = (
+        topic_workspace(
+            topic=topic,
+            siblings=siblings,
+            papers=papers,
+            reports=reports,
+            papers_html=papers_html,
+            reports_html=reports_html,
+            facets_html=facets_html,
+            related_html=related_html,
+            notes_html=notes_html,
+            blog_html=blog_html,
+            share_html=share_status_html,
+            notion_badge=notion_badge,
+        )
+        + _status_script()
     )
-    body = f"""<h1>{_esc(topic.title)}{topic_kind_chip}{notion_badge}</h1>
-<div class="topic-actions" style="margin:0.75rem 0;">
-  <button type="button" class="btn-secondary" title="Write a fresh report version from this topic's current papers"
-    hx-post="/topics/{_esc(topic.id)}/report" hx-target="#topic-report-out"
-    hx-swap="innerHTML" hx-disabled-elt="this">Update report</button>
-  <button type="button" class="btn-secondary"
-    hx-get="/chat-modal?paper_id=topic&topic_id={_esc(topic.id)}&title={quote('Chat about this topic')}"
-    hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
-  <button type="button" class="btn-secondary" title="Get a public read-only link to this topic"
-    hx-post="/topics/{_esc(topic.id)}/share" hx-target="#share-status"
-    hx-swap="innerHTML">Share</button>
-</div>
-<div id="share-status" class="topic-meta">{share_status_html}</div>
-<div id="topic-report-out"></div>
-<div id="modal-container"></div>
-<h2 style="font-size:0.95rem;margin-top:1rem;">Papers (<span id="papers-count">{len(papers)}</span>)
-  <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"
-    hx-post="/topics/{_esc(topic.id)}/feed" hx-target="#feed-status" hx-swap="innerHTML" title="Poll the tracked searches for newly published papers">Check for new papers</button>
-</h2>
-<input type="text" id="author-filter-input" placeholder="Filter papers by title or author…"
-  style="font-size:0.85rem;padding:4px 8px;width:16rem;margin-bottom:8px;"/>
-<div id="feed-status" class="topic-meta"></div>
-<div id="topic-papers">{papers_html}</div>
-<h2 style="font-size:0.95rem;margin-top:1.5rem;">Report versions</h2>
-<div class="topic-meta" style="margin-bottom:8px;">Each update snapshots the topic's papers at that moment. Older versions are kept.</div>
-{reports_html}
-{blog_html}
-{notes_html}
-{facets_html}
-{related_html}
-{_status_script()}"""
-    return HTMLResponse(_shell(topic.title, body))
+    return HTMLResponse(_shell(topic.title, body, workspace=True))
 
 
 # ---------------------------------------------------------------------------

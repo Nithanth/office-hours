@@ -105,13 +105,22 @@ async function renderPdf(container) {
     // Set up viewer plumbing (event bus, link svc)
     const eventBus = new EventBus();
     const linkService = new PDFLinkService({ eventBus });
+    const readerRoot = container.closest?.('.pdf-viewer');
+    let darkPaper = readerRoot?.dataset.readerOriginal === 'false' ||
+      (readerRoot?.dataset.readerOriginal === undefined && document.documentElement?.classList?.contains('oh-dark'));
+    const paperColors = () => darkPaper ? {background:'#1f1f23',foreground:'#e5e5e1'} : null;
     const viewer = new PDFViewer({
       container: scrollEl, // scroll container (absolute inside)
       viewer: viewerEl,   // inner pages container
       eventBus,
       linkService,
       textLayerMode: 2, // selectable text layer on
+      // This is a reader, not the full pdf.js annotation editor. In 3.11 the
+      // editor's teardown assumes a mounted AltTextManager; our embedded viewer
+      // has none, so leaving editing enabled breaks document/tone resets.
+      annotationEditorMode: pdfjsLib.AnnotationEditorType?.DISABLE ?? -1,
       maxCanvasPixels: 0, // enable CSS-based zoom without raster limits
+      pageColors: paperColors(),
     });
     linkService.setViewer(viewer);
 
@@ -122,9 +131,29 @@ async function renderPdf(container) {
     // scale>1 clamp left the doc smaller than the pane on wide viewers.
     viewer.currentScaleValue = "auto";
 
+    let restorePage = null;
     eventBus.on("pagesinit", () => {
       spinner.remove();
+      if (restorePage) {
+        viewer.currentScaleValue = restorePage.scale;
+        viewer.currentPageNumber = Math.min(restorePage.page, pdfDoc.numPages);
+        restorePage = null;
+      }
     });
+    // Rebuild PDF page views with pdf.js' own page-color rendering, not a CSS
+    // inversion of the app/chat. Original page restores source figure colors.
+    readerRoot?.addEventListener('oh:paper-tone', event => {
+      if (!container.isConnected || darkPaper === event.detail.dark) return;
+      darkPaper = event.detail.dark;
+      restorePage = {page:viewer.currentPageNumber,scale:viewer.currentScaleValue};
+      viewer.setDocument(null);
+      viewer.pageColors = paperColors();
+      viewer.setDocument(pdfDoc);
+      linkService.setDocument(pdfDoc);
+    });
+    readerRoot?.dispatchEvent(new CustomEvent('oh:pdf-ready', {
+      detail:{viewer,pdfDoc,linkService},
+    }));
 
     // --- Enhanced zoom UI --------------------------
     const zoomBar = document.createElement("div");
