@@ -71,7 +71,6 @@ class TaskQueue:
         self._semaphores: dict[str, asyncio.Semaphore] = defaultdict(
             lambda: asyncio.Semaphore(default_concurrency)
         )
-        self._default_concurrency = default_concurrency
         # Track asyncio task handles so they don't get GC'd
         self._handles: set[asyncio.Task[None]] = set()
 
