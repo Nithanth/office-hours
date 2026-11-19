@@ -44,6 +44,16 @@ import { renderStaticMarkdown, ensureMarkdownLibs } from "./markdown.js?v=2";
   if (hardFlag) sessionStorage.removeItem("ohHardReload");
 })();
 
+document.body.addEventListener("click", (evt) => {
+  const button = evt.target.closest?.(".chat-starter");
+  const form = button?.form;
+  const textarea = form?.querySelector("textarea[name='message']");
+  if (!textarea || textarea.disabled || button.disabled) return;
+
+  textarea.value = button.textContent.trim();
+  form.requestSubmit();
+});
+
 // Submit on Enter, Shift+Enter for newline
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Enter" || ev.shiftKey) return;
@@ -189,7 +199,7 @@ export function initChat(sessionId, paperId, chatLogId) {
   }
 
   // Pick a stable cache key: explicit data-chat-key > data-chat-pid > paperId
-  const stableKey = chatLog.dataset.chatPid || chatLog.dataset.chatKey || paperId;
+  const stableKey = chatLog.dataset.chatKey || chatLog.dataset.chatPid || paperId;
   const html = loadTranscript(sessionId, stableKey);
   console.debug('[oh] initChat', { stableKey, cachedChars: (html || '').length });
   if (typeof html === "string" && html.trim()) {

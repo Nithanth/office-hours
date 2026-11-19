@@ -61,11 +61,45 @@ def CitationCard(
 
 
 # Chat modal
+def ChatStarters(paper_id: str, form_id: str) -> Div:
+    if paper_id == "global":
+        questions = (
+            "How can I turn a topic into a research question?",
+            "How do I tell whether a study is reliable?",
+            "How should I compare papers with different methods?",
+        )
+    elif paper_id == "topic" or paper_id.startswith("topic:"):
+        questions = (
+            "What are the main findings across these papers?",
+            "Where do these studies disagree, and why?",
+            "What questions about this topic are still open?",
+        )
+    else:
+        questions = (
+            "What is the main contribution of this paper?",
+            "How did the authors test their approach?",
+            "What are the limitations of this study?",
+        )
+
+    return Div(
+        P("Suggested questions", cls="chat-starters-label"),
+        *(
+            BUTTON(question, type="button", form=form_id, cls="chat-starter")
+            for question in questions
+        ),
+        cls="chat-starters",
+        role="group",
+        aria_label="Suggested questions",
+    )
+
+
 def ChatModal(
     modal_id: str,
     title: str,
     chat_log_id: str,
     paper_id: str,
+    chat_key: str,
+    history: Iterable[Div],
     form_action: str = "/chat",
     oob_slot: str | None = None,
     **attrs: Any,
@@ -75,6 +109,7 @@ def ChatModal(
         attrs = {**attrs, "hx_oob": oob_slot}
 
     is_global = paper_id == "global"
+    form_id = f"{chat_log_id}-form"
 
     # Sources toggle only for global assistant
     sources_toggle = (
@@ -102,23 +137,14 @@ def ChatModal(
             ),
             # Chat log
             Div(
-                Div(
-                    P(
-                        (
-                            "░ ask a question to get started ░"
-                            if is_global
-                            else (
-                                "░ ask about this topic ░"
-                                if paper_id == "topic" or paper_id.startswith("topic:")
-                                else "░ ask about this paper ░"
-                            )
-                        ),
-                    ),
-                    cls="chat-empty-hint",
-                ),
+                *history,
                 id=chat_log_id,
                 cls="chat-log-container modal-body",
+                data_chat_pid=paper_id,
+                data_chat_key=chat_key,
+                style="visibility:hidden",
             ),
+            ChatStarters(paper_id, form_id),
             # Input area
             Form(
                 Div(
@@ -143,6 +169,7 @@ def ChatModal(
                     ),
                     cls="chat-input-row",
                 ),
+                id=form_id,
                 method="POST",
                 action=form_action,
                 **{

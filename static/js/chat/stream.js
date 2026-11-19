@@ -492,11 +492,9 @@ function _debouncedSave(bubbleEl, immediate = false) {
     // Skip if we ended up with an empty transcript (e.g., assistant still typing).
     if (!html.trim()) return;
 
-    // Always prefer stable paperId (data-chat-pid) so cached key survives across
-    // modal instances. Fallback to explicit chatKey or generated id when paperId
-    // is absent (edge cases).
+    // Prefer the scoped thread key when it differs from the paper id.
     const chatKey =
-      container.dataset.chatPid || container.dataset.chatKey || container.id?.replace("chat-log-", "");
+      container.dataset.chatKey || container.dataset.chatPid || container.id?.replace("chat-log-", "");
     console.debug('[oh] saveTranscript', chatKey, {
       cleanedLen: cleaned.length,
       htmlChars: html.length,
