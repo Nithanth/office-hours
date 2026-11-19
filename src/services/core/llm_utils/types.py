@@ -1,6 +1,5 @@
 """Shared enums and typed helpers used by LLM utilities."""
 
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypedDict
 
@@ -19,10 +18,3 @@ class LLMResult(TypedDict):
 
     ok: bool
     content: str
-
-
-@dataclass(slots=True)
-class ProviderConfig:
-    api_key: str | None
-    default_model: str | None
-    class_: type  # concrete subclass of LLMProvider; kept untyped to avoid circular import
