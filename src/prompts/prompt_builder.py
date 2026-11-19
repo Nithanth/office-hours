@@ -238,12 +238,6 @@ def get_topic_analysis_prompts(
 
 DIRECT_QUERY_USER_PROMPT: str = _load_template("query/direct_query_user.md")
 
-# Detailed two-part template for the Direct-Query “research assistant” flow
-RESEARCH_ASSISTANT_PROMPT: dict[str, str] = {
-    "system": _load_template("query/research_assistant_system.md"),
-    "user": _load_template("query/research_assistant_user.md"),
-}
-
 # ---------------------------------------------------------------------------
 # Chat prompt constants
 # ---------------------------------------------------------------------------
