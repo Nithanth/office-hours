@@ -859,10 +859,13 @@ async def list_saved_paper_ids(session: AsyncSession, *, owner_id: str) -> set[s
 
 
 async def list_paper_chat_messages(
-    session: AsyncSession, *, owner_id: str, paper_id: str, limit: int = 200
+    session: AsyncSession, *, owner_id: str, paper_id: str
 ) -> list[ChatMessage]:
     """All chat messages for a paper across every thread/report, oldest
-    first — the learning trail that gets mirrored into the Notion page."""
+    first — the learning trail that gets mirrored into the Notion page.
+
+    Uncapped: the Notion mirror slices past a count watermark, so a cap
+    would freeze the trail once a paper's history reached it."""
     result = await session.execute(
         select(ChatMessage)
         .join(ChatThread, ChatMessage.thread_id == ChatThread.id)
@@ -870,8 +873,7 @@ async def list_paper_chat_messages(
             ChatThread.user_id == owner_id,
             ChatThread.paper_id == paper_id,
         )
-        .order_by(ChatMessage.created_at.asc())
-        .limit(limit)
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
     )
     return list(result.scalars().all())
 
@@ -1054,9 +1056,15 @@ async def merge_topics(
         )
     # Repoint papers the target doesn't already have (unique constraint on
     # topic_id+paper_id means dupes are skipped via a fetch-then-add walk).
-    target_paper_ids = {
-        p.paper_id for p in await list_topic_papers(session, topic_id=target.id)
-    }
+    # Include tombstoned rows: re-adding one would violate the unique key, and
+    # the user's removal on the target should stand.
+    target_paper_ids: set[str] = set(
+        (
+            await session.scalars(
+                select(TopicPaper.paper_id).where(TopicPaper.topic_id == target.id)
+            )
+        ).all()
+    )
     for tp in await list_topic_papers(session, topic_id=source.id):
         if tp.paper_id in target_paper_ids:
             continue
@@ -1398,6 +1406,18 @@ async def claim_anonymous_session(
             else:
                 tp.topic_id = existing.id
                 existing_paper_ids.add(tp.paper_id)
+
+        from services.topics.keys import canonical_key_for
+
+        for f in await list_topic_facets(session, topic_id=topic.id):
+            await add_topic_facet(
+                session,
+                topic_id=existing.id,
+                kind=f.kind,
+                query=f.query,
+                canonical_key=f.canonical_key
+                or canonical_key_for(f.query, kind=f.kind),
+            )
 
         for field in ("blog_markdown", "notes_markdown", "seed_query"):
             if not getattr(existing, field) and getattr(topic, field):

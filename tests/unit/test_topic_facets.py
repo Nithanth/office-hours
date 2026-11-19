@@ -156,3 +156,35 @@ class TestMerge:
         assert [p.paper_id for p in papers] == ["p1"]
         await db_session.refresh(b)
         assert b.archived
+
+
+class TestMergeTombstones:
+    async def test_merge_skips_paper_target_removed(self, db_session: AsyncSession):
+        from datetime import datetime
+
+        a = _topic(canonical_key="subject:a", title="A")
+        b = _topic(canonical_key="subject:b", title="B")
+        db_session.add_all([a, b])
+        await db_session.flush()
+        db_session.add_all(
+            [
+                TopicPaper(
+                    topic_id=a.id,
+                    paper_id="p1",
+                    title="P1",
+                    authors={},
+                    source="seed",
+                    removed_at=datetime.utcnow(),
+                ),
+                TopicPaper(
+                    topic_id=b.id, paper_id="p1", title="P1", authors={}, source="seed"
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        target = await merge_topics(
+            db_session, source_id=b.id, into_id=a.id, owner_id="sess:o"
+        )
+        await db_session.commit()
+        assert target is not None and target.id == a.id

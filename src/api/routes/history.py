@@ -49,18 +49,21 @@ def _owner_id(request: Request) -> str:
     return str(owner)
 
 
-def _history_shell(items_html: str) -> str:
-    from pages.shell import lib_subtabs_html, page_shell
+def _history_shell(items_html: str, topics: list) -> str:
+    from pages.shell import lib_subtabs_html, library_hub, page_shell
 
     return str(
         page_shell(
             "My Reports",
-            lib_subtabs_html("reports")
-            + f"""<div class="lib-header">
+            library_hub(
+                lib_subtabs_html("reports")
+                + f"""<div class="lib-header">
       <h1>My reports</h1>
     </div>
     {items_html}""",
-            active="library",
+                topics,
+            ),
+            active="reports",
             head_extra="""<style>
     .history-item{border:1px solid var(--container-border,#444);border-radius:8px;padding:1rem;margin:0.75rem 0;
       background:var(--container-bg);transition:border-color 0.15s;}
@@ -87,16 +90,16 @@ async def report_history(request: Request) -> HTMLResponse:
 
     async for session in session_scope():
         reports = await list_reports(session, user_id=user_id)
-        topics_by_id = {
-            t.id: t.title for t in await list_topics(session, owner_id=user_id)
-        }
+        topics = await list_topics(session, owner_id=user_id)
+    topics_by_id = {t.id: t.title for t in topics}
 
     if not reports:
         return HTMLResponse(
             _history_shell(
                 '<div class="empty-state-card"><strong>No saved reports yet.</strong>'
                 "<p>Run a search and generate a report. Your snapshots land here.</p>"
-                '<a href="/">New search</a></div>'
+                '<a href="/">New search</a></div>',
+                topics,
             )
         )
 
@@ -123,7 +126,7 @@ async def report_history(request: Request) -> HTMLResponse:
             f"<div class='history-preview'>{preview}</div>"
             "</article>"
         )
-    return HTMLResponse(_history_shell("".join(items)))
+    return HTMLResponse(_history_shell("".join(items), topics))
 
 
 @router.get("/reports/{report_id}", response_class=HTMLResponse)
@@ -132,9 +135,10 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     if not database_available():
         raise HTTPException(status_code=503, detail="Report history is not configured.")
 
-    from services.persistence.repositories import get_report
+    from services.persistence.repositories import get_report, list_topics
 
     async for session in session_scope():
+        topics = await list_topics(session, owner_id=user_id)
         report = await get_report(session, user_id=user_id, report_id=report_id)
         if report is None:
             raise HTTPException(status_code=404, detail="Report not found")
@@ -159,7 +163,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
             f' &middot; in <a href="/topics/{html.escape(report.topic_id)}">'
             f"{html.escape(topic_title)}</a>"
         )
-    from pages.shell import lib_subtabs_html, page_shell
+    from pages.shell import lib_subtabs_html, library_hub, page_shell
     from utils.static_assets import static_url
 
     # static_url → ?v=<content-hash>: a pinned ?v=N would serve the OLD body
@@ -183,9 +187,11 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     return HTMLResponse(
         page_shell(
             _display_title(report),
-            lib_subtabs_html("reports")
-            + f"""
-    <h1 style="font-size:1.3rem;margin:0.5rem 0;">{escaped_title}</h1>
+            library_hub(
+                lib_subtabs_html("reports")
+                + f"""
+    <div class="workspace-breadcrumb"><a href="/reports">Reports</a><span>/</span><span>Report</span></div>
+    <header class="workspace-topic-title"><h1>{escaped_title}</h1></header>
     <div class="report-meta">
       {html.escape(report.created_at.strftime('%b %d, %Y'))} &middot;
       {escaped_audience} &middot; {escaped_model}{topic_bit}
@@ -204,12 +210,15 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       <button class="btn-secondary" hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
               hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
     </div>
-    <div id="report-content" data-report-id="{escaped_id}"
+    <article id="report-content" class="workspace-report" data-report-id="{escaped_id}"
          data-audience="{escaped_audience}" data-model="{escaped_model}">
       {report_html}
-    </div>
+    </article>
 """,
-            active="library",
+                topics,
+                report.topic_id or "",
+            ),
+            active="reports",
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
   <style>
     .report-actions{display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;
@@ -221,7 +230,7 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
     .report-meta{font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.5rem;}
   </style>""",
             scripts=scripts,
-            wrap_class="report-wrap",
+            wrap_class="page-wrap",
         )
     )
 

@@ -40,8 +40,10 @@ def _owner_id(request: Request) -> str:
     return str(owner)
 
 
-def _shell(title: str, body: str, *, workspace: bool = False) -> str:
-    from pages.shell import lib_subtabs_html, page_shell
+def _shell(
+    title: str, body: str, *, workspace: bool = False, rail_topics: list | None = None
+) -> str:
+    from pages.shell import lib_subtabs_html, library_hub, page_shell
     from utils.static_assets import static_url
 
     # static_url → ?v=<content-hash> so a module edit can't ride a stale
@@ -55,7 +57,15 @@ def _shell(title: str, body: str, *, workspace: bool = False) -> str:
     return str(
         page_shell(
             title,
-            ("" if workspace else lib_subtabs_html("topics")) + body,
+            (
+                body
+                if workspace
+                else (
+                    library_hub(lib_subtabs_html("topics") + body, rail_topics)
+                    if rail_topics is not None
+                    else lib_subtabs_html("topics") + body
+                )
+            ),
             active="library",
             scripts=scripts,
             head_extra="""<link rel="stylesheet" href="/static/css/blog.css">
@@ -345,6 +355,7 @@ async def topics_page(request: Request) -> HTMLResponse:
     <div id="lib-sync-status" style="font-size:0.8rem;color:var(--fg-muted,#888);margin-bottom:0.75rem;"></div>
     {items}
     {script}""",
+            rail_topics=topics,
         )
     )
 

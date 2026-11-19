@@ -378,3 +378,58 @@ class TestPrefsClaim:
         # anonymous BYOK carried since the user had none
         assert pref.openrouter_key_encrypted == "enc:anon"
         assert await db_session.get(UserPreference, ANON) is None
+
+
+async def test_claim_merged_topic_keeps_anonymous_facets(db_session: AsyncSession):
+    from services.persistence.repositories import add_topic_facet, list_topic_facets
+
+    user = await upsert_google_user(
+        db_session,
+        provider_user_id="goog-facets",
+        email="facets@example.com",
+        name="F",
+        avatar_url=None,
+        access_token="a",
+        refresh_token="r",
+    )
+    mine = Topic(
+        owner_id=user.id, kind="subject", canonical_key="subject:inr", title="INR"
+    )
+    anon = Topic(
+        owner_id=ANON, kind="subject", canonical_key="subject:inr", title="INR"
+    )
+    db_session.add_all([mine, anon])
+    await db_session.flush()
+    await add_topic_facet(
+        db_session,
+        topic_id=anon.id,
+        kind="subject",
+        query="nerf",
+        canonical_key="subject:nerf",
+    )
+    await db_session.commit()
+
+    await claim_anonymous_session(db_session, user_id=user.id, session_id="anon-123")
+
+    facets = await list_topic_facets(db_session, topic_id=mine.id)
+    assert "subject:nerf" in {f.canonical_key for f in facets}
+
+
+async def test_paper_chat_trail_is_not_capped_for_notion_mirror(
+    db_session: AsyncSession,
+):
+    from services.persistence.repositories import list_paper_chat_messages
+
+    for i in range(205):
+        await append_chat_message(
+            db_session,
+            user_id="u-trail",
+            report_id=None,
+            paper_id="p-trail",
+            role="user",
+            content=f"m{i}",
+        )
+    msgs = await list_paper_chat_messages(
+        db_session, owner_id="u-trail", paper_id="p-trail"
+    )
+    assert len(msgs) == 205
