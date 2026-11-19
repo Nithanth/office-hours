@@ -1246,15 +1246,6 @@ async def remove_topic_paper(
     return int(result.rowcount or 0) > 0
 
 
-async def set_report_topic(
-    session: AsyncSession, *, report_id: str, topic_id: str
-) -> None:
-    report = await session.get(Report, report_id)
-    if report is not None:
-        report.topic_id = topic_id
-        await session.commit()
-
-
 async def set_topic_blog(
     session: AsyncSession, *, owner_id: str, topic_id: str, markdown: str
 ) -> Topic | None:
