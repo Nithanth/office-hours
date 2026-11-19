@@ -26,6 +26,7 @@ from fasthtml.components import (
     I,
     Label,
     Link,
+    Meta,
     Option,
     P,
     Script,
@@ -39,7 +40,7 @@ from pydantic import BaseModel
 
 import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
-from pages.shell import THEME_INLINE_SCRIPT, top_bar
+from pages.shell import FONT_STYLESHEET, THEME_INLINE_SCRIPT, top_bar, workspace_rail
 from services.chat.chat_components import ChatBubble, CitationCard
 from utils.date_utils import human_date
 from utils.static_assets import static_url
@@ -665,7 +666,7 @@ def home_page(page_data: SharedPageData) -> Html:
     if page_data.recent_topics:
         topics_strip = Div(
             Div(
-                "Your topics",
+                "On your desk",
                 cls="oh-topics-strip-label",
             ),
             Div(
@@ -721,6 +722,10 @@ def home_page(page_data: SharedPageData) -> Html:
     return Html(
         Head(
             Title(page_data.title),
+            Meta(name="viewport", content="width=device-width, initial-scale=1"),
+            Link(rel="preconnect", href="https://fonts.googleapis.com"),
+            Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
+            Link(rel="stylesheet", href=FONT_STYLESHEET),
             # Apply saved theme before first paint — prevents a light flash on
             # every navigation in dark mode (class lives on <html>).
             Script(THEME_INLINE_SCRIPT),
@@ -744,6 +749,8 @@ def home_page(page_data: SharedPageData) -> Html:
             Link(rel="stylesheet", href=static_url("/static/css/flatpickr-dark.css")),
             Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
             Link(rel="stylesheet", href=static_url("/static/css/blog.css")),
+            Link(rel="stylesheet", href=static_url("/static/css/workspace.css")),
+            Script(src=static_url("/static/js/workspace.js"), defer=True),
             # Font Awesome (self-hosted) – required for icon glyphs
             Link(
                 rel="stylesheet",
@@ -768,23 +775,21 @@ def home_page(page_data: SharedPageData) -> Html:
         Body(
             # Pure nav bar — search/report controls live in the "Search options"
             # collapsible inside the search form, next to the thing they configure.
-            top_bar(""),
+            top_bar("search"),
             Div(id="status-banner"),  # Placeholder for busy/alert banners
             Div(
+                workspace_rail(page_data.recent_topics or []),
                 Div(
                     # Hero — visible only pre-search; collapses via
                     # .search-card:has(.empty-state) once results land.
                     Div(
                         Div(
-                            "A workbench for ",
-                            Span("research", cls="oh-hero-em"),
-                            " questions.",
+                            "What are you working on?",
                             cls="oh-hero-title",
                         ),
                         Div(
-                            "Search a topic, a paper link, or an author. Office Hours turns it "
-                            "into a topic page: the papers, streamed reports, notes, a blog, "
-                            "and a chat that knows them all.",
+                            "A research question, a topic, or a paper link. Start here; "
+                            "your sources and reading stay in one place.",
                             cls="oh-hero-sub",
                         ),
                         cls="oh-hero-block",
@@ -1013,7 +1018,7 @@ def home_page(page_data: SharedPageData) -> Html:
                         id="results-and-report-form",
                     ),
                     Div(id="modal-container"),
-                    # no extra class – outer search-card handles border
+                    cls="workspace-home-sheet",
                 ),
                 cls="search-card",
             ),
@@ -1045,6 +1050,8 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Html:
     return Html(
         Head(
             Title(page_data.title),
+            Meta(name="viewport", content="width=device-width, initial-scale=1"),
+            Link(rel="stylesheet", href=FONT_STYLESHEET),
             # Apply saved theme before first paint (class lives on <html>)
             Script(THEME_INLINE_SCRIPT),
             Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),

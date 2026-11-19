@@ -13,6 +13,7 @@ every paper into a group.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -117,8 +118,12 @@ def _kmeans_fallback(embeddings: np.ndarray, n: int) -> np.ndarray:
 def _generate_cluster_labels(
     titles_by_cluster: dict[int, list[str]],
 ) -> dict[int, str]:
-    """Generate human-readable labels for each cluster using TF-IDF on titles."""
-    from sklearn.feature_extraction.text import TfidfVectorizer
+    """Name subtopics with distinctive, contiguous phrases from their titles.
+
+    Labels are extractive rather than invented categories: prefer recurring
+    multiword phrases and never concatenate unrelated keywords with a slash.
+    """
+    from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 
     if not titles_by_cluster:
         return {}
@@ -127,44 +132,67 @@ def _generate_cluster_labels(
     cluster_ids = sorted(titles_by_cluster.keys())
     docs = [" ".join(titles_by_cluster[cid]) for cid in cluster_ids]
 
-    if len(docs) < 2:
-        # Single cluster — just pick most common words
-        return {cluster_ids[0]: "All Papers"}
-
     try:
         vectorizer = TfidfVectorizer(
-            max_features=50,
-            stop_words="english",
-            ngram_range=(1, 2),
+            max_features=3000,
+            ngram_range=(1, 4),
             min_df=1,
         )
         tfidf_matrix = vectorizer.fit_transform(docs)
         feature_names = vectorizer.get_feature_names_out()
 
         labels: dict[int, str] = {}
-        # Terms already used by an earlier cluster's label — clusters whose
-        # top TF-IDF terms overlap read identically ("Neural/Implicit" vs
-        # "Implicit/Neural"); skip repeats so labels stay distinctive.
         used_terms: set[str] = set()
+        boundaries = set(ENGLISH_STOP_WORDS) | {
+            "using",
+            "via",
+            "towards",
+            "toward",
+            "based",
+            "learning",
+            "novel",
+        }
         for idx, cid in enumerate(cluster_ids):
             row = tfidf_matrix[idx].toarray().flatten()
-            top_terms: list[str] = []
-            for i in row.argsort()[::-1]:
-                if row[i] <= 0:
-                    break
-                term = feature_names[i]
-                if term in used_terms:
-                    continue
-                top_terms.append(term)
+            phrases: dict[str, str] = {}
+            for title in titles_by_cluster[cid]:
+                tokens = list(re.finditer(r"[a-zA-Z][a-zA-Z0-9]+", title))
+                for start in range(len(tokens)):
+                    for length in range(2, 5):
+                        span = tokens[start : start + length]
+                        if len(span) != length:
+                            continue
+                        words = [token.group().lower() for token in span]
+                        if words[0] in boundaries or words[-1] in boundaries:
+                            continue
+                        # Don't let an n-gram cross a title's clause boundary.
+                        display = title[span[0].start() : span[-1].end()]
+                        if any(char in display for char in ":;.!?()"):
+                            continue
+                        phrases[" ".join(words)] = display
+
+            candidates = [
+                (row[i] * (1 + 0.14 * (len(term.split()) - 2)), term)
+                for i, term in enumerate(feature_names)
+                if row[i] > 0 and term in phrases and term not in used_terms
+            ]
+            if candidates:
+                _, term = max(candidates)
                 used_terms.add(term)
-                if len(top_terms) == 2:
-                    break
-            label = " / ".join(top_terms).title() if top_terms else f"Group {cid + 1}"
-            labels[cid] = label
+                display = phrases[term]
+                # Sentence case preserves acronyms from the source title.
+                display = re.sub(
+                    r"[a-zA-Z]+",
+                    lambda m: m.group() if m.group().isupper() else m.group().lower(),
+                    display,
+                )
+                labels[cid] = display[0].upper() + display[1:]
+            else:
+                labels[cid] = f"Subtopic {cid + 1}"
         return labels
     except Exception as exc:
         logger.warning("cluster_label_generation_failed", err=str(exc))
-        return {cid: f"Group {cid + 1}" for cid in cluster_ids}
+        return {cid: f"Subtopic {cid + 1}" for cid in cluster_ids}
 
 
 def cluster_papers(papers: list[dict[str, Any]]) -> ClusterResult:
@@ -238,7 +266,7 @@ def cluster_papers(papers: list[dict[str, Any]]) -> ClusterResult:
     cluster_labels = _generate_cluster_labels(
         {cid: ts for cid, ts in titles_by_cluster.items() if cid != _NOISE_ID}
     )
-    cluster_labels[_NOISE_ID] = "Miscellaneous"
+    cluster_labels[_NOISE_ID] = "Ungrouped papers"
 
     # 6. Build response
     result_papers = []

@@ -16,18 +16,32 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from fasthtml.common import A, Button, Div, I, Span
+from fasthtml.common import A, Button, Div, I, P, Span
 
 from utils.static_assets import static_url
 
 # (label, href, key, fa icon, tooltip) — order is the nav order on every page.
 NAV_LINKS: list[tuple[str, str, str, str, str]] = [
     (
+        "Search",
+        "/",
+        "search",
+        "fa-solid fa-magnifying-glass",
+        "Start a research question",
+    ),
+    (
         "Library",
         "/topics",
         "library",
         "fa-solid fa-book",
         "Topics, saved papers & reports",
+    ),
+    (
+        "Reports",
+        "/reports",
+        "reports",
+        "fa-regular fa-file-lines",
+        "Your research reports",
     ),
     (
         "Settings",
@@ -77,6 +91,10 @@ def lib_subtabs_html(active: str) -> str:
 # Pinned client deps — every page loads the same versions.
 _HTMX = "https://unpkg.com/htmx.org@1.9.12"
 _HTMX_SSE = "https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"
+FONT_STYLESHEET = (
+    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
+    "&family=JetBrains+Mono:wght@400;600;700&family=Instrument+Serif:ital@1&display=swap"
+)
 
 # Applies the saved theme before first paint so dark mode never flashes
 # light on navigation — settings.js re-syncs the class after load.
@@ -90,7 +108,7 @@ _HEAD_LINKS = (
     + "\n"
     + '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
     '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-    '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Instrument+Serif:ital@1&display=swap">\n'
+    f'  <link rel="stylesheet" href="{FONT_STYLESHEET}">\n'
     + f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/variables.css")}">\n'
     f'  <link rel="stylesheet" href="{static_url("/static/css/top-bar.css")}">\n'
@@ -113,7 +131,7 @@ def nav_links_html(active: str = "") -> str:
         cls = "top-bar-link oh-tip oh-tip-below" + (" active" if key == active else "")
         parts.append(
             f'<a href="{href}" class="{cls}" aria-label="{html.escape(label, quote=True)}" '
-            f'data-tip="{html.escape(tip, quote=True)}"><i class="{icon}"></i></a>'
+            f'data-tip="{html.escape(tip, quote=True)}"><i class="{icon}"></i><span>{html.escape(label)}</span></a>'
         )
     return "\n    ".join(parts)
 
@@ -122,9 +140,9 @@ def top_bar_html(active: str = "", extra_html: str = "") -> str:
     """Full top-bar markup (brand + nav + auth status + dark toggle)."""
     return f"""<div class="top-bar">
     <a href="/" class="top-bar-brand">█▓▒░ Office Hours ░▒▓█</a>
-    <div style="flex:1"></div>
-    {extra_html}
     {nav_links_html(active)}
+    <div class="top-bar-spacer" style="flex:1"></div>
+    {extra_html}
     <button class="oh-assistant-btn oh-tip oh-tip-below" type="button" aria-label="Research Assistant"
       data-tip="Ask questions across your papers & reports"
       hx-get="/chat-modal?paper_id=global&title=Research%20Assistant"
@@ -148,9 +166,13 @@ def page_shell(
     return f"""<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(title)} · Office Hours</title>
   {_HEAD_LINKS}
   {head_extra}
+  <link rel="stylesheet" href="{static_url('/static/css/workspace.css')}">
+  <script src="{static_url('/static/js/workspace.js')}" defer></script>
 </head>
 <body>
   {top_bar_html(active)}
@@ -174,6 +196,7 @@ def nav_links(active: str = "") -> list:
     return [
         A(
             I(cls=icon),
+            Span(label),
             href=href,
             cls="top-bar-link oh-tip oh-tip-below"
             + (" active" if key == active else ""),
@@ -182,6 +205,28 @@ def nav_links(active: str = "") -> list:
         )
         for label, href, key, icon, tip in NAV_LINKS
     ]
+
+
+def workspace_rail(topics: list[Any], active_id: str = "") -> Div:
+    """A quiet, real-data topic index shared by home and topic workspaces."""
+    return Div(
+        Span("TOPICS", cls="workspace-rail-heading"),
+        *[
+            A(
+                Span(f"{i + 1:02}", cls="workspace-topic-number"),
+                Span(topic.title or topic.seed_query or "Untitled topic"),
+                href=f"/topics/{topic.id}",
+                cls="workspace-topic" + (" selected" if topic.id == active_id else ""),
+            )
+            for i, topic in enumerate(topics[:8])
+        ],
+        A("All topics →", href="/topics", cls="workspace-all-topics"),
+        A("Start a new question", href="/", cls="workspace-new-question"),
+        P("Your papers, reports and notes stay together.", cls="workspace-rail-note"),
+        cls="workspace-rail",
+        role="navigation",
+        aria_label="Research topics",
+    )
 
 
 def top_bar(active: str = "", *extra_controls: Any) -> Div:
@@ -194,9 +239,9 @@ def top_bar(active: str = "", *extra_controls: Any) -> Div:
             href="/",
             cls="top-bar-brand",
         ),
-        Div("", style="flex:1"),
-        *extra_controls,
         *nav_links(active),
+        Div("", cls="top-bar-spacer", style="flex:1"),
+        *extra_controls,
         Button(
             I(cls="fa-solid fa-comment-dots"),
             cls="oh-assistant-btn oh-tip oh-tip-below",

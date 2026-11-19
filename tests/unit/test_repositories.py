@@ -231,6 +231,38 @@ def _sample_papers() -> list[Paper]:
 
 
 class TestReports:
+    async def test_topic_version_count_is_not_limited_to_recent_five(self, db_session):
+        from services.persistence.models import Topic
+        from services.persistence.repositories import (
+            count_topic_reports,
+            list_topic_reports,
+        )
+
+        uid = await _make_user(db_session)
+        topic = Topic(owner_id=uid, title="Six versions", canonical_key="six-versions")
+        db_session.add(topic)
+        await db_session.flush()
+        for index in range(6):
+            report = await create_report(
+                db_session,
+                user_id=uid,
+                title=f"Version {index}",
+                original_query="query",
+                audience_type="expert",
+                summary_size="short",
+                model_key="test",
+                is_url_input=False,
+                report_html="<p>Report</p>",
+                papers=[],
+            )
+            report.topic_id = topic.id
+        await db_session.flush()
+        assert (
+            len(await list_topic_reports(db_session, topic_id=topic.id, limit=5)) == 5
+        )
+        assert await count_topic_reports(db_session, topic_id=topic.id) == 6
+        assert await count_topic_reports(db_session, topic_id="other-topic") == 0
+
     async def test_create_report_stores_papers_and_usage_event(
         self, db_session: AsyncSession
     ):

@@ -57,7 +57,10 @@ async def _build_topic_prompt(
     report id (report-card chats — retrieval spans the report's papers and
     its text becomes a summary excerpt).
     """
-    key_id = topic_key.split(":", 1)[1]
+    key_id = topic_key.split(":", 1)[1].split(":subset:", 1)[0]
+    selected_ids = chat_state.paper_cache.get(topic_key, {}).get(
+        "topic_paper_ids", [] if ":subset:" in topic_key else None
+    )
     turns = chat_state.get_conversation(topic_key)[-max_history:]
     history_txt = "\n".join(f"{m.role}: {m.content}" for m in turns)
 
@@ -137,9 +140,19 @@ async def _build_topic_prompt(
         except Exception as exc:  # noqa: BLE001
             logger.warning("topic_report_load_failed", error=str(exc))
 
+    if selected_ids is not None:
+        # Intersect again at prompt time: removed papers or lost ownership
+        # must not broaden retrieval, and a full-topic summary is out of scope.
+        allowed = set(selected_ids)
+        pid_to_title = {
+            pid: title for pid, title in pid_to_title.items() if pid in allowed
+        }
+        pid_to_url = {pid: url for pid, url in pid_to_url.items() if pid in allowed}
+        report_excerpt = ""
+
     sources: list[dict[str, Any]] = []
     context_chunks = ""
-    if turns and turns[-1].role == "user":
+    if turns and turns[-1].role == "user" and (selected_ids is None or pid_to_title):
         try:
             import importlib
             import sys
@@ -158,6 +171,8 @@ async def _build_topic_prompt(
                 top_k=config.RAG_TOP_K,
                 paper_ids=list(pid_to_title) or None,
             )
+            if selected_ids is not None:
+                matches = [m for m in matches if m.get("paper_id") in pid_to_title]
             if matches:
                 from typing import cast
 
@@ -190,6 +205,12 @@ async def _build_topic_prompt(
         f" The user is asking about the research topic '{title}'."
         " Answer the user's latest question clearly and concisely."
     )
+    if selected_ids is not None:
+        sys_prompt += (
+            " This conversation is restricted to the selected subtopic papers."
+            " Do not use other topic papers or infer evidence that is unavailable."
+            " If their context is insufficient, say so."
+        )
     if sources:
         sys_prompt += (
             " Use information from the numbered *Context* chunks below; when you"
