@@ -236,37 +236,6 @@ def get_topic_analysis_prompts(
     return system_prompt, user_prompt
 
 
-def get_query_resolution_prompts(
-    query: str,
-    num_supporting_papers: int = 3,
-    target_audience: Optional[str] = None,
-    **kwargs: Any,
-) -> tuple[str, str]:
-    """Generates prompts for resolving a specific research query."""
-
-    system_prompt = DEFAULT_SYSTEM_PROMPT
-    if target_audience:
-        system_prompt += f" Tailor your explanation for a {target_audience}."
-
-    user_prompt_parts = [
-        f"Please provide a direct and evidence-based answer to the following research query: '{query}'."
-    ]
-
-    user_prompt_parts.extend(
-        [
-            f"Support your answer with synthesized findings from approximately {num_supporting_papers} relevant academic papers.",
-            "\nYour response should include:",
-            "1.  **Direct Answer:** A clear and concise answer to the query.",
-            "2.  **Evidence Synthesis:** Summarize the key evidence from the literature that supports your answer. Cite or refer to the types of studies or findings.",
-            "3.  **Conflicting Evidence/Nuances:** If there is conflicting evidence, or important nuances, please discuss them.",
-            "4.  **Confidence Level:** Indicate the general level of confidence in the answer based on the available evidence (e.g., well-established, moderately supported, emerging, speculative).",
-            "5.  **Knowledge Gaps:** Identify any remaining knowledge gaps or areas where more research is needed to fully answer the query.",
-        ]
-    )
-    user_prompt = "\n".join(user_prompt_parts)
-    return system_prompt, user_prompt
-
-
 DIRECT_QUERY_USER_PROMPT: str = _load_template("query/direct_query_user.md")
 
 # Detailed two-part template for the Direct-Query “research assistant” flow
