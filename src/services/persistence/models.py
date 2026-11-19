@@ -78,8 +78,6 @@ class Topic(Base):
     __tablename__ = "topics"
     __table_args__ = (UniqueConstraint("owner_id", "kind", "canonical_key"),)
 
-    KINDS = ("subject", "paper", "author")
-
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     owner_id: Mapped[str] = mapped_column(String(80), index=True)
     title: Mapped[str] = mapped_column(String(300))
