@@ -19,6 +19,7 @@ const iconPaths = {
   refresh:'<path d="M20 8a8 8 0 1 0 0 8m0-14v6h-6"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
   expand:'<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
+  close:'<path d="m6 6 12 12M6 18 18 6"/>',
 };
 const ic = (name, cls='') => `<svg class="icon ${cls}" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.file}</svg>`;
 const theme = new URLSearchParams(location.search).get('theme') || localStorage.getItem('oh-marble-theme') || 'light';
@@ -54,9 +55,14 @@ function paper(){return `<article class="pdf-page"><div class="publication">ADVA
 function reader(){return `<main class="reader-workspace"><div class="reader-context"><a href="topic.html">${ic('arrow','back-arrow')} Retrieval-augmented generation</a><span>/</span><span>Lewis et al., 2020</span><div></div><span class="saved-indicator">${ic('check')} Saved</span><button class="icon-button" aria-label="More paper actions" data-message="This is a typeset preview, not a connected PDF viewer.">${ic('more')}</button></div><div class="reader-frame"><div class="paper-titlebar"><div><h1>Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks</h1><span>Lewis et al. <i>·</i> NeurIPS 2020</span></div><button class="text-button" data-message="Original-paper links are not connected in this visual study.">Original ${ic('diagonal')}</button></div><div class="reader-grid"><aside class="paper-outline"><span class="section-label">CONTENTS</span><nav aria-label="Paper contents"><a href="#abstract" class="active">Abstract</a><a href="#introduction">1 &nbsp; Introduction</a><a href="#methods">2 &nbsp; Methods</a><a href="#experiments">3 &nbsp; Experiments</a><a href="#related">4 &nbsp; Related work</a><a href="#conclusion">5 &nbsp; Conclusion</a><a href="#references">References</a></nav><div class="outline-bottom"><span class="section-label">YOUR MARKS</span><button id="jump-highlight"><i class="highlight-marker"></i><span>Two kinds of memory<small>Page 1 · Highlight</small></span></button><button data-message="Sample note: Is retrieval a memory system, or a reasoning step?">${ic('bookmark')}<span>Memory or reasoning?<small>Page 1 · Note</small></span></button></div></aside><section class="document-pane" aria-label="Paper excerpt"><div class="pdf-toolbar"><span>PAGE <strong>1</strong> / 12</span><div><button class="text-button" data-message="The excerpt is fitted to the paper pane.">Fit width ${ic('down')}</button><button class="icon-button" id="focus-mode" aria-label="Toggle focused reading">${ic('expand')}</button></div></div>${paper()}<p class="typeset-note">Typeset excerpt · Visual prototype, not a live PDF</p></section><aside class="paper-companion"><div class="companion-heading"><span>${ic('chat')} Ask this paper</span><button class="icon-button" data-message="Sample conversation; no model is connected." aria-label="Conversation options">${ic('more')}</button></div><div class="companion-tabs"><button class="active" data-companion-tab="chat">Conversation</button><button data-companion-tab="notes">Notes <span>2</span></button></div><div class="conversation" id="conversation"><div class="chat-context-label">LEWIS ET AL. <span>/</span> 12 PAGES</div><div class="user-question">What’s the difference between parametric and non-parametric memory?</div><div class="assistant-answer"><div class="answer-label"><span>░▒</span> OFFICE HOURS</div><p>They’re two different places to keep knowledge.</p><p><strong>Parametric memory</strong> is stored in the model’s weights — what it picked up during training. Updating it means changing the model itself.</p><p><strong>Non-parametric memory</strong> lives outside the model: here, a searchable index of Wikipedia passages. You can change the knowledge without retraining the generator.</p><p>RAG brings the two together: retrieve a passage, then generate an answer using it. <button class="inline-cite" id="inline-source">p. 1 ${ic('diagonal')}</button></p><button class="evidence-excerpt" id="evidence-source"><span>PASSAGE <span>PAGE 1 ${ic('diagonal')}</span></span><q>models which combine pre-trained parametric and non-parametric memory</q></button><button class="save-note text-button" id="save-note">${ic('bookmark')} Save to notes</button></div><div class="followup-questions"><span class="section-label">ASK NEXT</span><button data-followup="How does the retriever learn?">How does the retriever learn? ${ic('arrow')}</button><button data-followup="What can still go wrong?">What can still go wrong? ${ic('arrow')}</button></div></div><div class="companion-composer"><div class="composer-context">${ic('file')} This paper <span>12 pages</span></div><form id="chat-form"><label class="sr-only" for="chat-input">Ask a question about this paper</label><textarea id="chat-input" rows="2" placeholder="Ask a question about this paper…" required></textarea><div><button type="button" data-message="Selected passages would appear here in the live reader.">${ic('plus')} Add passage</button><button class="send-button" type="submit" aria-label="Send question">${ic('up')}</button></div></form><p>Answers link back to the source. Follow them.</p></div></aside></div></div></main>`;}
 
 document.getElementById('app').innerHTML = `${header()}${page==='reader'?reader():page==='topic'?topic():home()}<div class="toast" role="status" hidden></div>`;
+if(page==='reader')setupReader();
 let toastTimer;
 function toast(message){const el=document.querySelector('.toast');el.textContent=message;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,4300);}
-function syncTheme(){document.querySelector('.theme-toggle').innerHTML=ic(document.documentElement.dataset.theme==='dark'?'sun':'moon');document.querySelector('.theme-toggle').setAttribute('aria-pressed',String(document.documentElement.dataset.theme==='dark'));}
+function syncTheme(){
+  document.querySelector('.theme-toggle').innerHTML=ic(document.documentElement.dataset.theme==='dark'?'sun':'moon');
+  document.querySelector('.theme-toggle').setAttribute('aria-pressed',String(document.documentElement.dataset.theme==='dark'));
+  document.dispatchEvent(new Event('oh-theme-change'));
+}
 syncTheme();
 document.querySelector('.theme-toggle').addEventListener('click',()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem('oh-marble-theme',next);const url=new URL(location.href);url.searchParams.set('theme',next);history.replaceState({},'',url);syncTheme();});
 document.querySelectorAll('[data-message]').forEach(el=>el.addEventListener('click',()=>toast(el.dataset.message)));
@@ -66,7 +72,7 @@ document.querySelectorAll('[data-desk-tab]').forEach(el=>el.addEventListener('cl
 function topicTab(name){document.querySelectorAll('[data-topic-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.topicTab===name);b.setAttribute('aria-selected',String(b.dataset.topicTab===name));});document.getElementById('report-panel').hidden=name!=='report';const panel=document.getElementById('topic-alt-panel');panel.hidden=name==='report';if(name==='papers')panel.innerHTML=`<div class="alternate-heading"><h2>Papers in this topic</h2><span>Showing 5 sample sources from a 24-paper collection</span></div>${papers.map((_,i)=>source(i)).join('')}`;if(name==='notes')panel.innerHTML='<div class="alternate-heading"><h2>Your notes</h2><span>Linked to the sources, kept in context.</span></div><div class="sample-note"><span class="section-label">LEWIS ET AL. / PAGE 1</span><p>Is retrieval a memory system, or a reasoning step?</p><span>Today, 10:48</span></div>';if(name==='tracking')panel.innerHTML='<div class="alternate-heading"><h2>Tracked searches</h2><span>New matching papers join this collection automatically in the live app.</span></div><div class="tracked-search">retrieval augmented generation <span>Last checked 2h ago</span></div><div class="tracked-search">grounded language models <span>Last checked 2h ago</span></div>';}
 document.querySelectorAll('[data-topic-tab]').forEach(el=>el.addEventListener('click',()=>topicTab(el.dataset.topicTab)));
 document.querySelectorAll('[data-open-papers]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();topicTab('papers');}));
-document.getElementById('focus-mode')?.addEventListener('click',()=>document.querySelector('.reader-grid').classList.toggle('focus-mode'));
+document.getElementById('focus-mode')?.addEventListener('click',e=>e.currentTarget.setAttribute('aria-pressed',String(document.querySelector('.reader-grid').classList.toggle('focus-mode'))));
 function showSource(){const el=document.querySelector('.abstract mark');el.classList.add('source-highlight');el.scrollIntoView({block:'center',behavior:'smooth'});setTimeout(()=>el.classList.remove('source-highlight'),2200);}
 ['jump-highlight','inline-source','evidence-source'].forEach(id=>document.getElementById(id)?.addEventListener('click',showSource));
 document.querySelectorAll('.paper-outline nav a').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();document.querySelectorAll('.paper-outline nav a').forEach(a=>a.classList.toggle('active',a===el));if(el.getAttribute('href')==='#abstract')showSource();else toast('The visual study contains a typeset excerpt of page 1 only.');}));
@@ -76,3 +82,41 @@ document.getElementById('chat-form')?.addEventListener('submit',e=>{e.preventDef
 document.querySelectorAll('[data-followup]').forEach(el=>el.addEventListener('click',()=>chatReply(el.dataset.followup)));
 document.querySelectorAll('[data-companion-tab]').forEach(el=>el.addEventListener('click',()=>{if(el.dataset.companionTab==='notes')toast('Sample notes: “Two kinds of memory” and “Memory or reasoning?”.');}));
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(page==='home')document.getElementById('research-question').focus();else location.href='index.html';}});
+
+// Progressive disclosure keeps the default reader to the paper and conversation.
+function setupReader(){
+  document.querySelector('.paper-titlebar>.text-button').innerHTML='Source PDF '+ic('diagonal');
+  const toolbar=document.querySelector('.pdf-toolbar');
+  toolbar.innerHTML=`<div class="reader-controls"><button type="button" class="text-button" id="reader-tools-toggle" aria-haspopup="dialog" aria-controls="reader-tools" aria-expanded="false">${ic('book')} Contents & marks</button><span class="page-indicator">PAGE <strong>1</strong> / 12</span></div><div><button type="button" class="text-button paper-appearance" id="paper-appearance" aria-pressed="false">${ic('file')} Original page</button><button class="icon-button" id="focus-mode" aria-label="Toggle focused reading" aria-pressed="false">${ic('expand')}</button></div>`;
+  const paper=document.querySelector('.pdf-page');
+  const appearance=document.getElementById('paper-appearance');
+  let originalOverride=null;
+  function syncPaper(){
+    const original=originalOverride??document.documentElement.dataset.theme!=='dark';
+    paper.dataset.tone=original?'original':'dark';
+    appearance.setAttribute('aria-pressed',String(original));
+    appearance.innerHTML=ic(original?'check':'file')+' Original page';
+    appearance.title=original?'Original colors are on. Switch to a dark page.':'Show the original light page without changing the app theme.';
+  }
+  appearance.addEventListener('click',()=>{originalOverride=paper.dataset.tone!=='original';syncPaper();});
+  document.addEventListener('oh-theme-change',()=>{originalOverride=null;syncPaper();});
+  syncPaper();
+
+  const dialog=document.createElement('dialog');
+  dialog.id='reader-tools';
+  dialog.className='reader-tools';
+  dialog.setAttribute('aria-labelledby','reader-tools-title');
+  dialog.innerHTML=`<div class="reader-tools-heading"><h2 id="reader-tools-title">Contents & marks</h2><button type="button" class="icon-button" aria-label="Close contents and marks" autofocus>${ic('close')}</button></div>`;
+  dialog.append(document.querySelector('.paper-outline'));
+  document.querySelector('.reader-frame').append(dialog);
+  const toggle=document.getElementById('reader-tools-toggle');
+  toggle.addEventListener('click',()=>{dialog.showModal();toggle.setAttribute('aria-expanded','true');});
+  dialog.querySelector('.reader-tools-heading button').addEventListener('click',()=>dialog.close());
+  dialog.addEventListener('close',()=>{toggle.setAttribute('aria-expanded','false');toggle.focus({preventScroll:true});});
+  dialog.addEventListener('click',e=>{
+    if(e.target!==dialog)return;
+    const rect=dialog.getBoundingClientRect();
+    if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)dialog.close();
+  });
+  dialog.querySelectorAll('.paper-outline a,.paper-outline button').forEach(el=>el.addEventListener('click',()=>dialog.close()));
+}
