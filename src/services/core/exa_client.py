@@ -1470,10 +1470,6 @@ class ExaClient:
             self._cached_searches.pop(session_id, None)
         logger.debug("cached_search_reset", session_id=session_id)
 
-    def invalidate(self, doc_id: str) -> None:
-        """Remove *doc_id* from cache so the next fetch is forced to hit the network."""
-        self._cache.delete(doc_id)
-
     def enrich_url(self, url: str, timeout: float = 8.0) -> Optional[Paper]:
         """Synchronously return enriched metadata for *url* using MetadataEnricher.
 
