@@ -1012,13 +1012,13 @@ async def notion_comment_loop() -> None:
         await asyncio.sleep(NOTION_COMMENT_SWEEP_S)
 
 
-def _library_shell(content_html: str) -> str:
-    from pages.shell import lib_subtabs_html, page_shell
+def _library_shell(content_html: str, topics: list[Topic]) -> str:
+    from pages.shell import lib_subtabs_html, library_hub, page_shell
 
     return str(
         page_shell(
             "Library",
-            lib_subtabs_html("papers") + content_html,
+            library_hub(lib_subtabs_html("papers") + content_html, topics),
             active="library",
             scripts=f"""<script src="{static_url("/static/js/library.js")}" defer></script>
   <script src="{static_url("/static/js/cluster-viz.js")}" defer></script>
@@ -1086,6 +1086,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     async for session in session_scope():
         papers = await list_saved_papers(session, owner_id=owner_id, status=status)
         stats = await home_stats(session, owner_id=owner_id)
+        topics = await list_topics(session, owner_id=owner_id)
 
     # Reading-status filter as a compact dropdown — the four old filter
     # tabs were nav weight for a feature few touch.
@@ -1181,4 +1182,4 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         }});
       }})();
     </script>"""
-    return HTMLResponse(_library_shell(content))
+    return HTMLResponse(_library_shell(content, topics))

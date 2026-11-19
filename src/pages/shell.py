@@ -229,6 +229,16 @@ def workspace_rail(topics: list[Any], active_id: str = "") -> Div:
     )
 
 
+def library_hub(inner_html: str, topics: list[Any], active_id: str = "") -> str:
+    """Library hub pages (topics, papers, reports) in the workspace layout:
+    the shared topic rail beside one sheet, matching the topic workspace."""
+    return (
+        '<div class="marble-workspace topic-workspace library-hub">'
+        f"{workspace_rail(topics, active_id)}"
+        f'<section class="workspace-topic-sheet">{inner_html}</section></div>'
+    )
+
+
 def top_bar(active: str = "", *extra_controls: Any) -> Div:
     """Top-bar component for FastHTML pages. ``extra_controls`` are the
     page-specific widgets rendered between the nav and the auth/dark
