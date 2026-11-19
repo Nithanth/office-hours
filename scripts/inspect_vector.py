@@ -54,27 +54,6 @@ def _open_table(db: lancedb.DBConnection, key: str):
         return db.open_table(name)  # <0.6
 
 
-def _inspect_table(table, key: str, max_rows: int):
-    # Newer versions: LanceTable.to_list(); older: .to_pandas() or .to_arrow()
-    try:
-        rows = table.to_list()
-    except AttributeError:
-        try:
-            rows = table.to_pandas().to_dict("records")  # type: ignore[attr-defined]
-        except AttributeError:
-            # final fallback – get all rows via head(count)
-            total = getattr(table, "count_rows", lambda: None)()
-            if total is None:
-                total = 1000  # arbitrary cap
-            rows = table.head(total).to_pylist()  # type: ignore[attr-defined]
-    print(f"[green]✓ {len(rows)} rows in index for:[/green] {key}\n")
-    for idx, r in enumerate(rows[:max_rows]):
-        txt_raw = r.get("text", "")
-        txt = textwrap.shorten(txt_raw.replace("\n", " "), width=200)
-        print(f"id={idx:>3} | len={len(txt_raw):>4} | {txt}")
-    print()
-
-
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Inspect LanceDB vector index")
     parser.add_argument(
@@ -105,7 +84,6 @@ def main(argv: list[str] | None = None):
         if tbl is None:
             continue
 
-        # Need all rows to filter – reuse helper logic but ignore max_rows.
         try:
             rows = tbl.to_list()
         except AttributeError:
