@@ -19,7 +19,6 @@ dependencies = [
     "together~=1.4",
     "google-genai~=2.33",
     "xai-sdk~=1.11",
-    "google-api-core~=2.25",
     "tenacity~=9.1",
     "loguru~=0.7",
     "nltk~=3.9",
