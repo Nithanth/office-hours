@@ -204,15 +204,6 @@ class NotionExporter:
                 self._create_error_message(err, "database")
             ) from err
 
-    async def database_exists(self, database_id: str) -> bool:
-        """True when the database is still reachable — False once the user
-        deletes it in their workspace."""
-        try:
-            await self._client.databases.retrieve(database_id=database_id)
-            return True
-        except Exception:
-            return False
-
     async def query_database_rows(
         self, database_id: str, *, page_size: int = 100
     ) -> list[dict[str, Any]]:
