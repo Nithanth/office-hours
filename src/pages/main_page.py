@@ -21,26 +21,23 @@ from fasthtml.components import (
     Details,
     Div,
     Footer,
-    Head,
     Html,
     I,
     Label,
     Link,
-    Meta,
     Option,
     P,
     Script,
     Select,
     Span,
     Summary,
-    Title,
 )
 from loguru import logger
 from pydantic import BaseModel
 
 import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
-from pages.shell import FONT_STYLESHEET, THEME_INLINE_SCRIPT, top_bar, workspace_rail
+from pages.shell import page_head, top_bar, workspace_rail
 from services.chat.chat_components import ChatBubble, CitationCard
 from utils.date_utils import human_date
 from utils.static_assets import static_url
@@ -720,43 +717,17 @@ def home_page(page_data: SharedPageData) -> Html:
         )
 
     return Html(
-        Head(
-            Title(page_data.title),
-            Meta(name="viewport", content="width=device-width, initial-scale=1"),
-            Link(rel="preconnect", href="https://fonts.googleapis.com"),
-            Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
-            Link(rel="stylesheet", href=FONT_STYLESHEET),
-            # Apply saved theme before first paint — prevents a light flash on
-            # every navigation in dark mode (class lives on <html>).
-            Script(THEME_INLINE_SCRIPT),
-            Script(src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js"),
-            # HTMX SSE extension for Server-Sent Events support
-            Script(src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js"),
+        page_head(
+            page_data.title,
             # Flatpickr date picker CSS & JS (cross-browser calendar support)
             Link(
                 rel="stylesheet",
                 href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
             ),
             Script(src="https://cdn.jsdelivr.net/npm/flatpickr"),
-            Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
-            # Modular CSS (Phase-3 refactor)
-            Link(rel="stylesheet", href=static_url("/static/css/base.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/modal.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/chat.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/forms.css")),
             Link(rel="stylesheet", href=static_url("/static/css/flatpickr-dark.css")),
             Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
             Link(rel="stylesheet", href=static_url("/static/css/blog.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/workspace.css")),
-            Script(src=static_url("/static/js/workspace.js"), defer=True),
-            # Font Awesome (self-hosted) – required for icon glyphs
-            Link(
-                rel="stylesheet",
-                href=static_url("/static/vendor/fontawesome/css/all.min.css"),
-            ),
-            Script(src=static_url("/static/js/settings.js")),
             Script(src=static_url("/static/js/htmx-url-reset.js"), defer=True),
             # Modular JS entry-points
             Script(src=static_url("/static/js/main.js"), type="module"),
@@ -1048,25 +1019,10 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Html:
     )
 
     return Html(
-        Head(
-            Title(page_data.title),
-            Meta(name="viewport", content="width=device-width, initial-scale=1"),
-            Link(rel="stylesheet", href=FONT_STYLESHEET),
-            # Apply saved theme before first paint (class lives on <html>)
-            Script(THEME_INLINE_SCRIPT),
-            Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/base.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
+        page_head(
+            page_data.title,
             Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
             Link(rel="stylesheet", href=static_url("/static/css/welcome.css")),
-            Link(
-                rel="stylesheet",
-                href=static_url("/static/vendor/fontawesome/css/all.min.css"),
-            ),
-            # settings.js handles the dark-mode toggle + persistence; we reuse
-            # the same script so the welcome page respects the user's theme.
-            Script(src=static_url("/static/js/settings.js")),
         ),
         Body(
             top_bar(""),
