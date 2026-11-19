@@ -213,8 +213,16 @@
         ) {
           const text = selected.toString().replace(/\s+/g, " ").trim();
           if (text) {
-            selection = text.slice(0, 1200);
-            selectionPage = pdf?.viewer.currentPageNumber || 1;
+            const node = selected.rangeCount
+              ? selected.getRangeAt(0).startContainer
+              : null;
+            const element = node?.nodeType === 1 ? node : node?.parentElement;
+            const page = Number(
+              element?.closest(".page[data-page-number]")?.dataset.pageNumber,
+            );
+            selection =
+              Number.isInteger(page) && page > 0 ? text.slice(0, 1200) : "";
+            selectionPage = page;
           }
         }
       },
