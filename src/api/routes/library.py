@@ -99,7 +99,7 @@ async def library_for_you(request: Request) -> HTMLResponse:
                 continue  # one-off authors aren't a signal
             esc_name = html.escape(name)
             authors_html.append(
-                f'<a class="oh-foryou-chip" href="/?search_query={esc_name}"'
+                f'<a class="oh-foryou-chip" href="/?search_query={quote(name)}"'
                 f' title="On {n} of your saved papers. Click to search.">'
                 f"{esc_name} ×{n}</a>"
             )
