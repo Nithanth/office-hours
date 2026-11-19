@@ -56,11 +56,6 @@ class ExaAdapter:
     - contents= dict replaces top-level text=/summary=/highlights= params
     """
 
-    _RETRIABLE_EXCEPTIONS: Final[tuple[type[Exception], ...]] = (
-        ConnectionError,
-        TimeoutError,
-    )
-
     _RETRY_POLICY: Final = _RetryTransient()
 
     def __init__(self, api_key: str) -> None:
