@@ -147,6 +147,7 @@ def _is_public_http_url(url: str) -> bool:
 
 
 @router.get("/chat-modal", response_class=HTMLResponse)
+@router.post("/chat-modal", response_class=HTMLResponse)
 async def chat_modal(
     request: Request,
     paper_id: str = Query(..., description="ID of the paper to chat about"),
@@ -168,6 +169,12 @@ async def chat_modal(
     start_ts = time.perf_counter()
     from services.chat.topic_scope import scoped_topic_key, validate_topic_subset
 
+    if request.method == "POST":
+        # Large subtopics belong in the request body, not an oversized URL.
+        raw_ids = (await request.form()).get("paper_ids")
+        if not isinstance(raw_ids, str):
+            raise HTTPException(400, "Choose a valid paper selection.")
+        paper_ids = raw_ids
     selected_ids = await validate_topic_subset(request, topic_id, paper_ids)
 
     # Best-effort metadata fetch; failures fall back to bare modal.

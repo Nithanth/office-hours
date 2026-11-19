@@ -22,7 +22,7 @@ async def validate_topic_subset(
 ) -> list[str] | None:
     if not isinstance(raw, str):
         return None
-    if not topic_id or len(raw) > 20000:
+    if not topic_id or len(raw) > 1_000_000:
         raise HTTPException(400, "Choose a topic and a valid paper selection.")
     try:
         paper_ids = json.loads(raw)
@@ -30,12 +30,12 @@ async def validate_topic_subset(
         raise HTTPException(400, "Invalid paper selection.") from exc
     if (
         not isinstance(paper_ids, list)
-        or not 1 <= len(paper_ids) <= 100
+        or not paper_ids
         or any(
             not isinstance(pid, str) or not pid or len(pid) > 2048 for pid in paper_ids
         )
     ):
-        raise HTTPException(400, "Select between 1 and 100 papers.")
+        raise HTTPException(400, "Select at least one valid paper.")
 
     from services.core.model_prefs import prefs_owner_id
     from services.persistence.database import database_available, session_scope

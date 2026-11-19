@@ -165,6 +165,27 @@ async def test_subset_has_stable_separate_history(topic_data):
     assert scoped_topic_key("topic:t1", None) == "topic:t1"
 
 
+async def test_large_subtopic_preserves_all_owned_papers(topic_data, client):
+    import json
+
+    _, _, repos = topic_data
+    ids = [f"https://example.org/paper/{i}" for i in range(250)]
+    repos.list_topic_papers.return_value = [
+        SimpleNamespace(paper_id=pid) for pid in ids
+    ]
+    selected = await validate_topic_subset(object(), "t1", json.dumps(ids))
+    assert selected == sorted(ids)
+    response = client.post(
+        "/chat-modal?paper_id=topic&topic_id=t1",
+        data={"paper_ids": json.dumps(ids)},
+    )
+    assert response.status_code == 200
+    assert "name='paper_ids'" in response.text
+    assert ids[-1] in response.text
+    with pytest.raises(HTTPException):
+        await validate_topic_subset(object(), "t1", json.dumps([*ids, "foreign"]))
+
+
 async def test_subset_prompt_filters_owned_papers_and_omits_full_report(
     topic_data, monkeypatch
 ):

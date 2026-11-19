@@ -288,12 +288,18 @@
               ? `Ask about ${cluster.label}`
               : "Ask about this topic",
           });
-          if (group !== null)
-            params.set("paper_ids", JSON.stringify(rows.map((p) => p.id)));
-          window.htmx?.ajax("GET", "/chat-modal?" + params, {
-            target: "#modal-container",
-            swap: "innerHTML",
-          });
+          window.htmx?.ajax(
+            group !== null ? "POST" : "GET",
+            "/chat-modal?" + params,
+            {
+              values:
+                group !== null
+                  ? { paper_ids: JSON.stringify(rows.map((p) => p.id)) }
+                  : {},
+              target: "#modal-container",
+              swap: "innerHTML",
+            },
+          );
         },
         "btn-secondary",
       ),
