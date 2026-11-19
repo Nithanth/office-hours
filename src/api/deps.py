@@ -4,8 +4,6 @@ Route modules should import these helpers instead of reaching directly into
 `app.py` for the singleton instances.
 """
 
-from typing import cast
-
 from fastapi import Request
 
 from config import Config as AppConfig
@@ -47,11 +45,3 @@ async def get_session_id(request: "Request") -> str:  # noqa: D401 – FastAPI D
     """Return the session-id set by the ChatSessionMiddleware (or 'anon')."""
 
     return getattr(request.state, "session_id", "anon")
-
-
-async def get_current_user_id(request: "Request") -> str | None:
-    """Return durable authenticated user id, if login is configured and present."""
-
-    from services.auth.session import get_auth_user_id
-
-    return cast(str | None, get_auth_user_id(request))
