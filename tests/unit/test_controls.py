@@ -3,7 +3,7 @@
 from html.parser import HTMLParser
 
 import pytest
-from fasthtml.common import I, Option
+from fasthtml.common import I, Option, to_xml
 
 from pages.controls import Button, ButtonLink, IconButton, Input, Select, button_attrs
 from pages.main_page import SharedPageData, home_page
@@ -14,7 +14,7 @@ class Elements(HTMLParser):
     def __init__(self, markup):
         super().__init__()
         self.items = []
-        self.feed(str(markup))
+        self.feed(markup if isinstance(markup, str) else to_xml(markup))
 
     def handle_starttag(self, tag, attrs):
         self.items.append((tag, dict(attrs)))

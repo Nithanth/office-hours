@@ -31,7 +31,10 @@ def test_chat_starters_target_the_existing_chat_form(
         r'<form\b(?=[^>]*\bhx-post="/chat")[^>]*\bid="([^"]+)"', response.text
     )
     assert form is not None
-    buttons = re.findall(r'<button\b[^>]*class="chat-starter"[^>]*>', response.text)
+    buttons = re.findall(
+        r'<button\b[^>]*class="(?:[^\"]*\s)?chat-starter(?:\s[^\"]*)?"[^>]*>',
+        response.text,
+    )
     assert len(buttons) == 3
     assert first_question in response.text
     assert all(
