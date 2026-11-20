@@ -51,7 +51,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "Permissions-Policy",
             "clipboard-read=(self), clipboard-write=(self)",
         )
-        response.headers.setdefault("X-Frame-Options", "DENY")
+        dev_frame_ancestors = (
+            _cfg.config.DEV_FRAME_ANCESTORS.strip() if _cfg.config.ENV == "dev" else ""
+        )
+        frame_ancestors = f"'self' {dev_frame_ancestors}" if dev_frame_ancestors else "'none'"
+        if not dev_frame_ancestors or "Content-Security-Policy" in response.headers:
+            response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(
             "Content-Security-Policy",
             (
@@ -64,7 +69,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "connect-src 'self' https:; "
                 "frame-src 'self' https: data:; "
                 "object-src https: data: blob:; "
-                "frame-ancestors 'none'"
+                f"frame-ancestors {frame_ancestors}"
             ),
         )
         return response

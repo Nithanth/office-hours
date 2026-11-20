@@ -1,0 +1,13 @@
+services:
+  - name: office-hours
+    command: ./dev.sh
+    port: 8000
+    environment:
+      - name: ENV
+        value: dev
+      - name: DEV_FRAME_ANCESTORS
+        value: "https://niteshift.dev https://ui.preview.niteshift.dev"
+      - name: EXA_API_KEY
+        secret: EXA_API_KEY
+      - name: OPENROUTER_API_KEY
+        secret: OPENROUTER_API_KEY

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# Match CI's Python version and keep the CPU-only PyTorch build used by Docker.
+if [[ ! -x .venv/bin/python ]]; then
+  uv venv --python 3.11
+fi
+
+# The deploy lock pins runtime packages. Export the dev group separately so
+# development tools are available without pulling in CUDA dependencies.
+uv export --frozen --only-dev --no-hashes --format requirements-txt \
+  --output-file .venv/niteshift-dev-requirements.txt --quiet
+uv pip sync --python .venv/bin/python --torch-backend=cpu \
+  requirements.lock .venv/niteshift-dev-requirements.txt
+
+# Match the app image's OCR support for scanned PDFs.
+if ! command -v tesseract >/dev/null || ! tesseract --list-langs | grep -Fx eng >/dev/null; then
+  apt-get update
+  apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+fi
