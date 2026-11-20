@@ -3,8 +3,8 @@
 Two consumers:
 - f-string route pages (topics, library, history, report detail) use
   ``page_shell(title, body_html, active=...)`` for a full HTML document.
-- FastHTML pages (home, settings, welcome) compose ``top_bar(...)`` from
-  fasthtml components via ``nav_links(active)``.
+- FastHTML pages (home, settings, welcome) compose ``page_head(...)`` and
+  ``top_bar(...)`` directly. String pages serialize these same components.
 
 Every app page gets the same nav, dark-mode toggle, and auth-status slot —
 previously the standalone HTML pages had no variables.css/settings.js so
@@ -16,7 +16,20 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from fasthtml.common import A, Button, Div, I, P, Span
+from fasthtml.common import (
+    A,
+    Button,
+    Div,
+    Head,
+    I,
+    Link,
+    Meta,
+    NotStr,
+    P,
+    Script,
+    Span,
+    Title,
+)
 
 from utils.static_assets import static_url
 
@@ -103,53 +116,56 @@ THEME_INLINE_SCRIPT = (
     "{document.documentElement.classList.add('oh-dark')}}catch(e){}})();"
 )
 
-_HEAD_LINKS = (
-    f"<script>{THEME_INLINE_SCRIPT}</script>"
-    + "\n"
-    + '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
-    '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-    f'  <link rel="stylesheet" href="{FONT_STYLESHEET}">\n'
-    + f'<link rel="stylesheet" href="{static_url("/static/css/base.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/css/variables.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/css/top-bar.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/css/utilities.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/css/forms.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/css/modal.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/css/chat.css")}">\n'
-    f'  <link rel="stylesheet" href="{static_url("/static/vendor/fontawesome/css/all.min.css")}">\n'
-    f'  <script src="{_HTMX}"></script>\n'
-    f'  <script src="{_HTMX_SSE}"></script>\n'
-    f'  <script src="{static_url("/static/js/settings.js")}" defer></script>'
-)
+
+def page_head(title: str, *extra: Any) -> Head:
+    """One head for FastHTML and string pages; workspace rules load last.
+
+    ``title`` is the full document title. Page-specific assets belong in
+    ``extra`` rather than copies of the shared font/theme/client setup.
+    """
+    return Head(
+        Meta(charset="utf-8"),
+        Meta(name="viewport", content="width=device-width, initial-scale=1"),
+        Title(title),
+        Script(THEME_INLINE_SCRIPT),
+        Link(rel="preconnect", href="https://fonts.googleapis.com"),
+        Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
+        Link(rel="stylesheet", href=FONT_STYLESHEET),
+        *[
+            Link(rel="stylesheet", href=static_url(f"/static/css/{name}.css"))
+            for name in (
+                "variables",
+                "base",
+                "spinners",
+                "top-bar",
+                "utilities",
+                "forms",
+                "modal",
+                "chat",
+            )
+        ],
+        Link(
+            rel="stylesheet",
+            href=static_url("/static/vendor/fontawesome/css/all.min.css"),
+        ),
+        Script(src=_HTMX),
+        Script(src=_HTMX_SSE),
+        Script(src=static_url("/static/js/settings.js"), defer=True),
+        *extra,
+        Link(rel="stylesheet", href=static_url("/static/css/workspace.css")),
+        Script(src=static_url("/static/js/workspace.js"), defer=True),
+    )
 
 
 def nav_links_html(active: str = "") -> str:
     """Nav anchor markup — used by both the f-string shell and the
     FastHTML top_bar (same output, so every page's nav is identical)."""
-    parts = []
-    for label, href, key, icon, tip in NAV_LINKS:
-        cls = "top-bar-link oh-tip oh-tip-below" + (" active" if key == active else "")
-        parts.append(
-            f'<a href="{href}" class="{cls}" aria-label="{html.escape(label, quote=True)}" '
-            f'data-tip="{html.escape(tip, quote=True)}"><i class="{icon}"></i><span>{html.escape(label)}</span></a>'
-        )
-    return "\n    ".join(parts)
+    return "\n".join(str(link) for link in nav_links(active))
 
 
 def top_bar_html(active: str = "", extra_html: str = "") -> str:
     """Full top-bar markup (brand + nav + auth status + dark toggle)."""
-    return f"""<div class="top-bar">
-    <a href="/" class="top-bar-brand">█▓▒░ Office Hours ░▒▓█</a>
-    {nav_links_html(active)}
-    <div class="top-bar-spacer" style="flex:1"></div>
-    {extra_html}
-    <button class="oh-assistant-btn oh-tip oh-tip-below" type="button" aria-label="Research Assistant"
-      data-tip="Ask questions across your papers & reports"
-      hx-get="/chat-modal?paper_id=global&title=Research%20Assistant"
-      hx-target="#modal-container" hx-swap="innerHTML"><i class="fa-solid fa-comment-dots"></i></button>
-    <span id="oh-auth-status" class="top-auth-status"></span>
-    <button id="oh-dark-toggle" class="oh-theme-toggle" type="button" aria-label="Toggle dark mode"><i class="fa-solid fa-moon"></i></button>
-  </div>"""
+    return str(top_bar(active, NotStr(extra_html)))
 
 
 def page_shell(
@@ -165,15 +181,7 @@ def page_shell(
     page-specific <link>/<style>; ``scripts`` carries page JS."""
     return f"""<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(title)} · Office Hours</title>
-  {_HEAD_LINKS}
-  {head_extra}
-  <link rel="stylesheet" href="{static_url('/static/css/workspace.css')}">
-  <script src="{static_url('/static/js/workspace.js')}" defer></script>
-</head>
+{page_head(f"{title} · Office Hours", NotStr(head_extra))}
 <body>
   {top_bar_html(active)}
   <main class="{wrap_class}">

@@ -353,10 +353,21 @@ html.oh-dark .workspace-home-sheet #search_query {
   gap: 32px;
 }
 .workspace-report {
+  font-family: var(--oh-font-sans);
   font-size: 15px;
   line-height: 1.95;
   min-width: 0;
+  max-width: 75ch;
+  background: var(--container-bg);
   overflow-wrap: anywhere;
+}
+/* Report detail and topic reports share the same article, not the legacy
+   generated-report card in misc.css (loaded on search and Settings). */
+#report-content.workspace-report {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 .workspace-report h1,
 .workspace-report h2 {
@@ -386,6 +397,17 @@ html.oh-dark .workspace-home-sheet #search_query {
 .workspace-report pre {
   overflow: auto;
   max-width: 100%;
+}
+/* Keep the existing Settings controls; only constrain them to the shared
+   surface now that mobile uses its real viewport rather than a scaled page. */
+.settings-page input,
+.settings-page select {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0 !important;
+}
+.settings-page form {
+  overflow-wrap: anywhere;
 }
 .workspace-source-margin {
   border-left: 1px solid var(--container-border);

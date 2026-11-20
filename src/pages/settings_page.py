@@ -3,25 +3,25 @@
 from __future__ import annotations
 
 from fasthtml.common import (
+    H1,
     Body,
     Button,
     Div,
     Form,
-    Head,
+    Header,
     Html,
     Input,
     Label,
     Link,
+    Main,
     Option,
     P,
-    Script,
     Select,
     Span,
-    Title,
 )
 
 import config as _cfg
-from pages.shell import THEME_INLINE_SCRIPT, top_bar
+from pages.shell import page_head, top_bar
 from utils.static_assets import static_url
 
 _TIER_DESCRIPTIONS = {
@@ -142,31 +142,14 @@ def settings_page(
         )
 
     return Html(
-        Head(
-            Title("Settings · Office Hours"),
-            # Apply saved theme before first paint (class lives on <html>)
-            Script(THEME_INLINE_SCRIPT),
-            Link(rel="stylesheet", href=static_url("/static/css/spinners.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/base.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/top-bar.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/utilities.css")),
+        page_head(
+            "Settings · Office Hours",
             Link(rel="stylesheet", href=static_url("/static/css/misc.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/modal.css")),
-            Link(rel="stylesheet", href=static_url("/static/css/chat.css")),
-            Link(
-                rel="stylesheet",
-                href=static_url("/static/vendor/fontawesome/css/all.min.css"),
-            ),
-            Script(src="https://unpkg.com/htmx.org@1.9.12"),
-            Script(src=static_url("/static/js/settings.js")),
         ),
         Body(
             top_bar("settings"),
-            Div(
-                Div(
-                    "Settings",
-                    style="font-size:1.4rem;font-weight:700;margin:0 0 4px 0;",
-                ),
+            Main(
+                Header(H1("Settings"), cls="workspace-topic-title"),
                 P(
                     "Model preferences are saved to your account (or this browser session if you're not signed in).",
                     style="opacity:0.7;margin:0 0 20px 0;font-size:0.9rem;",
@@ -243,7 +226,7 @@ def settings_page(
                     Span("Checking…", style="opacity:0.7;font-size:0.85rem;"),
                     id="settings-account",
                 ),
-                style="max-width:900px;margin:2rem auto;padding:0 1rem 60px 1rem;",
+                cls="page-wrap settings-page",
             ),
             # target for the toolbar assistant's chat modal
             Div(id="modal-container"),
