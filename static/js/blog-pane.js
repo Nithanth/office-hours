@@ -99,10 +99,10 @@
     if (!pane.querySelector(".blog-pane-bar")) {
       pane.innerHTML =
         '<div class="blog-pane-bar">' +
-        '  <button type="button" id="blog-pane-back" class="blog-nav-btn" title="Back to report">← Report</button>' +
+        '  <button ' + OHControls.buttonAttrs({"className": "blog-nav-btn", "variant": "secondary", "size": "sm"}) + ' type="button" id="blog-pane-back"  title="Back to report">← Report</button>' +
         '  <span class="blog-pane-meta" id="blog-pane-meta"></span>' +
         '  <span class="blog-pane-bar-spacer"></span>' +
-        '  <button type="button" id="blog-pane-revise" class="blog-nav-btn" title="Revise this blog" hidden>Revise</button>' +
+        '  <button ' + OHControls.buttonAttrs({"className": "blog-nav-btn", "variant": "secondary", "size": "sm"}) + ' type="button" id="blog-pane-revise"  title="Revise this blog" hidden>Revise</button>' +
         "</div>" +
         '<article class="blog-article" id="blog-pane-article"></article>';
     }
@@ -154,7 +154,7 @@
       '<div class="blog-error" style="padding:2rem;border:1px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,0.08);">' +
       '<h2 style="margin-top:0;">Blog generation failed</h2>' +
       '<p style="opacity:0.85;"></p>' +
-      '<button type="button" class="btn-secondary" id="blog-pane-retry" style="margin-top:1rem;">Try again</button>' +
+      '<button ' + OHControls.buttonAttrs({"className": "btn-secondary", "variant": "secondary", "size": "sm"}) + ' type="button"  id="blog-pane-retry" style="margin-top:1rem;">Try again</button>' +
       "</div>";
     const p = articleEl.querySelector(".blog-error p");
     if (p) p.textContent = String(message || "Something went wrong.");
@@ -170,7 +170,7 @@
       '<div class="blog-pane-cta-icon" aria-hidden="true"><i class="fa-solid fa-pen-nib"></i></div>' +
       "<h2>Read this report as a blog</h2>" +
       "<p>A clean explainer with diagrams, math, and visuals. Generated once, saved with the report.</p>" +
-      '<button type="button" class="btn-secondary" id="blog-pane-generate">Generate blog view</button>' +
+      '<button ' + OHControls.buttonAttrs({"className": "btn-secondary", "variant": "secondary", "size": "sm"}) + ' type="button"  id="blog-pane-generate">Generate blog view</button>' +
       "</div>";
     const btn = articleEl.querySelector("#blog-pane-generate");
     if (btn) btn.addEventListener("click", generateDefault);

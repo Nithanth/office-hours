@@ -15,6 +15,7 @@ from sqlalchemy import select
 from api.deps import get_exa_client
 from api.routes._status_widget import STATUS_LABELS as _STATUS_LABELS
 from api.routes._status_widget import status_options as _status_options
+from pages.controls import button_attrs, field_attrs
 from services.auth.session import get_auth_user_id
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
@@ -1064,10 +1065,10 @@ def _paper_item(paper: SavedPaper) -> str:
     {notion_badge}</h2>
   <div class="lib-meta">{authors_str}</div>
   <div class="lib-actions">
-    <button class="btn-secondary" hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
+    <button {button_attrs('btn-secondary', size='sm')}  hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
     {open_link}{report_link}
     {_status_options(paper.status, paper.paper_id)}
-    <button class="lib-remove-btn" data-paper-id="{pid_attr}">Remove</button>
+    <button {button_attrs('lib-remove-btn', variant='danger', size='sm')}  data-paper-id="{pid_attr}">Remove</button>
   </div>
 </article>"""
 
@@ -1097,7 +1098,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
         sel = " selected" if status == value else ""
         opts.append(f'<option value="{value}"{sel}>{label}</option>')
     filter_select = (
-        '<select class="lib-filter-select" aria-label="Filter by status">'
+        f'<select {field_attrs("lib-filter-select")}  aria-label="Filter by status">'
         + "".join(opts)
         + "</select>"
     )
@@ -1123,7 +1124,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     viz_btn = ""
     if len(papers) >= 4:
         viz_btn = (
-            '<button id="cluster-viz-btn" class="oh-tip" type="button" '
+            f'<button {button_attrs("oh-tip", size="sm")} id="cluster-viz-btn"  type="button" '
             'data-scope="library" '
             'data-tip="Scatter of your saved papers, grouped by topic similarity'
             '. Dot size is citation count. Click a point to jump to the paper.">'

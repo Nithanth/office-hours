@@ -52,7 +52,6 @@
   font-size: 0.9rem;
 }
 
-
 .top-bar-link.active {
   /* soft blue selection tint instead of the jarring solid-black fill */
   background: rgba(37, 99, 235, 0.12);
@@ -91,22 +90,7 @@ html.oh-dark .top-bar-link.active {
   white-space: nowrap;
   font-size: 0.7rem;
 }
-
 /* Shared style for all top-bar controls */
-.top-bar select,
-.top-bar button {
-  font-size: 0.75rem;
-  padding: 4px 12px;
-  background: transparent;
-  color: var(--fg, #222);
-  border: 1px solid var(--container-border, #888);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.top-bar button:hover:not(:disabled) {
-  border-color: var(--accent, #4a9eff);
-  color: var(--accent, #4a9eff);
-}
 
 .top-bar select {
   width: 130px;
@@ -120,8 +104,6 @@ html.oh-dark .top-bar-link.active {
   color: #888 !important;
 }
 
-
-
 /* Theme toggle + global assistant — icon-only, accent-coloured.
    Must come AFTER the generic .top-bar button rule: that rule would
    otherwise paint them as white Win95 buttons with black text. */
@@ -130,17 +112,7 @@ html.oh-dark .top-bar-link.active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: var(--oh-icon, #2563eb);
-  font-size: 1rem;
   height: auto;
-  cursor: pointer;
-}
-.top-bar button.oh-theme-toggle:hover,
-.top-bar button.oh-assistant-btn:hover {
-  opacity: 0.75;
 }
 
 /* --- Dark mode --- */
@@ -169,22 +141,6 @@ html.oh-dark .top-auth-status a:hover {
   color: var(--accent, #60a5fa);
 }
 
-html.oh-dark .top-bar select,
-html.oh-dark .top-bar button {
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid var(--oh-border-strong);
-}
-html.oh-dark .top-bar button:hover:not(:disabled) {
-  border-color: var(--accent, #60a5fa);
-  color: var(--accent, #60a5fa);
-}
-html.oh-dark .top-bar button.oh-theme-toggle,
-html.oh-dark .top-bar button.oh-assistant-btn {
-  background: transparent;
-  border: none;
-  color: var(--oh-icon, #60a5fa);
-}
 html.oh-dark .top-bar select.placeholder {
   color: #666 !important;
 }
@@ -211,8 +167,6 @@ html.oh-dark .top-bar select.placeholder {
     height: 20px;
   }
   .top-bar button {
-    font-size: 0.6rem;
-    height: 20px;
-    padding: 1px 4px;
-  }
+  height: 20px;
+}
 }

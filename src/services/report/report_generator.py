@@ -14,6 +14,7 @@ from loguru import logger
 
 from config import config
 from models.paper import Paper
+from pages.controls import button_attrs
 from prompts.prompt_builder import AUDIENCE_PROMPT_MAP
 from prompts.prompt_utils import max_content_snippet_chars as _calc_snippet_chars
 from services.core.exa_client import ExaClient
@@ -626,7 +627,7 @@ class ReportGenerator:
                     str(paper_obj.url) if paper_obj and paper_obj.url else ""
                 )
                 report_parts.append(
-                    f"<button class='ask-assistant-btn' hx-get='/viewer/{paper_id_safe}?url={url_q}&title={title_q}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About Paper</button>"
+                    f"<button {button_attrs('ask-assistant-btn', size='sm')}  hx-get='/viewer/{paper_id_safe}?url={url_q}&title={title_q}' hx-target='#modal-container' hx-swap='innerHTML'>Ask Assistant About Paper</button>"
                 )
                 report_parts.append("</div>")
 
@@ -645,13 +646,13 @@ class ReportGenerator:
 
         actions_html = (
             "<div id='report-actions' class='mt-4 pt-4 border-t border-gray-700 flex flex-wrap justify-end items-center gap-2'>"
-            "<button id='report-notes-btn' class='btn-secondary' title='Generate Notes' type='button'>"
+            f"<button {button_attrs('btn-secondary', size='sm')} id='report-notes-btn'  title='Generate Notes' type='button'>"
             "<i class='fa-solid fa-wand-magic-sparkles'></i>&nbsp;Generate Notes"
             "</button>"
-            "<button id='report-blog-btn' class='btn-secondary' title='Generate blog post' type='button'>"
+            f"<button {button_attrs('btn-secondary', size='sm')} id='report-blog-btn'  title='Generate blog post' type='button'>"
             "<i class='fa-solid fa-pen-nib'></i>&nbsp;Blog"
             "</button>"
-            "<button id='copy-report-btn' class='copy-icon-btn' title='Copy text' type='button'>"
+            f"<button {button_attrs('copy-icon-btn', variant='ghost', size='sm', icon_label='Copy text')} id='copy-report-btn'  title='Copy text' type='button'>"
             "<i class='fa-solid fa-copy'></i>"
             "</button>"
             "</div>"

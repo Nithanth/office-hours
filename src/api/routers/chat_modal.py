@@ -22,6 +22,7 @@ from starlette.background import BackgroundTask
 
 from api.deps import get_paper_service  # lightweight helper, no heavy imports
 from config import config as app_config
+from pages.controls import button_attrs, field_attrs
 from services.chat.chat_components import ChatBubble, ChatModal, ChatStarters
 from services.paper.open_access import is_paywall, open_copy_candidates
 from utils.safe_fetch import (
@@ -508,8 +509,8 @@ async def chat_panel(
   <div class=\"oh-snippet-tray\"></div>
   <form id=\"{form_id}\" hx-post=\"/chat\" hx-target=\"#{chat_log_id}\" hx-swap=\"beforeend\" method=\"POST\" style=\"display:flex;gap:6px;margin-top:6px;\">
     {hidden_inputs}
-    <textarea name=\"message\" rows=\"3\" placeholder=\"{chat_placeholder}\" style=\"flex:1;border-radius:4px;padding:5px;\"></textarea>
-    <button type=\"submit\" class=\"send-btn\">→</button>
+    <textarea {field_attrs()} aria-label=\"Message\" name=\"message\" rows=\"3\" placeholder=\"{chat_placeholder}\" style=\"flex:1;\"></textarea>
+    <button {button_attrs('send-btn', variant='primary', size='sm', icon_label='Send message')} type=\"submit\" >→</button>
   </form>
 </div>
 """
@@ -811,7 +812,7 @@ async def viewer_modal(
     src_label = "PDF" if is_pdf else "Source"
     tabs = [
         (
-            f'<button type="button" class="viewer-tab active" onclick="{_tab_js}"'
+            f'<button {button_attrs("viewer-tab active", variant="tab", size="sm")} type="button"  onclick="{_tab_js}"'
             f' hx-get="/doc-pane?url={urllib.parse.quote_plus(url)}"'
             ' hx-target="#doc-pane-slot" hx-swap="innerHTML">'
             f"{src_label}</button>"
@@ -820,7 +821,7 @@ async def viewer_modal(
     if arxiv_id:
         ar5iv_url = f"https://ar5iv.labs.arxiv.org/html/{arxiv_id}"
         tabs.append(
-            f'<button type="button" class="viewer-tab" onclick="{_tab_js}"'
+            f'<button {button_attrs("viewer-tab", variant="tab", size="sm")} type="button"  onclick="{_tab_js}"'
             f' hx-get="/doc-pane?url={urllib.parse.quote_plus(ar5iv_url)}"'
             ' hx-target="#doc-pane-slot" hx-swap="innerHTML">HTML</button>'
         )
@@ -829,7 +830,7 @@ async def viewer_modal(
         f"&url={urllib.parse.quote_plus(url)}"
     )
     tabs.append(
-        f'<button type="button" class="viewer-tab" onclick="{_tab_js}"'
+        f'<button {button_attrs("viewer-tab", variant="tab", size="sm")} type="button"  onclick="{_tab_js}"'
         f' hx-get="/text-pane?{text_q}"'
         ' hx-target="#doc-pane-slot" hx-swap="innerHTML"'
         ' hx-indicator="#text-loading">Text</button>'
@@ -858,13 +859,13 @@ async def viewer_modal(
   <div class=\"modal-content pdf-viewer\" data-viewer=\"{"pdf" if is_pdf else "html"}\" data-src-url=\"{safe_url}\" data-reader-key=\"{reader_key}\">
     <div class=\"modal-header\">
       <h2><a href=\"{safe_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{display_title}</a></h2>
-      <button class=\"save-paper-btn\" type=\"button\" title=\"Save to library\"
+      <button {button_attrs('save-paper-btn', variant='ghost', size='sm', icon_label='Save to library')}  type=\"button\" title=\"Save to library\"
         data-paper-id=\"{html.escape(paper_id)}\"
         data-paper-title=\"{display_title}\"
         data-paper-url=\"{safe_url}\"
-        style=\"background:transparent;border:none;cursor:pointer;color:var(--fg);font-size:1rem;margin-right:0.4rem;\">
+        style=\"margin-right:0.4rem;\">
         <i class=\"fa-regular fa-bookmark\"></i></button>
-      <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
+      <button {button_attrs('modal-close-btn', variant='ghost', size='sm', icon_label='Close modal')}  onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
     </div>
     <div class=\"viewer-grid\">
       <div class=\"doc-pane-wrap\">
@@ -980,7 +981,7 @@ def _source_link(url: str, *, unavailable: bool = True) -> str:
     message = "No readable open copy was found. " if unavailable else ""
     return (
         f'<div class="paper-text-empty">{message}'
-        f'<a class="btn-secondary" href="{safe}" target="_blank" '
+        f'<a {button_attrs("btn-secondary", size="sm")} href="{safe}" target="_blank" '
         'rel="noopener noreferrer">Open at source</a></div>'
     )
 
@@ -1103,11 +1104,11 @@ async def _topic_viewer_html(
   <div class=\"modal-content pdf-viewer\" data-viewer=\"topic\" data-reader-key=\"{reader_key}\">
     <div class=\"modal-header\">
       <h2>{display_title}</h2>
-      <button class=\"modal-close-btn\" onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
+      <button {button_attrs('modal-close-btn', variant='ghost', size='sm', icon_label='Close modal')}  onclick=\"htmx.find('#modal-container').innerHTML=''\">×</button>
     </div>
     <div class=\"viewer-grid\">
       <div class=\"doc-pane-wrap\" style=\"display:flex;flex-direction:column;min-width:0;\">
-        <select id=\"topic-paper-select\" class=\"topic-paper-select\" style=\"margin:0 0 6px;max-width:100%;\"
+        <select {field_attrs('topic-paper-select')} aria-label=\"Paper to read\" id=\"topic-paper-select\" style=\"margin:0 0 6px;max-width:100%;\"
           onchange=\"var u=this.options[this.selectedIndex].dataset.url;var l=document.getElementById('topic-doc-link');if(l){{l.href=u;l.textContent=this.options[this.selectedIndex].text;}}htmx.ajax('GET','/doc-pane?url='+encodeURIComponent(u),{{target:'#doc-pane',swap:'innerHTML'}})\">
           {options}
         </select>
@@ -1151,6 +1152,8 @@ async def viewer_page(
     <title>Viewer test</title>
     <link rel=\"stylesheet\" href=\"/static/css/modal.css\"/>
     <link rel=\"stylesheet\" href=\"/static/css/forms.css\"/>
+    <link rel=\"stylesheet\" href=\"/static/css/controls.css\"/>
+    <script src="/static/js/controls.js"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <!-- Minimal chat stack: SSE pool & stream logic -->
     <script src="/static/js/htmx-sse-pool.js"></script>

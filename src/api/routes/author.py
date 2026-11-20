@@ -21,6 +21,7 @@ from loguru import logger
 from api.deps import get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
+from pages.controls import button_attrs
 from pages.main_page import render_error_message, render_search_results
 from services.core import model_prefs
 from services.paper.metadata.author_search import (
@@ -265,7 +266,7 @@ def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) 
         f"</div>"
         f"{filter_chip}"
         f"</div>"
-        f"<button class='btn-secondary'"
+        f"<button {button_attrs('btn-secondary', size='sm')} "
         f" hx-post='/author/research-profile'"
         f" hx-target='#author-profile-container'"
         f" hx-swap='innerHTML'"

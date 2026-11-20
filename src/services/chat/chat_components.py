@@ -4,17 +4,18 @@ from collections.abc import Iterable
 from typing import Any
 
 from fasthtml.components import (
-    BUTTON,
     H2,
-    INPUT,
     A,
     Div,
     Form,
     Label,
     P,
     Span,
-    Textarea,
 )
+
+from pages.controls import Button as BUTTON
+from pages.controls import IconButton, Textarea
+from pages.controls import Input as INPUT
 
 
 # Leaf components
@@ -84,7 +85,13 @@ def ChatStarters(paper_id: str, form_id: str) -> Div:
     return Div(
         P("Suggested questions", cls="chat-starters-label"),
         *(
-            BUTTON(question, type="button", form=form_id, cls="chat-starter")
+            BUTTON(
+                question,
+                type="button",
+                form=form_id,
+                cls="chat-starter",
+                variant="surface",
+            )
             for question in questions
         ),
         cls="chat-starters",
@@ -127,10 +134,10 @@ def ChatModal(
             # Header
             Div(
                 H2(title, cls="chat-modal-title"),
-                BUTTON(
+                IconButton(
+                    "Close modal",
                     "×",
                     cls="modal-close-btn",
-                    aria_label="Close modal",
                     onclick="htmx.find('#modal-container').innerHTML = ''",
                 ),
                 cls="modal-header",
@@ -161,10 +168,17 @@ def ChatModal(
                         ),
                         rows="2",
                         cls="chat-textarea",
+                        aria_label="Message",
                     ),
                     Div(
                         sources_toggle,
-                        BUTTON("→", type="submit", cls="send-btn"),
+                        IconButton(
+                            "Send message",
+                            "→",
+                            type="submit",
+                            cls="send-btn",
+                            variant="primary",
+                        ),
                         cls="chat-form-controls",
                     ),
                     cls="chat-input-row",

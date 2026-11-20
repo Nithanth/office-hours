@@ -52,7 +52,7 @@
     const tools = document.createElement("div");
     tools.className = "reader-controls";
     tools.innerHTML =
-      '<button type="button" data-reader-tools aria-haspopup="dialog" aria-expanded="false">Contents &amp; marks</button><div><button type="button" data-reader-original aria-pressed="false" title="Original page preserves the PDF’s source colors; dark paper changes its rendering colors.">Original page</button><button type="button" data-reader-focus aria-pressed="false">Focus</button></div>';
+      '<button ' + OHControls.buttonAttrs({"variant": "secondary", "size": "sm"}) + ' type="button" data-reader-tools aria-haspopup="dialog" aria-expanded="false">Contents &amp; marks</button><div><button ' + OHControls.buttonAttrs({"variant": "secondary", "size": "sm"}) + ' type="button" data-reader-original aria-pressed="false" title="Original page preserves the PDF’s source colors; dark paper changes its rendering colors.">Original page</button><button ' + OHControls.buttonAttrs({"variant": "secondary", "size": "sm"}) + ' type="button" data-reader-focus aria-pressed="false">Focus</button></div>';
     root.querySelector(".viewer-grid")?.before(tools);
     const opener = tools.querySelector("[data-reader-tools]");
     const appearance = tools.querySelector("[data-reader-original]");
@@ -60,6 +60,7 @@
       const source = new URL(root.dataset.srcUrl);
       if (["https:", "http:"].includes(source.protocol)) {
         const link = document.createElement("a");
+        link.className = OHControls.buttonClasses({ variant: "ghost", size: "sm" });
         link.href = source.href;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
@@ -74,7 +75,7 @@
     dialog.className = "reader-tools-dialog";
     dialog.setAttribute("aria-label", "Contents and marks");
     dialog.innerHTML =
-      '<div class="reader-tools-header"><h3>Contents &amp; marks</h3><button type="button" aria-label="Close contents and marks" autofocus>×</button></div><div class="reader-tools-body"><h4>CONTENTS</h4><div data-reader-contents><p>Contents appear when a PDF has loaded.</p></div><section class="reader-marks"><h4>SAVED PASSAGES</h4><p>Select text in the paper, then save it here. Marks are saved on this browser.</p><button type="button" class="reader-save-mark">Save selected passage</button><p data-reader-mark-status role="status"></p><div data-reader-marks></div></section></div>';
+      '<div class="reader-tools-header"><h3>Contents &amp; marks</h3><button ' + OHControls.buttonAttrs({"variant": "ghost", "size": "sm", "iconLabel": "Close contents and marks"}) + ' type="button"  autofocus>×</button></div><div class="reader-tools-body"><h4>CONTENTS</h4><div data-reader-contents><p>Contents appear when a PDF has loaded.</p></div><section class="reader-marks"><h4>SAVED PASSAGES</h4><p>Select text in the paper, then save it here. Marks are saved on this browser.</p><button ' + OHControls.buttonAttrs({"className": "reader-save-mark", "variant": "secondary", "size": "sm"}) + ' type="button" >Save selected passage</button><p data-reader-mark-status role="status"></p><div data-reader-marks></div></section></div>';
     root.append(dialog);
     opener.addEventListener("click", () => {
       dialog.showModal();
@@ -170,10 +171,7 @@
         list.append(empty);
       }
       marks.forEach((mark) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "reader-mark";
-        button.textContent = mark.text;
+        const button = OHControls.button(mark.text, { className: "reader-mark", variant: "surface", size: "sm" });
         const page = document.createElement("small");
         page.textContent = `Page ${mark.page}`;
         button.append(page);
@@ -264,10 +262,7 @@
         if (!root.isConnected) return;
         function appendItems(items, depth = 0) {
           items.forEach((item) => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "reader-outline-item";
-            button.textContent = item.title;
+            const button = OHControls.button(item.title, { className: "reader-outline-item", variant: "surface", size: "sm" });
             button.style.paddingLeft = `${Math.min(depth, 4) * 10}px`;
             button.addEventListener("click", () => {
               if (item.dest) pdf.linkService.goToDestination(item.dest);

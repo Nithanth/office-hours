@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import html
 
+from pages.controls import field_attrs
+
 STATUS_LABELS = {
     "to_read": "To read",
     "reading": "Reading",
@@ -26,7 +28,7 @@ def status_options(current: str | None, paper_id: str) -> str:
         sel = " selected" if value == current else ""
         opts.append(f'<option value="{value}"{sel}>{label}</option>')
     return (
-        f'<select class="lib-status-select" data-paper-id="{html.escape(paper_id, quote=True)}">'
+        f'<select {field_attrs("lib-status-select", size="sm")} aria-label="Reading status" data-paper-id="{html.escape(paper_id, quote=True)}">'
         + "".join(opts)
         + "</select>"
     )

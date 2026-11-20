@@ -22,6 +22,7 @@ from loguru import logger
 
 from api.deps import get_llm_service, get_session_id
 from config import config
+from pages.controls import button_attrs
 from prompts.prompt_builder import _load_template
 from services.chat.chat_state import ChatState, get_chat_state
 from services.core import model_prefs
@@ -1267,6 +1268,7 @@ async def blog_view(
   <link rel="stylesheet" href="{static_url('/static/css/blog.css')}">
   <!-- modal.css supplies styles for the customize modal triggered by Revise. -->
   <link rel="stylesheet" href="{static_url('/static/css/modal.css')}">
+  <link rel="stylesheet" href="{static_url('/static/css/controls.css')}">
 </head>
 <body class="blog-is-loading blog-scope">
 
@@ -1282,9 +1284,9 @@ async def blog_view(
         <span class="oh-spinner small"></span>
         <span>Writing blog…</span>
       </span>
-      <button id="blog-theme-toggle" class="blog-nav-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-      <button id="blog-revise-btn" class="blog-nav-btn" title="Regenerate with different options" disabled>Revise</button>
-      <button id="blog-save-html-btn" class="blog-nav-btn" title="Download a self-contained HTML page" disabled>Export HTML</button>
+      <button {button_attrs('blog-nav-btn', size='sm')} id="blog-theme-toggle"  title="Toggle theme" aria-label="Toggle theme">🌙</button>
+      <button {button_attrs('blog-nav-btn', size='sm')} id="blog-revise-btn"  title="Regenerate with different options" disabled>Revise</button>
+      <button {button_attrs('blog-nav-btn', size='sm')} id="blog-save-html-btn"  title="Download a self-contained HTML page" disabled>Export HTML</button>
     </div>
   </nav>
 
@@ -1325,6 +1327,7 @@ async def blog_view(
   <script>window.__BLOG_TOKEN__ = "{safe_token}"; window.__BLOG_ACCENT__ = "{safe_theme}";</script>
   <!-- Shared customization modal (used by the Revise button). Loaded before
        blog-view.js so window.ohBlog.openCustomizeModal is available. -->
+  <script src="{static_url('/static/js/controls.js')}"></script>
   <script src="{static_url('/static/js/blog-modal.js')}"></script>
   <script src="{static_url('/static/js/blog-view.js')}"></script>
 </body>

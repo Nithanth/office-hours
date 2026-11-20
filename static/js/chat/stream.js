@@ -169,9 +169,7 @@ function _addMessageActions(bubbleEl) {
   const row = document.createElement("div");
   row.className = "msg-actions";
 
-  const copyBtn = document.createElement("button");
-  copyBtn.type = "button";
-  copyBtn.className = "msg-act-btn";
+  const copyBtn = OHControls.button("", { className: "msg-act-btn", variant: "ghost", size: "sm" });
   copyBtn.title = "Copy message";
   copyBtn.setAttribute("aria-label", "Copy message");
   copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy';
@@ -186,9 +184,7 @@ function _addMessageActions(bubbleEl) {
   });
   row.appendChild(copyBtn);
 
-  const regenBtn = document.createElement("button");
-  regenBtn.type = "button";
-  regenBtn.className = "msg-act-btn";
+  const regenBtn = OHControls.button("", { className: "msg-act-btn", variant: "ghost", size: "sm" });
   regenBtn.title = "Resend the message that produced this answer";
   regenBtn.setAttribute("aria-label", "Regenerate response");
   regenBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Regenerate';

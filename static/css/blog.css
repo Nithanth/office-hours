@@ -141,39 +141,13 @@ body.blog-scope {
   gap: 8px;
 }
 
-.blog-nav-btn {
-  background: none;
-  border: 1px solid var(--blog-border);
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-family: var(--blog-font);
-  color: var(--blog-text-secondary);
-  cursor: pointer;
-  transition: all var(--oh-speed,140ms) var(--oh-ease,ease);
-}
-
-.blog-nav-btn:hover {
-  border-color: var(--blog-accent);
-  color: var(--blog-accent);
-  background: var(--blog-accent-soft);
-}
-
 /* Visibly grey-out + block interaction on disabled nav buttons. The
  * `disabled` attribute already blocks the click event, but without this rule
  * the buttons look identical to enabled ones, which makes users think they
  * can download the blog mid-generation. */
 .blog-nav-btn[disabled],
 .blog-nav-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
   pointer-events: none;
-}
-.blog-nav-btn[disabled]:hover,
-.blog-nav-btn:disabled:hover {
-  border-color: var(--blog-border);
-  color: var(--blog-text-secondary);
-  background: none;
 }
 
 /* "Writing blog…" pill shown in the nav while body.blog-is-loading is set.
@@ -728,27 +702,6 @@ body.blog-printing .blog-footer { display: none !important; }
 
 .oh-view-toggle button {
   appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--blog-text-secondary, #94a3b8);
-  font-size: 0.8rem;
-  padding: 5px 14px;
-  cursor: pointer;
-  transition: background var(--oh-speed,140ms) var(--oh-ease,ease), color var(--oh-speed,140ms) var(--oh-ease,ease);
-}
-
-.oh-view-toggle button + button {
-  border-left: 1px solid var(--blog-border, #334155);
-}
-
-.oh-view-toggle button.active {
-  background: var(--blog-accent, #6366f1);
-  color: #fff;
-}
-
-.oh-view-toggle button:not(.active):hover {
-  background: var(--blog-accent-soft, #eef2ff);
-  color: var(--blog-accent, #6366f1);
 }
 
 /* Pane toolbar — back link, meta (title · read time), revise. */

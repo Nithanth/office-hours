@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from loguru import logger
 
 from api.routers.report_stream import _clean_generated_title
+from pages.controls import button_attrs, field_attrs
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
 from services.persistence.models import Report, Topic, TopicPaper
@@ -117,7 +118,7 @@ def _share_link_html(request: Request, topic: Topic) -> str:
     return (
         f'Public link: <a href="{_esc(url)}" target="_blank" rel="noopener">{_esc(url)}</a>'
         ". Anyone with it can view the topic (read-only)."
-        ' <button type="button" class="btn-secondary" style="font-size:0.7rem;padding:2px 8px;"'
+        f' <button {button_attrs("btn-secondary", size="sm")} type="button"  '
         f' hx-post="/topics/{_esc(topic.id)}/unshare" hx-target="#share-status"'
         ' hx-swap="innerHTML">Unshare</button>'
     )
@@ -185,7 +186,7 @@ async def topics_page(request: Request) -> HTMLResponse:
 
     if notion_connected:
         sync_btn = (
-            '<button id="lib-notion-sync-btn" class="btn-secondary oh-tip" type="button" '
+            f'<button {button_attrs("btn-secondary oh-tip", size="sm")} id="lib-notion-sync-btn"  type="button" '
             'data-tip="One shot: re-push every saved paper + topic to Notion and reply to '
             "unanswered comments on your synced pages. Sync already runs automatically "
             'when you save or change status. Use this only if Notion drifted">'
@@ -194,19 +195,19 @@ async def topics_page(request: Request) -> HTMLResponse:
         notion_ui = ""
     elif notion_needs_destination:
         sync_btn = ""
-        notion_ui = """<div class="lib-notion-card">
+        notion_ui = f"""<div class="lib-notion-card">
   <strong>Notion connected.</strong> One last step: pick where your library lives.
   <div class="lib-notion-pick">
-    <select id="lib-notion-destination"><option value="">Loading your pages…</option></select>
-    <button id="lib-notion-set-dest" type="button" class="btn-secondary">Set up sync</button>
+    <select {field_attrs()} id="lib-notion-destination"><option value="">Loading your pages…</option></select>
+    <button {button_attrs('btn-secondary', size='sm')} id="lib-notion-set-dest" type="button" >Set up sync</button>
   </div>
   <div class="lib-notion-hint">Office Hours creates two linked databases, Papers ↔ Topics, under the page you pick.</div>
 </div>"""
     elif signed_in:
         sync_btn = ""
-        notion_ui = """<div class="lib-notion-card lib-notion-banner">
+        notion_ui = f"""<div class="lib-notion-card lib-notion-banner">
   Mirror your library in Notion — papers, topics and reading status sync automatically.
-  <a class="lib-notion-connect" href="/integrations/notion/connect?next=/topics">Connect Notion</a>
+  <a {button_attrs('lib-notion-connect', size='sm')} href="/integrations/notion/connect?next=/topics">Connect Notion</a>
 </div>"""
     else:
         sync_btn = ""
@@ -402,7 +403,7 @@ def _paper_rows_html(
 
             pid_q = quote(p.paper_id, safe="")
             viewer_btn = (
-                f'<button type="button" class="copy-icon-btn" title="Ask Assistant about this paper"'
+                f'<button {button_attrs("copy-icon-btn", variant="ghost", size="sm", icon_label="Ask Assistant about this paper")} type="button"  title="Ask Assistant about this paper"'
                 f' hx-get="/viewer/{pid_q}?url={quote_plus(p.url)}"'
                 f' hx-target="#modal-container" hx-swap="innerHTML">'
                 f'<i class="fa-solid fa-comment-dots"></i></button>'
@@ -411,14 +412,14 @@ def _paper_rows_html(
             )
             status_sel = status_options((statuses or {}).get(p.paper_id), p.paper_id)
             repro_btn = (
-                f'<button type="button" class="copy-icon-btn" title="Can this be reproduced?"'
+                f'<button {button_attrs("copy-icon-btn", variant="ghost", size="sm", icon_label="Can this be reproduced?")} type="button"  title="Can this be reproduced?"'
                 f' hx-get="/repro-modal?topic_id={_esc(topic.id)}&paper_id={pid_q}"'
                 f' hx-target="#modal-container" hx-swap="innerHTML">'
                 f'<i class="fa-solid fa-flask"></i></button>'
             )
             actions = (
                 f'<div style="display:flex;gap:6px;align-items:center;">{status_sel}{repro_btn}{viewer_btn}'
-                f'<button type="button" class="copy-icon-btn" title="Remove from topic"'
+                f'<button {button_attrs("copy-icon-btn", variant="danger", size="sm", icon_label="Remove from topic")} type="button" title="Remove from topic"'
                 f' hx-post="/api/topics/{_esc(topic.id)}/papers/{quote(p.paper_id, safe="")}/remove"'
                 f' hx-target="closest .paper-row" hx-swap="outerHTML">&times;</button></div>'
             )
@@ -468,7 +469,7 @@ def _facets_section(topic: Topic, facets: list[Any]) -> str:
         remove_btn = ""
         if len(facets) > 1:
             remove_btn = (
-                f'<button type="button" class="facet-remove" title="Stop tracking" '
+                f'<button {button_attrs("facet-remove", variant="danger", size="sm", icon_label="Stop tracking")} type="button"  title="Stop tracking" '
                 f'hx-post="/topics/{_esc(topic.id)}/facets/{_esc(f.id)}/remove" '
                 'hx-target="#facets-section" hx-swap="outerHTML">&times;</button>'
             )
@@ -486,11 +487,10 @@ def _facets_section(topic: Topic, facets: list[Any]) -> str:
 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
 {''.join(items)}
 </div>
-<form hx-post="/topics/{_esc(topic.id)}/facets" hx-target="#facets-section" hx-swap="outerHTML"
-      style="display:flex;gap:8px;align-items:center;">
-  <input type="text" name="query" placeholder="Track another term, paper link, or author…"
-         style="flex:1;min-width:200px;padding:5px 10px;font-size:0.85rem;border:1px solid var(--container-border,#ccc);border-radius:6px;background:var(--container-bg,#fff);color:var(--fg,#222);"/>
-  <button type="submit" class="btn-secondary" style="font-size:0.8rem;">Add query</button>
+<form hx-post="/topics/{_esc(topic.id)}/facets" hx-target="#facets-section" hx-swap="outerHTML" class="oh-field-row">
+  <input {field_attrs()} type="text" name="query" placeholder="Track another term, paper link, or author…"
+         aria-label="New tracked query" style="flex:1;min-width:0;"/>
+  <button {button_attrs('btn-secondary', size='sm')} type="submit"  >Add query</button>
 </form>
 <div id="facet-status" class="topic-meta"></div>
 </div>"""
@@ -516,7 +516,7 @@ def _related_topics_section(topic: Topic, siblings: list[Topic]) -> str:
         rows.append(
             f"<div class='topic-meta' style='display:flex;gap:10px;align-items:center;'>"
             f"<a href='/topics/{_esc(t.id)}'>{_esc(t.title)}</a>"
-            f"<button type='button' class='btn-secondary' style='font-size:0.7rem;padding:2px 8px;' "
+            f"<button {button_attrs('btn-secondary', size='sm')} type='button'   "
             f"hx-post='/api/topics/{_esc(t.id)}/merge' hx-vals='{{\"into_id\": \"{_esc(topic.id)}\"}}' "
             f"hx-confirm='Merge &quot;{_esc(t.title)}&quot; into this topic? Its papers, tracked queries, and reports move here; the old topic is archived.' "
             f"hx-swap='none'>merge into this topic</button></div>"

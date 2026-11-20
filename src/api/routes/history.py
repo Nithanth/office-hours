@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from api.routers.report_stream import _clean_generated_title
+from pages.controls import button_attrs, field_attrs
 from services.core.model_prefs import prefs_owner_id
 from services.persistence.database import database_available, session_scope
 from services.persistence.models import Report
@@ -197,17 +198,17 @@ async def report_detail(request: Request, report_id: str) -> HTMLResponse:
       {escaped_audience} &middot; {escaped_model}{topic_bit}
     </div>
     <div id="report-view-toggle" class="oh-view-toggle">
-      <button type="button" data-view="report" class="active"><i class="fa-regular fa-file-lines"></i> Report</button>
-      <button type="button" data-view="blog"><i class="fa-solid fa-pen-nib"></i> Blog</button>
+      <button {button_attrs('active', variant='tab', size='sm')} type="button" data-view="report" ><i class="fa-regular fa-file-lines"></i> Report</button>
+      <button {button_attrs(variant='tab', size='sm')} type="button" data-view="blog"><i class="fa-solid fa-pen-nib"></i> Blog</button>
     </div>
     <div class="report-actions">
-      <select id="notes-fmt-select">
+      <select {field_attrs(size='sm')} id="notes-fmt-select" aria-label="Notes format">
         <option value="md">Markdown</option>
         <option value="txt">Plain Text</option>
         <option value="docx">Word (.docx)</option>
       </select>
-      <button id="report-notes-btn" type="button" class="btn-secondary">Export Notes</button>
-      <button class="btn-secondary" hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
+      <button {button_attrs('btn-secondary', size='sm')} id="report-notes-btn" type="button" >Export Notes</button>
+      <button {button_attrs('btn-secondary', size='sm')}  hx-get="/viewer/topic?report_id={escaped_id}&title=Ask%20about%20this%20topic"
               hx-target="#modal-container" hx-swap="innerHTML">Ask about this topic</button>
     </div>
     <article id="report-content" class="workspace-report" data-report-id="{escaped_id}"

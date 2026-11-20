@@ -103,33 +103,18 @@ html.oh-dark .pinned-label{
 .paper-row:nth-child(7)  { animation-delay: 240ms; }
 .paper-row:nth-child(n+8) { animation-delay: 280ms; }
 
-a, button, .btn-secondary, .oh-search-btn,
-.top-bar-link, .oh-related-chip, .oh-topic-pill, .oh-foryou-chip,
-input, select, textarea, summary {
-  transition:
-    color var(--oh-speed) var(--oh-ease),
-    background-color var(--oh-speed) var(--oh-ease),
-    border-color var(--oh-speed) var(--oh-ease),
-    box-shadow var(--oh-speed) var(--oh-ease),
-    transform var(--oh-speed) var(--oh-ease),
-    opacity var(--oh-speed) var(--oh-ease);
-}
-
 /* subtle press/hover lift on card-like rows */
 .paper-row:hover, .topic-card:hover, .lib-item:hover {
   border-color: var(--oh-accent);
 }
-
-/* One focus ring for the whole app — keyboard users deserve to see
-   where they are; mouse users never trigger :focus-visible. */
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-button:focus-visible,
+/* Controls share their states in controls.css; links retain the same ring. */
 a:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--oh-accent);
   outline-offset: 2px;
+}
+a, .top-bar-link, .oh-related-chip, .oh-topic-pill, .oh-foryou-chip, summary {
+  transition: color var(--oh-speed) var(--oh-ease), background-color var(--oh-speed) var(--oh-ease), border-color var(--oh-speed) var(--oh-ease), transform var(--oh-speed) var(--oh-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {

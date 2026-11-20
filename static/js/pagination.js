@@ -34,9 +34,7 @@ function buildPager() {
   totalPages <= 1 ? (pager.style.display = 'none') : (pager.style.display = 'block');
   pager.innerHTML = ""; // reset
   const btn = (label, page, disabled = false) => {
-    const b = document.createElement("button");
-    b.className = "pager-btn";
-    b.textContent = label;
+    const b = OHControls.button(label, { className: "pager-btn", size: "sm" });
     if (disabled) {
       b.disabled = true;
     } else {

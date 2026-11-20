@@ -266,7 +266,7 @@ console.debug("[oh] main.js history clean listener wired");
       `<dialog id="abstract-popover" class="oh-modal" style="max-width:540px;max-height:70vh;overflow-y:auto;">
          <div id="abstract-popover-body" style="white-space:pre-wrap;font-size:0.9rem;line-height:1.5;"></div>
          <menu style="margin-top:12px;display:flex;justify-content:flex-end;">
-           <button value="cancel" style="font-size:0.85rem;">Close</button>
+           <button ${OHControls.buttonAttrs({"variant": "secondary", "size": "sm"})} value="cancel">Close</button>
          </menu>
        </dialog>`
     );
@@ -352,4 +352,3 @@ console.debug("[oh] main.js history clean listener wired");
     });
   });
 })();
-

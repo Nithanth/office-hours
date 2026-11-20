@@ -158,19 +158,11 @@ async function renderPdf(container) {
     // --- Enhanced zoom UI --------------------------
     const zoomBar = document.createElement("div");
     // Fixed to viewport, horizontally tracks PDF column. Hidden until hover.
-    zoomBar.style.cssText = "position:fixed;top:16px;z-index:1000;display:flex;align-items:center;gap:4px;background:#fff;border:2px solid #222;border-radius:6px;padding:3px 6px;font-family:system-ui,sans-serif;font-size:13px;box-shadow:0 3px 8px rgba(0,0,0,0.4);opacity:0;transition:opacity .2s;pointer-events:auto;";
+    zoomBar.className = "pdf-zoom-bar";
+    zoomBar.style.cssText = "position:fixed;top:16px;z-index:1000;opacity:0;transition:opacity .2s;pointer-events:auto;";
 
     const makeBtn = (sign) => {
-      const b = document.createElement("button");
-      b.textContent = "🔍"; // magnifier base
-      b.style.cssText = "position:relative;border:none;background:none;padding:2px 4px;cursor:pointer;font-size:18px;line-height:1;";
-      const overlay = document.createElement("span");
-      overlay.textContent = sign;
-      overlay.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-85%,-85%);font-size:10px;font-weight:bold;color:#000;pointer-events:none;";
-      b.appendChild(overlay);
-      b.onmouseover = () => (b.style.background = '#e8e8e8');
-      b.onmouseout = () => (b.style.background = 'none');
-      return b;
+      return OHControls.button(sign, { variant: "ghost", size: "sm", iconLabel: sign === "+" ? "Zoom in" : "Zoom out" });
     };
 
     const percentSpan = document.createElement("span");

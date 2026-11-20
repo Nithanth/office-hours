@@ -29,47 +29,46 @@
       '<div class="modal-content oh-blog-modal" role="dialog" aria-modal="true" aria-labelledby="blog-modal-title">' +
         '<div class="modal-header">' +
           '<h2 id="blog-modal-title" class="text-xl font-bold">Customize your blog</h2>' +
-          '<button type="button" class="modal-close-btn" aria-label="Close">&times;</button>' +
+          '<button ' + OHControls.buttonAttrs({"className": "modal-close-btn", "variant": "ghost", "size": "sm", "iconLabel": "Close"}) + ' type="button"  >&times;</button>' +
         '</div>' +
         '<form id="blog-customize-form" class="space-y-4">' +
           '<p id="blog-modal-subtitle" class="text-sm opacity-80"></p>' +
           '<div class="oh-blog-modal-grid">' +
             '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Audience</legend>' +
-              '<label><input type="radio" name="audience" value="technical" checked> Technical</label>' +
-              '<label><input type="radio" name="audience" value="mixed"> Mixed</label>' +
-              '<label><input type="radio" name="audience" value="layperson"> Layperson</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="audience" value="technical" checked> Technical</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="audience" value="mixed"> Mixed</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="audience" value="layperson"> Layperson</label>' +
             '</fieldset>' +
             '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Length</legend>' +
-              '<label><input type="radio" name="length" value="short"> Short (~600 w)</label>' +
-              '<label><input type="radio" name="length" value="medium" checked> Medium (~1500 w)</label>' +
-              '<label><input type="radio" name="length" value="long"> Long (~3000 w)</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="length" value="short"> Short (~600 w)</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="length" value="medium" checked> Medium (~1500 w)</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="length" value="long"> Long (~3000 w)</label>' +
             '</fieldset>' +
             '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Tone</legend>' +
-              '<label><input type="radio" name="tone" value="distill" checked> Distill.pub</label>' +
-              '<label><input type="radio" name="tone" value="casual"> Casual blog</label>' +
-              '<label><input type="radio" name="tone" value="lecture"> Lecture notes</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="tone" value="distill" checked> Distill.pub</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="tone" value="casual"> Casual blog</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="tone" value="lecture"> Lecture notes</label>' +
             '</fieldset>' +
             '<fieldset class="oh-blog-modal-fs">' +
               '<legend>Visual Theme</legend>' +
-              '<label><input type="radio" name="theme" value="indigo" checked> <span class="theme-dot" style="background:#6366f1;"></span> Indigo</label>' +
-              '<label><input type="radio" name="theme" value="emerald"> <span class="theme-dot" style="background:#10b981;"></span> Emerald</label>' +
-              '<label><input type="radio" name="theme" value="amber"> <span class="theme-dot" style="background:#f59e0b;"></span> Amber</label>' +
-              '<label><input type="radio" name="theme" value="rose"> <span class="theme-dot" style="background:#f43f5e;"></span> Rose</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="theme" value="indigo" checked> <span class="theme-dot" style="background:#6366f1;"></span> Indigo</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="theme" value="emerald"> <span class="theme-dot" style="background:#10b981;"></span> Emerald</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="theme" value="amber"> <span class="theme-dot" style="background:#f59e0b;"></span> Amber</label>' +
+              '<label><input ' + OHControls.fieldAttrs({"kind": "radio"}) + ' type="radio" name="theme" value="rose"> <span class="theme-dot" style="background:#f43f5e;"></span> Rose</label>' +
             '</fieldset>' +
           '</div>' +
           '<label class="block">' +
             '<span class="font-medium block mb-1" id="blog-extra-label">Additional instructions (optional)</span>' +
-            '<textarea name="extra" rows="3" maxlength="500" ' +
-              'class="oh-blog-modal-textarea" ' +
+            '<textarea ' + OHControls.fieldAttrs({"className": "oh-blog-modal-textarea"}) + ' name="extra" rows="3" maxlength="500" ' +
               'placeholder="e.g. emphasise reproducibility / keep it under 1000 words / no jargon"></textarea>' +
             '<small class="opacity-60 block mt-1"><span data-blog-extra-count>0</span>/<span data-blog-extra-max>500</span> chars</small>' +
           '</label>' +
           '<footer class="oh-blog-modal-footer">' +
-            '<button type="button" class="btn-secondary" data-action="cancel">Cancel</button>' +
-            '<button type="submit" class="btn-primary" data-action="submit">Generate blog</button>' +
+            '<button ' + OHControls.buttonAttrs({"className": "btn-secondary", "variant": "secondary", "size": "sm"}) + ' type="button"  data-action="cancel">Cancel</button>' +
+            '<button ' + OHControls.buttonAttrs({"className": "btn-primary", "variant": "primary", "size": "sm"}) + ' type="submit"  data-action="submit">Generate blog</button>' +
           '</footer>' +
         '</form>' +
       '</div>';
