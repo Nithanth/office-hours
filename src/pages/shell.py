@@ -18,7 +18,6 @@ from typing import Any
 
 from fasthtml.common import (
     A,
-    Button,
     Div,
     Head,
     I,
@@ -31,6 +30,7 @@ from fasthtml.common import (
     Title,
 )
 
+from pages.controls import IconButton
 from utils.static_assets import static_url
 
 # (label, href, key, fa icon, tooltip) — order is the nav order on every page.
@@ -150,9 +150,11 @@ def page_head(title: str, *extra: Any) -> Head:
         ),
         Script(src=_HTMX),
         Script(src=_HTMX_SSE),
+        Script(src=static_url("/static/js/controls.js"), defer=True),
         Script(src=static_url("/static/js/settings.js"), defer=True),
         *extra,
         Link(rel="stylesheet", href=static_url("/static/css/workspace.css")),
+        Link(rel="stylesheet", href=static_url("/static/css/controls.css")),
         Script(src=static_url("/static/js/workspace.js"), defer=True),
     )
 
@@ -260,22 +262,22 @@ def top_bar(active: str = "", *extra_controls: Any) -> Div:
         *nav_links(active),
         Div("", cls="top-bar-spacer", style="flex:1"),
         *extra_controls,
-        Button(
+        IconButton(
+            "Research Assistant",
             I(cls="fa-solid fa-comment-dots"),
             cls="oh-assistant-btn oh-tip oh-tip-below",
             type="button",
-            aria_label="Research Assistant",
             data_tip="Ask questions across your papers & reports",
             hx_get="/chat-modal?paper_id=global&title=Research%20Assistant",
             hx_target="#modal-container",
             hx_swap="innerHTML",
         ),
         Span(id="oh-auth-status", cls="top-auth-status"),
-        Button(
+        IconButton(
+            "Toggle dark mode",
             I(cls="fa-solid fa-moon"),
             id="oh-dark-toggle",
             cls="oh-theme-toggle",
-            aria_label="Toggle dark mode",
             type="button",
         ),
         cls="top-bar",

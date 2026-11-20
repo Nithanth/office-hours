@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
+from pages.controls import button_attrs
 from services.persistence.database import database_available, session_scope
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,7 @@ async def repro_modal(
   <div class="modal-content">
     <div class="modal-header">
       <h2 class="chat-modal-title">Can this be reproduced?</h2>
-      <button class="modal-close-btn" aria-label="Close modal"
+      <button {button_attrs('modal-close-btn', variant='ghost', size='sm')}  aria-label="Close modal"
         onclick="htmx.find('#modal-container').innerHTML = ''">&times;</button>
     </div>
     <div class="modal-body chat-log-container" id="repro-body"

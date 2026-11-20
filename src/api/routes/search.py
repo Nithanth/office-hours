@@ -16,6 +16,7 @@ import config as _cfg
 from api.deps import get_exa_client, get_llm_service, get_session_id, get_settings
 from config import Config as AppConfig
 from models.paper import Paper
+from pages.controls import field_attrs
 from pages.main_page import render_error_message, render_search_results
 from services.core import model_prefs
 from services.core.exa_client import ExaClient
@@ -741,7 +742,7 @@ def _paper_li_html(
         # always included via a hidden input (disabled fields are not submitted).
 
         selection_input_html = (
-            "<input type='checkbox' class='paper-select-checkbox pinned-checkbox' checked "
+            f"<input {field_attrs('paper-select-checkbox pinned-checkbox', kind='checkbox')} type='checkbox'  checked "
             "style='margin-right:5px; pointer-events:none;'>"
             f"<input type='hidden' name='selected_papers_json' value='{paper_json_escaped}'>"
             "<span class='pinned-label' style='font-size:0.85em;'>⭐</span>"
@@ -749,7 +750,7 @@ def _paper_li_html(
     else:
         # Regular paper - user-selectable checkbox
         selection_input_html = (
-            f"<input type='checkbox' class='paper-select-checkbox' style='margin-right:5px;' "
+            f"<input {field_attrs('paper-select-checkbox', kind='checkbox')} type='checkbox'  style='margin-right:5px;' "
             f"name='selected_papers_json' value='{paper_json_escaped}'>"
         )
 

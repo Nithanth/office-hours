@@ -4,6 +4,7 @@ import html
 from typing import Any
 from urllib.parse import quote, urlencode
 
+from pages.controls import button_attrs, field_attrs
 from pages.shell import workspace_rail
 
 
@@ -30,7 +31,7 @@ def topic_workspace(
     for index, paper in enumerate(papers[:8], 1):
         query = urlencode({"url": paper.url or "", "title": paper.title or "Paper"})
         sources.append(
-            f'<button type="button" class="workspace-source" '
+            f'<button {button_attrs("workspace-source", variant="surface", size="sm")} type="button"  '
             f'hx-get="/viewer/{quote(paper.paper_id, safe="")}?{esc(query)}" '
             'hx-target="#modal-container" hx-swap="innerHTML">'
             f'<span>{index:02}</span><span>{esc(paper.title or "Untitled paper")}</span>'
@@ -52,7 +53,7 @@ def topic_workspace(
         ("blog", "Blog"),
     ]
     buttons = "".join(
-        f'<button type="button" role="tab" id="tab-{key}" data-workspace-tab="{key}" '
+        f'<button {button_attrs(variant="tab", size="sm")} type="button" role="tab" id="tab-{key}" data-workspace-tab="{key}" '
         f'aria-selected="{str(key == "report").lower()}" aria-controls="workspace-{key}" '
         f'tabindex="{0 if key == "report" else -1}">{label}</button>'
         for key, label in tabs
@@ -63,11 +64,11 @@ def topic_workspace(
         <div class="workspace-breadcrumb"><a href="/topics">Workspace</a><span>/</span><span>Topic</span></div>
         <header class="workspace-topic-title"><h1>{esc(topic.title)}<span>_</span></h1>
         <p>{len(papers)} {"paper" if len(papers) == 1 else "papers"} · {report_count} report {"version" if report_count == 1 else "versions"} {notion_badge}</p></header>
-        <div class="workspace-topic-actions"><button type="button" class="btn-secondary"
+        <div class="workspace-topic-actions"><button {button_attrs('btn-secondary', size='sm')} type="button"
           hx-post="/topics/{tid}/report" hx-target="#topic-report-out" hx-swap="innerHTML" hx-disabled-elt="this">Update report</button>
-          <button type="button" class="btn-secondary" hx-get="/chat-modal?paper_id=topic&amp;topic_id={tid}&amp;title=Chat%20about%20this%20topic"
+          <button {button_attrs('btn-secondary', size='sm')} type="button"  hx-get="/chat-modal?paper_id=topic&amp;topic_id={tid}&amp;title=Chat%20about%20this%20topic"
             hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
-          <button type="button" class="btn-secondary" hx-post="/topics/{tid}/share" hx-target="#share-status" hx-swap="innerHTML">Share</button></div>
+          <button {button_attrs('btn-secondary', size='sm')} type="button"  hx-post="/topics/{tid}/share" hx-target="#share-status" hx-swap="innerHTML">Share</button></div>
         <div id="share-status" class="topic-meta">{share_html}</div>
         <div id="topic-report-out" aria-live="polite"></div>
         <div class="workspace-tabs" role="tablist" aria-label="Topic views">{buttons}</div>
@@ -78,8 +79,8 @@ def topic_workspace(
         </section>
         <section id="workspace-papers" role="tabpanel" aria-labelledby="tab-papers" class="workspace-panel" hidden>
           <div class="workspace-paper-heading"><h2>Papers (<span id="papers-count">{len(papers)}</span>)</h2>
-          <button type="button" class="btn-secondary" hx-post="/topics/{tid}/feed" hx-target="#feed-status" hx-swap="innerHTML">Check for new papers</button></div>
-          <label class="workspace-filter">Filter papers<input type="search" id="author-filter-input" placeholder="Title or author…"></label>
+          <button {button_attrs('btn-secondary', size='sm')} type="button"  hx-post="/topics/{tid}/feed" hx-target="#feed-status" hx-swap="innerHTML">Check for new papers</button></div>
+          <label class="workspace-filter">Filter papers<input {field_attrs()} type="search" id="author-filter-input" placeholder="Title or author…"></label>
           <div id="feed-status" class="topic-meta" aria-live="polite"></div><div id="topic-papers">{papers_html}</div>
         </section>
         <section id="workspace-map" role="tabpanel" aria-labelledby="tab-map" class="workspace-panel" hidden>

@@ -5,22 +5,20 @@ from __future__ import annotations
 from fasthtml.common import (
     H1,
     Body,
-    Button,
     Div,
     Form,
     Header,
     Html,
-    Input,
     Label,
     Link,
     Main,
     Option,
     P,
-    Select,
     Span,
 )
 
 import config as _cfg
+from pages.controls import Button, Input, Select
 from pages.shell import page_head, top_bar
 from utils.static_assets import static_url
 
@@ -69,7 +67,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
         *options,
         name=f"pin_{tier}",
         id=f"pin_{tier}",
-        style="min-width:220px;padding:6px 8px;border:1px solid var(--border,#444);border-radius:4px;background:var(--bg,#111);color:var(--fg,#eee);",
+        aria_label=f"{tier.capitalize()} model",
         onchange=(
             f"var c=document.getElementById('custom_{tier}');"
             "c.style.display=this.value==='__custom__'?'inline-block':'none';"
@@ -83,7 +81,9 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
         id=f"custom_{tier}",
         value=pinned_id if is_custom else "",
         placeholder="author/slug (e.g. anthropic/claude-opus-4.8)",
-        style=f"margin-left:8px;padding:6px 8px;border:1px solid var(--border,#444);border-radius:4px;background:var(--bg,#111);color:var(--fg,#eee);min-width:280px;display:{'inline-block' if is_custom else 'none'};",
+        aria_label=f"Custom {tier} model ID",
+        required=is_custom,
+        style=f"display:{'inline-block' if is_custom else 'none'};",
     )
     return Div(
         Label(
@@ -96,7 +96,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
                 style="opacity:0.7;font-size:0.85rem;margin-left:8px;",
             ),
         ),
-        Div(sel, custom_input, style="margin:6px 0 14px 0;"),
+        Div(sel, custom_input, cls="oh-field-row settings-model-fields"),
     )
 
 
@@ -166,6 +166,7 @@ def settings_page(
                     ),
                     Button(
                         "Save model preferences",
+                        variant="primary",
                         type="submit",
                         cls="btn-secondary",
                     ),
@@ -184,23 +185,24 @@ def settings_page(
                         name="openrouter_key",
                         placeholder="sk-or-…",
                         autocomplete="off",
-                        style="padding:6px 8px;border:1px solid var(--border,#444);border-radius:4px;background:var(--bg,#111);color:var(--fg,#eee);min-width:320px;",
+                        aria_label="OpenRouter API key",
                     ),
                     Button(
                         "Save key",
                         type="submit",
                         cls="btn-secondary",
-                        style="margin-left:8px;",
                     ),
                     method="post",
                     action="/settings/openrouter-key",
+                    cls="oh-field-row settings-key-fields",
                 ),
                 (
                     Form(
                         Button(
                             "Remove saved key",
                             type="submit",
-                            style="margin-top:10px;padding:6px 12px;background:transparent;color:#d9534f;border:1px solid #d9534f;border-radius:4px;cursor:pointer;",
+                            variant="danger",
+                            style="margin-top:10px;",
                         ),
                         method="post",
                         action="/settings/openrouter-key/delete",

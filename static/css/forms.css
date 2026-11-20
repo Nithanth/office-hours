@@ -2,17 +2,13 @@
 @import url("variables.css");
 
 /* Unified font for widgets */
-input, select, textarea, button { font-family: var(--oh-font-sans, Arial, sans-serif) !important; }
 
 /* Number input spinner recolour */
-html.oh-dark input[type="number"] {
-  background:var(--container-bg) !important; color:var(--fg); border:1px solid var(--container-border);
-}
+
 html.oh-dark input[type="number"]::-webkit-inner-spin-button,
 html.oh-dark input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: inner-spin-button !important;
 }
-html.oh-dark input[type="number"]:hover { background:var(--oh-elevated) !important; }
 
 /* Ask-LLM strip backgrounds */
 #ask-assistant-form, .ask-llm-subtitle, #ask-result-container { background:transparent !important; }
@@ -20,9 +16,9 @@ html.oh-dark input[type="number"]:hover { background:var(--oh-elevated) !importa
 /* Chat form layout and controls */
 form[hx-post='/chat'] { display:block; }
 
-.send-btn { padding:6px 10px; background:var(--oh-accent); color:#fff; border:1px solid var(--oh-accent-hover); border-radius:var(--oh-radius-sm,4px); cursor:pointer; }
-.send-btn:hover { background:var(--oh-accent-hover); }
-.stop-gen-btn-global { padding:6px 10px; background:transparent; color:var(--oh-red); border:1px solid var(--oh-red); border-radius:4px; cursor:pointer; display:none; }
+.stop-gen-btn-global {
+  display:none;
+}
 
 /* Office Hours spinner */
 html.oh-dark .oh-spinner { border-color:var(--container-border); border-top-color:var(--oh-accent); }
@@ -42,7 +38,9 @@ html.oh-dark #report-display-area { background:transparent !important; }
 
 /* Checkbox accent in dark mode */
 input.paper-select-checkbox { vertical-align: middle; margin-top:0.1em; width:13px; height:13px; }
-html.oh-dark input.paper-select-checkbox { accent-color:var(--oh-accent); }
+html.oh-dark input.paper-select-checkbox {
+  accent-color:var(--oh-accent);
+}
 
 /* ------------------------------------------------------------------ */
 /* Choices.js compact styling – make multi-select resemble native select */

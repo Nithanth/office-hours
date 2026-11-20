@@ -38,12 +38,12 @@ def test_every_app_document_has_one_shared_head_and_chrome(render, active):
     ]
     links = [a.get("href", "") for tag, a in elements if tag == "link"]
     assert links.count(FONT_STYLESHEET) == 1
-    for asset in ("variables", "base", "top-bar", "workspace"):
+    for asset in ("variables", "base", "top-bar", "workspace", "controls"):
         assert sum(f"/static/css/{asset}.css?v=" in href for href in links) == 1
     scripts = [a["src"] for tag, a in elements if tag == "script" and "src" in a]
     assert scripts.count("https://unpkg.com/htmx.org@1.9.12") == 1
     assert scripts.count("https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js") == 1
-    for asset in ("settings", "workspace"):
+    for asset in ("settings", "workspace", "controls"):
         assert sum(f"/static/js/{asset}.js?v=" in src for src in scripts) == 1
     assert sum(a.get("id") == "modal-container" for _, a in elements) == 1
     selected = [

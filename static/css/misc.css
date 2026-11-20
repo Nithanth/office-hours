@@ -14,7 +14,11 @@ html.oh-dark .copy-icon-btn.copied { color:#16a34a !important; }
 
 #report-content { display:flex; flex-direction:column; }
 #report-content .copy-icon-btn { align-self:flex-end; margin-top:auto; padding-top:0.75rem; }
-.copy-btn { position:absolute; top:6px; right:6px; }
+.copy-btn {
+  position:absolute;
+  top:6px;
+  right:6px;
+}
 .hidden { display:none!important; }
 
 /* lightweight dialog styling for notes download */
@@ -326,27 +330,6 @@ html.oh-dark .domain-pill:has(input:checked) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: none;
-  border-radius: 999px;
-  padding: 10px 20px;
-  background: var(--oh-accent);
-  color: #fff;
-  font-family: var(--oh-font-sans, inherit);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--oh-speed, 140ms) var(--oh-ease, ease);
-}
-.oh-search-go:hover {
-  background: var(--oh-accent-hover);
-}
-html.oh-dark .oh-search-go {
-  background: #2563eb;
-  color: #fff;
-}
-html.oh-dark .oh-search-go:hover {
-  background: #1d4ed8;
-  color: #fff;
 }
 
 /* "Try" example chips — only relevant before the first search */
@@ -371,23 +354,6 @@ html.oh-dark .oh-search-go:hover {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-muted, #888);
-}
-.oh-hero-chip {
-  font-family: var(--oh-font-mono, monospace);
-  font-size: 0.72rem;
-  letter-spacing: 0.2px;
-  padding: 5px 14px;
-  border: 1px solid var(--container-border, #888);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--fg-muted, #888);
-  cursor: pointer;
-  transition: border-color var(--oh-speed, 140ms) var(--oh-ease, ease),
-    color var(--oh-speed, 140ms) var(--oh-ease, ease);
-}
-.oh-hero-chip:hover {
-  border-color: var(--oh-accent);
-  color: var(--oh-accent);
 }
 
 /* Post-search: masthead compacts to a bar */
@@ -421,23 +387,17 @@ html.oh-dark .oh-search-go:hover {
 /* Working state — while htmx is mid-request the Search button becomes
    a mono "thinking" with a blinking block cursor, not a spinner. */
 #paper-search-form.htmx-request .oh-search-go {
-  font-size: 0;
   gap: 0;
   pointer-events: none;
-  background: var(--oh-accent-hover);
 }
 #paper-search-form.htmx-request .oh-search-go i {
   display: none;
 }
 #paper-search-form.htmx-request .oh-search-go::before {
   content: "thinking";
-  font-family: var(--oh-font-mono, monospace);
-  font-size: 0.78rem;
 }
 #paper-search-form.htmx-request .oh-search-go::after {
-  content: "\258a"; /* ▊ */
-  font-family: var(--oh-font-mono, monospace);
-  font-size: 0.78rem;
+  content: "\258a";
   margin-left: 5px;
   animation: oh-caret-blink 1s steps(1) infinite;
 }
@@ -450,8 +410,6 @@ html.oh-dark .oh-search-go:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
-  padding: 6px 14px;
 }
 
 /* ================================================================
@@ -524,9 +482,7 @@ html.oh-dark .search-card textarea:focus {
   .oh-search-field {
     padding-left: 12px;
   }
-  .oh-search-go {
-    padding: 10px 14px;
-  }
+
   .oh-hero-title {
     font-size: 1.4rem;
   }
@@ -598,7 +554,6 @@ li:hover .paper-actions,.paper-actions:focus-within{opacity:1;}
 .oh-search-options>summary::before{content:"▸";transition:transform var(--oh-speed,140ms) var(--oh-ease,ease);}
 .oh-search-options[open]>summary::before{transform:rotate(90deg);}
 .oh-search-options>summary::-webkit-details-marker{display:none;}
-.oh-opt-select{font-size:0.8rem;padding:2px 6px;background:var(--container-bg);color:var(--fg);border:1px solid var(--container-border,#aaa);border-radius:4px;}
 
 /* Home research surface — stats + continue + for-you (owners with data) */
 .oh-surface{margin-top:1rem;padding:10px 14px;border:1px solid var(--container-border,#ddd);border-radius:8px;background:var(--container-bg,#fff);font-size:0.82rem;}

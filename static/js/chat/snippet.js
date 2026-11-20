@@ -56,15 +56,8 @@ function _readDocSelection() {
 
 function _ensureFab() {
   if (_fab) return _fab;
-  _fab = document.createElement("button");
-  _fab.type = "button";
-  _fab.className = "snippet-fab";
-  _fab.textContent = "→ ask about this";
-  _fab.style.cssText =
-    "position:fixed;z-index:1200;display:none;padding:5px 10px;" +
-    "font-family:var(--mono,monospace);font-size:12px;cursor:pointer;" +
-    "background:var(--oh-accent,#0d6e63);color:#fff;border:1px solid #222;" +
-    "border-radius:4px;box-shadow:2px 2px 0 #222;";
+  _fab = OHControls.button("→ ask about this", { className: "snippet-fab", variant: "primary", size: "sm" });
+  _fab.style.cssText = "position:fixed;z-index:1200;display:none;";
   _fab.addEventListener("mousedown", (e) => e.preventDefault()); // keep selection
   _fab.addEventListener("click", () => {
     const modal = _viewerModal();
@@ -115,10 +108,7 @@ function _insertSnippet(modal, text) {
       preview.length > 42 ? "\u2026" : ""
     }\u201D \u00B7 ${text.length} chars`;
 
-    const x = document.createElement("button");
-    x.type = "button";
-    x.className = "oh-snippet-x";
-    x.textContent = "\u00D7";
+    const x = OHControls.button("\u00D7", { className: "oh-snippet-x", variant: "ghost", size: "sm", iconLabel: "Remove quoted passage" });
     x.addEventListener("click", () => chip.remove());
 
     chip.appendChild(label);

@@ -24,10 +24,7 @@ export function getModalParts(el) {
   if (!isPdfViewer) {
     stopBtn = modal[_stopBtnSym];
     if (!stopBtn) {
-      stopBtn = document.createElement("button");
-      stopBtn.type = "button";
-      stopBtn.textContent = "Stop";
-      stopBtn.className = "stop-btn text-sm px-2 py-1 rounded bg-red-600 text-white";
+      stopBtn = OHControls.button("Stop", { className: "stop-btn", variant: "danger", size: "sm" });
       stopBtn.addEventListener("click", () => {
         const activeStream = modal.querySelector("[sse-connect]");
         if (activeStream) {
@@ -82,12 +79,7 @@ export function setControlsEnabled(modal, enabled) {
 export function addCopyButtons(container) {
   container.querySelectorAll("pre").forEach((pre) => {
     if (pre.querySelector(".copy-btn")) return; // already added
-    const btn = document.createElement("button");
-    btn.className = "copy-btn hidden";
-    btn.type = "button";
-    btn.title = "Copy code";
-    btn.setAttribute("aria-label", "Copy code block");
-    btn.textContent = "📋";
+    const btn = OHControls.button("📋", { className: "copy-btn hidden", variant: "ghost", size: "sm", iconLabel: "Copy code block" });
     btn.addEventListener("click", () => {
       navigator.clipboard.writeText(pre.innerText).then(() => {
         btn.textContent = "✔";

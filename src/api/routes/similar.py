@@ -17,6 +17,7 @@ from loguru import logger
 
 from api.deps import get_exa_client
 from models.paper import Paper
+from pages.controls import field_attrs
 from services.core.exa_client import ExaClient
 from services.limits import friendly_error_message
 from utils.rate_limit import limiter
@@ -132,8 +133,8 @@ def _render_similar_fragment(papers: list[Paper], anchor_title: str) -> str:
         items.append(
             f"<li style='margin-bottom:8px;padding:4px 0;list-style:none;'>"
             f"<label style='display:flex;align-items:flex-start;gap:6px;cursor:pointer;'>"
-            f"<input type='checkbox' name='selected_papers_json' value='{paper_json}' "
-            f"class='paper-select-checkbox similar-paper-checkbox' style='margin-top:3px;'>"
+            f"<input {field_attrs('paper-select-checkbox similar-paper-checkbox', kind='checkbox')} "
+            f"type='checkbox' name='selected_papers_json' value='{paper_json}' style='margin-top:3px;'>"
             f"<span>"
             f"<a href='{html.escape(url_str)}' target='_blank' rel='noopener noreferrer' "
             f"style='font-size:0.9rem;'>{html.escape(title_str)}</a><br>"

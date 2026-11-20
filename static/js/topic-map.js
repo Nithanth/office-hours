@@ -16,8 +16,9 @@
     return node;
   };
   const button = (text, handler, className) => {
-    const node = el("button", className, text);
-    node.type = "button";
+    const node = OHControls.button(text, { className, variant: "surface", size: "sm" });
+    // Plot points are data marks, not toolbar controls: keep their encoded size.
+    if (className === "topic-map-point") node.className = className;
     node.addEventListener("click", handler);
     return node;
   };

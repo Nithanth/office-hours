@@ -8,11 +8,9 @@ from typing import Any, Optional
 
 # FastHTML components used by this page
 from fasthtml.components import (
-    BUTTON,
     EM,
     FORM,
     H2,
-    INPUT,
     LI,
     UL,
     A,
@@ -28,7 +26,6 @@ from fasthtml.components import (
     Option,
     P,
     Script,
-    Select,
     Span,
     Summary,
 )
@@ -37,6 +34,9 @@ from pydantic import BaseModel
 
 import config  # Your project's config module
 from models.paper import Paper  # Your Paper Pydantic model
+from pages.controls import Button as BUTTON
+from pages.controls import ButtonLink, IconButton, Select
+from pages.controls import Input as INPUT
 from pages.shell import page_head, top_bar, workspace_rail
 from services.chat.chat_components import ChatBubble, CitationCard
 from utils.date_utils import human_date
@@ -113,7 +113,9 @@ def render_report_config_form(
                 type="submit",
                 id="generate-report-btn-top",
                 cls="oh-search-go",
-                style="margin-right:8px;padding:8px 16px;",
+                style="margin-right:8px;",
+                size="sm",
+                variant="primary",
             ),
             hx_post="/generate-report-incremental",
             hx_disabled_elt="#generate-report-btn-top",
@@ -190,6 +192,7 @@ def _render_paper_item(
                 cls="paper-select-checkbox pinned-checkbox",
                 checked=True,
                 style="margin-right:5px; pointer-events:none;",
+                size="sm",
             ),
             INPUT(
                 type="hidden",
@@ -210,6 +213,7 @@ def _render_paper_item(
                 value=paper_json_str,
                 cls="paper-select-checkbox",
                 style="margin-right: 5px;",
+                size="sm",
             )
         ]
         selection_label = Span()
@@ -298,12 +302,11 @@ def _render_paper_item(
         # No truncation — the modal dialog scrolls for long abstracts
 
     toggle_btn = (
-        BUTTON(
+        IconButton(
+            "Show abstract",
             I(cls="fa-solid fa-chevron-down"),
             type="button",
             cls="abstract-toggle-btn",
-            title="Show abstract",
-            style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:6px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
             **{"data-abstract": html.escape(abstract_text)} if abstract_text else {},
         )
         if abstract_text
@@ -324,12 +327,11 @@ def _render_paper_item(
             bib_year = date_val.split("-")[0]
         except Exception as exc:
             logger.debug("bib_year_format_failed", paper_id=paper.id, err=str(exc))
-    bibtex_btn = BUTTON(
+    bibtex_btn = IconButton(
+        "Copy BibTeX citation",
         I(cls="fa-solid fa-quote-right"),
         type="button",
         cls="bibtex-copy-btn",
-        title="Copy BibTeX citation",
-        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
         **{
             "data-bib-title": paper.title or "",
             "data-bib-authors": "; ".join(clean_authors),
@@ -339,12 +341,11 @@ def _render_paper_item(
     )
 
     # "Save to library" bookmark button
-    save_btn = BUTTON(
+    save_btn = IconButton(
+        "Save to library",
         I(cls="fa-regular fa-bookmark"),
         type="button",
         cls="save-paper-btn",
-        title="Save to library",
-        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
         **{
             "data-paper-id": paper.id,
             "data-paper-title": paper.title or "",
@@ -354,12 +355,11 @@ def _render_paper_item(
     )
 
     # "More like this" button — find similar papers
-    similar_btn = BUTTON(
+    similar_btn = IconButton(
+        "Find similar papers",
         I(cls="fa-solid fa-wand-magic-sparkles"),
         type="button",
         cls="similar-btn",
-        title="Find similar papers",
-        style="background:transparent;border:none;cursor:pointer;font-size:0.7rem;margin-left:4px;padding:2px 4px;color:var(--fg);opacity:0.6;vertical-align:middle;",
         **{
             "data-paper-url": str(paper.url) if paper.url else "",
             "data-paper-title": paper.title or "",
@@ -512,7 +512,7 @@ def render_search_results(
                         id="sort-date-btn",
                         cls="btn-secondary",
                         title="Sort by date (newest first)",
-                        style="font-size:0.8rem;padding:3px 8px;",
+                        size="sm",
                     ),
                     BUTTON(
                         "Select All",
@@ -520,7 +520,7 @@ def render_search_results(
                         id="select-all-btn",
                         cls="btn-secondary",
                         title="Select all papers",
-                        style="font-size:0.8rem;padding:3px 8px;",
+                        size="sm",
                     ),
                     BUTTON(
                         "Deselect All",
@@ -528,7 +528,7 @@ def render_search_results(
                         id="deselect-all-btn",
                         cls="btn-secondary",
                         title="Deselect all papers",
-                        style="font-size:0.8rem;padding:3px 8px;",
+                        size="sm",
                     ),
                     style="display:inline-flex;gap:6px;align-items:center;",
                 ),
@@ -537,7 +537,9 @@ def render_search_results(
                         type="text",
                         id="author-filter-input",
                         placeholder="Filter papers…",
-                        style="font-size:0.85rem;padding:3px 6px;width:14rem;",
+                        style="width:14rem;",
+                        size="sm",
+                        aria_label="Filter papers",
                     ),
                     style="display:inline-flex;gap:6px;align-items:center;margin-left:12px;",
                 ),
@@ -601,7 +603,9 @@ def render_search_results(
                             type="submit",
                             id="generate-report-btn",
                             cls="oh-search-go",
-                            style="margin-left:0.25rem;padding:8px 16px;",
+                            style="margin-left:0.25rem;",
+                            size="sm",
+                            variant="primary",
                         ),
                         style="margin-top:0.25rem;",
                     ),
@@ -635,6 +639,8 @@ def loading_indicator_component() -> Div:
             type="button",
             id="oh-cancel-search",
             cls="oh-cancel-btn",
+            size="sm",
+            variant="ghost",
         ),
         id="loading-indicator",
         cls="htmx-indicator",
@@ -773,6 +779,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                 name="search_query",
                                 placeholder="a topic, 'papers by Sitzmann', or an arXiv link",
                                 value=page_data.current_query or "",
+                                size="sm",
+                                aria_label="Search papers",
                             ),
                             BUTTON(
                                 I(cls="fa-solid fa-magnifying-glass"),
@@ -783,6 +791,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                 id="search-papers-btn",
                                 cls="oh-search-go",
                                 onclick="document.getElementById('oh-loading-text').textContent='Searching the PaperVerse...'",
+                                size="sm",
+                                variant="primary",
                             ),
                             cls="oh-search-field",
                         ),
@@ -796,6 +806,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                     type="button",
                                     cls="oh-hero-chip",
                                     data_q=q,
+                                    size="sm",
+                                    variant="ghost",
                                 )
                                 for q in [
                                     "implicit neural representations",
@@ -825,6 +837,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                     id="aud-select",
                                     name="audience",
                                     cls="oh-opt-select",
+                                    size="sm",
+                                    aria_label="Report audience",
                                 ),
                                 cls="oh-tip oh-tip-below",
                                 data_tip="Who the report is written for",
@@ -844,16 +858,19 @@ def home_page(page_data: SharedPageData) -> Html:
                                     id="model-select",
                                     name="model_key",
                                     cls="oh-opt-select",
+                                    size="sm",
+                                    aria_label="Report model",
                                 ),
                                 cls="oh-tip oh-tip-below",
                                 data_tip="Which model runs at each tier. Pinned in Settings.",
                             ),
                             Div(
-                                A(
+                                ButtonLink(
                                     "Model defaults",
                                     href="/settings",
                                     cls="btn-secondary",
-                                    style="font-size:0.75rem;padding:5px 11px;",
+                                    style="",
+                                    size="sm",
                                 ),
                             ),
                             Div(
@@ -865,6 +882,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                     id="size-select",
                                     name="summary_size",
                                     cls="oh-opt-select",
+                                    size="sm",
+                                    aria_label="Report detail",
                                 ),
                                 cls="oh-tip oh-tip-below",
                                 data_tip="Report depth. S is concise, L is detailed.",
@@ -885,7 +904,9 @@ def home_page(page_data: SharedPageData) -> Html:
                                         name="start_published_date",
                                         placeholder="YYYY-MM-DD",
                                         autocomplete="off",
-                                        style="font-size:0.8rem;padding:2px 4px;width:9rem;",
+                                        style="width:9rem;",
+                                        size="sm",
+                                        aria_label="Published after",
                                     ),
                                 ),
                                 # Custom dropdown-checkbox for sources
@@ -896,7 +917,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                             "All sources ▾",
                                             type="button",
                                             id="sources-dropdown-btn",
-                                            style="font-size:0.8rem;padding:2px 8px;cursor:pointer;background:var(--container-bg);border:1px solid #aaa;border-radius:3px;min-width:9rem;text-align:left;",
+                                            style="min-width:9rem;text-align:left;",
+                                            size="sm",
                                         ),
                                         Div(
                                             *[
@@ -907,6 +929,7 @@ def home_page(page_data: SharedPageData) -> Html:
                                                         value=dom,
                                                         id=f"src-{dom.split('.')[0]}",
                                                         cls="source-checkbox",
+                                                        size="sm",
                                                     ),
                                                     Span(
                                                         f" {label}",
@@ -938,6 +961,7 @@ def home_page(page_data: SharedPageData) -> Html:
                                         id="deep-search-toggle",
                                         value="1",
                                         style="margin:0;",
+                                        size="sm",
                                     ),
                                     cls="oh-tip oh-tip-below",
                                     data_tip="Slower but broader. Exa splits the query and runs more retrieval rounds.",
@@ -1037,10 +1061,11 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Html:
                         "reports, and blog-style synthesis.",
                         cls="welcome-tagline",
                     ),
-                    A(
+                    ButtonLink(
                         Span("Continue with Google", cls="welcome-cta-label"),
                         href=sign_in_href,
                         cls="welcome-cta",
+                        variant="primary",
                         rel="nofollow",
                     ),
                     Div(

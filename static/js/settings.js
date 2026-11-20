@@ -297,19 +297,15 @@
     let themeBtn = document.getElementById('oh-dark-toggle');
     let clearBtn = document.getElementById('clear-prefs-btn');
     if (!themeBtn) {
-      themeBtn = document.createElement('button');
+      themeBtn = OHControls.button('', { variant: 'ghost', size: 'sm', iconLabel: 'Toggle dark mode' });
       themeBtn.id = 'oh-dark-toggle';
-      themeBtn.style.border = 'none';
-      themeBtn.style.background = 'transparent';
       const parentFlex = audSel?.parentElement;
       if (parentFlex) parentFlex.appendChild(themeBtn);
       if (!clearBtn) {
-        clearBtn = document.createElement('button');
+        clearBtn = OHControls.button('Clear', { variant: 'ghost', size: 'sm' });
         clearBtn.id = 'clear-prefs-btn';
         clearBtn.textContent = 'Clear';
         clearBtn.style.marginRight = '0.75rem';
-        clearBtn.style.border = 'none';
-        clearBtn.style.background = 'transparent';
         if (parentFlex) parentFlex.appendChild(clearBtn);
       }
     }
@@ -589,13 +585,13 @@
                   '<div><strong>' + escapeHtml(name) + '</strong></div>' +
                   '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
                   '<a href="/reports">My Reports</a>' +
-                  '<button type="button" id="logout-btn" class="btn-secondary">Log out</button>' +
+                  '<button ' + OHControls.buttonAttrs({"className": "btn-secondary", "variant": "secondary", "size": "sm"}) + ' type="button" id="logout-btn" >Log out</button>' +
                   '</div>';
                 document.getElementById('logout-btn')?.addEventListener('click', () => {
                   fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
                 });
               } else {
-                accountEl.innerHTML = '<a class="btn-secondary" href="/auth/google/login">Sign in with Google</a>';
+                accountEl.innerHTML = '<a ' + OHControls.buttonAttrs({className: 'btn-secondary', variant: 'primary'}) + ' href="/auth/google/login">Sign in with Google</a>';
               }
             })
             .catch(() => {
@@ -624,10 +620,10 @@
                       '<details style="margin-top:8px;">' +
                       '<summary style="cursor:pointer;font-size:0.8rem;color:var(--fg-muted,#888);">Manage</summary>' +
                       '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">' +
-                      '<button type="button" id="notion-refresh-destinations" class="btn-secondary">' +
+                      '<button ' + OHControls.buttonAttrs({"className": "btn-secondary", "variant": "secondary", "size": "sm"}) + ' type="button" id="notion-refresh-destinations" >' +
                       (data.target_type === 'none' ? 'Pick where to sync…' : 'Change sync location…') +
                       '</button>' +
-                      '<button type="button" id="notion-disconnect" class="btn-secondary">Disconnect</button>' +
+                      '<button ' + OHControls.buttonAttrs({"className": "btn-secondary", "variant": "secondary", "size": "sm"}) + ' type="button" id="notion-disconnect" >Disconnect</button>' +
                       '</div><div id="notion-destinations" style="margin-top:8px;"></div>' +
                       '</details>'
                     : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
@@ -641,7 +637,7 @@
                   '<div style="font-size:0.85rem;color:var(--fg-muted,#888);margin-bottom:8px;">' +
                   'Syncing your library to your own Notion workspace needs an account.' +
                   '</div>' +
-                  '<a class="btn-secondary" href="/auth/google/login?next=' +
+                  '<a ' + OHControls.buttonAttrs({className: 'btn-secondary', variant: 'primary'}) + ' href="/auth/google/login?next=' +
                   encodeURIComponent(window.location.pathname) +
                   '">Sign in with Google</a>' +
                   '</div>';
@@ -656,7 +652,7 @@
                   '<div style="margin-top:6px;font-size:0.85rem;color:var(--fg-muted,#888);">' +
                   detail +
                   '</div>' +
-                  '<div style="margin-top:8px;"><a class="btn-secondary" href="/integrations/notion/connect">Connect Notion</a></div>';
+                  '<div style="margin-top:8px;"><a ' + OHControls.buttonAttrs({className: 'btn-secondary', size: 'sm'}) + ' href="/integrations/notion/connect">Connect Notion</a></div>';
               }
             })
             .catch(() => {
@@ -729,9 +725,9 @@
               '<em>Office Hours Topics</em>, under whichever page or database you pick:' +
               '</div>' +
               data.destinations.map(dest =>
-                '<button type="button" class="notion-destination" data-id="' + escapeHtml(dest.id) +
+                '<button ' + OHControls.buttonAttrs({"className": "notion-destination", "variant": "secondary", "size": "sm"}) + ' type="button"  data-id="' + escapeHtml(dest.id) +
                 '" data-type="' + escapeHtml(dest.type) + '" ' +
-                'style="display:block;width:100%;text-align:left;margin:3px 0;padding:5px 8px;border:1px solid var(--container-border,#aaa);border-radius:4px;background:var(--container-bg);color:var(--fg);cursor:pointer;font-size:0.8rem;">' +
+                'style="display:block;width:100%;text-align:left;margin:3px 0;">' +
                 (dest.type === 'database' ? '🗃 ' : '📄 ') + escapeHtml(dest.title) +
                 '</button>'
               ).join('');

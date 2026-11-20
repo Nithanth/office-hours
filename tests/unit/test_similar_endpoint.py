@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 from models.paper import Paper
 
 
@@ -48,6 +50,27 @@ class TestRenderSimilarFragment:
         result = _render_similar_fragment(papers, anchor_title="Test")
 
         assert "1,500" in result
+
+    def test_bulk_selection_hooks_share_one_class_attribute(self):
+        from api.routes.similar import _render_similar_fragment
+
+        inputs = []
+
+        class InputParser(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag == "input":
+                    inputs.append(attrs)
+
+        InputParser().feed(_render_similar_fragment([_make_paper()], "Original"))
+        checkbox = next(a for a in inputs if ("type", "checkbox") in a)
+        classes = [value for key, value in checkbox if key == "class"]
+        # Browsers keep the first duplicate attribute, so dictionary parsing
+        # alone could hide a lost behavior class in later attributes.
+        assert len(classes) == 1
+        assert {"oh-choice", "paper-select-checkbox", "similar-paper-checkbox"} <= set(
+            classes[0].split()
+        )
+        assert ("name", "selected_papers_json") in checkbox
 
     def test_shows_authors_compact(self):
         from api.routes.similar import _render_similar_fragment

@@ -208,11 +208,6 @@ html.oh-dark .workspace-home-sheet #search_query {
   box-shadow: none;
 }
 .workspace-home-sheet .oh-search-go {
-  background: var(--oh-accent);
-  color: var(--container-bg);
-  border-radius: 3px;
-  padding: 10px 16px;
-  font-size: 12px;
   white-space: nowrap;
 }
 .workspace-home-sheet .oh-hero-chips {
@@ -221,11 +216,6 @@ html.oh-dark .workspace-home-sheet #search_query {
   gap: 8px;
 }
 .workspace-home-sheet .oh-hero-chip {
-  font-size: 11px;
-  border: 0;
-  background: transparent;
-  color: var(--fg-muted);
-  padding: 4px 0;
   margin-right: 12px;
 }
 .workspace-home-sheet .search-form-filters {
@@ -233,11 +223,7 @@ html.oh-dark .workspace-home-sheet #search_query {
   gap: 15px;
   flex-wrap: wrap;
 }
-.workspace-home-sheet .oh-opt-select {
-  font-size: 11px;
-  background: var(--container-bg);
-  border-color: var(--container-border);
-}
+
 .workspace-home-sheet .oh-options-summary {
   font-size: 11px;
   color: var(--fg-muted);
@@ -314,12 +300,7 @@ html.oh-dark .workspace-home-sheet #search_query {
   flex-wrap: wrap;
   margin: 16px 0;
 }
-.workspace-topic-actions .btn-secondary {
-  font-size: 11px;
-  border-color: var(--container-border);
-  padding: 6px 11px;
-  border-radius: 3px;
-}
+
 .workspace-tabs {
   display: flex;
   gap: 23px;
@@ -330,19 +311,8 @@ html.oh-dark .workspace-home-sheet #search_query {
 }
 .workspace-tabs button {
   flex-shrink: 0;
-  font: 12px var(--oh-font-sans);
-  color: var(--fg-muted);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  padding: 13px 0 16px;
-  cursor: pointer;
-  border-radius: 0;
 }
-.workspace-tabs button[aria-selected="true"] {
-  color: var(--oh-accent);
-  border-color: var(--oh-accent);
-}
+
 .workspace-panel {
   padding-top: 28px;
   min-width: 0;
@@ -491,12 +461,7 @@ html.oh-dark .workspace-source:hover:not(:disabled) {
   display: block;
   width: min(100%, 400px);
   box-sizing: border-box;
-  padding: 10px;
   margin-top: 7px;
-  background: transparent;
-  border: 1px solid var(--container-border);
-  border-radius: 3px;
-  color: var(--fg);
 }
 .topic-workspace .paper-row {
   border-width: 0 0 1px;
@@ -513,12 +478,7 @@ html.oh-dark .workspace-source:hover:not(:disabled) {
 .topic-workspace .paper-row .pm {
   font-size: 11px;
 }
-.topic-workspace .lib-status-select {
-  font-size: 11px;
-  background: var(--container-bg);
-  color: var(--fg);
-  border-color: var(--container-border);
-}
+
 .topic-map-heading {
   display: flex;
   align-items: center;
@@ -534,9 +494,7 @@ html.oh-dark .workspace-source:hover:not(:disabled) {
   color: var(--fg-muted);
   margin-top: 7px;
 }
-.topic-map-heading button {
-  font-size: 11px;
-}
+
 .topic-map-groups {
   display: flex;
   gap: 9px;
@@ -715,16 +673,7 @@ html.oh-dark .topic-map-key .done {
   gap: 12px;
   margin-top: 10px;
 }
-.topic-map-row-actions button,
-html.oh-dark .topic-map-row-actions button,
-html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
-  font-size: 10px;
-  background: transparent;
-  color: var(--oh-accent);
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
+
 .topic-map-chat {
   border-top: 1px solid var(--container-border);
   padding: 18px;
@@ -739,9 +688,7 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
   margin: 10px 0;
   line-height: 1.8;
 }
-.topic-map-chat button {
-  font-size: 11px;
-}
+
 .pdf-viewer {
   background: var(--container-bg) !important;
   color: var(--fg);
@@ -815,21 +762,9 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
 }
 .reader-controls button,
 .reader-controls a {
-  font: 11px var(--oh-font-sans);
-  border: 0;
-  background: transparent;
-  color: var(--fg-muted);
-  padding: 3px;
-  cursor: pointer;
   text-decoration: none;
 }
-.reader-controls button[aria-pressed="true"] {
-  color: var(--oh-accent);
-}
-.reader-controls button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+
 .reader-focused .viewer-grid {
   grid-template-columns: minmax(0, 1fr) !important;
 }
@@ -870,13 +805,7 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
   font: 12px var(--oh-font-mono);
   margin: 0;
 }
-.reader-tools-header button {
-  border: 0;
-  background: transparent;
-  color: var(--fg);
-  cursor: pointer;
-  font-size: 20px;
-}
+
 .reader-tools-body {
   padding: 18px;
 }
@@ -928,12 +857,7 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
   font-size: 14px;
   line-height: 1.9;
 }
-.pdf-viewer .chat-textarea {
-  font-size: 13px;
-  background: var(--container-bg);
-  color: var(--fg);
-  border-color: var(--container-border);
-}
+
 @media (max-width: 1100px) {
   .top-bar {
     padding: 0 18px;
@@ -1072,31 +996,22 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
     padding: 10px 3px;
     width: 100%;
   }
-  .workspace-home-sheet .oh-search-go {
-    font-size: 0;
-    padding: 12px;
-  }
+
   .workspace-home-sheet .oh-search-go i {
     font-size: 14px;
   }
-  .workspace-home-sheet .oh-hero-chip {
-    font-size: 10px;
-  }
+
   .workspace-home-sheet .search-form-filters {
     gap: 12px;
   }
   .workspace-tabs {
     gap: 20px;
   }
-  .workspace-tabs button {
-    font-size: 11px;
-  }
+
   .workspace-topic-actions {
     gap: 8px;
   }
-  .workspace-topic-actions .btn-secondary {
-    font-size: 10px;
-  }
+
   .workspace-report h1 {
     font-size: 32px;
   }
@@ -1158,10 +1073,7 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
   .reader-controls > div {
     gap: 8px;
   }
-  .reader-controls button,
-  .reader-controls a {
-    font-size: 10px;
-  }
+
   .reader-controls a {
     display: none;
   }
@@ -1173,34 +1085,15 @@ html.oh-dark .topic-map-row-actions button:hover:not(:disabled) {
     width: 285px;
     max-width: calc(100vw - 36px);
   }
-  .pdf-viewer .chat-textarea {
-    font-size: 16px;
-  }
+
 }
 @media (prefers-reduced-motion: reduce) {
   body:has(.search-card) {
     animation: none;
   }
 }
-/* Override the legacy global dark-button chrome for workspace controls. */
-html.oh-dark .workspace-tabs button,
-html.oh-dark .workspace-tabs button:hover:not(:disabled) {
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  color: var(--fg-muted);
-}
-html.oh-dark .workspace-tabs button[aria-selected="true"],
-html.oh-dark .workspace-tabs button[aria-selected="true"]:hover:not(:disabled) {
-  border-bottom-color: var(--oh-accent);
-  color: var(--oh-accent);
-}
 html.oh-dark .topic-map-plot button,
-html.oh-dark .topic-map-plot button:hover:not(:disabled),
-html.oh-dark .topic-map-row > button,
-html.oh-dark .topic-map-row > button:hover:not(:disabled),
-html.oh-dark .reader-controls button,
-html.oh-dark .reader-controls button:hover:not(:disabled) {
+html.oh-dark .topic-map-plot button:hover:not(:disabled) {
   background: transparent;
   border: 0;
 }

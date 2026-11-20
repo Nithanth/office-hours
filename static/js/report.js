@@ -292,19 +292,19 @@ function openNotesDialog(onConfirm) {
 
            <label class="block" style="display:block;">
              File name:<br>
-             <input name="fname" type="text" value="report_notes" required style="width:100%;margin-top:4px;">
+             <input ${OHControls.fieldAttrs({})} name="fname" type="text" value="report_notes" required style="width:100%;margin-top:4px;">
            </label>
 
            <fieldset style="margin-top:12px;">
              <legend>Format</legend>
-             <label style="margin-right:8px;"><input type="radio" name="fmt" value="md" checked> .md</label>
-             <label style="margin-right:8px;"><input type="radio" name="fmt" value="txt"> .txt</label>
-             <label><input type="radio" name="fmt" value="docx"> .docx</label>
+             <label style="margin-right:8px;"><input ${OHControls.fieldAttrs({"kind": "radio"})} type="radio" name="fmt" value="md" checked> .md</label>
+             <label style="margin-right:8px;"><input ${OHControls.fieldAttrs({"kind": "radio"})} type="radio" name="fmt" value="txt"> .txt</label>
+             <label><input ${OHControls.fieldAttrs({"kind": "radio"})} type="radio" name="fmt" value="docx"> .docx</label>
            </fieldset>
 
            <menu style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;">
-             <button value="cancel">Cancel</button>
-             <button value="ok" class="primary">Generate</button>
+             <button ${OHControls.buttonAttrs({"variant": "secondary", "size": "sm"})} value="cancel">Cancel</button>
+             <button ${OHControls.buttonAttrs({"className": "primary", "variant": "primary", "size": "sm"})} value="ok" >Generate</button>
            </menu>
          </form>
        </dialog>`

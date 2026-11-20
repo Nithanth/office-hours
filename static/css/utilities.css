@@ -132,18 +132,9 @@ html.oh-dark a, html.oh-dark a:visited { color: var(--oh-accent); }
 
 /* Preserve white nav links */
 nav a, nav a:visited { color:#fff; }
-
 /* --- Generic button dark-mode palette ---------------------------------- */
-html.oh-dark button { background:var(--oh-elevated); color:var(--fg); border:1px solid var(--oh-border-strong); }
-html.oh-dark button:hover:not(:disabled) { background:var(--oh-elevated-hover); }
 
 /* Inputs / text areas to match dark grey */
-html.oh-dark input, html.oh-dark textarea, html.oh-dark select {
-  background:var(--oh-input-bg); color:var(--fg); border:1px solid var(--oh-border-strong);
-}
-html.oh-dark input:hover, html.oh-dark textarea:hover, html.oh-dark select:hover {
-  background:var(--oh-elevated);
-}
 
 /* Ensure colour utilities adapt in dark mode when used on standalone elements */
 html.oh-dark .text-blue-500 { color: var(--oh-accent); }
@@ -193,32 +184,15 @@ html, body { overflow-x: clip; }
   letter-spacing: 0.1em;
   color: var(--fg-muted, #888);
 }
-.pager button {
-  background: none;
-  border: none;
-  color: var(--oh-blue, #0074d9);
-  cursor: pointer;
-  padding: 4px 6px;
-  font-size: 0.85rem;
-}
+
 .pager button:hover:not(:disabled) {
   text-decoration: underline;
 }
 .pager button.active {
-  font-weight: 600;
   text-decoration: underline;
-}
-.pager button:disabled {
-  color: var(--fg-muted);
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* Remove browser focus ring/yellow shadow on pager buttons */
-.pager button:focus {
-  outline: none;
-  box-shadow: none;
-}
 
 /* Remove focus flash on paper titles and list items */
 #papers-list a:focus,
@@ -260,46 +234,13 @@ html, body { overflow-x: clip; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.82rem;
-  padding: 6px 14px;
-  border: 1px solid var(--container-border, #888);
-  border-radius: 6px;
-  /* lift off the card/page background — buttons shouldn't blend in */
-  background: #fff;
-  color: var(--fg, #222);
-  cursor: pointer;
   text-decoration: none;
-}
-.btn-secondary:hover:not(:disabled),
-.oh-search-btn:hover:not(:disabled) {
-  border-color: var(--accent, #4a9eff);
-  color: var(--accent, #4a9eff);
-}
-html.oh-dark .btn-secondary,
-html.oh-dark .oh-search-btn {
-  background: var(--oh-elevated);
-  color: var(--fg);
-  border-color: var(--oh-border-strong);
-}
-html.oh-dark .btn-secondary:hover:not(:disabled),
-html.oh-dark .oh-search-btn:hover:not(:disabled) {
-  background: var(--oh-elevated-hover);
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* Cancel button inside the in-flight search indicator. */
 .oh-cancel-btn {
-  font-size: 0.75rem;
-  padding: 3px 12px;
   margin-left: 10px;
-  border: 1px solid var(--container-border, #888);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--fg-muted, #888);
-  cursor: pointer;
 }
-.oh-cancel-btn:hover { color: var(--fg, #eee); }
 
 /* Caption under the cluster-viz scatter — explains what the chart means. */
 .cluster-viz-caption {
@@ -481,20 +422,8 @@ html.oh-dark .oh-search-btn:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.4rem 0.8rem;
-  border: 1px solid var(--container-border, #d5d0c8);
-  border-radius: 6px;
-  background: var(--bg-card, #fff);
-  color: var(--fg);
-  font-size: 0.85rem;
   text-decoration: none;
-  cursor: pointer;
   white-space: nowrap;
-}
-.lib-header button:hover,
-.lib-header a:hover {
-  border-color: var(--oh-accent);
-  color: var(--oh-accent);
 }
 
 .lib-tabs {
@@ -535,23 +464,9 @@ html.oh-dark .oh-search-btn:hover:not(:disabled) {
   flex-wrap: wrap;
 }
 .lib-notion-pick select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--container-border, #d5d0c8);
-  border-radius: 6px;
-  background: var(--bg-card, #fff);
-  color: var(--fg);
-  font-size: 0.85rem;
   min-width: 16rem;
 }
-.lib-notion-pick button {
-  padding: 0.4rem 0.8rem;
-  border: none;
-  border-radius: 6px;
-  background: var(--oh-accent);
-  color: #fff;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
+
 .lib-notion-connect {
   display: inline-block;
   margin-top: 0.6rem;
@@ -602,23 +517,13 @@ html.oh-dark .oh-search-btn:hover:not(:disabled) {
 }
 .lib-actions button,
 .lib-actions a {
-  color: var(--oh-accent);
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 0.82rem;
-  cursor: pointer;
   text-decoration: none;
 }
 .lib-actions button:hover,
-.lib-actions a:hover { text-decoration: underline; }
+.lib-actions a:hover {
+  text-decoration: underline;
+}
 .lib-status-select {
   margin-left: auto;
-  padding: 0.25rem 0.4rem;
-  border: 1px solid var(--container-border, #d5d0c8);
-  border-radius: 6px;
-  background: var(--bg-card, #fff);
-  color: var(--fg);
-  font-size: 0.8rem;
 }
 .lib-remove-btn { color: var(--oh-red, #c0392b) !important; }
