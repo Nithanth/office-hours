@@ -1061,10 +1061,11 @@ def welcome_page(page_data: SharedPageData, next_url: str = "/") -> Html:
                         "reports, and blog-style synthesis.",
                         cls="welcome-tagline",
                     ),
-                    A(
+                    ButtonLink(
                         Span("Continue with Google", cls="welcome-cta-label"),
                         href=sign_in_href,
                         cls="welcome-cta",
+                        variant="primary",
                         rel="nofollow",
                     ),
                     Div(

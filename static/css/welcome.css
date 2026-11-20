@@ -47,47 +47,6 @@
   opacity: 0.85;
 }
 
-.welcome-cta {
-  /* Big Google-style sign-in pill. We don't ship the Google brand SVG
-   * (avoids a separate asset round-trip); the label is enough. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: 999px;
-  background: #1a73e8; /* Google blue */
-  color: #ffffff;
-  font-weight: 600;
-  font-size: 0.95rem;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
-  transition: transform 60ms ease, box-shadow 120ms ease, background 120ms ease;
-  user-select: none;
-}
-.welcome-cta:hover {
-  background: #1664c1;
-  box-shadow: 0 6px 16px rgba(26, 115, 232, 0.35);
-  transform: translateY(-1px);
-}
-.welcome-cta:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.2);
-}
-.welcome-cta:focus-visible {
-  outline: 3px solid rgba(26, 115, 232, 0.45);
-  outline-offset: 2px;
-}
-
-html.oh-dark .welcome-cta {
-  background: #4285f4;
-  box-shadow: 0 4px 14px rgba(66, 133, 244, 0.35);
-}
-html.oh-dark .welcome-cta:hover {
-  background: #5a95f5;
-}
-
 .welcome-features {
   display: flex;
   flex-direction: column;

@@ -591,7 +591,7 @@
                   fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
                 });
               } else {
-                accountEl.innerHTML = '<a class="btn-secondary" href="/auth/google/login">Sign in with Google</a>';
+                accountEl.innerHTML = '<a ' + OHControls.buttonAttrs({className: 'btn-secondary', variant: 'primary'}) + ' href="/auth/google/login">Sign in with Google</a>';
               }
             })
             .catch(() => {
@@ -637,7 +637,7 @@
                   '<div style="font-size:0.85rem;color:var(--fg-muted,#888);margin-bottom:8px;">' +
                   'Syncing your library to your own Notion workspace needs an account.' +
                   '</div>' +
-                  '<a class="btn-secondary" href="/auth/google/login?next=' +
+                  '<a ' + OHControls.buttonAttrs({className: 'btn-secondary', variant: 'primary'}) + ' href="/auth/google/login?next=' +
                   encodeURIComponent(window.location.pathname) +
                   '">Sign in with Google</a>' +
                   '</div>';

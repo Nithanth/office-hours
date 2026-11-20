@@ -6,7 +6,7 @@ import pytest
 from fasthtml.common import I, Option, to_xml
 
 from pages.controls import Button, ButtonLink, IconButton, Input, Select, button_attrs
-from pages.main_page import SharedPageData, home_page
+from pages.main_page import SharedPageData, home_page, welcome_page
 from pages.settings_page import settings_page
 
 
@@ -84,10 +84,22 @@ def test_fields_preserve_values_selections_and_native_choice_inputs():
     assert "type" not in link.items[0][1]
 
 
+def test_welcome_cta_keeps_native_auth_link():
+    link = next(
+        element
+        for tag, element in Elements(welcome_page(SharedPageData(), "/library")).items
+        if tag == "a" and "welcome-cta" in element.get("class", "").split()
+    )
+    assert link["href"] == "/auth/google/login?next=/library"
+    assert "oh-button--primary" in link["class"].split()
+    assert "type" not in link
+
+
 @pytest.mark.parametrize(
     "render",
     [
         lambda: home_page(SharedPageData()),
+        lambda: welcome_page(SharedPageData()),
         lambda: settings_page(pins={"fast": "provider/custom"}, openrouter_key=None),
     ],
 )
