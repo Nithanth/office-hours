@@ -939,7 +939,6 @@ html.oh-dark .topic-map-key .done {
     padding: 6px;
   }
   .top-bar-link span,
-  .top-bar-link[aria-label="Reports"],
   .top-auth-status {
     display: none;
   }

@@ -211,9 +211,9 @@ async def generate_report_incremental(  # noqa: PLR0913
     request: Request,
     original_query_for_report: str = Form(...),  # noqa: B008
     selected_papers_json: list[str] = Form(...),  # noqa: B008
-    audience_type: str = Form(...),  # noqa: B008
+    audience_type: str = Form("technical"),  # noqa: B008
     summary_size: str = Form(...),  # noqa: B008
-    selected_model_key: str = Form(...),  # noqa: B008
+    selected_model_key: str = Form(""),  # noqa: B008
     is_url_input: bool = Form(False),  # noqa: B008
     forced_topic: bool = Form(False),  # noqa: B008
     author_constraint: str = Form(""),  # noqa: B008
@@ -240,14 +240,10 @@ async def generate_report_incremental(  # noqa: PLR0913
     if _METRICS_ENABLED and REPORT_REQ is not None:
         REPORT_REQ.inc()
 
-    # --- Validate before caching ---
-    def _is_blank(val: str | None) -> bool:
-        return (val or "").strip() == ""
-
-    if any(_is_blank(v) for v in [audience_type, summary_size, selected_model_key]):
+    if not summary_size.strip():
         error_html = (
             "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"
-            "Please select Audience, Model and Report Size before generating a report."
+            "Please select a report size before generating a report."
             "</div>"
         )
         return HTMLResponse(content=error_html)
@@ -260,7 +256,10 @@ async def generate_report_incremental(  # noqa: PLR0913
         )
         return HTMLResponse(content=error_html)
 
-    resolved_model_key = config.resolve_model_key(selected_model_key)
+    audience_type = audience_type.strip() or "technical"
+    resolved_model_key = config.resolve_model_key(
+        selected_model_key.strip() or config.DEFAULT_MODEL_KEY
+    )
     if resolved_model_key is None:
         error_html = (
             "<div class='alert-error' style='color:#d9534f;margin-top:1rem;'>"

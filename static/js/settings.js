@@ -33,29 +33,10 @@
     const selects = [audSel, modelSel];
     hydrateTopAuthStatus();
 
-    const placeholderClass = 'placeholder';
-
-    const setPlaceholderState = el => {
-      if (!el) return;
-      if (!el.value) {
-        el.classList.add(placeholderClass);
-      } else {
-        el.classList.remove(placeholderClass);
-      }
-    };
-
-    // ensure initial class assignment before restoring localStorage
-    selects.forEach(el => el && el.classList.add(placeholderClass));
-
     // Debug: indicate script executed
     console.debug('[oh] settings.js initialized');
 
-    // Do NOT restore past Audience/Model choices – always start at placeholder.
-
-    // Sync hidden inputs once after restore
     window.syncHidden();
-
-    selects.forEach(setPlaceholderState);
 
     // Initialise flatpickr date picker — allowInput lets users type manually
     if (window.flatpickr) {
@@ -101,6 +82,7 @@
         }
       }
       menu.addEventListener('change', updateLabel);
+      updateLabel();
       console.debug('[oh] sources dropdown initialised');
     })();
 
@@ -111,7 +93,6 @@
         document.dispatchEvent(
           new CustomEvent('oh:settings-changed', { detail: { id: el.id, value: el.value } }),
         );
-        setPlaceholderState(el);
         window.syncHidden();
       });
     });
@@ -152,6 +133,7 @@
 
       const toast = document.createElement('div');
       toast.className = 'oh-toast';
+      toast.setAttribute('role', 'status');
       toast.textContent = msg;
       document.body.appendChild(toast);
 
@@ -171,17 +153,10 @@
 
     document.addEventListener('submit', evt => {
       console.debug('[oh] submit intercept');
-      let form = evt.target;
+      const form = evt.target;
       if (!(form instanceof HTMLFormElement)) return;
 
-      // Workaround for nested forms: sometimes the outer wrapper (results-and-report-form)
-      // receives the submit event while the *inner* actual report form carries hx-post.
-      // Determine if this submission is ultimately destined for the incremental report endpoint.
-      const isReportForm =
-        form.getAttribute('hx-post') === '/generate-report-incremental' ||
-        form.querySelector('[hx-post="/generate-report-incremental"]');
-
-      if (!isReportForm) return; // ignore unrelated forms
+      if (form.getAttribute('hx-post') !== '/generate-report-incremental') return;
 
       // Reset per-page chat transcript cache so chats start fresh for this report.
       if (window.__ohChatCache && typeof window.__ohChatCache.clear === 'function') {
@@ -190,7 +165,7 @@
       }
 
       // Ensure hidden inputs reflect latest toolbar state
-      if (typeof window.syncHidden === 'function') window.syncHidden();
+      _doSyncHidden();
 
       // ------------------------------------------------------------------
       // Clone selected paper inputs into the form so FastAPI sees them.
@@ -243,30 +218,12 @@
       // Client-side validation – block submit & toast missing parts.
       // ------------------------------------------------------------------
 
-      const audVal = audSel?.value || '';
-      const modelVal = modelSel?.value || '';
-
-      const isPlaceholder = v => !v || /^\s*$/.test(v) || v.startsWith('Select ');
-
-      // Report length now lives in the (sticky) top bar — outside the
-      // form — so query document, not the form. The submit's hx_include
-      // posts its value via the hidden #size-select selector.
       const sizeVal = document.querySelector('#size-select')?.value || '';
-
-      const papersCount = paperSources.length;
-
-      if (isPlaceholder(audVal) || isPlaceholder(modelVal) || isPlaceholder(sizeVal) || papersCount === 0) {
+      const hasPapers = form.querySelector('input[name="selected_papers_json"]');
+      if (!sizeVal || !hasPapers) {
         evt.preventDefault();
         evt.stopPropagation();
-
-        const missing = [];
-        if (isPlaceholder(audVal)) missing.push('Audience');
-        if (isPlaceholder(modelVal)) missing.push('Model');
-        if (isPlaceholder(sizeVal)) missing.push('Report Size');
-        if (papersCount === 0) missing.push('≥1 paper');
-
-        console.debug('[oh] showToast:', `Please select ${missing.join(', ')}.`);
-        showToast(`Please select: ${missing.join(', ')}.`);
+        showToast(!hasPapers ? 'Select at least one paper to generate a report.' : 'Select a report size.');
         return;
       }
     }, true); // capture phase to run before HTMX grabs the event
@@ -367,8 +324,6 @@
     // Re-sync after HTMX swaps
     document.addEventListener('htmx:afterSwap', evt => {
       if (typeof syncHidden === 'function') syncHidden();
-      setPlaceholderState(document.getElementById('aud-select'));
-      setPlaceholderState(document.getElementById('model-select'));
 
       // Re-apply saved report size after new form injected
       restoreSummarySize();
@@ -397,8 +352,7 @@
         // No localStorage persistence now; just reset selects.
         selects.forEach(el => {
           if (el) {
-            el.value = '';
-            setPlaceholderState(el);
+            el.selectedIndex = 0;
           }
         });
         window.syncHidden();

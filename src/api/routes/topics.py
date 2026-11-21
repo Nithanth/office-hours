@@ -156,7 +156,16 @@ async def topics_page(request: Request) -> HTMLResponse:
     """Library landing — topics are the product unit, so this is home base."""
     owner = _owner_id(request)
     if not database_available():
-        raise HTTPException(status_code=503, detail="Database unavailable")
+        return HTMLResponse(
+            _shell(
+                "Topics",
+                '<h1>My topics</h1><div class="empty-state-card">'
+                '<strong>Topics are unavailable in this demo.</strong>'
+                '<p>You can still search for papers and generate reports from the results.</p>'
+                '<a href="/">New search</a></div>',
+                rail_topics=[],
+            )
+        )
     from services.auth.session import get_auth_user_id
     from services.persistence.repositories import (
         feed_new_counts,

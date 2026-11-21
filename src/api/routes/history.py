@@ -85,7 +85,14 @@ def _history_shell(items_html: str, topics: list) -> str:
 async def report_history(request: Request) -> HTMLResponse:
     user_id = _owner_id(request)
     if not database_available():
-        raise HTTPException(status_code=503, detail="Report history is not configured.")
+        return HTMLResponse(
+            _history_shell(
+                '<div class="empty-state-card"><strong>Report history is unavailable in this demo.</strong>'
+                '<p>You can still generate and read reports from search results.</p>'
+                '<a href="/">New search</a></div>',
+                [],
+            )
+        )
 
     from services.persistence.repositories import list_reports, list_topics
 

@@ -128,29 +128,6 @@ window.__OH_MODULES_ACTIVE = true;
 console.debug("[oh] main.js loaded (ESM)");
 
 // ---------------------------------------------------------------------------
-// Clear ?search_query param from URL after results render (was inline <script>)
-// ---------------------------------------------------------------------------
-
-document.body.addEventListener("htmx:afterSwap", (evt) => {
-  const tgt = evt.target;
-  if (tgt && tgt.id === "papers-list") {
-    try {
-      // Only strip the legacy ?search_query= param — fragment responses push
-      // their own pseudo-URLs (/results?q=, /authors?q=, /author/<id>) so Back
-      // restores the right view; clobbering them with "/" would collapse
-      // every history entry into one cache key.
-      if (window.location.search.includes("search_query=")) {
-        history.replaceState(null, "", "/");
-      }
-    } catch (_) {
-      // noop
-    }
-  }
-});
-
-console.debug("[oh] main.js history clean listener wired");
-
-// ---------------------------------------------------------------------------
 // Sort by date & filter by author (client-side, on search results)
 // ---------------------------------------------------------------------------
 
@@ -179,14 +156,19 @@ console.debug("[oh] main.js history clean listener wired");
     const query = (input ? input.value : "").toLowerCase().trim();
     const ul = getPapersList();
     if (ul) {
+      let matches = false;
       ul.querySelectorAll("li").forEach((li) => {
-        if (!query) {
-          delete li.dataset.filtered;
-          return;
-        }
         const hay = `${li.dataset.title || ""} ${li.dataset.authors || ""}`;
-        li.dataset.filtered = hay.includes(query) ? "0" : "1";
+        const match = hay.includes(query);
+        li.dataset.filtered = match ? "0" : "1";
+        matches ||= match;
       });
+      const empty = document.getElementById("papers-filter-empty");
+      if (empty) empty.hidden = matches;
+      for (const id of ["select-all-btn", "generate-report-btn"]) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = !matches;
+      }
     }
     // Topic pages list papers as .paper-row divs (no pager) — plain
     // textContent filtering on title + author meta, and keep the
@@ -243,7 +225,9 @@ console.debug("[oh] main.js history clean listener wired");
     if (ev.target.closest("#select-all-btn")) {
       document
         .querySelectorAll(".paper-select-checkbox:not(.pinned-checkbox)")
-        .forEach((cb) => (cb.checked = true));
+        .forEach((cb) => {
+          cb.checked = !cb.closest('li[data-filtered="1"]');
+        });
     }
     if (ev.target.closest("#deselect-all-btn")) {
       document
