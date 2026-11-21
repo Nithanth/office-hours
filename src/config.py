@@ -77,6 +77,7 @@ class Config(BaseSettings):
     VERSION: str = "0.1.0"
     YEAR: int = Field(default_factory=lambda: datetime.datetime.now(datetime.UTC).year)
     DEBUG: bool = False
+    DEV_FRAME_ANCESTORS: str = ""
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "info"
