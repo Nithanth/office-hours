@@ -618,6 +618,7 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
             author_constraint=(
                 author_pick.name if constraint_active and author_pick else ""
             ),
+            clear_report=request.method == "POST",
         )
         # Constraint chip / notice sits above any intent banner — it
         # describes the whole result set.

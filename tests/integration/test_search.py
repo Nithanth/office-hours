@@ -20,6 +20,28 @@ def test_search_paper_flow(client):
 
 
 @pytest.mark.integration
+def test_search_results_url_rebuilds_the_report_form(client):
+    search = client.post(
+        "/search",
+        data={
+            "search_query": "transformer models",
+            "num_results": 3,
+            "start_published_date": "2020-01-01",
+        },
+        headers={"HX-Request": "true"},
+    )
+    response = client.get(search.headers["HX-Push-Url"])
+
+    assert response.status_code == 200
+    assert "Example Paper One" in response.text
+    assert 'value="transformer models"' in response.text
+    assert 'value="2020-01-01"' in response.text
+    assert '<div id="results-and-report-form">' in response.text
+    assert response.text.count('id="report-display-area"') == 1
+    assert 'hx-post="/generate-report-incremental"' in response.text
+
+
+@pytest.mark.integration
 def test_search_invalid_date(client):
     resp = client.post(
         "/search",

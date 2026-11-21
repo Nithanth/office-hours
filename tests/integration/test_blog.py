@@ -292,14 +292,11 @@ def test_regenerate_blog_report_id_requires_auth(client: TestClient) -> None:
 
 
 def test_reports_page_anonymous_not_auth_gated(client: TestClient) -> None:
-    """GET /reports is owner-keyed, not auth-gated.
-
-    Anonymous sessions list their own reports, so the request reaches the
-    database check (503 with no DB configured) rather than 401ing.
-    """
+    """Anonymous users can open the Reports page in demo mode."""
 
     resp = client.get("/reports")
-    assert resp.status_code == 503
+    assert resp.status_code == 200
+    assert "Report history is unavailable in this demo." in resp.text
 
 
 def test_reports_api_anonymous_not_auth_gated(client: TestClient) -> None:

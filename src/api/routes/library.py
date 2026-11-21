@@ -1079,7 +1079,15 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     if not owner_id:
         raise HTTPException(status_code=400, detail="No session")
     if not database_available():
-        raise HTTPException(status_code=503, detail="Library is not configured.")
+        return HTMLResponse(
+            _library_shell(
+                '<h1>My saved papers</h1><div class="empty-state-card">'
+                '<strong>Saving papers is unavailable in this demo.</strong>'
+                '<p>You can still search for papers and open them from the results.</p>'
+                '<a href="/">Search papers</a></div>',
+                [],
+            )
+        )
 
     if status and status not in SavedPaper.READING_STATUSES:
         status = None
@@ -1108,7 +1116,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     elif status:
         items = (
             '<div class="empty-state-card"><strong>Nothing here yet.</strong>'
-            "<p>No papers with this status. Pick another tab above, or add "
+            "<p>No papers with this status. Choose another status above, or add "
             "papers from a search.</p></div>"
         )
     else:

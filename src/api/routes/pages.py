@@ -87,6 +87,12 @@ async def get_home(
                         exc, "Could not retrieve results. Try again later."
                     )
 
+    return await _render_home(request, page_data)
+
+
+async def _render_home(
+    request: Request, page_data: SharedPageData, status_code: int = 200
+) -> HTMLResponse:
     # Recent topics for the "Your topics" strip on the landing view
     if database_available():
         try:
@@ -106,13 +112,56 @@ async def get_home(
             logger.warning("home_topics_strip_failed", error=str(exc))
 
     # Prepend a standards-mode doctype to avoid browser Quirks Mode.
-    return HTMLResponse(f"<!DOCTYPE html>{str(home_page(page_data=page_data))}")
+    return HTMLResponse(
+        f"<!DOCTYPE html>{str(home_page(page_data=page_data))}",
+        status_code=status_code,
+    )
+
+
+@router.get("/results", response_class=HTMLResponse)
+async def saved_search(  # noqa: PLR0913
+    request: Request,
+    q: str = "",
+    date: str | None = None,
+    n: int | None = None,
+    mode: str = "auto",
+    domains: str = "",
+    deep: str | None = None,
+    settings: AppConfig = Depends(get_settings),  # noqa: B008
+) -> HTMLResponse:
+    """Rebuild a search from the parameters stored in its results URL."""
+    if not q.strip() or (settings.REQUIRE_LOGIN and not get_auth_user_id(request)):
+        return await get_home(request, search_query=None, settings=settings)
+
+    from api.routes.search import handle_search
+
+    sources = [domain for domain in domains.split(",") if domain]
+    fragment = await handle_search(
+        request,
+        search_query=q,
+        start_published_date=date,
+        num_results=n,
+        mode=mode,
+        include_domains=sources or None,
+        deep_search=deep,
+        settings=settings,
+    )
+    return await _render_home(
+        request,
+        SharedPageData(
+            current_query=q,
+            search_markup=fragment.body.decode(),
+            search_date=date,
+            search_domains=sources,
+            deep_search=deep == "1",
+        ),
+        status_code=fragment.status_code,
+    )
 
 
 # Pseudo-URLs pushed by HTMX fragment responses so each view gets its own
 # history entry (and cache key). A real GET — refresh, shared link — has no
 # view state to rebuild, so it renders the home page rather than 404.
-@router.get("/results", response_class=HTMLResponse)
 @router.get("/authors", response_class=HTMLResponse)
 @router.get("/answer", response_class=HTMLResponse)
 @router.get("/author/{author_id}", response_class=HTMLResponse)

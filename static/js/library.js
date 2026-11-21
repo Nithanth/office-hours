@@ -17,6 +17,8 @@
       }
       btn.style.opacity = saved ? "1" : "0.6";
       btn.title = saved ? "Saved to library. Click to remove." : "Save to library";
+      btn.setAttribute("aria-label", btn.title);
+      btn.setAttribute("aria-pressed", String(Boolean(saved)));
     });
   }
 
@@ -49,6 +51,7 @@
       body.url = btn.dataset.paperUrl || "";
       body.authors = btn.dataset.paperAuthors || "";
     }
+    btn.disabled = true;
     try {
       const r = await fetch(endpoint, {
         method: "POST",
@@ -56,16 +59,23 @@
         body: new URLSearchParams(body).toString(),
       });
       const j = await r.json();
-      if (j.ok && savedIds) {
-        if (isSaved) savedIds.delete(paperId);
-        else savedIds.add(paperId);
-        markSaved();
-        if (window.showToast) {
-          window.showToast(isSaved ? "Removed from library" : "Saved to library");
-        }
+      if (!r.ok || !j.ok) {
+        window.showToast?.(
+          j.detail === "Library not configured"
+            ? "Saving papers is unavailable in this demo."
+            : "Could not update your library. Try again."
+        );
+        return;
       }
+      savedIds ??= new Set();
+      if (isSaved) savedIds.delete(paperId);
+      else savedIds.add(paperId);
+      markSaved();
+      window.showToast?.(isSaved ? "Removed from library" : "Saved to library");
     } catch {
-      /* offline — leave button as-is */
+      window.showToast?.("Could not update your library. Try again.");
+    } finally {
+      btn.disabled = false;
     }
   });
 })();
