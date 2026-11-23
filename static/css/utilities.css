@@ -319,13 +319,6 @@ html, body { overflow-x: clip; }
 }
 .empty-state-card strong { color: var(--fg); display: block; margin-bottom: 0.4rem; }
 .empty-state-card a { color: var(--oh-accent); }
-.report-wrap {
-  width: 100%;
-  box-sizing: border-box;
-  max-width: 1000px;
-  margin: 1.1rem auto 2rem;
-  padding: 0 1rem;
-}
 
 /* ================================================================
    Library page — .lib-* components (header, tabs, notion card, items)
