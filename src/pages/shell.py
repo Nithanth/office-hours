@@ -159,12 +159,6 @@ def page_head(title: str, *extra: Any) -> Head:
     )
 
 
-def nav_links_html(active: str = "") -> str:
-    """Nav anchor markup — used by both the f-string shell and the
-    FastHTML top_bar (same output, so every page's nav is identical)."""
-    return "\n".join(str(link) for link in nav_links(active))
-
-
 def top_bar_html(active: str = "", extra_html: str = "") -> str:
     """Full top-bar markup (brand + nav + auth status + dark toggle)."""
     return str(top_bar(active, NotStr(extra_html)))
