@@ -407,104 +407,10 @@
       });
     }
 
-    /* =====================================================================
-     * Page snapshot – persist minimal state across normal reloads
-     * ===================================================================== */
-
-    const SNAP_KEY = 'ohSnapshot';
-
-    function saveSnapshot(ev) {
-      try {
-        // If user initiated a hard reload (Shift key), skip saving snapshot.
-        if (ev && ev.shiftKey) {
-          sessionStorage.removeItem(SNAP_KEY);
-          return;
-        }
-      } catch (_) {
-        /* ignore */
-      }
-
-      try {
-        const resultsEl = document.getElementById('search-results-container');
-        if (!resultsEl || !resultsEl.children.length) {
-          sessionStorage.removeItem(SNAP_KEY);
-          return; // nothing to save
-        }
-
-        const snapshot = {
-          html: resultsEl.innerHTML,
-          scrollY: window.scrollY,
-          selectedIds: Array.from(document.querySelectorAll('.paper-select-checkbox:checked'))
-            .map(cb => cb.closest('li')?.dataset.paperId)
-            .filter(Boolean),
-          timestamp: Date.now(), // for future expiry if needed
-        };
-        sessionStorage.setItem(SNAP_KEY, JSON.stringify(snapshot));
-        console.debug('[oh] snapshot saved');
-      } catch (e) {
-        console.warn('[oh] snapshot save failed', e);
-      }
-    }
-
-    const HARD_FLAG = 'ohHardReload';
-
-    function restoreSnapshot() {
-      try {
-        // Respect hard reload flag set by main.js – skip restoration entirely.
-        const hardReload = sessionStorage.getItem(HARD_FLAG) === '1';
-        if (hardReload) {
-          sessionStorage.removeItem(HARD_FLAG);
-          sessionStorage.removeItem(SNAP_KEY);
-          return false;
-        }
-
-        const raw = sessionStorage.getItem(SNAP_KEY);
-        if (!raw) return false;
-        const snap = JSON.parse(raw);
-
-        // Only restore when we are still on a results page – i.e. the query field
-        // contains text or search params include `search_query=`. Prevents showing
-        // stale papers on a fresh homepage load/hard refresh.
-        const queryPresent = location.search.includes('search_query=') ||
-          (document.getElementById('search_query')?.value.trim() ?? '').length > 0;
-        if (!queryPresent) {
-          sessionStorage.removeItem(SNAP_KEY);
-          return false;
-        }
-
-        const resultsEl = document.getElementById('search-results-container');
-        if (!resultsEl) return false;
-
-        resultsEl.innerHTML = snap.html;
-
-        // Re-apply checkbox selections
-        snap.selectedIds?.forEach(id => {
-          const li = document.querySelector(`li[data-paper-id="${id}"]`);
-          const cb = li?.querySelector('.paper-select-checkbox');
-          if (cb) cb.checked = true;
-        });
-
-        // Restore scroll
-        requestAnimationFrame(() => window.scrollTo(0, snap.scrollY || 0));
-
-        console.debug('[oh] snapshot restored');
-        return true;
-      } catch (e) {
-        console.warn('[oh] snapshot restore failed', e);
-        return false;
-      }
-    }
-
-    // Snapshot disabled – we always start fresh on reload.
-    sessionStorage.removeItem(SNAP_KEY);
-
-    // Clear snapshot on brand-new search
+    // Clear previous search results immediately so the user sees a blank slate.
     document.body.addEventListener('htmx:beforeRequest', e => {
       const path = e.detail?.requestConfig?.path || '';
       if (path.startsWith('/search')) {
-        sessionStorage.removeItem(SNAP_KEY);
-
-        // Clear previous search results immediately so the user sees a blank slate
         const container = document.getElementById('search-results-container');
         if (container) container.innerHTML = '';
       }
