@@ -66,7 +66,6 @@
     button,
     buttonClasses,
     buttonAttrs,
-    fieldClasses,
     fieldAttrs,
   });
 })();
