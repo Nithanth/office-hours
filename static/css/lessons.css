@@ -1,0 +1,20 @@
+.lesson-studio {max-width:1120px;margin:2.5rem auto 5rem;padding:0 1rem;color:var(--text-color,inherit)}
+.lesson-studio header {margin-bottom:2rem}
+.lesson-studio h1 {font-family:Georgia,serif;font-weight:500;font-size:clamp(2.5rem,5vw,4.2rem);letter-spacing:-.055em;margin:0}
+.lesson-studio h2 {font-size:1.35rem;margin:0 0 1rem}
+.lesson-layout {display:grid;grid-template-columns:minmax(230px,.82fr) minmax(0,1.5fr);gap:1.3rem;align-items:start}
+.lesson-panel {border:1px solid #89938e70;border-radius:14px;padding:clamp(1rem,3vw,2rem)}
+.lesson-studio label {display:grid;gap:.4rem;margin:.9rem 0;font-size:.9rem;font-weight:600}
+.lesson-studio input,.lesson-studio select,.lesson-studio textarea {font:inherit;color:inherit;background:transparent;border:1px solid #89938e99;border-radius:6px;padding:.65rem;width:100%;box-sizing:border-box}
+.lesson-studio textarea {min-height:5rem;resize:vertical}
+.lesson-studio button {border:1px solid #84958d;border-radius:7px;padding:.63rem 1rem;cursor:pointer;color:inherit;background:transparent;font:inherit}
+.lesson-studio .lesson-primary {background:#254d43;color:white;border-color:#254d43}
+.lesson-studio button:disabled {opacity:.55;cursor:wait}
+.lesson-studio details {border-top:1px solid #89938e70;padding:1rem 0}
+.lesson-studio summary {cursor:pointer;font-weight:600}
+.lesson-studio video {width:100%;display:block;border-radius:10px;margin:.5rem 0}
+.lesson-help,#lesson-status {font-size:.88rem;line-height:1.5}
+#lesson-status:empty {display:none}
+@media(max-width:760px){.lesson-layout{grid-template-columns:1fr}}
+.lesson-studio [hidden] {display:none}
+.lesson-studio details img {width:100%;height:auto;margin-top:.75rem}

@@ -56,6 +56,7 @@ NAV_LINKS: list[tuple[str, str, str, str, str]] = [
         "fa-regular fa-file-lines",
         "Your research reports",
     ),
+    ("Lessons", "/lessons", "lessons", "fa-solid fa-film", "Make a visual lesson"),
     (
         "Settings",
         "/settings",

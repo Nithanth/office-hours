@@ -68,6 +68,7 @@ def topic_workspace(
           hx-post="/topics/{tid}/report" hx-target="#topic-report-out" hx-swap="innerHTML" hx-disabled-elt="this">Update report</button>
           <button {button_attrs('btn-secondary', size='sm')} type="button"  hx-get="/chat-modal?paper_id=topic&amp;topic_id={tid}&amp;title=Chat%20about%20this%20topic"
             hx-target="#modal-container" hx-swap="innerHTML">Topic chat</button>
+          <a href="/lessons?topic_id={tid}">Visual lesson</a>
           <button {button_attrs('btn-secondary', size='sm')} type="button"  hx-post="/topics/{tid}/share" hx-target="#share-status" hx-swap="innerHTML">Share</button></div>
         <div id="share-status" class="topic-meta">{share_html}</div>
         <div id="topic-report-out" aria-live="polite"></div>

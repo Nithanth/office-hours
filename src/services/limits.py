@@ -48,6 +48,8 @@ _EVENT_LIMITS: dict[str, tuple[int, int, bool]] = {
         config.BETA_DAILY_GENERATION_LIMIT_ANON,
         True,
     ),
+    "lesson_plan": (config.BETA_DAILY_GENERATION_LIMIT, config.BETA_DAILY_GENERATION_LIMIT_ANON, True),
+    "lesson_render": (config.BETA_DAILY_GENERATION_LIMIT, config.BETA_DAILY_GENERATION_LIMIT_ANON, False),
     "notes_generation": (
         config.BETA_DAILY_GENERATION_LIMIT,
         config.BETA_DAILY_GENERATION_LIMIT_ANON,

@@ -1,0 +1,21 @@
+<section class="lesson-studio">
+  <header><h1>Visual lesson</h1><p>Turn one idea from a paper or topic into a narrated animation.</p></header>
+  <div class="lesson-layout">
+    <section class="lesson-panel"><h2>Source</h2>
+      <form id="lesson-source">
+        <label>Topic or learning question<input name="topic" maxlength="500" value="{{topic}}" placeholder="How does dropout work?"></label>
+        <label>Paper URL<input type="url" name="url" maxlength="2000" value="{{url}}" list="lesson-papers" placeholder="https://…"><datalist id="lesson-papers">{{options}}</datalist></label>
+        <label>Or upload a PDF<input type="file" name="pdf" accept="application/pdf"></label>
+        <label>Starting PDF page<input type="number" name="page" min="1" max="5000" value="1"></label>
+        <p class="lesson-help">The planner reads up to three pages starting here. Choose the page with the figure you want to explain.</p>
+        <button class="lesson-primary">Generate storyboard</button>
+      </form>
+    </section>
+    <section class="lesson-panel"><h2>Storyboard</h2>
+      <div id="lesson-empty"><p>Review the narration, visuals, and source for each scene before rendering.</p><button type="button" id="lesson-example">Open example storyboard</button></div>
+      <form id="lesson-editor" hidden><div id="lesson-scenes"></div><button class="lesson-primary">Render video</button></form>
+      <p role="status" id="lesson-status"></p>
+      <div id="lesson-output" hidden><h2>Playback</h2><video controls playsinline></video><a download="visual-lesson.mp4">Download MP4</a><details><summary>Transcript and sources</summary><div id="lesson-transcript"></div></details></div>
+    </section>
+  </div>
+</section>
