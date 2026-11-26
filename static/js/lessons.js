@@ -97,14 +97,14 @@
   function busy(value) {
     for (const button of document.querySelectorAll('.lesson-studio button')) button.disabled = value;
   }
-  document.querySelector('#lesson-example').onclick = () => edit({scenes:example});
+  document.querySelector('#lesson-example')?.addEventListener('click', () => edit({scenes:example}));
   source.onsubmit = async event => {
     event.preventDefault();
     busy(true);
     status.textContent = 'Reading the source and planning scenes…';
     try {
       const data = new FormData(source);
-      if (!data.get('pdf').size) data.delete('pdf');
+      if (!data.get('pdf')?.size) data.delete('pdf');
       const board = await api('/api/lessons/plan',{method:'POST',body:data});
       edit(board); output.hidden = true;
       status.textContent = 'Storyboard ready for review.';
@@ -142,12 +142,17 @@
     event.preventDefault(); busy(true);
     try {
       const board = read();
-      const job = await api('/api/lessons/render',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(board)});
-      location.hash = job.id;
+      const scope = new URLSearchParams();
+      for (const key of ['paper_id','topic_id']) {
+        if (source.elements[key]) scope.set(key, source.elements[key].value);
+      }
+      const job = await api('/api/lessons/render?' + scope,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(board)});
+      history.replaceState(null, "", "#" + job.id);
       output.hidden = true;
       await playback(job.id);
     } catch (error) {status.textContent = error.message;} finally {busy(false);}
   };
+  window.addEventListener('hashchange', () => location.reload());
   if (/^#[a-f0-9-]{36}$/.test(location.hash)) {
     busy(true);
     playback(location.hash.slice(1)).catch(e => {status.textContent=e.message;}).finally(() => busy(false));

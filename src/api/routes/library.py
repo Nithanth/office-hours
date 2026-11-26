@@ -1038,7 +1038,7 @@ def _paper_item(paper: SavedPaper) -> str:
     title = html.escape(paper.title or "Untitled")
     pid_attr = html.escape(paper.paper_id, quote=True)
     pid_q = quote(paper.paper_id, safe="")
-    viewer_url = f"/viewer/{pid_q}?title={quote(paper.title or 'Paper', safe='')}"
+    viewer_url = f"/viewer/{pid_q}?saved=1&title={quote(paper.title or 'Paper', safe='')}"
     if paper.url:
         viewer_url += f"&url={quote(paper.url, safe='')}"
     authors = paper.authors.get("list") if isinstance(paper.authors, dict) else None
@@ -1066,6 +1066,7 @@ def _paper_item(paper: SavedPaper) -> str:
   <div class="lib-meta">{authors_str}</div>
   <div class="lib-actions">
     <button {button_attrs('btn-secondary', size='sm')}  hx-get="{viewer_url}" hx-target="#modal-container" hx-swap="innerHTML">Read &amp; chat</button>
+    <a href="/lessons?paper_id={pid_q}">Visual lesson</a>
     {open_link}{report_link}
     {_status_options(paper.status, paper.paper_id)}
     <button {button_attrs('lib-remove-btn', variant='danger', size='sm')}  data-paper-id="{pid_attr}">Remove</button>
