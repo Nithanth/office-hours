@@ -29,7 +29,6 @@ body:has(.search-card) {
   font-size: 13px;
   font-weight: 500;
   margin-right: 28px;
-  color: var(--fg) !important;
 }
 .top-bar-link {
   gap: 7px;
