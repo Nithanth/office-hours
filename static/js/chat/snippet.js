@@ -203,6 +203,7 @@ document.body.addEventListener("htmx:configRequest", (evt) => {
 
 // Chips are one-shot: clear them once a send is accepted.
 document.body.addEventListener("htmx:afterRequest", (evt) => {
+  if (!evt.detail.successful) return;
   const form = evt.target;
   if (!(form instanceof HTMLFormElement)) return;
   if (form.getAttribute("hx-post") !== "/chat") return;

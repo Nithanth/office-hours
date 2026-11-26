@@ -248,6 +248,7 @@ class OpenRouterProvider(LLMProvider):
         assert self._async_client is not None
         client = self._async_client
 
+        require_complete = kwargs.pop("require_complete", False)
         try:
             response = await client.chat.completions.create(
                 model=selected_model,
@@ -265,6 +266,8 @@ class OpenRouterProvider(LLMProvider):
                     model=selected_model,
                     max_tokens=max_tokens,
                 )
+                if require_complete:
+                    raise LLMProviderError("openrouter", "The answer was incomplete. Try again.")
             return str(choice.message.content).strip()
         except OpenAIRateLimitError as e:
             raise LLMRateLimitError("openrouter", "Rate limit exceeded", e) from e

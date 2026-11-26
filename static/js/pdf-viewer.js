@@ -114,7 +114,7 @@ async function renderPdf(container) {
       viewer: viewerEl,   // inner pages container
       eventBus,
       linkService,
-      textLayerMode: 2, // selectable text layer on
+      textLayerMode: 1, // Enable selection without permission-specific handling.
       // This is a reader, not the full pdf.js annotation editor. In 3.11 the
       // editor's teardown assumes a mounted AltTextManager; our embedded viewer
       // has none, so leaving editing enabled breaks document/tone resets.

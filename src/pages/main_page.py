@@ -23,6 +23,7 @@ from fasthtml.components import (
     I,
     Label,
     Link,
+    NotStr,
     Option,
     P,
     Script,
@@ -53,6 +54,10 @@ class SharedPageData(BaseModel):
     current_query: Optional[str] = None
     search_results: Optional[list[Paper]] = None
     search_error: Optional[str] = None
+    search_markup: str | None = None
+    search_date: str | None = None
+    search_domains: list[str] | None = None
+    deep_search: bool = False
     recent_topics: Optional[list] = None  # Topic rows for the home strip
     topic_new_counts: Optional[dict] = None  # topic_id -> feed-added papers this week
 
@@ -191,6 +196,8 @@ def _render_paper_item(
                 type="checkbox",
                 cls="paper-select-checkbox pinned-checkbox",
                 checked=True,
+                disabled=True,
+                aria_label="Pinned paper, always included",
                 style="margin-right:5px; pointer-events:none;",
                 size="sm",
             ),
@@ -448,13 +455,19 @@ def render_search_results(
     papers_list: Optional[list[Paper]] = None,
     forced_topic: bool = False,
     author_constraint: str = "",
+    *,
+    clear_report: bool = True,
 ) -> Div:
     """Render search results list, shuffle/reset controls and hidden HTMX fields."""
     # Out-of-band clears so a new search hides any old report UI instantly
-    clearing_divs = [
-        Div(id="report-config-area", **{"hx-swap-oob": "true"}),
-        Div(id="report-display-area", **{"hx-swap-oob": "true"}),
-    ]
+    clearing_divs = (
+        [
+            Div(id="report-config-area", **{"hx-swap-oob": "true"}),
+            Div(id="report-display-area", **{"hx-swap-oob": "true"}),
+        ]
+        if clear_report
+        else []
+    )
 
     results_content: list[Any] = []  # mix of components
     has_results = False
@@ -463,7 +476,6 @@ def render_search_results(
     hidden_input_fields = [
         INPUT(
             type="hidden",
-            id="original_query_for_report_hidden",
             name="original_search_query_for_report",
             value=original_query,
         ),
@@ -519,7 +531,7 @@ def render_search_results(
                         type="button",
                         id="select-all-btn",
                         cls="btn-secondary",
-                        title="Select all papers",
+                        title="Select all papers matching the current filter",
                         size="sm",
                     ),
                     BUTTON(
@@ -554,6 +566,14 @@ def render_search_results(
                 *list_items,
                 id="papers-list",
                 style="list-style-type: none; padding-left: 0;",
+            )
+        )
+        results_content.append(
+            P(
+                "No papers match this filter. Clear it to see all results.",
+                id="papers-filter-empty",
+                role="status",
+                hidden=True,
             )
         )
 
@@ -695,7 +715,9 @@ def home_page(page_data: SharedPageData) -> Html:
         )
     """The main page layout, including search form and results area."""
     # Initial content for search results area
-    if page_data.search_error:
+    if page_data.search_markup is not None:
+        results_display_content = NotStr(page_data.search_markup)
+    elif page_data.search_error:
         results_display_content = render_error_message(page_data.search_error)
     elif (
         page_data.search_results is not None
@@ -707,6 +729,7 @@ def home_page(page_data: SharedPageData) -> Html:
             original_query=page_data.current_query or "",
             is_url_search=False,  # Assume not a URL search on initial load
             papers_list=page_data.search_results,
+            clear_report=False,
         )
     else:  # No search performed yet — empty-state marks pre-search for :has()
         results_display_content = Div(
@@ -824,14 +847,9 @@ def home_page(page_data: SharedPageData) -> Html:
                         # the disclosure below.
                         Div(
                             Div(
-                                Span("Audience ", cls="filter-label"),
+                                Label("Audience ", cls="filter-label", fr="aud-select"),
                                 Select(
-                                    Option(
-                                        "Any",
-                                        value="",
-                                        selected=True,
-                                    ),
-                                    Option("Technical (PhD)", value="technical"),
+                                    Option("Technical (PhD)", value="technical", selected=True),
                                     Option("Semi-Technical", value="semi_technical"),
                                     Option("Non-Technical", value="non_technical"),
                                     id="aud-select",
@@ -844,7 +862,7 @@ def home_page(page_data: SharedPageData) -> Html:
                                 data_tip="Who the report is written for",
                             ),
                             Div(
-                                Span("Model ", cls="filter-label"),
+                                Label("Model ", cls="filter-label", fr="model-select"),
                                 Select(
                                     Option(
                                         "Default",
@@ -874,7 +892,7 @@ def home_page(page_data: SharedPageData) -> Html:
                                 ),
                             ),
                             Div(
-                                Span("Detail ", cls="filter-label"),
+                                Label("Detail ", cls="filter-label", fr="size-select"),
                                 Select(
                                     Option("S (Concise)", value="S"),
                                     Option("M (Standard)", value="M", selected=True),
@@ -902,6 +920,7 @@ def home_page(page_data: SharedPageData) -> Html:
                                         type="text",
                                         id="start_published_date",
                                         name="start_published_date",
+                                        value=page_data.search_date or "",
                                         placeholder="YYYY-MM-DD",
                                         autocomplete="off",
                                         style="width:9rem;",
@@ -930,6 +949,8 @@ def home_page(page_data: SharedPageData) -> Html:
                                                         id=f"src-{dom.split('.')[0]}",
                                                         cls="source-checkbox",
                                                         size="sm",
+                                                        checked=dom
+                                                        in (page_data.search_domains or []),
                                                     ),
                                                     Span(
                                                         f" {label}",
@@ -960,6 +981,7 @@ def home_page(page_data: SharedPageData) -> Html:
                                         name="deep_search",
                                         id="deep-search-toggle",
                                         value="1",
+                                        checked=page_data.deep_search,
                                         style="margin:0;",
                                         size="sm",
                                     ),
@@ -970,6 +992,9 @@ def home_page(page_data: SharedPageData) -> Html:
                                 cls="search-form-filters",
                             ),
                             cls="oh-search-options",
+                            open=bool(
+                                page_data.search_date or page_data.search_domains or page_data.deep_search
+                            ),
                         ),
                         hx_post="/search",
                         hx_target="#search-results-container",
@@ -998,8 +1023,7 @@ def home_page(page_data: SharedPageData) -> Html:
                     topics_strip,
                     # Centered search spinner (outside search form so it spans the card)
                     loading_indicator_component(),
-                    # Results and Report Form (wraps hidden inputs etc.)
-                    FORM(
+                    Div(
                         # Search results are displayed here, targeted by the search form's hx_target
                         Div(
                             results_display_content,

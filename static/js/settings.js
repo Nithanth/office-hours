@@ -31,31 +31,14 @@
     const audSel = document.getElementById('aud-select');
     const modelSel = document.getElementById('model-select');
     const selects = [audSel, modelSel];
+    let accountStatus;
+    const getAccountStatus = () => accountStatus ??= fetch('/api/me').then(r => r.json());
     hydrateTopAuthStatus();
-
-    const placeholderClass = 'placeholder';
-
-    const setPlaceholderState = el => {
-      if (!el) return;
-      if (!el.value) {
-        el.classList.add(placeholderClass);
-      } else {
-        el.classList.remove(placeholderClass);
-      }
-    };
-
-    // ensure initial class assignment before restoring localStorage
-    selects.forEach(el => el && el.classList.add(placeholderClass));
 
     // Debug: indicate script executed
     console.debug('[oh] settings.js initialized');
 
-    // Do NOT restore past Audience/Model choices – always start at placeholder.
-
-    // Sync hidden inputs once after restore
     window.syncHidden();
-
-    selects.forEach(setPlaceholderState);
 
     // Initialise flatpickr date picker — allowInput lets users type manually
     if (window.flatpickr) {
@@ -75,15 +58,22 @@
       const menu = document.getElementById('sources-dropdown-menu');
       if (!btn || !menu) return;
 
-      btn.addEventListener('click', (e) => {
+      function setOpen(open) {
+        menu.style.display = open ? 'block' : 'none';
+        btn.setAttribute('aria-expanded', String(open));
+      }
+      btn.setAttribute('aria-controls', menu.id);
+      setOpen(false);
+      btn.addEventListener('click', e => {
         e.stopPropagation();
-        const open = menu.style.display !== 'none';
-        menu.style.display = open ? 'none' : 'block';
+        setOpen(btn.getAttribute('aria-expanded') !== 'true');
       });
-
-      // Close on outside click
-      document.addEventListener('click', () => {
-        menu.style.display = 'none';
+      document.addEventListener('click', () => setOpen(false));
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || btn.getAttribute('aria-expanded') !== 'true') return;
+        event.preventDefault();
+        setOpen(false);
+        btn.focus();
       });
       menu.addEventListener('click', (e) => e.stopPropagation());
 
@@ -101,6 +91,7 @@
         }
       }
       menu.addEventListener('change', updateLabel);
+      updateLabel();
       console.debug('[oh] sources dropdown initialised');
     })();
 
@@ -111,7 +102,6 @@
         document.dispatchEvent(
           new CustomEvent('oh:settings-changed', { detail: { id: el.id, value: el.value } }),
         );
-        setPlaceholderState(el);
         window.syncHidden();
       });
     });
@@ -152,6 +142,7 @@
 
       const toast = document.createElement('div');
       toast.className = 'oh-toast';
+      toast.setAttribute('role', 'status');
       toast.textContent = msg;
       document.body.appendChild(toast);
 
@@ -171,17 +162,10 @@
 
     document.addEventListener('submit', evt => {
       console.debug('[oh] submit intercept');
-      let form = evt.target;
+      const form = evt.target;
       if (!(form instanceof HTMLFormElement)) return;
 
-      // Workaround for nested forms: sometimes the outer wrapper (results-and-report-form)
-      // receives the submit event while the *inner* actual report form carries hx-post.
-      // Determine if this submission is ultimately destined for the incremental report endpoint.
-      const isReportForm =
-        form.getAttribute('hx-post') === '/generate-report-incremental' ||
-        form.querySelector('[hx-post="/generate-report-incremental"]');
-
-      if (!isReportForm) return; // ignore unrelated forms
+      if (form.getAttribute('hx-post') !== '/generate-report-incremental') return;
 
       // Reset per-page chat transcript cache so chats start fresh for this report.
       if (window.__ohChatCache && typeof window.__ohChatCache.clear === 'function') {
@@ -190,7 +174,7 @@
       }
 
       // Ensure hidden inputs reflect latest toolbar state
-      if (typeof window.syncHidden === 'function') window.syncHidden();
+      _doSyncHidden();
 
       // ------------------------------------------------------------------
       // Clone selected paper inputs into the form so FastAPI sees them.
@@ -243,30 +227,12 @@
       // Client-side validation – block submit & toast missing parts.
       // ------------------------------------------------------------------
 
-      const audVal = audSel?.value || '';
-      const modelVal = modelSel?.value || '';
-
-      const isPlaceholder = v => !v || /^\s*$/.test(v) || v.startsWith('Select ');
-
-      // Report length now lives in the (sticky) top bar — outside the
-      // form — so query document, not the form. The submit's hx_include
-      // posts its value via the hidden #size-select selector.
       const sizeVal = document.querySelector('#size-select')?.value || '';
-
-      const papersCount = paperSources.length;
-
-      if (isPlaceholder(audVal) || isPlaceholder(modelVal) || isPlaceholder(sizeVal) || papersCount === 0) {
+      const hasPapers = form.querySelector('input[name="selected_papers_json"]');
+      if (!sizeVal || !hasPapers) {
         evt.preventDefault();
         evt.stopPropagation();
-
-        const missing = [];
-        if (isPlaceholder(audVal)) missing.push('Audience');
-        if (isPlaceholder(modelVal)) missing.push('Model');
-        if (isPlaceholder(sizeVal)) missing.push('Report Size');
-        if (papersCount === 0) missing.push('≥1 paper');
-
-        console.debug('[oh] showToast:', `Please select ${missing.join(', ')}.`);
-        showToast(`Please select: ${missing.join(', ')}.`);
+        showToast(!hasPapers ? 'Select at least one paper to generate a report.' : 'Select a report size.');
         return;
       }
     }, true); // capture phase to run before HTMX grabs the event
@@ -367,8 +333,6 @@
     // Re-sync after HTMX swaps
     document.addEventListener('htmx:afterSwap', evt => {
       if (typeof syncHidden === 'function') syncHidden();
-      setPlaceholderState(document.getElementById('aud-select'));
-      setPlaceholderState(document.getElementById('model-select'));
 
       // Re-apply saved report size after new form injected
       restoreSummarySize();
@@ -397,8 +361,7 @@
         // No localStorage persistence now; just reset selects.
         selects.forEach(el => {
           if (el) {
-            el.value = '';
-            setPlaceholderState(el);
+            el.selectedIndex = 0;
           }
         });
         window.syncHidden();
@@ -504,13 +467,16 @@
       if (path.startsWith('/search')) {
         sessionStorage.removeItem(SNAP_KEY);
 
-        // Clear previous search results immediately so the user sees a blank slate
-        const container = document.getElementById('search-results-container');
-        if (container) container.innerHTML = '';
       }
     });
 
     // ------------------------------------------------------------------
+    document.body.addEventListener('htmx:sendError', event => {
+      if (event.detail?.requestConfig?.path === '/search') {
+        showToast('Search could not connect. Try again.');
+      }
+    });
+
     // Cancel in-flight search — remember the element that issued the
     // current request; the indicator's Cancel button aborts it.
     // ------------------------------------------------------------------
@@ -562,12 +528,7 @@
       ohActiveTrigger = null;
       ohStopStages();
       if (trig && window.htmx) htmx.trigger(trig, 'htmx:abort');
-      const container = document.getElementById('search-results-container');
-      if (container) {
-        container.innerHTML =
-          '<div class="empty-state-card" style="padding:0.8rem 1rem;">' +
-          'Search cancelled.</div>';
-      }
+      showToast('Search cancelled.');
     });
 
     // ------------------------------------------------------------------
@@ -576,8 +537,7 @@
     // ------------------------------------------------------------------
     function renderAccountPanel(accountEl) {
       if (!accountEl) return;
-      fetch('/api/me')
-            .then(r => r.json())
+      getAccountStatus()
             .then(data => {
               if (data.authenticated) {
                 const name = data.user.name || data.user.email;
@@ -590,8 +550,10 @@
                 document.getElementById('logout-btn')?.addEventListener('click', () => {
                   fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
                 });
-              } else {
+              } else if (data.can_sign_in) {
                 accountEl.innerHTML = '<a ' + OHControls.buttonAttrs({className: 'btn-secondary', variant: 'primary'}) + ' href="/auth/google/login">Sign in with Google</a>';
+              } else {
+                accountEl.textContent = 'Sign-in is unavailable in this environment.';
               }
             })
             .catch(() => {
@@ -604,7 +566,7 @@
       statusEl.innerHTML = '<span class="oh-spinner small" style="display:inline-block;vertical-align:middle;"></span> Checking…';
           fetch('/api/notion-status')
             .then(r => r.json())
-            .then(data => {
+            .then(async data => {
               if (data.connected) {
                 statusEl.innerHTML =
                   '<span style="color:#22c55e;font-weight:600;">● Connected</span>' +
@@ -629,6 +591,10 @@
                     : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
                 if (data.oauth_connected) wireNotionControls(statusEl);
               } else if (data.authenticated === false) {
+                if (!(await getAccountStatus()).can_sign_in) {
+                  statusEl.textContent = 'Connecting Notion requires account sign-in, which is unavailable here.';
+                  return;
+                }
                 // Not signed in: keep the connect action inside the modal —
                 // a Google sign-in that returns here, not a bare 401 page.
                 statusEl.innerHTML =
@@ -670,20 +636,17 @@
     function hydrateTopAuthStatus() {
       const authEl = document.getElementById('oh-auth-status');
       if (!authEl) return;
-      fetch('/api/me')
-        .then(r => r.json())
+      getAccountStatus()
         .then(data => {
           if (data.authenticated) {
             const name = data.user.name || data.user.email || 'Account';
             authEl.innerHTML =
               '<span class="top-auth-user" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
-          } else {
+          } else if (data.can_sign_in) {
             authEl.innerHTML = '<a href="/auth/google/login" title="Sign in">Sign in</a>';
           }
         })
-        .catch(() => {
-          authEl.innerHTML = '<a href="/auth/google/login" title="Sign in">Sign in</a>';
-        });
+        .catch(() => { authEl.textContent = ''; });
     }
 
     function escapeHtml(value) {

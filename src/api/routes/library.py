@@ -1079,7 +1079,15 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     if not owner_id:
         raise HTTPException(status_code=400, detail="No session")
     if not database_available():
-        raise HTTPException(status_code=503, detail="Library is not configured.")
+        return HTMLResponse(
+            _library_shell(
+                '<h1>My saved papers</h1><div class="empty-state-card">'
+                '<strong>Saving papers is unavailable in this demo.</strong>'
+                '<p>You can still search for papers and open them from the results.</p>'
+                '<a href="/">Search papers</a></div>',
+                [],
+            )
+        )
 
     if status and status not in SavedPaper.READING_STATUSES:
         status = None
@@ -1108,7 +1116,7 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
     elif status:
         items = (
             '<div class="empty-state-card"><strong>Nothing here yet.</strong>'
-            "<p>No papers with this status. Pick another tab above, or add "
+            "<p>No papers with this status. Choose another status above, or add "
             "papers from a search.</p></div>"
         )
     else:
@@ -1158,7 +1166,19 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             headers: {{"Content-Type": "application/x-www-form-urlencoded"}},
             body: new URLSearchParams(data).toString(),
           }});
-          return r.json();
+          const result = await r.json();
+          if (!r.ok || !result.ok) throw new Error(result.detail);
+        }}
+        async function update(control, url, data, onFailure) {{
+          control.disabled = true;
+          try {{
+            await post(url, data);
+            location.reload();
+          }} catch {{
+            onFailure?.();
+            control.disabled = false;
+            window.showToast?.("Could not update your library. Try again.");
+          }}
         }}
         document.addEventListener("change", function(ev) {{
           const filter = ev.target.closest(".lib-filter-select");
@@ -1170,14 +1190,14 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
           }}
           const sel = ev.target.closest(".lib-status-select");
           if (!sel) return;
-          post("/api/library/status", {{paper_id: sel.dataset.paperId, status: sel.value}})
-            .then(() => location.reload());
+          update(sel, "/api/library/status", {{paper_id: sel.dataset.paperId, status: sel.value}}, () => {{
+            sel.selectedIndex = Array.from(sel.options).findIndex(option => option.defaultSelected);
+          }});
         }});
         document.addEventListener("click", function(ev) {{
           const btn = ev.target.closest(".lib-remove-btn");
           if (btn) {{
-            post("/api/library/unsave", {{paper_id: btn.dataset.paperId}})
-              .then(() => location.reload());
+            update(btn, "/api/library/unsave", {{paper_id: btn.dataset.paperId}});
             return;
           }}
         }});

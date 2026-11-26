@@ -310,14 +310,16 @@ function openNotesDialog(onConfirm) {
        </dialog>`
     );
     dlg = document.getElementById("notes-dialog");
-    dlg.addEventListener("close", () => {
-      if (dlg.returnValue !== "ok") return; // user canceled
-      const form = dlg.querySelector("#notes-form");
-      const base = form.fname.value.trim() || "report_notes";
-      const fmt = form.fmt.value;
-      onConfirm(base, fmt);
-    });
   }
+  const form = dlg.querySelector("#notes-form");
+  const format = document.getElementById("notes-fmt-select")?.value;
+  if (format) form.fmt.value = format;
+  dlg.returnValue = "";
+  dlg.addEventListener("close", () => {
+    if (dlg.returnValue !== "ok") return;
+    const base = form.fname.value.trim() || "report_notes";
+    onConfirm(base, form.fmt.value);
+  }, { once: true });
   dlg.showModal();
 }
 

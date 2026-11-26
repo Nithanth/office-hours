@@ -118,6 +118,7 @@ async def author_search(
     request: Request,
     search_query: str = Form(""),
     settings: AppConfig = Depends(get_settings),  # noqa: B008
+    keyword: str = Form(""),
 ) -> HTMLResponse:
     """Search for authors by name using Semantic Scholar."""
     session_id = await get_session_id(request)
@@ -142,7 +143,7 @@ async def author_search(
     except S2UnavailableError as exc:
         logger.warning("author_search_unavailable", error=str(exc))
         return HTMLResponse(
-            _render_author_list([], query, unavailable=True),
+            _render_author_list([], query, unavailable=True, keyword=keyword),
             headers={
                 "HX-Retarget": "#search-results-container",
                 "HX-Reswap": "innerHTML",
@@ -158,13 +159,14 @@ async def author_search(
             },
         )
 
-    results_html = _render_author_list(authors, query)
+    results_html = _render_author_list(authors, query, keyword=keyword)
     return HTMLResponse(
         content=results_html,
         headers={
             "HX-Retarget": "#search-results-container",
             "HX-Reswap": "innerHTML",
-            "HX-Push-Url": f"/authors?q={quote(query)}",
+            "HX-Push-Url": f"/authors?q={quote(query)}"
+            + (f"&kw={quote(keyword)}" if keyword else ""),
         },
     )
 
@@ -210,7 +212,9 @@ async def author_profile_view(
 
     kw = keyword.strip()
     return HTMLResponse(
-        content=_author_profile_html(profile, keyword=kw or None),
+        content=_author_profile_html(
+            profile, keyword=kw or None, clear_report=request.method == "POST"
+        ),
         headers={
             "HX-Retarget": "#search-results-container",
             "HX-Reswap": "innerHTML",
@@ -241,7 +245,9 @@ def _paper_matches_keyword(sp: AuthorPaper, keyword: str) -> bool:
     )
 
 
-def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) -> str:
+def _author_profile_html(
+    profile: AuthorProfile, *, keyword: str | None = None, clear_report: bool = True
+) -> str:
     """Header + publication list for an author profile.
 
     *keyword* pre-filters the list server-side ("papers by X about Y"); the
@@ -320,6 +326,7 @@ def _author_profile_html(profile: AuthorProfile, *, keyword: str | None = None) 
         papers_list=papers,
         is_url_search=False,
         original_query=f"Author: {a.name}",
+        clear_report=clear_report,
     )
     return header_html + str(results_component)
 

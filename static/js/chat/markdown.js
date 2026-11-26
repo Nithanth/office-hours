@@ -1,3 +1,6 @@
+import { ensureKatexLoaded } from "../katex-loader.js";
+export { ensureKatexLoaded };
+
 // chat/markdown.js – Markdown rendering helpers
 // Provides lazy-loading of marked.js, DOMPurify, highlight.js and helper
 // functions to render markdown safely in chat bubbles.
@@ -72,45 +75,6 @@ export function ensureHighlightLoaded() {
     document.head.appendChild(s);
   });
   return _hlPromise;
-}
-
-// ---------------------------------------------------------------------------
-// KaTeX loader – lazy-load CSS, core, and auto-render helper.
-// ---------------------------------------------------------------------------
-let _katexPromise = null;
-export function ensureKatexLoaded() {
-  if (window.katex && window.renderMathInElement) return Promise.resolve();
-  if (_katexPromise) return _katexPromise;
-
-  _katexPromise = new Promise((resolve) => {
-    // Inject CSS first so equations don’t flash unstyled
-    const css = document.createElement("link");
-    css.rel = "stylesheet";
-    css.href = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css";
-    document.head.appendChild(css);
-
-    // Core KaTeX must load BEFORE auto-render (it depends on window.katex)
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
-    s.onload = () => {
-      // Now load auto-render after katex is available
-      const auto = document.createElement("script");
-      auto.src = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js";
-      auto.onload = () => resolve();
-      auto.onerror = () => {
-        console.warn("[oh] auto-render.min.js failed to load");
-        resolve(); // best-effort
-      };
-      document.head.appendChild(auto);
-    };
-    s.onerror = () => {
-      console.warn("[oh] katex.min.js failed to load");
-      resolve(); // best-effort
-    };
-    document.head.appendChild(s);
-  });
-
-  return _katexPromise;
 }
 
 // ---------------------------------------------------------------------------
