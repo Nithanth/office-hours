@@ -835,6 +835,8 @@ async def viewer_modal(
         ' hx-target="#doc-pane-slot" hx-swap="innerHTML"'
         ' hx-indicator="#text-loading">Text</button>'
     )
+    lesson_query = urllib.parse.urlencode({"url": url, "topic": title or ""})
+    tabs.append(f'<a class="viewer-tab" href="/lessons?{html.escape(lesson_query)}">Visual lesson</a>')
     tabs_html = '<div class="viewer-tabs">' + "".join(tabs) + "</div>"
 
     # Determine display title – fall back to generic label when no explicit title given.

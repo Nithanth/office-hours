@@ -63,7 +63,7 @@ COPY --from=builder /hf-cache /app/.cache/huggingface
 
 # Install Tesseract OCR for optional PDF image extraction
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng ffmpeg fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # App writes relative dirs at runtime (data/, .cache/, .chat_cache/) — the
