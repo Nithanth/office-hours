@@ -146,7 +146,7 @@ def _render_docx(md_text: str) -> bytes:
 
     def _add_list_paragraph(text: str, level: int, numbered: bool = False) -> None:
         style = ("List Number" if numbered else "List Bullet") + (
-            f" {level + 1}" if level else ""
+            f" {min(level + 1, 3)}" if level else ""
         )
         p = doc.add_paragraph(text, style=style)
         if level and DocxCm is not None:

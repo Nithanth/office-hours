@@ -171,15 +171,16 @@ async def logout() -> RedirectResponse:
 @router.get("/api/me")
 async def me(request: Request) -> JSONResponse:
     user_id = get_auth_user_id(request)
+    signed_out = {"authenticated": False, "user": None, "can_sign_in": _auth_configured()}
     if not user_id or not database_available():
-        return JSONResponse({"authenticated": False, "user": None})
+        return JSONResponse(signed_out)
 
     from services.persistence.repositories import get_user
 
     async for session in session_scope():
         user = await get_user(session, user_id)
     if user is None:
-        return JSONResponse({"authenticated": False, "user": None})
+        return JSONResponse(signed_out)
     return JSONResponse(
         {
             "authenticated": True,

@@ -31,6 +31,8 @@
     const audSel = document.getElementById('aud-select');
     const modelSel = document.getElementById('model-select');
     const selects = [audSel, modelSel];
+    let accountStatus;
+    const getAccountStatus = () => accountStatus ??= fetch('/api/me').then(r => r.json());
     hydrateTopAuthStatus();
 
     // Debug: indicate script executed
@@ -56,15 +58,22 @@
       const menu = document.getElementById('sources-dropdown-menu');
       if (!btn || !menu) return;
 
-      btn.addEventListener('click', (e) => {
+      function setOpen(open) {
+        menu.style.display = open ? 'block' : 'none';
+        btn.setAttribute('aria-expanded', String(open));
+      }
+      btn.setAttribute('aria-controls', menu.id);
+      setOpen(false);
+      btn.addEventListener('click', e => {
         e.stopPropagation();
-        const open = menu.style.display !== 'none';
-        menu.style.display = open ? 'none' : 'block';
+        setOpen(btn.getAttribute('aria-expanded') !== 'true');
       });
-
-      // Close on outside click
-      document.addEventListener('click', () => {
-        menu.style.display = 'none';
+      document.addEventListener('click', () => setOpen(false));
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || btn.getAttribute('aria-expanded') !== 'true') return;
+        event.preventDefault();
+        setOpen(false);
+        btn.focus();
       });
       menu.addEventListener('click', (e) => e.stopPropagation());
 
@@ -458,13 +467,16 @@
       if (path.startsWith('/search')) {
         sessionStorage.removeItem(SNAP_KEY);
 
-        // Clear previous search results immediately so the user sees a blank slate
-        const container = document.getElementById('search-results-container');
-        if (container) container.innerHTML = '';
       }
     });
 
     // ------------------------------------------------------------------
+    document.body.addEventListener('htmx:sendError', event => {
+      if (event.detail?.requestConfig?.path === '/search') {
+        showToast('Search could not connect. Try again.');
+      }
+    });
+
     // Cancel in-flight search — remember the element that issued the
     // current request; the indicator's Cancel button aborts it.
     // ------------------------------------------------------------------
@@ -516,12 +528,7 @@
       ohActiveTrigger = null;
       ohStopStages();
       if (trig && window.htmx) htmx.trigger(trig, 'htmx:abort');
-      const container = document.getElementById('search-results-container');
-      if (container) {
-        container.innerHTML =
-          '<div class="empty-state-card" style="padding:0.8rem 1rem;">' +
-          'Search cancelled.</div>';
-      }
+      showToast('Search cancelled.');
     });
 
     // ------------------------------------------------------------------
@@ -530,8 +537,7 @@
     // ------------------------------------------------------------------
     function renderAccountPanel(accountEl) {
       if (!accountEl) return;
-      fetch('/api/me')
-            .then(r => r.json())
+      getAccountStatus()
             .then(data => {
               if (data.authenticated) {
                 const name = data.user.name || data.user.email;
@@ -544,8 +550,10 @@
                 document.getElementById('logout-btn')?.addEventListener('click', () => {
                   fetch('/auth/logout', { method: 'POST' }).then(() => { window.location.href = '/'; });
                 });
-              } else {
+              } else if (data.can_sign_in) {
                 accountEl.innerHTML = '<a ' + OHControls.buttonAttrs({className: 'btn-secondary', variant: 'primary'}) + ' href="/auth/google/login">Sign in with Google</a>';
+              } else {
+                accountEl.textContent = 'Sign-in is unavailable in this environment.';
               }
             })
             .catch(() => {
@@ -558,7 +566,7 @@
       statusEl.innerHTML = '<span class="oh-spinner small" style="display:inline-block;vertical-align:middle;"></span> Checking…';
           fetch('/api/notion-status')
             .then(r => r.json())
-            .then(data => {
+            .then(async data => {
               if (data.connected) {
                 statusEl.innerHTML =
                   '<span style="color:#22c55e;font-weight:600;">● Connected</span>' +
@@ -583,6 +591,10 @@
                     : '<div style="margin-top:8px;font-size:0.85rem;color:var(--fg-muted,#888);">Using server env Notion integration.</div>');
                 if (data.oauth_connected) wireNotionControls(statusEl);
               } else if (data.authenticated === false) {
+                if (!(await getAccountStatus()).can_sign_in) {
+                  statusEl.textContent = 'Connecting Notion requires account sign-in, which is unavailable here.';
+                  return;
+                }
                 // Not signed in: keep the connect action inside the modal —
                 // a Google sign-in that returns here, not a bare 401 page.
                 statusEl.innerHTML =
@@ -624,20 +636,17 @@
     function hydrateTopAuthStatus() {
       const authEl = document.getElementById('oh-auth-status');
       if (!authEl) return;
-      fetch('/api/me')
-        .then(r => r.json())
+      getAccountStatus()
         .then(data => {
           if (data.authenticated) {
             const name = data.user.name || data.user.email || 'Account';
             authEl.innerHTML =
               '<span class="top-auth-user" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
-          } else {
+          } else if (data.can_sign_in) {
             authEl.innerHTML = '<a href="/auth/google/login" title="Sign in">Sign in</a>';
           }
         })
-        .catch(() => {
-          authEl.innerHTML = '<a href="/auth/google/login" title="Sign in">Sign in</a>';
-        });
+        .catch(() => { authEl.textContent = ''; });
     }
 
     function escapeHtml(value) {

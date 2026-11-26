@@ -161,6 +161,11 @@ console.debug("[oh] main.js loaded (ESM)");
         const hay = `${li.dataset.title || ""} ${li.dataset.authors || ""}`;
         const match = hay.includes(query);
         li.dataset.filtered = match ? "0" : "1";
+        if (!match) {
+          li.querySelectorAll(".paper-select-checkbox:not(.pinned-checkbox)").forEach((box) => {
+            box.checked = false;
+          });
+        }
         matches ||= match;
       });
       const empty = document.getElementById("papers-filter-empty");

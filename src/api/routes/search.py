@@ -396,7 +396,9 @@ async def handle_search(  # noqa: PLR0913 - long signature preserves original AP
                     if profile is not None:
                         return HTMLResponse(
                             content=banner
-                            + _author_profile_html(profile, keyword=keyword),
+                            + _author_profile_html(
+                                profile, keyword=keyword, clear_report=request.method == "POST"
+                            ),
                             headers={
                                 "HX-Retarget": "#search-results-container",
                                 "HX-Reswap": "innerHTML",
@@ -743,7 +745,7 @@ def _paper_li_html(
         # always included via a hidden input (disabled fields are not submitted).
 
         selection_input_html = (
-            f"<input {field_attrs('paper-select-checkbox pinned-checkbox', kind='checkbox')} type='checkbox'  checked "
+            f"<input {field_attrs('paper-select-checkbox pinned-checkbox', kind='checkbox')} type='checkbox' checked disabled aria-label='Pinned paper, always included' "
             "style='margin-right:5px; pointer-events:none;'>"
             f"<input type='hidden' name='selected_papers_json' value='{paper_json_escaped}'>"
             "<span class='pinned-label' style='font-size:0.85em;'>⭐</span>"

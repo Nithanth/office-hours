@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
-from services.notes.notes_generator import _json_to_md, _render_txt
+from io import BytesIO
+
+from docx import Document
+
+from services.notes.notes_generator import _json_to_md, _render_docx, _render_txt
+
+
+def test_docx_renders_deeply_nested_lists():
+    doc = Document(BytesIO(_render_docx("- Main idea\n        - Nested detail")))
+
+    nested = doc.paragraphs[1]
+    assert nested.text == "Nested detail"
+    assert nested.style.name == "List Bullet 3"
+    assert nested.paragraph_format.left_indent
 
 
 class TestJsonToMd:

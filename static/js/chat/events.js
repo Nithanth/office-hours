@@ -137,6 +137,12 @@ document.body.addEventListener("htmx:afterRequest", (evt) => {
   const elt = evt.target;
   if (elt instanceof HTMLFormElement && elt.getAttribute("hx-post") === "/chat") {
     const ta = elt.querySelector("textarea[name='message']");
+    if (!evt.detail.successful) {
+      setControlsEnabled(elt.closest(".modal"), true);
+      ta?.focus();
+      if (!evt.detail.xhr?.status) window.showToast?.("Message could not connect. Try again.");
+      return;
+    }
     if (ta) ta.value = "";
     const modal = elt.closest(".modal");
     const chatLog = modal && modal.querySelector(".chat-log-container");

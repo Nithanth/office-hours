@@ -22,11 +22,15 @@ _TIERS = ("fast", "standard", "deep")
 
 
 def _render(
-    request: Request, *, saved: bool = False, error: str | None = None
+    request: Request,
+    *,
+    saved: bool = False,
+    error: str | None = None,
+    draft: dict[str, tuple[str, str]] | None = None,
 ) -> HTMLResponse:
     ctx = model_prefs.current_model_context()
     return HTMLResponse(
-        f"<!DOCTYPE html>{settings_page(pins=ctx.pins, openrouter_key=ctx.openrouter_api_key, saved=saved, error=error)}"
+        f"<!DOCTYPE html>{settings_page(pins=ctx.pins, openrouter_key=ctx.openrouter_api_key, saved=saved, error=error, draft=draft)}"
     )
 
 
@@ -48,13 +52,12 @@ async def save_model_prefs(request: Request) -> Response:
     form = await request.form()
     pins: dict[str, str] = {}
     invalid: list[str] = []
+    draft: dict[str, tuple[str, str]] = {}
     for tier in _TIERS:
         raw = str(form.get(f"pin_{tier}") or "").strip()
-        value = ""
-        if raw == "__custom__":
-            value = str(form.get(f"custom_{tier}") or "").strip()
-        elif raw:
-            value = raw
+        custom = str(form.get(f"custom_{tier}") or "")
+        draft[tier] = (raw, custom)
+        value = custom.strip() if raw == "__custom__" else raw
         if not value:
             continue  # tier stays on the default pin
         exists = await openrouter_catalog.model_exists(value)
@@ -68,7 +71,7 @@ async def save_model_prefs(request: Request) -> Response:
             pins[tier] = value
 
     if invalid:
-        return _render(request, error="; ".join(invalid))
+        return _render(request, error="; ".join(invalid), draft=draft)
 
     if database.database_available():
         try:
@@ -76,7 +79,7 @@ async def save_model_prefs(request: Request) -> Response:
                 await upsert_model_pins(session, owner_id=owner_id, pins=pins)
         except Exception as exc:  # noqa: BLE001
             logger.error("settings_save_pins_failed", error=str(exc))
-            return _render(request, error="Couldn't save preferences. Try again.")
+            return _render(request, error="Couldn't save preferences. Try again.", draft=draft)
         model_prefs.invalidate_prefs_cache(owner_id)
     else:
         # No DB configured: keep pins in the request-context cache so they

@@ -159,18 +159,38 @@ async def saved_search(  # noqa: PLR0913
     )
 
 
-# Pseudo-URLs pushed by HTMX fragment responses so each view gets its own
-# history entry (and cache key). A real GET — refresh, shared link — has no
-# view state to rebuild, so it renders the home page rather than 404.
-@router.get("/authors", response_class=HTMLResponse)
 @router.get("/answer", response_class=HTMLResponse)
-@router.get("/author/{author_id}", response_class=HTMLResponse)
-async def fragment_view_fallback(
+async def saved_answer(
     request: Request,
+    q: str = "",
     settings: AppConfig = Depends(get_settings),  # noqa: B008
 ) -> HTMLResponse:
-    """GET fallbacks for HTMX history pseudo-URLs — render the home page."""
-    return await get_home(request, search_query=None, settings=settings)
+    return await saved_search(request, q=q, mode="direct", settings=settings)
+
+
+@router.get("/authors", response_class=HTMLResponse)
+@router.get("/author/{author_id}", response_class=HTMLResponse)
+async def saved_author_view(
+    request: Request,
+    author_id: str | None = None,
+    q: str = "",
+    kw: str = "",
+    settings: AppConfig = Depends(get_settings),  # noqa: B008
+) -> HTMLResponse:
+    from api.routes.author import author_profile_view, author_search
+
+    if settings.REQUIRE_LOGIN and not get_auth_user_id(request):
+        return await get_home(request, search_query=None, settings=settings)
+
+    if author_id:
+        fragment = await author_profile_view(request, author_id, author_name=q, keyword=kw)
+    else:
+        fragment = await author_search(request, search_query=q, settings=settings, keyword=kw)
+    return await _render_home(
+        request,
+        SharedPageData(current_query=q, search_markup=fragment.body.decode()),
+        status_code=fragment.status_code,
+    )
 
 
 @router.post("/show-report-config", response_class=HTMLResponse)

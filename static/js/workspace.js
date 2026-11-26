@@ -46,7 +46,48 @@
     root.dataset.workspaceReader = "1";
     readers.add(root);
     const lifecycle = new AbortController();
-    root.ohCleanupReader = () => lifecycle.abort();
+    const modal = root.closest(".modal");
+    const openerElement = document.activeElement;
+    const background = [];
+    if (modal) {
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("aria-label", root.querySelector("h2")?.textContent.trim() || "Paper reader");
+      for (let node = modal; node.parentElement && node !== document.body; node = node.parentElement) {
+        for (const sibling of node.parentElement.children) {
+          if (sibling !== node && sibling instanceof HTMLElement && !sibling.inert) {
+            sibling.inert = true;
+            background.push(sibling);
+          }
+        }
+      }
+      modal.tabIndex = -1;
+      modal.focus({ preventScroll: true });
+      modal.addEventListener("keydown", event => {
+        if (event.key !== "Tab" || event.target.closest("dialog[open]")) return;
+        const focusable = [...modal.querySelectorAll(
+          'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]'
+        )].filter(el => el.tabIndex >= 0 && el.getClientRects().length && !el.closest("[inert]"));
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first) {
+          event.preventDefault();
+        } else if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }, { signal: lifecycle.signal });
+    }
+    root.ohCleanupReader = () => {
+      lifecycle.abort();
+      background.forEach(element => { element.inert = false; });
+      if (modal && openerElement instanceof HTMLElement && openerElement.isConnected) {
+        openerElement.focus({ preventScroll: true });
+      }
+    };
     let originalOverride = null;
     let pdf = null;
     const tools = document.createElement("div");

@@ -1166,7 +1166,19 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
             headers: {{"Content-Type": "application/x-www-form-urlencoded"}},
             body: new URLSearchParams(data).toString(),
           }});
-          return r.json();
+          const result = await r.json();
+          if (!r.ok || !result.ok) throw new Error(result.detail);
+        }}
+        async function update(control, url, data, onFailure) {{
+          control.disabled = true;
+          try {{
+            await post(url, data);
+            location.reload();
+          }} catch {{
+            onFailure?.();
+            control.disabled = false;
+            window.showToast?.("Could not update your library. Try again.");
+          }}
         }}
         document.addEventListener("change", function(ev) {{
           const filter = ev.target.closest(".lib-filter-select");
@@ -1178,14 +1190,14 @@ async def library_page(request: Request, status: str | None = None) -> HTMLRespo
           }}
           const sel = ev.target.closest(".lib-status-select");
           if (!sel) return;
-          post("/api/library/status", {{paper_id: sel.dataset.paperId, status: sel.value}})
-            .then(() => location.reload());
+          update(sel, "/api/library/status", {{paper_id: sel.dataset.paperId, status: sel.value}}, () => {{
+            sel.selectedIndex = Array.from(sel.options).findIndex(option => option.defaultSelected);
+          }});
         }});
         document.addEventListener("click", function(ev) {{
           const btn = ev.target.closest(".lib-remove-btn");
           if (btn) {{
-            post("/api/library/unsave", {{paper_id: btn.dataset.paperId}})
-              .then(() => location.reload());
+            update(btn, "/api/library/unsave", {{paper_id: btn.dataset.paperId}});
             return;
           }}
         }});

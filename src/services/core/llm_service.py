@@ -545,6 +545,7 @@ class LLMService:
         system_prompt: Optional[str] | None = None,
         *,
         request_id: Optional[str] = None,
+        require_complete: bool = False,
     ) -> str:
         """Return a full completion string.
 
@@ -568,6 +569,11 @@ class LLMService:
         backoff_seconds = 1.0
 
         req_prefix = f"[req:{request_id}] " if request_id else ""
+        options = (
+            {"require_complete": True}
+            if require_complete and provider_name == "openrouter"
+            else {}
+        )
 
         while True:
             semaphore = self._semaphores[provider_name]
@@ -579,6 +585,7 @@ class LLMService:
                         temperature=temperature,
                         max_tokens=max_tokens,
                         system_prompt=system_prompt,
+                        **options,
                     )
 
                     if isawaitable(generated):
@@ -620,6 +627,7 @@ class LLMService:
         system_prompt: Optional[str] = None,
         *,
         request_id: Optional[str] = None,
+        require_complete: bool = False,
     ) -> LLMResult:
         """Wrapper around ``generate_completion`` that never raises and instead
         returns a simple dict::
@@ -640,6 +648,7 @@ class LLMService:
                 temperature=temperature,
                 system_prompt=system_prompt,
                 request_id=request_id,
+                require_complete=require_complete,
             )
             is_ok = not content.startswith("Error:")
             if is_ok and _METRICS_ENABLED and LLM_TOKENS is not None:

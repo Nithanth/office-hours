@@ -29,8 +29,14 @@ _TIER_DESCRIPTIONS = {
 }
 
 
-def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
+def _tier_row(
+    tier: str, pinned_id: str | None, default_id: str, draft: tuple[str, str] | None
+) -> Div:
     """One tier selector row: curated options + custom model ID field."""
+    raw, custom = draft or ("", "")
+    if draft is not None:
+        pinned_id = raw if raw != "__custom__" else None
+
     curated = _cfg.config.CURATED_OPENROUTER_MODELS
     curated_ids = {m["id"] for m in curated}
 
@@ -38,7 +44,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
         Option(
             f"Default: {_label_for(default_id)}",
             value="",
-            selected=(not pinned_id),
+            selected=not pinned_id and raw != "__custom__",
         )
     ]
     for m in curated:
@@ -60,7 +66,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
                 selected=True,
             )
         )
-    is_custom = bool(pinned_id) and pinned_id not in curated_ids
+    is_custom = raw == "__custom__" or (bool(pinned_id) and pinned_id not in curated_ids)
     options.append(Option("Custom model ID…", value="__custom__", selected=is_custom))
 
     sel = Select(
@@ -79,7 +85,7 @@ def _tier_row(tier: str, pinned_id: str | None, default_id: str) -> Div:
         type="text",
         name=f"custom_{tier}",
         id=f"custom_{tier}",
-        value=pinned_id if is_custom else "",
+        value=custom if draft is not None else (pinned_id if is_custom else ""),
         placeholder="author/slug (e.g. anthropic/claude-opus-4.8)",
         aria_label=f"Custom {tier} model ID",
         required=is_custom,
@@ -117,6 +123,7 @@ def settings_page(
     openrouter_key: str | None,
     saved: bool = False,
     error: str | None = None,
+    draft: dict[str, tuple[str, str]] | None = None,
 ) -> Html:
     """Render the settings page."""
     defaults = {
@@ -161,7 +168,7 @@ def settings_page(
                         style="font-weight:600;margin:0 0 8px 0;",
                     ),
                     *(
-                        _tier_row(tier, pins.get(tier), defaults[tier])
+                        _tier_row(tier, pins.get(tier), defaults[tier], (draft or {}).get(tier))
                         for tier in ("fast", "standard", "deep")
                     ),
                     Button(

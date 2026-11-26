@@ -54,9 +54,6 @@ const CDN_DEPS = [
   { id: "dompurify", src: "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" },
   { id: "hljs", src: "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" },
   { id: "mermaid", src: "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" },
-  { id: "katex-css", href: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css", tag: "link" },
-  { id: "katex", src: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js" },
-  { id: "katex-auto", src: "https://cdn.jsdelivr.net/npm/katex@0.16/dist/contrib/auto-render.min.js" },
   {
     id: "hljs-css",
     href: currentTheme() === "dark"
@@ -92,12 +89,10 @@ let _depsPromise = null;
 function loadAllDeps() {
   if (_depsPromise) return _depsPromise;
   _depsPromise = (async () => {
-    // Load CSS + core libs in parallel
-    const coreDeps = CDN_DEPS.filter(d => d.id !== "katex-auto");
-    await Promise.allSettled(coreDeps.map(loadDep));
-    // katex-auto depends on katex
-    const autoRender = CDN_DEPS.find(d => d.id === "katex-auto");
-    if (autoRender) await loadDep(autoRender).catch(() => {});
+    await Promise.allSettled([
+      ...CDN_DEPS.map(loadDep),
+      import("/static/js/katex-loader.js").then(({ ensureKatexLoaded }) => ensureKatexLoaded()),
+    ]);
   })();
   return _depsPromise;
 }

@@ -93,6 +93,8 @@ class DirectQueryService:
             if max_tokens is None
             else min(max_tokens, self._HARD_CAP_TOKENS)
         )
+        if self.selected_model_provider == "openrouter":
+            max_tokens += 1024  # The provider also counts internal reasoning tokens.
         start = time.time()
         result = await self.llm_service.generate_completion_safe(
             provider_name=self.selected_model_provider,
@@ -101,6 +103,7 @@ class DirectQueryService:
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=0.5,
+            require_complete=True,
         )
         logger.info("direct_query | llm_latency={:.2f}s", time.time() - start)
 
@@ -111,7 +114,7 @@ class DirectQueryService:
                 str(result["content"]),
                 "Couldn't get an answer right now. Try again in a moment.",
             )
-            return f"<div class='oh-toast'>{html.escape(msg)}</div>"
+            return f"<div class='empty-state-card' role='status'>{html.escape(msg)}</div>"
 
         cleaned = self._clean_markdown(result["content"].strip())
         html_body = text_to_html_paragraphs(cleaned)

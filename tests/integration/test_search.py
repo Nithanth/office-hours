@@ -67,6 +67,11 @@ def test_search_direct_query(client):
     # Stubbed generate_direct_query_answer returns "<p>ans</p>"
     assert "<p>ans</p>" in resp.text
 
+    reloaded = client.get(resp.headers["HX-Push-Url"])
+    assert reloaded.status_code == 200
+    assert "<p>ans</p>" in reloaded.text
+    assert 'value="RLHF?"' in reloaded.text
+
 
 @pytest.mark.integration
 def test_shuffle_and_shuffle_all(client):

@@ -196,6 +196,8 @@ def _render_paper_item(
                 type="checkbox",
                 cls="paper-select-checkbox pinned-checkbox",
                 checked=True,
+                disabled=True,
+                aria_label="Pinned paper, always included",
                 style="margin-right:5px; pointer-events:none;",
                 size="sm",
             ),
