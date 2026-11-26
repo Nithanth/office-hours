@@ -18,3 +18,4 @@
 @media(max-width:760px){.lesson-layout{grid-template-columns:1fr}}
 .lesson-studio [hidden] {display:none}
 .lesson-studio details img {width:100%;height:auto;margin-top:.75rem}
+.lesson-studio header a {color:inherit;text-underline-offset:.2em}

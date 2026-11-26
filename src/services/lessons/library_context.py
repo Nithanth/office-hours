@@ -1,6 +1,8 @@
 """Resolve the current owner's saved source again at each lesson entry point."""
 
 import contextlib
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +31,11 @@ class LibraryContext:
     title: str
     papers: list[Paper]
     report: str = ""
+
+    def revision(self) -> str:
+        sources = [(paper.title, paper.url) for paper in self.papers]
+        snapshot = json.dumps([self.title, sources, self.report]).encode()
+        return hashlib.sha256(snapshot).hexdigest()
 
 
 async def resolve_context(request: Request, paper_id: str, topic_id: str) -> LibraryContext | None:

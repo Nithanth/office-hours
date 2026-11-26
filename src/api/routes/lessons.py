@@ -64,6 +64,7 @@ async def studio(
             sources
             + f'<input type="hidden" name="{"topic_id" if topic_id else "paper_id"}" value="{esc(topic_id or paper_id, quote=True)}">'
         )
+        fields += f'<input type="hidden" name="revision" value="{ctx.revision()}">'
         fields += '<label>Teaching focus (optional)<textarea name="focus" maxlength="300" placeholder="For example, explain the main result to a first-year student."></textarea></label>'
         if paper_id:
             fields += '<details><summary>Choose PDF pages</summary><label>Start at page<input type="number" min="1" max="5000" name="page" value="1"></label><p>The planner reads up to three pages from here.</p></details>'
@@ -115,6 +116,7 @@ async def generate(
     paper_id: str = Form("", max_length=512),
     topic_id: str = Form("", max_length=64),
     focus: str = Form("", max_length=300),
+    revision: str = Form("", max_length=64),
     page: int = Form(1, ge=1, le=5000),
     pdf: Annotated[UploadFile | None, File()] = None,
 ) -> PlanResult:
@@ -122,6 +124,8 @@ async def generate(
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "Choose a PDF under 10 MiB.")
     ctx = await resolve_context(request, paper_id, topic_id)
+    if ctx and revision and revision != ctx.revision():
+        raise HTTPException(409, "The library sources have changed. Reload the lesson to review them.")
     if ctx and (url or topic or pdf):
         raise HTTPException(422, "Use the saved source for this lesson.")
     if not (ctx or topic.strip() or url.strip() or data):
