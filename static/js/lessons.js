@@ -51,9 +51,23 @@
     title.oninput = () => updateTitle(title.value);
     if (scene.kind === 'manim') {
       drawings.set(card, scene);
-      const description = document.createElement('p');
-      description.textContent = scene.panels.map(panel => panel.heading).join(' · ');
-      card.append(description);
+      scene.panels.forEach((panel, index) => {
+        const graphic = document.createElement('details');
+        const title = document.createElement('summary');
+        title.textContent = panel.heading;
+        graphic.append(title);
+        const name = 'panel-' + index + '-';
+        const heading = field(graphic, name+'heading', 'Graphic heading', panel.heading);
+        heading.maxLength = 42;
+        heading.oninput = () => {title.textContent = heading.value || 'Graphic';};
+        if (panel.type === 'bars') {
+          field(graphic, name+'labels', 'Bar labels · one per line', panel.labels.join('\n'), 'textarea');
+          field(graphic, name+'values', 'Starting values · comma-separated', panel.values.join(', '));
+          field(graphic, name+'after', 'Ending values · optional', panel.after?.join(', ') || '').required = false;
+        }
+        card.append(graphic);
+      });
+      field(card, 'cue', 'Words that start the animation', scene.cue).required = false;
     } else {
       const kind = field(card,'kind','Visual',scene.kind,'select');
       const labels = field(card,'labels','Visual labels · one per line',scene.labels.join('\n'),'textarea');
@@ -119,7 +133,23 @@
     return {question:lessonQuestion, scenes: Array.from(scenes.children, card => {
       const get = name => card.querySelector('[name="'+name+'"]').value.trim();
       const directed = drawings.get(card);
-      if (directed) return {...directed, title:get('title'), narration:get('narration'), source:get('source')};
+      if (directed) {
+        const panels = directed.panels.map((panel, index) => {
+          const name = 'panel-' + index + '-';
+          const updated = {...panel, heading:get(name+'heading')};
+          if (panel.type === 'bars') {
+            updated.labels = get(name+'labels').split('\n').map(s => s.trim());
+            const numbers = value => value.split(',').map(s => s.trim() ? Number(s) : NaN);
+            updated.values = numbers(get(name+'values'));
+            updated.after = get(name+'after') ? numbers(get(name+'after')) : [];
+            if ([...updated.values, ...updated.after].some(n => !Number.isFinite(n))) {
+              throw Error('Enter a number for each bar, separated by commas.');
+            }
+          }
+          return updated;
+        });
+        return {...directed, panels, title:get('title'), cue:get('cue'), narration:get('narration'), source:get('source')};
+      }
       const labels = get('labels').split('\n').map(x => x.trim()).filter(Boolean);
       if (labels.length < 2 || labels.length > (get('kind') === 'network' ? 4 : 3) || labels.some(x => x.length > 32)) {
         card.open = true;
