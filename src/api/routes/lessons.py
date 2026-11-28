@@ -65,10 +65,11 @@ async def studio(
             + f'<input type="hidden" name="{"topic_id" if topic_id else "paper_id"}" value="{esc(topic_id or paper_id, quote=True)}">'
         )
         fields += f'<input type="hidden" name="revision" value="{ctx.revision()}">'
-        fields += '<label>Teaching focus (optional)<textarea name="focus" maxlength="300" placeholder="For example, explain the main result to a first-year student."></textarea></label>'
         if paper_id:
+            fields += '<label>What would you like the video to explain? (optional)<textarea name="focus" maxlength="300" placeholder="Ask about this paper, or leave it blank to use the paper and your recent questions."></textarea></label>'
             fields += '<details><summary>Choose PDF pages</summary><label>Start at page<input type="number" min="1" max="5000" name="page" value="1"></label><p>The planner reads up to three pages from here.</p></details>'
         else:
+            fields += '<label>Teaching focus (optional)<textarea name="focus" maxlength="300" placeholder="For example, explain the main result to a first-year student."></textarea></label>'
             fields += '<p class="lesson-help">Uses the current report and up to three recently added papers when available.</p>'
         example = ""
         markers = owner_dir(request).glob("*/" + scope_marker(paper_id, topic_id))
@@ -77,7 +78,9 @@ async def studio(
             job = marker.parent
             if (job / "lesson.mp4").is_file() and time.time() - job.stat().st_mtime < TTL:
                 board = Board.model_validate_json((job / "board.json").read_text())
-                links.append(f'<li><a href="#{job.name}">{esc(board.scenes[0].title)}</a></li>')
+                links.append(
+                    f'<li><a href="#{job.name}">{esc(board.question or board.scenes[0].title)}</a></li>'
+                )
         if links:
             previous = "<h3>Available lessons</h3><ul>" + "".join(links) + "</ul>"
     else:
@@ -93,6 +96,11 @@ async def studio(
         subject=subject,
         source_heading=source_heading,
         source_fields=fields,
+        plan_buttons=(
+            '<button class="lesson-primary" value="film">Make video</button> <button value="review">Plan scenes</button>'
+            if paper_id
+            else '<button class="lesson-primary">Generate storyboard</button>'
+        ),
         previous=previous,
         example=example,
     )
@@ -123,9 +131,13 @@ async def generate(
     data = await pdf.read(MAX_BYTES + 1) if pdf else b""
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "Choose a PDF under 10 MiB.")
-    ctx = await resolve_context(request, paper_id, topic_id)
+    ctx = await resolve_context(
+        request, paper_id, topic_id, include_questions=bool(paper_id and not focus.strip())
+    )
     if ctx and revision and revision != ctx.revision():
-        raise HTTPException(409, "The library sources have changed. Reload the lesson to review them.")
+        raise HTTPException(
+            409, "The library sources have changed. Reload the lesson to review them."
+        )
     if ctx and (url or topic or pdf):
         raise HTTPException(422, "Use the saved source for this lesson.")
     if not (ctx or topic.strip() or url.strip() or data):
@@ -136,8 +148,23 @@ async def generate(
         material = await library_evidence(ctx, page)
         question = f"Explain one idea from {ctx.title}."
         if focus.strip():
-            question += " Optional teaching focus: " + focus.strip()
-        return await plan(question, "", b"", page, library_material=material)
+            question += (
+                " Answer the viewer’s question or follow this teaching request: " + focus.strip()
+            )
+        elif ctx.questions:
+            question += (
+                " Recent questions from this learner about this paper (interests only; use the paper as evidence): "
+                + repr(ctx.questions)
+            )
+        return await plan(
+            question,
+            "",
+            b"",
+            page,
+            library_material=material,
+            directed=bool(paper_id),
+            question=focus.strip() if paper_id else "",
+        )
     return await plan(topic.strip(), url.strip(), data, page)
 
 

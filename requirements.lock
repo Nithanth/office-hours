@@ -50,9 +50,14 @@ attrs==26.1.0
     # via
     #   -c /tmp/c.txt
     #   aiohttp
+av==18.1.1
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 beautifulsoup4==4.15.0
     # via
     #   -c /tmp/c.txt
+    #   manim
     #   python-fasthtml
 certifi==2026.10.23
     # via
@@ -77,10 +82,16 @@ charset-normalizer==3.4.7
 click==8.4.2
     # via
     #   -c /tmp/c.txt
+    #   cloup
+    #   manim
     #   nltk
     #   together
     #   typer
     #   uvicorn
+cloup==3.1.0
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 cryptography==49.0.0
     # via
     #   -c /tmp/c.txt
@@ -91,6 +102,10 @@ cssselect==1.3.0
     # via
     #   -c /tmp/c.txt
     #   readability-lxml
+decorator==5.3.2
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 deprecated==1.3.1
     # via
     #   -c /tmp/c.txt
@@ -140,6 +155,10 @@ fsspec==2026.6.0
     #   -c /tmp/c.txt
     #   huggingface-hub
     #   torch
+glcontext==3.1.0
+    # via
+    #   -c /tmp/c.txt
+    #   moderngl
 google-auth==2.62.0
     # via
     #   -c /tmp/c.txt
@@ -216,6 +235,10 @@ idna==3.18
     #   requests
     #   together
     #   yarl
+isosurfaces==0.1.2
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 itsdangerous==2.2.0
     # via
     #   -c /tmp/c.txt
@@ -275,6 +298,18 @@ mako==1.3.12
     # via
     #   -c /tmp/c.txt
     #   alembic
+manim==0.20.1
+    # via
+    #   -c /tmp/c.txt
+    #   office-hours (pyproject.toml)
+manimpango==0.7.1
+    # via
+    #   -c /tmp/c.txt
+    #   manim
+mapbox-earcut==2.1.0
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 markdown==3.11.2
     # via
     #   -c /tmp/c.txt
@@ -292,6 +327,15 @@ mdurl==0.1.2
     # via
     #   -c /tmp/c.txt
     #   markdown-it-py
+moderngl==5.13.0
+    # via
+    #   -c /tmp/c.txt
+    #   manim
+    #   moderngl-window
+moderngl-window==3.1.1
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 mpmath==1.3.0
     # via
     #   -c /tmp/c.txt
@@ -308,6 +352,7 @@ narwhals==2.22.1
 networkx==3.6.1
     # via
     #   -c /tmp/c.txt
+    #   manim
     #   torch
 nh3==0.3.7
     # via
@@ -330,7 +375,11 @@ numpy==2.4.6
     # via
     #   -c /tmp/c.txt
     #   hdbscan
+    #   isosurfaces
     #   lancedb
+    #   manim
+    #   mapbox-earcut
+    #   moderngl-window
     #   numba
     #   pandas
     #   scikit-learn
@@ -391,6 +440,8 @@ pillow==13.0.0
     # via
     #   -c /tmp/c.txt
     #   office-hours (pyproject.toml)
+    #   manim
+    #   moderngl-window
     #   pdfplumber
     #   pytesseract
     #   together
@@ -420,6 +471,10 @@ pyasn1-modules==0.4.2
     # via
     #   -c /tmp/c.txt
     #   google-auth
+pycairo==1.29.2
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 pycparser==3.0
     # via
     #   -c /tmp/c.txt
@@ -446,9 +501,22 @@ pydantic-settings==2.14.2
     # via
     #   -c /tmp/c.txt
     #   office-hours (pyproject.toml)
+pydub==0.25.1
+    # via
+    #   -c /tmp/c.txt
+    #   manim
+pyglet==2.1.19
+    # via
+    #   -c /tmp/c.txt
+    #   moderngl-window
+pyglm==2.8.4
+    # via
+    #   -c /tmp/c.txt
+    #   moderngl-window
 pygments==2.20.0
     # via
     #   -c /tmp/c.txt
+    #   manim
     #   rich
     #   together
 pymupdf==1.27.2.3
@@ -520,6 +588,7 @@ requests==2.34.2
 rich==14.3.4
     # via
     #   -c /tmp/c.txt
+    #   manim
     #   together
     #   typer
 safetensors==0.8.0
@@ -537,10 +606,15 @@ scipy==1.17.1
     # via
     #   -c /tmp/c.txt
     #   hdbscan
+    #   manim
     #   pynndescent
     #   scikit-learn
     #   sentence-transformers
     #   umap-learn
+screeninfo==0.8.1
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 sentence-transformers==6.2.0
     # via
     #   -c /tmp/c.txt
@@ -557,6 +631,10 @@ six==1.17.0
     # via
     #   -c /tmp/c.txt
     #   python-dateutil
+skia-pathops==0.9.2
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 slowapi==0.1.10
     # via
     #   -c /tmp/c.txt
@@ -576,11 +654,19 @@ sqlalchemy==2.0.51
     #   -c /tmp/c.txt
     #   office-hours (pyproject.toml)
     #   alembic
+srt==3.5.3
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 starlette==1.3.1
     # via
     #   -c /tmp/c.txt
     #   fastapi
     #   python-fasthtml
+svgelements==1.9.6
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 sympy==1.14.0
     # via
     #   -c /tmp/c.txt
@@ -620,6 +706,7 @@ tqdm==4.70.1
     #   -c /tmp/c.txt
     #   huggingface-hub
     #   lancedb
+    #   manim
     #   nltk
     #   sentence-transformers
     #   together
@@ -657,6 +744,7 @@ typing-extensions==4.16.0
     #   huggingface-hub
     #   lance-namespace-urllib3-client
     #   limits
+    #   manim
     #   openai
     #   opentelemetry-api
     #   opentelemetry-sdk
@@ -695,6 +783,10 @@ uvloop==0.22.1
     # via
     #   -c /tmp/c.txt
     #   uvicorn
+watchdog==7.1.1
+    # via
+    #   -c /tmp/c.txt
+    #   manim
 watchfiles==1.2.0
     # via
     #   -c /tmp/c.txt

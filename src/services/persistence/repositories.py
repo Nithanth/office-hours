@@ -858,6 +858,24 @@ async def list_saved_paper_ids(session: AsyncSession, *, owner_id: str) -> set[s
     )
 
 
+async def recent_paper_questions(
+    session: AsyncSession, *, owner_id: str, paper_id: str
+) -> list[str]:
+    """Recent learner questions on this paper, used to select a teaching focus."""
+    result = await session.scalars(
+        select(ChatMessage.content)
+        .join(ChatThread, ChatMessage.thread_id == ChatThread.id)
+        .where(
+            ChatThread.user_id == owner_id,
+            ChatThread.paper_id == paper_id,
+            ChatMessage.role == "user",
+        )
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(3)
+    )
+    return [message[:300] for message in result]
+
+
 async def list_paper_chat_messages(
     session: AsyncSession, *, owner_id: str, paper_id: str
 ) -> list[ChatMessage]:

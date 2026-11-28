@@ -8,6 +8,8 @@
   const remove = document.querySelector('#lesson-remove');
   const output = document.querySelector('#lesson-output');
   const empty = document.querySelector('#lesson-empty');
+  let lessonQuestion = "";
+  const drawings = new WeakMap();
   const example = [
     {title:'What can one coordinate preserve?', kind:'prediction', labels:['Choose a direction','Maximize the spread'], values:[], source:'Illustrative PCA example', narration:'Imagine a ruler through a stretched cloud of points. Which direction would you choose to keep the projected points spread apart?'},
     {title:'Follow the projections', kind:'sequence', labels:['Center the points','Rotate the ruler','Find maximum variance'], values:[], source:'Illustrative PCA example', narration:'Center the data and project each point onto a rotating ruler. The direction with the largest projected variance is the first principal component.'}
@@ -29,6 +31,7 @@
   }
 
   function edit(board) {
+    lessonQuestion = board.question || "";
     empty.hidden = true;
     editor.hidden = false;
     scenes.replaceChildren();
@@ -46,20 +49,27 @@
     const title = field(card,'title','Scene title',scene.title);
     title.maxLength = 64;
     title.oninput = () => updateTitle(title.value);
-    const kind = field(card,'kind','Visual',scene.kind,'select');
-    const labels = field(card,'labels','Visual labels · one per line',scene.labels.join('\n'),'textarea');
-    labels.rows = 3;
-    const values = field(card,'values','Comparison values · comma-separated',scene.values.join(', '));
-    const dropped = field(card,'dropped','Dropped units · numbered from 1 across layers', (scene.dropped || []).join(', '));
-    dropped.required = false;
-    function toggle() {
-      values.parentElement.firstChild.textContent = kind.value === 'network' ? 'Layer sizes · comma-separated' : 'Comparison values · comma-separated';
-      values.parentElement.hidden = !['comparison','network'].includes(kind.value);
-      dropped.parentElement.hidden = kind.value !== 'network';
-      values.disabled = values.parentElement.hidden;
+    if (scene.kind === 'manim') {
+      drawings.set(card, scene);
+      const description = document.createElement('p');
+      description.textContent = scene.panels.map(panel => panel.heading).join(' · ');
+      card.append(description);
+    } else {
+      const kind = field(card,'kind','Visual',scene.kind,'select');
+      const labels = field(card,'labels','Visual labels · one per line',scene.labels.join('\n'),'textarea');
+      labels.rows = 3;
+      const values = field(card,'values','Comparison values · comma-separated',scene.values.join(', '));
+      const dropped = field(card,'dropped','Dropped units · numbered from 1 across layers', (scene.dropped || []).join(', '));
+      dropped.required = false;
+      function toggle() {
+        values.parentElement.firstChild.textContent = kind.value === 'network' ? 'Layer sizes · comma-separated' : 'Comparison values · comma-separated';
+        values.parentElement.hidden = !['comparison','network'].includes(kind.value);
+        dropped.parentElement.hidden = kind.value !== 'network';
+        values.disabled = values.parentElement.hidden;
+      }
+      toggle();
+      kind.onchange = toggle;
     }
-    toggle();
-    kind.onchange = toggle;
     field(card,'narration','Narration',scene.narration,'textarea').maxLength = 450;
     const reference = field(card,'source','Source reference',scene.source);
     reference.maxLength = 90;
@@ -82,7 +92,7 @@
   }
 
   function updateSceneActions() {
-    add.hidden = scenes.children.length >= 6;
+    add.hidden = drawings.has(scenes.firstElementChild) || scenes.children.length >= 6;
     remove.hidden = scenes.children.length < 2;
   }
 
@@ -106,8 +116,10 @@
   }, true);
 
   function read() {
-    return {scenes: Array.from(scenes.children, card => {
+    return {question:lessonQuestion, scenes: Array.from(scenes.children, card => {
       const get = name => card.querySelector('[name="'+name+'"]').value.trim();
+      const directed = drawings.get(card);
+      if (directed) return {...directed, title:get('title'), narration:get('narration'), source:get('source')};
       const labels = get('labels').split('\n').map(x => x.trim()).filter(Boolean);
       if (labels.length < 2 || labels.length > (get('kind') === 'network' ? 4 : 3) || labels.some(x => x.length > 32)) {
         card.open = true;
@@ -144,8 +156,14 @@
       history.replaceState(null, '', location.pathname + location.search);
       status.textContent = '';
       planStatus.textContent = 'Storyboard ready for review.';
-      document.querySelector('#lesson-board-title').focus();
-    } catch (error) {planStatus.textContent = error.message;} finally {busy(false);}
+      if (event.submitter?.value === 'film') {
+        planStatus.textContent = 'Scenes ready. Rendering your video…';
+        await renderBoard();
+        planStatus.textContent = '';
+      } else {
+        document.querySelector('#lesson-board-title').focus();
+      }
+    } catch (error) {planStatus.textContent = error.message; status.textContent = '';} finally {busy(false);}
   };
   async function playback(id) {
     status.textContent = 'Rendering narration and animation…';
@@ -153,7 +171,10 @@
       const job = await api('/api/lessons/'+id);
       if (job.state === 'failed') throw Error('Render failed. Check the storyboard and retry.');
       if (job.state === 'ready') {
-        if (editor.hidden) edit(job.board);
+        if (editor.hidden) {
+          edit(job.board);
+          if (source.elements.focus && lessonQuestion) source.elements.focus.value = lessonQuestion;
+        }
         const transcript = document.querySelector('#lesson-transcript');
         transcript.replaceChildren();
         for (const scene of job.board.scenes) {
@@ -176,19 +197,22 @@
     output.querySelector('h2').focus();
     status.textContent = 'Video ready. Available for 24 hours.';
   }
+  async function renderBoard() {
+    const board = read();
+    const scope = new URLSearchParams();
+    for (const key of ['paper_id','topic_id']) {
+      if (source.elements[key]) scope.set(key, source.elements[key].value);
+    }
+    const job = await api('/api/lessons/render?' + scope,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(board)});
+    history.replaceState(null, "", "#" + job.id);
+    output.querySelector('video').pause();
+    output.hidden = true;
+    await playback(job.id);
+  }
   editor.onsubmit = async event => {
     event.preventDefault(); busy(true);
     try {
-      const board = read();
-      const scope = new URLSearchParams();
-      for (const key of ['paper_id','topic_id']) {
-        if (source.elements[key]) scope.set(key, source.elements[key].value);
-      }
-      const job = await api('/api/lessons/render?' + scope,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(board)});
-      history.replaceState(null, "", "#" + job.id);
-      output.querySelector('video').pause();
-      output.hidden = true;
-      await playback(job.id);
+      await renderBoard();
     } catch (error) {status.textContent = error.message;} finally {busy(false);}
   };
   window.addEventListener('hashchange', () => location.reload());

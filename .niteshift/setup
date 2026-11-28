@@ -3,6 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+if ! pkg-config --exists cairo pangocairo || ! command -v ffmpeg >/dev/null; then
+  apt-get update
+  apt-get install -y --no-install-recommends libcairo2-dev libpango1.0-dev pkg-config ffmpeg fonts-dejavu-core
+fi
+
 # Match CI's Python version and keep the CPU-only PyTorch build used by Docker.
 if [[ ! -x .venv/bin/python ]]; then
   uv venv --python 3.11

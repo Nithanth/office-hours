@@ -4,6 +4,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
+from services.lessons.direction import ManimScene
+
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
 
 
@@ -43,4 +45,11 @@ class Scene(BaseModel):
 
 
 class Board(BaseModel):
-    scenes: list[Scene] = Field(min_length=1, max_length=6)
+    scenes: list[Scene | ManimScene] = Field(min_length=1, max_length=6)
+    question: str = Field(default="", max_length=300)
+
+    @model_validator(mode="after")
+    def same_renderer(self) -> Self:
+        if len({isinstance(scene, ManimScene) for scene in self.scenes}) != 1:
+            raise ValueError("Use one renderer per storyboard.")
+        return self

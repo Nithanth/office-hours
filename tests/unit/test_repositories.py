@@ -39,6 +39,7 @@ from services.persistence.repositories import (  # noqa: E402 -- after optional 
     get_user,
     html_to_text,
     list_reports,
+    recent_paper_questions,
     record_export,
     record_usage,
     upsert_google_user,
@@ -425,6 +426,32 @@ class TestChatMessages:
         assert thread is not None
         assert thread.paper_id == "paper-abc"
         assert thread.title == "Chat about paper-abc"
+
+    async def test_recent_questions_use_only_this_learners_paper(self, db_session: AsyncSession):
+        user = await _make_user(db_session)
+        other = await _make_user(db_session, email="bob@example.com")
+        for owner, paper, role, content in [
+            (user, "paper-a", "user", "Older question"),
+            (user, "paper-a", "user", "First question"),
+            (user, "paper-a", "user", "Second question"),
+            (user, "paper-a", "user", "Third question"),
+            (user, "paper-a", "assistant", "An answer"),
+            (user, "paper-b", "user", "Another subject"),
+            (other, "paper-a", "user", "Another learner"),
+        ]:
+            await append_chat_message(
+                db_session,
+                user_id=owner,
+                report_id=None,
+                paper_id=paper,
+                role=role,
+                content=content,
+            )
+        assert await recent_paper_questions(db_session, owner_id=user, paper_id="paper-a") == [
+            "Third question",
+            "Second question",
+            "First question",
+        ]
 
     async def test_appends_to_existing_thread(self, db_session: AsyncSession):
         uid = await _make_user(db_session)

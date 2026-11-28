@@ -10,6 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from services.lessons.direction import ManimScene
 from services.lessons.storyboard import Board, Scene
 
 INK, MUTED, ACCENT = "#f6f3e8", "#b3c1c7", "#ffa965"
@@ -101,8 +102,15 @@ def frame(scene: Scene, index: int, progress: float, caption: str) -> Image.Imag
 
 
 def encode(board: Board, dest: Path) -> None:
+    directed = [s for s in board.scenes if isinstance(s, ManimScene)]
+    if directed:
+        from services.lessons.film import encode_film
+
+        encode_film(directed, dest)
+        return
     playlist = []
     for i, scene in enumerate(board.scenes):
+        assert isinstance(scene, Scene)
         # Only the controlled filename enters the FFmpeg filter expression.
         (dest / "speech.txt").write_text(scene.narration)
         subprocess.run(
