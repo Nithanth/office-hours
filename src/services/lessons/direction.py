@@ -16,8 +16,8 @@ class Graphic(BaseModel):
 
 class Bars(Graphic):
     type: Literal["bars"]
-    labels: list[Short] = Field(min_length=2, max_length=5)
-    values: list[Number] = Field(min_length=2, max_length=5)
+    labels: list[Short] = Field(min_length=1, max_length=5)
+    values: list[Number] = Field(min_length=1, max_length=5)
     after: list[Number] = Field(default_factory=list, max_length=5)
 
     @model_validator(mode="after")

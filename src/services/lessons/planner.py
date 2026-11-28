@@ -108,7 +108,8 @@ specific empirical question, say so. Do not invent experiments, effect sizes or 
 
 Each panel has a heading (max 42 characters) and one of the following structures:
 {"type":"bars","heading":"...","labels":["A","B"],"values":[2,4],"after":[3,4]}
-  Two to five categories with signed numeric values. Optional after animates a second state.
+  One to five named categories with signed numeric values. For a single result, use one bar.
+  Use a descriptive nonempty label for every value. Optional after animates a second state.
 {"type":"lines","heading":"...","x_label":"...","x":[0,1,2],"series":[{"label":"...","values":[0,2,3]}]}
   One to three named traces, numeric values at the same increasing x coordinates.
 {"type":"network","heading":"...","layers":[2,3,1],"masked":[3]}
