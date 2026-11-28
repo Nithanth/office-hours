@@ -97,3 +97,36 @@ def test_recording_omits_only_a_duplicate_production_cue(tail: str, expected_tai
         }
     )
     assert scene.narration == spoken + expected_tail
+
+
+def test_illustration_requires_named_endpoints_and_a_route_for_flow() -> None:
+    from services.lessons.direction import Illustration
+
+    plan = {
+        "type": "illustration",
+        "heading": "Follow the signal",
+        "objects": [
+            {"id": "a", "kind": "node", "points": [[0.2, 0.5]]},
+            {"id": "b", "kind": "node", "points": [[0.8, 0.5]]},
+            {"id": "wire", "kind": "wire", "between": ["a", "b"]},
+        ],
+        "beats": [
+            {"cue": "signal moves", "flow": ["wire"]},
+            {"cue": "unit vanishes", "hide": ["b"]},
+        ],
+    }
+    assert len(Illustration.model_validate(plan).beats) == 2
+    with pytest.raises(ValidationError, match="Flow needs"):
+        Illustration.model_validate(
+            {**plan, "beats": [plan["beats"][0], {"cue": "arrives", "flow": ["a"]}]}
+        )
+    with pytest.raises(ValidationError, match="wire endpoints"):
+        Illustration.model_validate(
+            {
+                **plan,
+                "objects": [
+                    *plan["objects"][:2],
+                    {"id": "wire", "kind": "wire", "between": ["a", "missing"]},
+                ],
+            }
+        )

@@ -91,7 +91,75 @@ class Drawing(Graphic):
     strokes: list[Stroke] = Field(min_length=1, max_length=4)
 
 
-Panel = Annotated[Bars | Network | Lines | Diagram | Drawing, Field(discriminator="type")]
+ObjectId = Annotated[str, StringConstraints(pattern=r"^[a-zA-Z][a-zA-Z0-9_-]{0,31}$")]
+ObjectIds = Annotated[list[ObjectId], Field(max_length=32)]
+Position = tuple[Fraction, Fraction]
+
+
+class IllustratedObject(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: ObjectId
+    kind: Literal["node", "label", "path", "region", "wire"]
+    color: Literal["mint", "gold", "blue", "coral", "paper", "muted"] = "mint"
+    label: str = Field(default="", max_length=80)
+    points: list[Position] = Field(default_factory=list, max_length=64)
+    between: tuple[ObjectId, ObjectId] | None = None
+    visible: bool = True
+
+    @model_validator(mode="after")
+    def geometry(self) -> Self:
+        if self.kind == "wire":
+            if not self.between or self.between[0] == self.between[1]:
+                raise ValueError("A wire needs two distinct node IDs.")
+        elif self.kind in {"label", "node"}:
+            if len(self.points) != 1 or (self.kind == "label" and not self.label.strip()):
+                raise ValueError("Give a node or label a single position, and a label some text.")
+        elif len(set(self.points)) < (3 if self.kind == "region" else 2):
+            raise ValueError("Supply distinct vertices for a path or region.")
+        return self
+
+
+class VisualBeat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cue: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=450)]
+    show: ObjectIds = Field(default_factory=list)
+    hide: ObjectIds = Field(default_factory=list)
+    flow: ObjectIds = Field(default_factory=list)
+    highlight: ObjectIds = Field(default_factory=list)
+    morph: tuple[ObjectId, ObjectId] | None = None
+
+
+class Illustration(Graphic):
+    heading: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+    type: Literal["illustration"]
+    objects: list[IllustratedObject] = Field(min_length=2, max_length=32)
+    beats: list[VisualBeat] = Field(min_length=2, max_length=6)
+
+    @model_validator(mode="after")
+    def references(self) -> Self:
+        objects = {o.id: o for o in self.objects}
+        if len(objects) != len(self.objects):
+            raise ValueError("Object IDs must be unique in a scene.")
+        nodes = {o.id for o in self.objects if o.kind == "node"}
+        for obj in self.objects:
+            if obj.between and not set(obj.between) <= nodes:
+                raise ValueError("Both wire endpoints must name nodes in this scene.")
+        for beat in self.beats:
+            targets = set(beat.show + beat.hide + beat.flow + beat.highlight) | set(
+                beat.morph or ()
+            )
+            if not targets or not targets <= objects.keys() or set(beat.show) & set(beat.hide):
+                raise ValueError("Every beat must change named objects with consistent visibility.")
+            if any(objects[k].kind not in {"wire", "path"} for k in beat.flow):
+                raise ValueError("Flow needs a wire or path to travel along.")
+            if beat.morph and beat.morph[0] == beat.morph[1]:
+                raise ValueError("Morph an object into a different object.")
+        return self
+
+
+Panel = Annotated[
+    Bars | Network | Lines | Diagram | Drawing | Illustration, Field(discriminator="type")
+]
 
 
 class ManimScene(BaseModel):
@@ -101,6 +169,12 @@ class ManimScene(BaseModel):
     source: str = Field(min_length=1, max_length=90)
     cue: str = Field(default="", max_length=64)
     panels: list[Panel] = Field(min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def full_canvas(self) -> Self:
+        if len(self.panels) > 1 and any(isinstance(p, Illustration) for p in self.panels):
+            raise ValueError("An illustration occupies the full scene. Use one panel.")
+        return self
 
     def remove_appended_cue(self) -> None:
         """A director may accidentally copy its cue into a trailing production note."""

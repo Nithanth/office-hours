@@ -58,8 +58,16 @@
         graphic.append(title);
         const name = 'panel-' + index + '-';
         const heading = field(graphic, name+'heading', 'Graphic heading', panel.heading);
-        heading.maxLength = 42;
+        heading.maxLength = panel.type === 'illustration' ? 80 : 42;
         heading.oninput = () => {title.textContent = heading.value || 'Graphic';};
+        if (panel.type === 'illustration') {
+          panel.beats.forEach((beat, i) => {
+            const actions = ['show','hide','flow','highlight','morph']
+              .filter(action => beat[action]?.length)
+              .map(action => action + ' ' + beat[action].join(', ')).join(' · ');
+            field(graphic, name+'beat-'+i, 'Voice cue · '+actions, beat.cue).maxLength = 450;
+          });
+        }
         if (panel.type === 'bars') {
           field(graphic, name+'labels', 'Bar labels · one per line', panel.labels.join('\n'), 'textarea');
           field(graphic, name+'values', 'Starting values · comma-separated', panel.values.join(', '));
@@ -67,7 +75,9 @@
         }
         card.append(graphic);
       });
-      field(card, 'cue', 'Words that start the animation', scene.cue).required = false;
+      if (scene.panels[0].type !== 'illustration') {
+        field(card, 'cue', 'Words that start the animation', scene.cue).required = false;
+      }
     } else {
       const kind = field(card,'kind','Visual',scene.kind,'select');
       const labels = field(card,'labels','Visual labels · one per line',scene.labels.join('\n'),'textarea');
@@ -137,6 +147,9 @@
         const panels = directed.panels.map((panel, index) => {
           const name = 'panel-' + index + '-';
           const updated = {...panel, heading:get(name+'heading')};
+          if (panel.type === 'illustration') {
+            updated.beats = panel.beats.map((beat, i) => ({...beat, cue:get(name+'beat-'+i)}));
+          }
           if (panel.type === 'bars') {
             updated.labels = get(name+'labels').split('\n').map(s => s.trim());
             const numbers = value => value.split(',').map(s => s.trim() ? Number(s) : NaN);
@@ -148,7 +161,7 @@
           }
           return updated;
         });
-        return {...directed, panels, title:get('title'), cue:get('cue'), narration:get('narration'), source:get('source')};
+        return {...directed, panels, title:get('title'), cue:panels[0].type === 'illustration' ? directed.cue : get('cue'), narration:get('narration'), source:get('source')};
       }
       const labels = get('labels').split('\n').map(x => x.trim()).filter(Boolean);
       if (labels.length < 2 || labels.length > (get('kind') === 'network' ? 4 : 3) || labels.some(x => x.length > 32)) {
