@@ -7,7 +7,7 @@ WORKDIR /app
 ENV PYTHONPATH="/app/src"
 
 # Install build deps + uv (fast Python package manager)
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential pkg-config libcairo2-dev libpango1.0-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
 
@@ -63,7 +63,7 @@ COPY --from=builder /hf-cache /app/.cache/huggingface
 
 # Install Tesseract OCR for optional PDF image extraction
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng ffmpeg fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng ffmpeg fonts-dejavu-core libpangocairo-1.0-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # App writes relative dirs at runtime (data/, .cache/, .chat_cache/) — the

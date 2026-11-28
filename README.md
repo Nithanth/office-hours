@@ -32,6 +32,8 @@ The app is on http://localhost:8000.
 
 ### Local dev
 
+Manim needs Cairo, Pango and pkg-config at build time. On Ubuntu or Debian, install them with `sudo apt-get install libcairo2-dev libpango1.0-dev pkg-config ffmpeg fonts-dejavu-core` before syncing Python dependencies.
+
 ```bash
 uv sync --extra dev    # or: python -m venv .venv && .venv/bin/pip install .
 cp .env.example .env
@@ -39,6 +41,12 @@ cp .env.example .env
 ```
 
 Run `uv tool install pre-commit && pre-commit install` after cloning to get the ruff/black/mypy hooks (`pip install pre-commit` works too).
+
+### Saved-paper videos
+
+Open **Library → Visual lesson**, optionally enter a question, and select **Make video**. **Plan scenes** lets you review the source and edit narration, animation cues, graphic headings, and bar chart values before rendering. The director reads the selected PDF pages and uses recent questions on that paper for guidance when the field is blank. It works out an answer from the source text, plans the animation using the pages and figures, and reviews rendered frames before recording the narration. The worker renders validated Manim panel descriptions and embeds English captions in the MP4.
+
+The default director uses the Standard model on OpenRouter. For an operator-hosted vision model, set `LESSON_PLANNER_URL` to its OpenAI-compatible chat completions endpoint and `LESSON_PLANNER_MODEL` to its model ID. The endpoint must support image inputs and JSON schema responses. For ElevenLabs Brian narration, configure `ELEVENLABS_API_KEY` or point `ELEVENLABS_API_KEY_FILE` at a mounted secret. Without either setting the renderer uses the system voice.
 
 ### Persistence and multi-user mode
 

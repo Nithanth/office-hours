@@ -17,6 +17,7 @@ from services.persistence.repositories import (
     get_topic,
     list_topic_papers,
     list_topic_reports,
+    recent_paper_questions,
 )
 
 
@@ -31,6 +32,7 @@ class LibraryContext:
     title: str
     papers: list[Paper]
     report: str = ""
+    questions: tuple[str, ...] = ()
 
     def revision(self) -> str:
         sources = [(paper.title, paper.url) for paper in self.papers]
@@ -38,7 +40,9 @@ class LibraryContext:
         return hashlib.sha256(snapshot).hexdigest()
 
 
-async def resolve_context(request: Request, paper_id: str, topic_id: str) -> LibraryContext | None:
+async def resolve_context(
+    request: Request, paper_id: str, topic_id: str, *, include_questions: bool = False
+) -> LibraryContext | None:
     if not (paper_id or topic_id):
         return None
     if paper_id and topic_id:
@@ -53,7 +57,16 @@ async def resolve_context(request: Request, paper_id: str, topic_id: str) -> Lib
             saved = await get_saved_paper(db, owner_id=owner, paper_id=paper_id)
             if not saved:
                 raise HTTPException(404, "Saved paper not found.")
-            return LibraryContext(saved.title, [Paper(saved.title, saved.url or saved.paper_id)])
+            questions = (
+                await recent_paper_questions(db, owner_id=owner, paper_id=paper_id)
+                if include_questions
+                else []
+            )
+            return LibraryContext(
+                saved.title,
+                [Paper(saved.title, saved.url or saved.paper_id)],
+                questions=tuple(questions),
+            )
         topic = await get_topic(db, owner_id=owner, topic_id=topic_id)
         if not topic:
             raise HTTPException(404, "Topic not found.")

@@ -42,3 +42,58 @@ def test_invalid_edits_are_rejected(kind: str, values: list[float], dropped: lis
                 dropped=dropped,
             )
         )
+
+
+@pytest.mark.parametrize(
+    "panel",
+    [
+        {
+            "type": "lines",
+            "x_label": "Step",
+            "x": [1, 0],
+            "series": [{"label": "Loss", "values": [2, 1]}],
+        },
+        {"type": "network", "layers": [1, 2, 1], "masked": [5]},
+        {
+            "type": "diagram",
+            "nodes": [{"label": "A", "position": [0, 0]}, {"label": "B", "position": [1, 1]}],
+            "arrows": [[1, 3]],
+        },
+        {"type": "bars", "labels": ["A", "B"], "values": [2, 1], "after": [0]},
+    ],
+)
+def test_manim_rejects_inconsistent_geometry_before_render(panel: dict) -> None:
+    from services.lessons.direction import ManimScene
+
+    with pytest.raises(ValidationError):
+        ManimScene.model_validate(
+            {
+                "title": "Read the graphic",
+                "source": "PDF page 2",
+                "narration": "Follow the change.",
+                "panels": [{"heading": "Example", **panel}],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("tail", "expected_tail"),
+    [
+        (" Cue: 'Look at the mean.'", ""),
+        (" Cue: a different phrase.", " Cue: a different phrase."),
+    ],
+)
+def test_recording_omits_only_a_duplicate_production_cue(tail: str, expected_tail: str) -> None:
+    from services.lessons.direction import PlannedScene
+
+    spoken = "The two values average to four."
+    scene = PlannedScene.model_validate(
+        {
+            "title": "Expected contribution",
+            "source": "Page 3",
+            "narration": spoken + tail,
+            "cue": "Look at the mean.",
+            "panels": [{"type": "bars", "heading": "Mean", "labels": ["Wire"], "values": [4]}],
+        }
+    )
+    assert scene.narration == spoken + expected_tail

@@ -55,6 +55,10 @@ class Config(BaseSettings):
     OPENROUTER_API_KEY: Optional[
         str
     ] = None  # Primary LLM gateway - all model tiers route through OpenRouter
+    LESSON_PLANNER_URL: str = ""  # Optional operator-hosted OpenAI-compatible chat completions URL.
+    LESSON_PLANNER_MODEL: str = ""
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_API_KEY_FILE: str = ""
     SEMANTIC_SCHOLAR_API_KEY: Optional[str] = None  # optional, raises rate limits
     # OpenAlex is the keyless fallback for author search; these are optional.
     # Free instant keys: https://help.openalex.org/api/authentication/
