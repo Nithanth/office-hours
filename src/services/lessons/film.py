@@ -9,8 +9,10 @@ from pathlib import Path
 from manim import AnimationGroup, FadeIn, Line, Scene, VGroup, tempconfig
 from PIL import Image
 
-from services.lessons.direction import FilmPlan, ManimScene
+from services.lessons.direction import FilmPlan, Illustration, ManimScene, SampledField
+from services.lessons.field import animate_field
 from services.lessons.graphics import BACKGROUND, GRID, MINT, MUTED, compose, point, text
+from services.lessons.illustration import stage
 from services.lessons.speech import Speech, record
 
 FPS = 24
@@ -25,6 +27,16 @@ class PaperScene(Scene):
 
     def construct(self) -> None:
         scene = self.section
+        if isinstance(scene.panels[0], (Illustration, SampledField)):
+            panel = scene.panels[0]
+            heading = text(panel.heading, 0, 3.24, 34, 12.5, serif=True)
+            heading.shift(point(-6.25 - heading.get_left()[0], 0))
+            self.add(heading, text(scene.source, 0, -3.58, 16, 12.5, MUTED))
+            if isinstance(panel, SampledField):
+                animate_field(self, panel, self.speech, scene.narration, self.seconds)
+            else:
+                stage(self, panel, self.speech, scene.narration, self.seconds)
+            return
         self.add(text(scene.title, 0, 2.98, 37, 12.95, serif=True))
         self.add(Line(point(-6.46, 2.43), point(6.46, 2.43), color=GRID, stroke_width=1))
         self.add(
@@ -167,7 +179,7 @@ def encode_film(sections: list[ManimScene], dest: Path) -> None:
 def draw_review_frames(directory: Path) -> None:
     """Draw both states with the same scene and geometry code as the final film."""
     board = FilmPlan.model_validate_json((directory / "plan.json").read_bytes())
-    sheet = Image.new("RGB", (960, 270 * len(board.scenes)))
+    sheet = Image.new("RGB", (1440, 270 * len(board.scenes)))
     for i, section in enumerate(board.scenes):
         with tempconfig(
             {
@@ -187,7 +199,7 @@ def draw_review_frames(directory: Path) -> None:
             draft = PaperScene(section, Speech(directory / "unused.wav", 2.5, []), 3.0)
             draft.render()
             movie = draft.renderer.file_writer.movie_file_path
-        for j, when in enumerate(("0.875", "2.75")):
+        for j, when in enumerate(("0.5", "1.5", "2.75")):
             frame = subprocess.check_output(
                 [
                     "ffmpeg",

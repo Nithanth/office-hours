@@ -269,4 +269,6 @@ def compose(panel: Panel, cx: float, width: float) -> tuple[VGroup, Animation]:
         return chart_lines(panel, cx, width)
     if isinstance(panel, Drawing):
         return chart_drawing(panel, cx, width)
-    return chart_diagram(panel, cx, width)
+    if isinstance(panel, Diagram):
+        return chart_diagram(panel, cx, width)
+    raise ValueError("Render a full-canvas illustration with its own timeline.")
