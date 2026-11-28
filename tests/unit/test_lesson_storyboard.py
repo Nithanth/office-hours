@@ -74,3 +74,26 @@ def test_manim_rejects_inconsistent_geometry_before_render(panel: dict) -> None:
                 "panels": [{"heading": "Example", **panel}],
             }
         )
+
+
+@pytest.mark.parametrize(
+    ("tail", "expected_tail"),
+    [
+        (" Cue: 'Look at the mean.'", ""),
+        (" Cue: a different phrase.", " Cue: a different phrase."),
+    ],
+)
+def test_recording_omits_only_a_duplicate_production_cue(tail: str, expected_tail: str) -> None:
+    from services.lessons.direction import PlannedScene
+
+    spoken = "The two values average to four."
+    scene = PlannedScene.model_validate(
+        {
+            "title": "Expected contribution",
+            "source": "Page 3",
+            "narration": spoken + tail,
+            "cue": "Look at the mean.",
+            "panels": [{"type": "bars", "heading": "Mean", "labels": ["Wire"], "values": [4]}],
+        }
+    )
+    assert scene.narration == spoken + expected_tail

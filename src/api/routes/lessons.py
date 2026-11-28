@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from pages.shell import page_shell
 from services.core.model_prefs import prefs_owner_id
+from services.lessons.direction import ManimScene
 from services.lessons.library_context import library_evidence, resolve_context
 from services.lessons.planner import MAX_BYTES, PlanResult, plan
 from services.lessons.storyboard import Board
@@ -202,6 +203,9 @@ async def render(
         job.mkdir()
         if ctx:
             (job / scope_marker(paper_id, topic_id)).touch()
+        for scene in board.scenes:
+            if isinstance(scene, ManimScene):
+                scene.remove_appended_cue()
         (job / "board.json").write_text(board.model_dump_json())
         proc = await asyncio.create_subprocess_exec(
             sys.executable,

@@ -1,5 +1,6 @@
 """A paper director composes bounded Manim graphics as data in a shared scene."""
 
+import re
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -101,9 +102,22 @@ class ManimScene(BaseModel):
     cue: str = Field(default="", max_length=64)
     panels: list[Panel] = Field(min_length=1, max_length=2)
 
+    def remove_appended_cue(self) -> None:
+        """A director may accidentally copy its cue into a trailing production note."""
+        match = re.search(r"""\s+Cue:\s*["'“‘]?(.*?)["'”’]?\s*$""", self.narration, re.I)
+        if match and self.cue and match[1].strip().casefold() == self.cue.strip().casefold():
+            spoken = self.narration[: match.start()].rstrip()
+            if len(spoken) >= 5:
+                self.narration = spoken
+
 
 class PlannedScene(ManimScene):
     cue: str = Field(min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def spoken_narration(self) -> Self:
+        self.remove_appended_cue()
+        return self
 
 
 class FilmPlan(BaseModel):
