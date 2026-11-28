@@ -19,3 +19,17 @@
 .lesson-studio [hidden] {display:none}
 .lesson-studio details img {width:100%;height:auto;margin-top:.75rem}
 .lesson-studio header a {color:inherit;text-underline-offset:.2em}
+
+.lesson-studio header {background:transparent;color:inherit;text-align:left;padding:0}
+.lesson-studio header h1 {font-family:var(--oh-font-serif,Georgia,serif);line-height:1.12;margin:.4rem 0}
+.lesson-studio header p {margin:0;color:var(--fg-muted)}
+.lesson-studio label input,.lesson-studio label textarea,.lesson-studio label select {font-weight:400;background:var(--bg-card);min-width:0}
+.lesson-studio .lesson-panel {min-width:0;overflow-wrap:anywhere}
+.lesson-studio :is(h2,summary,button,input,select,textarea) {scroll-margin-top:5rem}
+#lesson-plan-status {font-size:.88rem;line-height:1.5}
+#lesson-plan-status:empty {display:none}
+#lesson-output {margin-bottom:1.5rem}
+@media(max-width:760px){
+  .container:has(.lesson-studio) {box-sizing:border-box;width:100%;padding:1rem}
+  .lesson-studio {margin:1rem 0 2rem;padding:0}
+}

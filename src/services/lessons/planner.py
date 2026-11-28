@@ -147,6 +147,16 @@ async def plan(
                     headers={"Authorization": f"Bearer {key}"},
                     json=payload,
                 ) as response:
+                    if response.status == 401:
+                        raise HTTPException(
+                            502,
+                            "OpenRouter rejected the API key. Update it in Settings or write a storyboard.",
+                        )
+                    if response.status == 402:
+                        raise HTTPException(
+                            502,
+                            "OpenRouter has insufficient credit. Add credit or write a storyboard.",
+                        )
                     response.raise_for_status()
                     result = await response.json()
                 raw = result["choices"][0]["message"]["content"]
@@ -186,6 +196,8 @@ async def plan(
                         ]
                     )
         raise ValueError("Empty storyboard")
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "lesson_planner_failed type={} status={}",

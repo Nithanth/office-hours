@@ -3,6 +3,9 @@
   const editor = document.querySelector('#lesson-editor');
   const scenes = document.querySelector('#lesson-scenes');
   const status = document.querySelector('#lesson-status');
+  const planStatus = document.querySelector('#lesson-plan-status');
+  const add = document.querySelector('#lesson-add');
+  const remove = document.querySelector('#lesson-remove');
   const output = document.querySelector('#lesson-output');
   const empty = document.querySelector('#lesson-empty');
   const example = [
@@ -29,49 +32,78 @@
     empty.hidden = true;
     editor.hidden = false;
     scenes.replaceChildren();
-    board.scenes.forEach((scene, i) => {
-      const card = document.createElement('details');
-      card.open = i === 0;
-      const summary = document.createElement('summary');
-      const updateTitle = title => { summary.textContent = (i + 1) + '. ' + title; };
-      updateTitle(scene.title);
-      card.append(summary);
-      const title = field(card,'title','Scene title',scene.title);
-      title.maxLength = 64;
-      title.oninput = () => updateTitle(title.value);
-      const kind = field(card,'kind','Visual',scene.kind,'select');
-      const labels = field(card,'labels','Visual labels · one per line',scene.labels.join('\n'),'textarea');
-      labels.rows = 3;
-      const values = field(card,'values','Comparison values · comma-separated',scene.values.join(', '));
-      const dropped = field(card,'dropped','Dropped units · numbered from 1 across layers', (scene.dropped || []).join(', '));
-      dropped.required = false;
-      function toggle() {
-        values.parentElement.firstChild.textContent = kind.value === 'network' ? 'Layer sizes · comma-separated' : 'Comparison values · comma-separated';
-        values.parentElement.hidden = !['comparison','network'].includes(kind.value);
-        dropped.parentElement.hidden = kind.value !== 'network';
-        values.disabled = values.parentElement.hidden;
-      }
-      toggle();
-      kind.onchange = toggle;
-      field(card,'narration','Narration',scene.narration,'textarea').maxLength = 450;
-      const reference = field(card,'source','Source reference',scene.source);
-      reference.maxLength = 90;
-      const figure = document.createElement('details');
-      const toggleFigure = document.createElement('summary');
-      toggleFigure.textContent = 'Check source page';
-      const image = document.createElement('img');
-      figure.append(toggleFigure, image);
-      card.append(figure);
-      function showSource() {
-        const url = board.source_pages?.[reference.value];
-        figure.hidden = !url;
-        if (url) { image.src = url; image.alt = reference.value; }
-      }
-      reference.oninput = showSource;
-      showSource();
-      scenes.append(card);
-    });
+    board.scenes.forEach((scene, i) => appendScene(scene, board.source_pages, i === 0));
   }
+
+  function appendScene(scene, sourcePages, open) {
+    const i = scenes.children.length;
+    const card = document.createElement('details');
+    card.open = open;
+    const summary = document.createElement('summary');
+    const updateTitle = title => { summary.textContent = (i + 1) + '. ' + (title || 'Untitled scene'); };
+    updateTitle(scene.title);
+    card.append(summary);
+    const title = field(card,'title','Scene title',scene.title);
+    title.maxLength = 64;
+    title.oninput = () => updateTitle(title.value);
+    const kind = field(card,'kind','Visual',scene.kind,'select');
+    const labels = field(card,'labels','Visual labels · one per line',scene.labels.join('\n'),'textarea');
+    labels.rows = 3;
+    const values = field(card,'values','Comparison values · comma-separated',scene.values.join(', '));
+    const dropped = field(card,'dropped','Dropped units · numbered from 1 across layers', (scene.dropped || []).join(', '));
+    dropped.required = false;
+    function toggle() {
+      values.parentElement.firstChild.textContent = kind.value === 'network' ? 'Layer sizes · comma-separated' : 'Comparison values · comma-separated';
+      values.parentElement.hidden = !['comparison','network'].includes(kind.value);
+      dropped.parentElement.hidden = kind.value !== 'network';
+      values.disabled = values.parentElement.hidden;
+    }
+    toggle();
+    kind.onchange = toggle;
+    field(card,'narration','Narration',scene.narration,'textarea').maxLength = 450;
+    const reference = field(card,'source','Source reference',scene.source);
+    reference.maxLength = 90;
+    const figure = document.createElement('details');
+    const toggleFigure = document.createElement('summary');
+    toggleFigure.textContent = 'Check source page';
+    const image = document.createElement('img');
+    figure.append(toggleFigure, image);
+    card.append(figure);
+    function showSource() {
+      const url = sourcePages?.[reference.value];
+      figure.hidden = !url;
+      if (url) { image.src = url; image.alt = reference.value; }
+    }
+    reference.oninput = showSource;
+    showSource();
+    scenes.append(card);
+    updateSceneActions();
+    return card;
+  }
+
+  function updateSceneActions() {
+    add.hidden = scenes.children.length >= 6;
+    remove.hidden = scenes.children.length < 2;
+  }
+
+  function blankScene() {
+    return {title:'', kind:'sequence', labels:[], values:[], source:'', narration:''};
+  }
+
+  document.querySelector('#lesson-manual').onclick = () => {
+    planStatus.textContent = '';
+    edit({scenes:[blankScene()]});
+    scenes.querySelector('input').focus();
+  };
+  add.onclick = () => appendScene(blankScene(), {}, true).querySelector('input').focus();
+  remove.onclick = () => {
+    scenes.lastElementChild.remove();
+    updateSceneActions();
+    add.focus();
+  };
+  editor.addEventListener('invalid', event => {
+    event.target.closest('details').open = true;
+  }, true);
 
   function read() {
     return {scenes: Array.from(scenes.children, card => {
@@ -101,14 +133,19 @@
   source.onsubmit = async event => {
     event.preventDefault();
     busy(true);
-    status.textContent = 'Reading the source and planning scenes…';
+    planStatus.textContent = 'Reading the source and planning scenes…';
     try {
       const data = new FormData(source);
       if (!data.get('pdf')?.size) data.delete('pdf');
       const board = await api('/api/lessons/plan',{method:'POST',body:data});
-      edit(board); output.hidden = true;
-      status.textContent = 'Storyboard ready for review.';
-    } catch (error) {status.textContent = error.message;} finally {busy(false);}
+      edit(board);
+      output.querySelector('video').pause();
+      output.hidden = true;
+      history.replaceState(null, '', location.pathname + location.search);
+      status.textContent = '';
+      planStatus.textContent = 'Storyboard ready for review.';
+      document.querySelector('#lesson-board-title').focus();
+    } catch (error) {planStatus.textContent = error.message;} finally {busy(false);}
   };
   async function playback(id) {
     status.textContent = 'Rendering narration and animation…';
@@ -136,6 +173,7 @@
     output.querySelector('video').src = url;
     output.querySelector('a').href = url;
     output.hidden = false;
+    output.querySelector('h2').focus();
     status.textContent = 'Video ready. Available for 24 hours.';
   }
   editor.onsubmit = async event => {
@@ -148,6 +186,7 @@
       }
       const job = await api('/api/lessons/render?' + scope,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(board)});
       history.replaceState(null, "", "#" + job.id);
+      output.querySelector('video').pause();
       output.hidden = true;
       await playback(job.id);
     } catch (error) {status.textContent = error.message;} finally {busy(false);}
