@@ -10,6 +10,7 @@ from typing import Any
 
 import aiohttp
 import fitz
+import numpy as np
 from bs4 import BeautifulSoup
 from fastapi import HTTPException
 from loguru import logger
@@ -17,7 +18,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from config import config
 from services.core.model_prefs import current_openrouter_api_key, resolve_model_id
-from services.lessons.direction import FilmPlan
+from services.lessons.direction import FilmPlan, SampledField
+from services.lessons.field_values import field_value
 from services.lessons.storyboard import Board, Scene
 from utils.safe_fetch import read_capped, safe_get, safe_session
 
@@ -118,7 +120,9 @@ A scene may contain exactly one panel of this form:
 "beats":[{"cue":"exact spoken words","flow":["route"]},{"cue":"another spoken phrase","hide":["b"]}]}
 Objects: node or standalone label has one [x,y]; wire connects two node IDs and automatically
 disappears with either endpoint; path traces 2-64 points; region fills a closed polygon (3-64 points).
-Use normalized coordinates with y increasing UP. Use regions and paths for shapes, samples,
+Use normalized coordinates with y increasing UP. Use plain label objects for annotations. Only use nodes for entities that participate in the mechanism.
+Preserve a single arrangement while changing states when the question concerns a repeated experiment.
+Use regions and paths for shapes, samples,
 waves, envelopes, lattice cells and other source-specific geometry. A path/region has no caption:
 place a separate label nearby. Colors: mint, gold, blue, coral, paper, muted. Set visible:false
 on objects to be introduced. 2-32 objects. Beat actions: show/hide lists, highlight visible IDs,
@@ -148,7 +152,16 @@ Each panel has a heading (max 42 characters) and one of the following structures
 {"type":"drawing","heading":"...","strokes":[{"label":"...","points":[[0,0],[0.5,0.8],[1,0.3]]}]}
   Author custom geometry: each colored stroke traces an arbitrary polyline with a moving point, or
   morphs from points to an optional target polyline. Positions are normalized to [0,1] in both axes.
-Do not add extra fields to any panel. Before returning, check every number, source and mask index.
+For continuous coordinate representations, waves or spatial derivatives, use this full-canvas experiment:
+{"type":"sampled_field","heading":"What lives between the pixels?","terms":[{"amplitude":1,"fx":1,"fy":1,"phase":0},{"amplitude":0.3,"fx":4,"fy":-2,"phase":0.25}],"y":0.48,"start_x":0.05,
+"sweeps":[{"cue":"short exact phrase","mode":"trace","to_x":0.96},{"cue":"another spoken phrase","mode":"slope","to_x":0.62}]}
+Brightness = 0.5 + sum(amplitude*sin(2π*(fx*x + fy*y + phase)))/(2*sum(amplitude)). Five pale dots mark quarter-spaced reference samples. The left image is a computed illustrative Fourier field. A moving probe along a fixed row reveals
+its brightness on the right; trace reveals the cross-section, slope also draws its exact tangent.
+The renderer computes values. Choose 1-5 terms (positive amplitude <=2, signed frequencies in
+cycles across the image, phase in cycles). Positions use [0,1]. Always identify this as a toy field,
+not trained weights or a measured paper figure. Use this experiment where it answers the question.
+Do not invent decimal outputs for a toy model; show the operation or use an exactly known value.
+Avoid universal claims about piecewise or undefined derivatives. Do not add extra fields to any panel. Before returning, check every number, source and mask index.
 Keep the visual experiment intact when a number can be spoken or labeled directly. A labeled curve must obey the mathematical
 relationship it names. To explain why an equality fails, work one illustrative counterexample
 through both sides and show the values. Keep distinct quantities (e.g. a multiplier and its result)
@@ -180,6 +193,27 @@ async def draft_review(board: FilmPlan) -> list[dict[str, Any]]:
             if proc.returncode:
                 raise RuntimeError("Could not render review frames")
             jpeg = base64.b64encode((directory / "review.jpg").read_bytes()).decode()
+    measurements = []
+    for section in board.scenes:
+        for panel in section.panels:
+            if isinstance(panel, SampledField):
+                xs = np.array([panel.start_x, *(s.to_x for s in panel.sweeps)])
+                y = np.asarray(panel.y)
+                values = field_value(panel, xs, y)
+                slopes = field_value(panel, xs, y, derivative=True)
+                measurements.append(
+                    f"{section.title}: (x, brightness, horizontal derivative) "
+                    + str(
+                        list(
+                            zip(
+                                xs.tolist(),
+                                values.round(4).tolist(),
+                                slopes.round(4).tolist(),
+                                strict=True,
+                            )
+                        )
+                    )
+                )
     return [
         {
             "type": "text",
@@ -188,7 +222,13 @@ async def draft_review(board: FilmPlan) -> list[dict[str, Any]]:
             "wrong arithmetic, missing units, unsupported claims and repetition. Use illustrated wire endpoints for changes to connectivity; "
             "moving a diagram node keeps its arrows attached. Check that the quoted page supports the claim. "
             "Toy values must be identified. Keep a teaching example mathematically consistent across scenes. "
-            "Use a short literal cue from each narration. Return the revised film JSON using the source keys.",
+            "Use a short literal cue from each narration. Return the revised film JSON using the source keys."
+            + (
+                " The renderer computed these values from the toy field. Preserve its terms and correct conflicting labels, narration, units or claims: "
+                + " ".join(measurements)
+                if measurements
+                else ""
+            ),
         },
         {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + jpeg}},
     ]

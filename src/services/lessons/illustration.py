@@ -74,6 +74,23 @@ def glyph(obj: IllustratedObject, nodes: dict[str, np.ndarray]) -> VMobject:
     return path.set_points_as_corners(pts).set_z_index(2)
 
 
+def cue_times(cues: list[str], speech: Speech, narration: str, seconds: float) -> list[float]:
+    times: list[float] = []
+    for i, cue in enumerate(cues):
+        offset = narration.casefold().find(cue.casefold())
+        if offset >= 0:
+            t = (
+                speech.cue_time(narration, cue)
+                if speech.words
+                else seconds * offset / max(len(narration), 1)
+            )
+        else:
+            t = seconds * (i + 0.5) / len(cues)
+        gap = min(1.1, seconds / (len(cues) * 2))
+        times.append(min(max(t, times[-1] + gap if times else 0), seconds - gap * (len(cues) - i)))
+    return times
+
+
 def stage(
     scene: Scene, plate: Illustration, speech: Speech, narration: str, seconds: float
 ) -> None:
@@ -91,21 +108,7 @@ def stage(
     on_stage = visible()
     frame = 1 / float(scene.camera.frame_rate)
     # Unmatched or edited phrases keep their sequence using a proportional time slot.
-    times: list[float] = []
-    for i, beat in enumerate(plate.beats):
-        offset = narration.casefold().find(beat.cue.casefold())
-        if offset >= 0:
-            t = (
-                speech.cue_time(narration, beat.cue)
-                if speech.words
-                else seconds * offset / max(len(narration), 1)
-            )
-        else:
-            t = seconds * (i + 0.5) / len(plate.beats)
-        gap = min(1.1, seconds / (len(plate.beats) * 2))
-        times.append(
-            min(max(t, times[-1] + gap if times else 0), seconds - gap * (len(plate.beats) - i))
-        )
+    times = cue_times([beat.cue for beat in plate.beats], speech, narration, seconds)
     scene.add(*(objects[k] for k in objects if k in on_stage))
     for i, beat in enumerate(plate.beats):
         if times[i] - scene.time >= frame:

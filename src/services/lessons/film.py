@@ -9,7 +9,8 @@ from pathlib import Path
 from manim import AnimationGroup, FadeIn, Line, Scene, VGroup, tempconfig
 from PIL import Image
 
-from services.lessons.direction import FilmPlan, Illustration, ManimScene
+from services.lessons.direction import FilmPlan, Illustration, ManimScene, SampledField
+from services.lessons.field import animate_field
 from services.lessons.graphics import BACKGROUND, GRID, MINT, MUTED, compose, point, text
 from services.lessons.illustration import stage
 from services.lessons.speech import Speech, record
@@ -26,12 +27,15 @@ class PaperScene(Scene):
 
     def construct(self) -> None:
         scene = self.section
-        if isinstance(scene.panels[0], Illustration):
+        if isinstance(scene.panels[0], (Illustration, SampledField)):
             panel = scene.panels[0]
             heading = text(panel.heading, 0, 3.24, 34, 12.5, serif=True)
             heading.shift(point(-6.25 - heading.get_left()[0], 0))
             self.add(heading, text(scene.source, 0, -3.58, 16, 12.5, MUTED))
-            stage(self, panel, self.speech, scene.narration, self.seconds)
+            if isinstance(panel, SampledField):
+                animate_field(self, panel, self.speech, scene.narration, self.seconds)
+            else:
+                stage(self, panel, self.speech, scene.narration, self.seconds)
             return
         self.add(text(scene.title, 0, 2.98, 37, 12.95, serif=True))
         self.add(Line(point(-6.46, 2.43), point(6.46, 2.43), color=GRID, stroke_width=1))

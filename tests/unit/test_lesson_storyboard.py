@@ -130,3 +130,30 @@ def test_illustration_requires_named_endpoints_and_a_route_for_flow() -> None:
                 ],
             }
         )
+
+
+def test_field_trace_and_tangent_use_the_displayed_brightness_function() -> None:
+    import numpy as np
+
+    from services.lessons.direction import SampledField
+    from services.lessons.field_values import field_value
+
+    plate = SampledField.model_validate(
+        {
+            "type": "sampled_field",
+            "heading": "A coordinate between samples",
+            "terms": [{"amplitude": 1, "fx": 1, "fy": 0}],
+            "start_x": 0,
+            "y": 0.5,
+            "sweeps": [
+                {"cue": "trace", "mode": "trace", "to_x": 1},
+                {"cue": "slope", "mode": "slope", "to_x": 0.5},
+            ],
+        }
+    )
+    x = np.array([0.0, 0.25, 0.5])
+    y = np.asarray(0.5)
+    assert field_value(plate, x, y) == pytest.approx([0.5, 1.0, 0.5])
+    assert field_value(plate, x, y, derivative=True) == pytest.approx(
+        [np.pi, 0.0, -np.pi], abs=1e-12
+    )

@@ -157,8 +157,31 @@ class Illustration(Graphic):
         return self
 
 
+class WaveTerm(BaseModel):
+    # Frequencies count complete cycles across the unit square, phase is in cycles.
+    amplitude: Annotated[float, Field(gt=0, le=2)]
+    fx: Annotated[float, Field(ge=-10, le=10)]
+    fy: Annotated[float, Field(ge=-10, le=10)]
+    phase: Fraction = 0
+
+
+class FieldSweep(BaseModel):
+    cue: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=450)]
+    mode: Literal["sample", "trace", "slope"]
+    to_x: Fraction
+
+
+class SampledField(Graphic):
+    type: Literal["sampled_field"]
+    terms: list[WaveTerm] = Field(min_length=1, max_length=5)
+    y: Fraction
+    start_x: Fraction
+    sweeps: list[FieldSweep] = Field(min_length=2, max_length=5)
+
+
 Panel = Annotated[
-    Bars | Network | Lines | Diagram | Drawing | Illustration, Field(discriminator="type")
+    Bars | Network | Lines | Diagram | Drawing | Illustration | SampledField,
+    Field(discriminator="type"),
 ]
 
 
@@ -172,7 +195,9 @@ class ManimScene(BaseModel):
 
     @model_validator(mode="after")
     def full_canvas(self) -> Self:
-        if len(self.panels) > 1 and any(isinstance(p, Illustration) for p in self.panels):
+        if len(self.panels) > 1 and any(
+            isinstance(p, (Illustration, SampledField)) for p in self.panels
+        ):
             raise ValueError("An illustration occupies the full scene. Use one panel.")
         return self
 

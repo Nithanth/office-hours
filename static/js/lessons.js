@@ -60,6 +60,11 @@
         const heading = field(graphic, name+'heading', 'Graphic heading', panel.heading);
         heading.maxLength = panel.type === 'illustration' ? 80 : 42;
         heading.oninput = () => {title.textContent = heading.value || 'Graphic';};
+        if (panel.type === 'sampled_field') {
+          panel.sweeps.forEach((sweep, i) => {
+            field(graphic, name+'sweep-'+i, 'Voice cue · '+sweep.mode+' to x = '+sweep.to_x, sweep.cue).maxLength = 450;
+          });
+        }
         if (panel.type === 'illustration') {
           panel.beats.forEach((beat, i) => {
             const actions = ['show','hide','flow','highlight','morph']
@@ -75,7 +80,7 @@
         }
         card.append(graphic);
       });
-      if (scene.panels[0].type !== 'illustration') {
+      if (!['sampled_field','illustration'].includes(scene.panels[0].type)) {
         field(card, 'cue', 'Words that start the animation', scene.cue).required = false;
       }
     } else {
@@ -147,6 +152,9 @@
         const panels = directed.panels.map((panel, index) => {
           const name = 'panel-' + index + '-';
           const updated = {...panel, heading:get(name+'heading')};
+          if (panel.type === 'sampled_field') {
+            updated.sweeps = panel.sweeps.map((sweep, i) => ({...sweep, cue:get(name+'sweep-'+i)}));
+          }
           if (panel.type === 'illustration') {
             updated.beats = panel.beats.map((beat, i) => ({...beat, cue:get(name+'beat-'+i)}));
           }
@@ -161,7 +169,7 @@
           }
           return updated;
         });
-        return {...directed, panels, title:get('title'), cue:panels[0].type === 'illustration' ? directed.cue : get('cue'), narration:get('narration'), source:get('source')};
+        return {...directed, panels, title:get('title'), cue:['illustration','sampled_field'].includes(panels[0].type) ? directed.cue : get('cue'), narration:get('narration'), source:get('source')};
       }
       const labels = get('labels').split('\n').map(x => x.trim()).filter(Boolean);
       if (labels.length < 2 || labels.length > (get('kind') === 'network' ? 4 : 3) || labels.some(x => x.length > 32)) {
