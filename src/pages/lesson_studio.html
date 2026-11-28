@@ -6,13 +6,15 @@
         $source_fields
         <button class="lesson-primary">Generate storyboard</button>
       </form>
+      <p role="status" id="lesson-plan-status"></p>
       $previous
     </section>
-    <section class="lesson-panel"><h2>Storyboard</h2>
-      <div id="lesson-empty"><p>Review the narration, visuals, and source for each scene before rendering.</p>$example</div>
-      <form id="lesson-editor" hidden><div id="lesson-scenes"></div><button class="lesson-primary">Render video</button></form>
+    <section class="lesson-panel">
+      <div id="lesson-output" hidden><h2 tabindex="-1">Playback</h2><video controls playsinline></video><a download="visual-lesson.mp4">Download MP4</a><details><summary>Transcript and sources</summary><div id="lesson-transcript"></div></details></div>
+      <h2 id="lesson-board-title" tabindex="-1">Storyboard</h2>
+      <div id="lesson-empty"><p>Review the narration, visuals, and source for each scene before rendering.</p><button type="button" id="lesson-manual">Write a storyboard</button> $example</div>
+      <form id="lesson-editor" hidden><div id="lesson-scenes"></div><button type="button" id="lesson-add">Add scene</button> <button type="button" id="lesson-remove" hidden>Remove last scene</button> <button class="lesson-primary">Render video</button></form>
       <p role="status" id="lesson-status"></p>
-      <div id="lesson-output" hidden><h2>Playback</h2><video controls playsinline></video><a download="visual-lesson.mp4">Download MP4</a><details><summary>Transcript and sources</summary><div id="lesson-transcript"></div></details></div>
     </section>
   </div>
 </section>
